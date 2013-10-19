@@ -1,0 +1,15 @@
+project(core)
+INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
+
+INCLUDE_DIRECTORIES(${suc_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${crack_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${emulint_SOURCE_DIR})
+
+FILE(GLOB core_SOURCE *.cpp)
+FILE(GLOB core_HEADER *.h)
+
+SOURCE_GROUP("Source Files" FILES ${core_SOURCE})
+SOURCE_GROUP("Header Files" FILES ${core_HEADER})
+
+ADD_LIBRARY(core ${core_SOURCE} ${core_HEADER})
+

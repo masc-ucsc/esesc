@@ -1,0 +1,14 @@
+#!/bin/sh
+
+if [ $# -lt 5 ]
+then
+	echo 'usage: runall vsize hsize <input ext> <output ext> outputfile' 
+	exit 0 
+fi
+
+for i in `ls *.$3 | sed "s/\.$3/ /g"`
+do
+	echo "$i" > $i.$4
+	./pat $1 $2  < $i.$3 >> $i.$4
+	cat $i.$4 >> $5
+done

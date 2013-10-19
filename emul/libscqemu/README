@@ -1,0 +1,50 @@
+
+
+# Get ESESC and QEMU Repository
+git clone ssh://mada0.cse.ucsc.edu/mada/server/git/esesc/ esesc-mascrtl
+
+# Compile QEMU
+cd esesc-mascrtl/emul/qemu
+# FOR ARM
+./configure  --static --target-list=arm-linux-user --disable-vnc-sasl --disable-vnc-tls --enable-esesc_user --enable-scqemu --interp-prefix=/mada/software/benchmarks/armel-root  --extra-cflags="-Wno-unused-but-set-variable"
+# FOR SPARC32
+./configure --static --target-list=sparc-linux-user --disable-vnc-sasl --disable-vnc-tls --enable-esesc_user -enable-scqemu --interp-prefix=/mada/software/benchmarks/armel-root  --extra-cflags="-Wno-unused-but-set-variable"
+make
+
+mkdir PATH/build
+cmake ../esesc-mascrtl/ -DENABLE_SCQEMU=1 -DESESC_QEMU_ISA=armel -DCMAKE_BUILD_TYPE=Release
+make scqemumain
+
+Compile Oprions: Look at Makefile
+
+---------------------
+How to create a libc free sample code (without syscalls if you want)
+
+//BEGIN c code
+volatile a=3;
+
+void _start()
+{
+  main();
+}
+
+main()
+{
+  a++;
+}
+//END c code
+
+# Either an ARM or a SPARC compiler (go to masca1 for ARM)
+gcc -O0 pp.c -nostdlib
+sparc-linux-gnu-gcc -O1 pp.c -nostdlib
+
+scqemu ./a.out
+
+It should point to the first instruction in the main subroutime
+
+
+Available Kernels:
+test/mm.c (Matrix Multiply)
+---------------------
+
+

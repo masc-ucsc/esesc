@@ -1,0 +1,9 @@
+# Micro-Cooler Floorplan File
+
+# comment lines begin with a '#' 
+# comments and empty lines are ignored
+
+# Location of Various Micro-Coolers 
+# Line Format: <left-x>\t<bottom-y>
+0.0000000000	0.0000000000
+0.0000000000	0.0100000000

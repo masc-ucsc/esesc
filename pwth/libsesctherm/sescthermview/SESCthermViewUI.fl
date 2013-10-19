@@ -1,0 +1,126 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0104 
+header_name {.h} 
+code_name {.cxx}
+class SESCthermViewUI {open
+} {
+  Function {SESCthermViewUI()} {open
+  } {
+    Fl_Window mainWindow {
+      label SESCthermView open selected
+      private xywh {335 139 750 785} type Double box UP_BOX labelsize 12 resizable visible
+    } {
+      Fl_Group {} {open
+        xywh {5 3 700 672}
+      } {
+        Fl_Group VChange {open
+          xywh {5 100 37 525}
+        } {
+          Fl_Slider ypan {
+            label {V Pan}
+            callback {thermView->pany(((Fl_Slider *)o)->value());
+thermView->redraw();}
+            xywh {25 135 15 490} type {Vert Knob} selection_color 136 labeltype NO_LABEL labelsize 12 align 0 minimum -25 maximum 25 step 0.1
+          }
+        }
+        Fl_Group HChange {open
+          xywh {120 397 530 278}
+        } {
+          Fl_Slider xpan {
+            label {H Pan}
+            callback {thermView->panx(((Fl_Slider *)o)->value());
+thermView->redraw();}
+            xywh {195 658 390 17} type {Horz Knob} selection_color 136 labeltype NO_LABEL labelsize 12 align 16 minimum 25 maximum -25 step 0.1
+          }
+        }
+        Fl_Group MainView {open
+          xywh {46 62 659 588}
+        } {
+          Fl_Box cframe {
+            xywh {46 62 659 583} box DOWN_FRAME color 4 selection_color 69
+          }
+          Fl_Box thermView {
+            label thermview
+            xywh {47 64 656 579} align 16
+            code0 {\#include "SESCthermView.h"}
+            class SESCthermView
+          }
+        }
+        Fl_Value_Slider zoom {
+          label Zoom
+          callback {thermView->size=((Fl_Value_Slider *)o)->value();
+thermView->redraw();}
+          xywh {106 38 554 19} type {Horz Knob} selection_color 136 labelfont 1 labelsize 12 align 4 minimum 1 maximum 50 step 0.1 value 10 textfont 1
+        }
+      }
+      Fl_Check_Button layer1enable {
+        label {Chip  Layer}
+        xywh {15 650 25 25} down_box DOWN_BOX
+      }
+      Fl_Check_Button layer1enable {
+        label {uCool  Layer}
+        xywh {15 675 25 25} down_box DOWN_BOX
+      }
+      Fl_Check_Button layer1enable {
+        label {Heat Spreader Layer}
+        xywh {15 700 25 25} down_box DOWN_BOX
+      }
+      Fl_Check_Button layer1enable {
+        label {Heat Sink Layer}
+        xywh {15 725 25 25} down_box DOWN_BOX
+      }
+      Fl_Check_Button layer1enable {
+        label {Heat Sink Fins Layer}
+        xywh {15 750 25 25} down_box DOWN_BOX
+      }
+      Fl_Button {} {
+        label {Step Back}
+        xywh {355 695 75 30} color 19
+      }
+      Fl_Button {} {
+        label {Step Forward}
+        xywh {440 695 90 30} color 19
+      }
+      Fl_Button {} {
+        label Run
+        xywh {320 735 75 30} color 19
+      }
+      Fl_Button {} {
+        label Stop
+        xywh {405 735 75 30} color 19
+      }
+      Fl_Button {} {
+        label Rewind
+        xywh {270 695 75 30} color 19
+      }
+      Fl_Button {} {
+        label Restart
+        xywh {190 695 75 30} color 19
+      }
+      Fl_Button {} {
+        label {Fast Forward}
+        xywh {540 695 90 30} color 19
+      }
+      Fl_Menu_Bar {} {open
+        xywh {0 0 750 25}
+      } {
+        menuitem {} {
+          label File
+          xywh {0 0 100 20}
+        }
+        menuitem {} {
+          label Options
+          xywh {0 0 100 20}
+        }
+        menuitem {} {
+          label Help
+          xywh {0 0 100 20}
+        }
+      }
+    }
+  }
+  Function {show(int argc, char **argv)} {open
+  } {
+    code {mainWindow->show(argc, argv);} {}
+  }
+} 

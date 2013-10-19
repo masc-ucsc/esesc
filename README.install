@@ -1,0 +1,19 @@
+
+These are the list of packages needed for ESESC
+
+archlinux:
+
+pacman -S boost
+pacman -S bison flex
+pacman -S g++
+pacman -S python2
+pacman -S texinfo
+
+Ubuntu 12.04:
+
+apt-get install libboost-dev
+apt-get install bison flex
+apt-get install g++
+apt-get install python2
+apt-get install texinfo
+apt-get insatll libglib2.0-dev

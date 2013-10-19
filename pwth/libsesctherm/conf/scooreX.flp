@@ -1,0 +1,36 @@
+
+# Floorplan made up to represent a generic superscalar processor
+# See scooreX_floorplan.pdf for a diagram of the processor
+# modules
+#
+# Line Format: <unit-name>\t<width>\t<height>\t<left-x>\t<bottom-y>
+# comment lines begin with a '#' 
+# comments and empty lines are ignored
+
+# total area (in normalized units) = 10(h)x11(v) um =0.0010 x0.0011
+
+FPWin           0.0025         0.001          0.000          0.000
+FPReg           0.0025         0.001          0.0025         0.000
+IntWin          0.003          0.0015         0.0035         0.001
+IntReg          0.002          0.0015         0.0065         0.001
+FPRAT          0.0035         0.0005         0.000          0.0010
+IntRAT          0.0035         0.0010         0.000          0.0015
+Grad            0.0025         0.0015         0.0035         0.0025
+Icache          0.0045        0.0015         0.000          0.004
+Dcache          0.005         0.0015         0.005          0.004
+MSHR            0.0005        0.0015         0.0045         0.004
+L2a             0.0050        0.00275        0.000          0.0055
+L2b             0.0050        0.00275        0.005          0.0055
+L2c             0.0050        0.00275        0.000          0.00825
+L2d             0.0050        0.00275        0.005          0.00825
+FPUnitMult          0.0015          0.001         0.0085         0.000
+FPUnitAlu          0.0020          0.001         0.0065          0.000
+FPUnitDiv          0.0015          0.001         0.005         0.000
+IntUnitMult         0.0015         0.0005         0.0085         0.0020
+IntUnitAlu         0.0015         0.0005         0.0085         0.0015
+IntUnitDiv         0.0015         0.0005         0.0085         0.001
+LDQ             0.002          0.0015         0.006          0.0025
+STQ            0.002          0.0015         0.008          0.0025
+BpredRAS           0.0005         0.00075         0.003          0.00325
+BpredPred         0.0030         0.00075         0.000          0.00325
+BpredBTB          0.0035         0.00075         0.000          0.0025
