@@ -1,0 +1,6 @@
+
+ This directory has the equation based power model.
+
+ It user muParse to read equations from the configuration file and build the
+power per block.
+

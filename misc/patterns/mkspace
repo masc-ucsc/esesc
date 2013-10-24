@@ -1,0 +1,32 @@
+#!/bin/sh
+#JL Briz Mayo 1994
+# miramos a ver si el numero de args. es correcto:
+
+if [ $# -lt 2 ]
+then
+	echo 'usage: cambia <ext> <pattern>'
+	exit 0 
+fi
+
+# listamos los ficheros con extension .<ext>
+
+for i in `ls *.$1`
+do
+
+# subsitituimos en cada fichero <pattern> por <substituto> y
+# dejamos los cambios en un nuevo fichero con extension 
+# .<ext>.tmp
+
+cat $i | sed "/./s/$2/ /g" > $i.tmp
+done
+
+# listamos todos los ficheros con extension .tmp y nos
+# quedamos solo con el nombre sin extension .<ext>.tmp
+
+for i in `ls *.tmp | sed "s/\.$1\.tmp/ /"`
+do
+
+# y substituimos los primitivos *.<ext> 
+
+mv $i.$1.tmp $i.$1
+done

@@ -1,0 +1,88 @@
+The examples here will be based on this default configuration.
+~/esesc         #This is where esesc has been downloaded to
+~/build         #This is where esesc will be compiled to
+
+1. The regression tests have been incorporated into the esesc conf directory.
+   No additional command line argument are needed for the benchmarks.
+
+   Example:
+   user@mada:~$ mkdir build
+   user@mada:~/build$ cmake -DCMAKE_BUILD_TYPE=Release -DESESC_QEMU_ISA=armel \
+                      ~/esesc
+
+2. Prepare a set of golden outputs from report.pl that you want to compare against 
+   (i.e. these outputs would be most useful to generate before you update the ESESC 
+   code).
+
+   user@mada:~/build$ make gold
+
+   The command "make gold" will make a SLOW configuration golden-brick and a FAST 
+   configuration golden-brick.
+
+3. After a code change, run
+
+   user@mada:~/build$ make regression
+
+   which will compare a new report.pl output to the golden-brick outputs. Examine
+   the command line for errors. Navigate to ~/build/regression/output/ to view the 
+   output and errors (if there were any). 
+
+   The output will consist of SLOW.last:SLOW.gold, FAST.last:FAST.gold, 
+   SLOW.last:FAST.last. CAT them each and examine the matrix for OK and ERROR. If 
+   all OK, then the values are relatively close (according to the epsilon defined 
+   in ~/esesc/gold/tables/cmptab-eq.sh).
+
+4. The scripts "make gold" and "make regression" will create the directories
+   ~/build/regression/run and run the script mt-scripts.rb to generate benchmark
+   testing files.
+
+4. If esesc has not been compiled, "make regression/gold" will compile esesc with
+   2 cores.
+
+====================================================================================
+
+DIRECTORY ORGANIZATION
+-----------------
+~/build
+This is our compiled esesc.
+
+~/build/regression/run
+This is where the benchmark scripts and the ruby script used to generate the
+benchmark scripts live.
+
+~/build/regression/output
+This is the final directory to check your results in.
+
+~/esesc
+This is our uncompiled esesc binary.
+
+~/esesc/gold/config
+This has all of the shared.conf files that we can use when running ESESC. Substitute
+MILD or MEDIUM for SLOW or FAST.
+
+~/esesc/gold/exe
+This is our esesc executable. The script runs the executable and generates a 
+report.pl. The results are then arranged into a table.
+
+~/esesc/gold/log
+This is where all the ESESC stdout/stderr redirection is written to.
+
+~/esesc/gold/exe/maketable.sh
+This script runs ESESC with the specified shared.conf file (sh maketable.sh < SLOW 
+MILD MEDIUM or FAST> and makes a table of the output across several benchmarks
+and comparing 5 metrics.
+
+~/esesc/gold/report
+This is where the individual report.pl goes after running the scripts.
+
+~/esesc/gold/tables
+This is where the otuput of maketable.sh goes. Here you will find timestamped
+(YYMMDD-HHMM) tables. The syntax is <shared.conf type>.YYMMDD-HHMM.csv
+
+====================================================================================
+
+CREDITS
+-----------------
+
+Program originally written by Ethan Papp and Jim Herriot. Modified by Edward Kuang.
+

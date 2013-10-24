@@ -1,0 +1,16 @@
+PROJECT(scqemu)
+INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
+
+INCLUDE_DIRECTORIES(${crack_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${suc_SOURCE_DIR})
+
+ADD_SUBDIRECTORY(libsoftfpu)
+
+FILE(GLOB scqemu_SOURCE *.cpp)
+FILE(GLOB scqemu_HEADER *.h)
+
+SOURCE_GROUP("Source Files" FILES ${scqemu_SOURCE})
+SOURCE_GROUP("Header Files" FILES ${scqemu_HEADER})
+
+ADD_LIBRARY(scqemu ${scqemu_SOURCE} ${scqemu_HEADER})
+

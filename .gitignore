@@ -1,0 +1,8 @@
+pp
+tags
+cscope*
+*.swp
+*.swo
+*.swn
+emul/qemu/roms/vgabios/config.mak
+emul/qemu/roms/seabios/config.mak

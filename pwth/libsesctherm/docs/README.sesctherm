@@ -1,0 +1,106 @@
+SESCTHERM INTERFACE
+
+Constructor:
+When calling the sesctherm3Dmodel constructor, you pass the following:
+string flp_filename 				->filename of the chip floorplan file (optional)
+string ucool_flp_filename			->filename of the ucooler floorplan file (optional)
+string outfile_filename 			->filename of the output file (required)
+bool get_chipflp_from_sescconf		->whether to get the chip floorplan from sescconf (required)
+bool get_ucoolflp_from_sescconf		->whether to get the ucool floorplan from sescconf (required)
+
+Example:
+// ucoolers are not used
+// no chip floorplan/ucooler floorplan file is used
+// chip floorplan is read from sescconf
+  sesctherm3Dmodel temp_model(NULL,NULL,output_file,true,false);
+  
+Accessors/Manipulators:
+*GET TEMPERATURE MAP OF LAYER
+	*This will return the floorplan's temperatures map for a given layer 
+	
+	*The format of the map is map<int, double>
+	
+	*The flp layer is the layer with the floorplan we wish to use, the source layer is the one with the temperatures
+	we wish to read
+
+	*In the general case, we are going to use layer 6 (silicon substrate) as the layer to obtain the temperature data, and
+	layer 5 (transistor layer) as the one with the floorplan we wish to read
+		
+	map<int, double>& temp_model.get_temperature_layer(int flp_layer, int source_layer);
+	
+	gatherm example:
+	
+	temp_model.get_temperature_layer(5,6);
+
+*GET TEMPERATURE VALUE OF FLP UNIT
+
+	double temp_model.get_temperature_flp(int flp_pos, int flp_layer, int source_layer);
+	
+
+
+*STORE SINGLE TEMPERATURE TO FLOORPLAN UNIT
+
+	*This will store a temperature value to all the model units on the destination layer that correspond 
+	to a given floorplan unit on the flp_layer. 
+	
+	*For example, if the source layer was 5, this means that we wish to select the chip on layer 5 (this allows multiple transistor layers
+	in the model). If the destination layer is interconnect layer 4, then we store the temperature values to the model units 
+	on the interconnect layer that are directly above (or below) the corresponding floorplan unit on layer 5. This allows us to
+	set an AVERAGE temperature across several layers
+	
+temp_model.set_temperature_flp(int flp_pos, int flp_layer, int source_layer, double temperature);
+
+
+*STORE TEMPERATURE MAP TO ENTIRE FLOORPLAN 
+
+	*This will store a temperatures map to all the model units that correspond to a floorplan, but on 
+	the specified layer. 
+	
+	*For example, if the flp layer was 5, this means that we wish to select the chip on layer 5. If the source layer
+	is interconnect layer 4, then we store the temperature values to the model units on the interconnect layer that are directly
+	above (or below) the corresponding floorplan unit on layer 5. This allows us to set an AVERAGE temperature across several layers
+	
+temp_model.set_temperature_layer(int flp_layer, int source_layer, vector<double>& temperature_map);
+
+
+*STORE SINGLE TEMPERATURE TO ENTIRE FLOORPLAN 
+
+	*This will set the entire layer to one temperature
+
+temp_model.set_temperature_layer(int source_layer, double temperature);
+
+
+!!NOTE: THESE FUNCTIONS CURRENTLY ONLY ALLOW POWER DATA TO BE STORED ON TRANSISTOR-TYPE LAYERS 
+!!      THIS MEANS THAT SELF_HEATING OF WIRES ETC IS NOT CURRENTLY POSSIBLE, 
+!!		TO FIX THIS, WE NEED TO SPECIFY AN flp_layer AND ASSOCIATED source_layer
+*STORE SINGLE POWER VALUE TO FLOORPLAN UNIT
+	*This will store the power value to a floorplan unit at location flp_pos on a specified layer 
+		
+	*Pass in the number of the floorplan unit to update, the layer in which that floorplan resides, and the   
+	 power data (in watts) for the particular floorplan unit (in the general case the layer will be 5)
+	
+	*(note that the order of the floorplan units is the same as the order in which they appear
+	 in the sesc configuration file, starting with 0 as the lowest index)
+		
+	temp_model.set_power_flp(int flp_pos,  int layer, double power_data);
+
+
+*STORE POWER MAP TO ENTIRE FLOORPLAN
+	*This will store all the power values to a floorplan on a specified layer
+
+	*Pass in a vector<double> where the value at index i corresponds to the power value for floorplan unit i
+	
+	*(note that the order of the floorplan units is the same as the order in which they appear
+	 in the sesc configuration file, starting with 0 as the lowest index)
+		
+	
+	temp_model.set_power_layer(int layer, vector<double>& power_map);
+
+
+*GET POWER DATA FROM A FLOORPLAN
+	
+	vector<double>& get_power_layer(int flp_layer);
+
+*GET POWER VALUE FROM A FLOORPLAN UNIT
+
+	double get_power_flp(int flp_layer, int flp_pos);

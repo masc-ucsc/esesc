@@ -1,0 +1,10 @@
+The trace files must not contain ',' but ' '
+Use sed or the script mkspace, e.g.:
+mkspace csv ","
+
+
+run:
+
+./runall csv
+
+results per-pc and tid are accounted but not shown in results

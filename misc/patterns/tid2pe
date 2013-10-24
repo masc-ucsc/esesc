@@ -1,0 +1,15 @@
+#!/bin/sh 
+
+if [ $# -lt 2 ]
+then
+	echo 'usage: tid2pe <input file ext> <output file ext>'
+	exit 0
+fi
+for i in `ls *.$1 | sed "s/\.$1/ /"`
+do
+# trap '' 1 2 15
+awk '{
+	PE = $1 % 32
+	print PE, $2, $3, $4
+}' $i.$1 > $i.$2
+done

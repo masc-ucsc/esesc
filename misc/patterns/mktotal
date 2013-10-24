@@ -1,0 +1,12 @@
+#!/usr/bin/awk -f
+BEGIN{ refs =0; neg = 0;
+sca = 0; s32 = 0; s64 = 0; 
+s128 = 0; s256 = 0; sbig = 0 }
+/Tot Refs/ { refs += $3}
+/^a/ {neg += $4; sca += $5; s32 += $6; s64 += $7; s128 += $8; s256 += $9;sbig += $10}
+END{ 
+printf("Total References: %d\n", refs);
+printf("\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", neg, sca, s32, s64, s128, s256, sbig);
+printf("\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n", neg/refs, sca/refs, s32/refs, s64/refs, s128/refs, s256/refs, sbig/refs);
+}
+
