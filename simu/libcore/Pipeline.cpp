@@ -24,10 +24,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "SescConf.h"
 #include "Pipeline.h"
 
-#ifdef ESESC_FUZE
-#include <iostream>
-#endif
-
 IBucket::IBucket(size_t size, Pipeline *p, bool clean)
   : FastQueue<DInst *>(size)
   ,cleanItem(clean)
@@ -57,34 +53,7 @@ Pipeline::Pipeline(size_t s, size_t fetch, int32_t maxReqs)
   ,MaxIRequests(maxReqs)
   ,nIRequests(maxReqs)
   ,buffer(s+1+maxReqs)
-#ifdef ESESC_FUZE
-  ,mixInstr       ("IanLee1521_x_mixInstr")
-  ,numImmed       ("IanLee1521_x_numImmed")
 
-  ,numUniqueSrcs  ("IanLee1521_x_numUniqueSrcs")
-  ,numUniqueDsts  ("IanLee1521_x_numUniqueDsts")
-  ,numUniqueInstr ("IanLee1521_x_numUniqueInstr")
-  
-  // B
-  ,B_numSrcPost   ("IanLee1521_B_numSrcPost")
-  ,B_numDstPost   ("IanLee1521_B_numDstPost")
-  ,B_numInstPost  ("IanLee1521_B_numInstPost")
-  ,B_numMegaOp    ("IanLee1521_B_numMegaOp")
-    
-  // N
-  ,N_numSrcPost   ("IanLee1521_N_numSrcPost")
-  ,N_numDstPost   ("IanLee1521_N_numDstPost")
-  ,N_numInstPost  ("IanLee1521_N_numInstPost")
-  ,N_numMegaOp    ("IanLee1521_N_numMegaOp")
-  
-  // Q
-  ,Q_numSrcPost   ("IanLee1521_Q_numSrcPost")
-  ,Q_numDstPost   ("IanLee1521_Q_numDstPost")
-  ,Q_numInstPost  ("IanLee1521_Q_numInstPost")
-  ,Q_numMegaOp    ("IanLee1521_Q_numMegaOp")
-  
-
-#endif
   {
   maxItemCntr = 0;
   minItemCntr = 0;
@@ -124,105 +93,6 @@ Pipeline::~Pipeline() {
 
 void Pipeline::readyItem(IBucket *b) {
   b->setClock();
-
-#ifdef ESESC_FUZE
-  if(b->size() > 0) {
-    std::set<RegType> unique_srcs;
-    std::set<RegType> unique_dsts;
-
-    uint32_t numOp_ALU = 0;
-    uint32_t numOp_Other = 0;
-
-
-    for(unsigned int i = 0; i < b->size(); i++) {
-      // FIXME IanLee1521 -- getData only works with FastQueue :: FASTQUEUE_USE_QUEUE = 0
-      DInst* bucketInst = b->getData(b->getIdFromTop(i));
-      MegaOp currMegaOp(*bucketInst);
-      
-      mixInstr.sample(currMegaOp.opcode);
-      numImmed.sample(currMegaOp.numImm);
-
-      mCluster.pendingMegaOps.push_back(currMegaOp);
-
-      unique_srcs.insert (currMegaOp.srcs.begin(), currMegaOp.srcs.end());
-      unique_dsts.insert (currMegaOp.dsts.begin(), currMegaOp.dsts.end());
-
-      if (currMegaOp.opcode == iAALU) {
-        ++numOp_ALU;
-      } else {
-        ++numOp_Other;
-      }
-    }
-
-    for (std::set<RegType>::iterator iter = unique_srcs.begin(); iter != unique_srcs.end(); ++iter) {
-      numUniqueSrcs.sample (*iter);
-    }
-    for (std::set<RegType>::iterator iter = unique_dsts.begin(); iter != unique_dsts.end(); ++iter) {
-      numUniqueDsts.sample (*iter);
-    }
-    
-    numUniqueInstr.sample (numOp_ALU ? numOp_Other + 1 : numOp_Other);
-
-    mCluster.fuzion('B');
-    {
-      //mCluster.visualize("Fuze_B::");
-      std::list<MegaOp> opList = mCluster.readyMegaOps;
-      B_numInstPost.sample(opList.size());
-      for(std::list<MegaOp>::iterator iter = opList.begin(); iter != opList.end(); iter++) {
-        B_numSrcPost.sample(iter->countSrcs());
-        B_numDstPost.sample(iter->countDsts());
-        B_numMegaOp.sample(iter->countInstrs());
-      }
-    }
-
-    mCluster.fuzion('N');
-    {
-      //mCluster.visualize("Fuze_N::");
-      std::list<MegaOp> opList = mCluster.readyMegaOps;
-      N_numInstPost.sample(opList.size());
-      for(std::list<MegaOp>::iterator iter = opList.begin(); iter != opList.end(); iter++) {
-        N_numSrcPost.sample(iter->countSrcs());
-        N_numDstPost.sample(iter->countDsts());
-        N_numMegaOp.sample(iter->countInstrs());
-      }
-    }
-
-    mCluster.fuzion('Q');
-    {
-      //mCluster.visualize("Fuze_Q::");
-      std::list<MegaOp> opList = mCluster.readyMegaOps;
-      Q_numInstPost.sample(opList.size());
-      for(std::list<MegaOp>::iterator iter = opList.begin(); iter != opList.end(); iter++) {
-        Q_numSrcPost.sample(iter->countSrcs());
-        Q_numDstPost.sample(iter->countDsts());
-        Q_numMegaOp.sample(iter->countInstrs());
-      }
-    }
-    
-    //mCluster.fuzion('D');
-    //mCluster.visualize("Fuze_D::");
-    //std::list<MegaOp> opList = mCluster.readyMegaOps;
-    //numInstPost_B.sample(opList.size());
-    //for(std::list<MegaOp>::iterator iter = opList.begin(); iter != opList.end(); iter++) {
-    //  numSrcPost_B.sample(iter->countSrcs());
-    //  numDstPost_B.sample(iter->countDsts());
-    //  numMegaOp_B.sample(iter->countInstrs());
-    //}
-    
-
-
-/*
-    while(!b->empty()) {
-      b->pop();
-    }
-
-    for(std::list<MegaOp>::iterator iter = opList.begin(); iter != opList.end(); iter++) {
-      DInst* newInst = 
-    }      
-*/
-    mCluster.reset();
-  }
-#endif
 
   nIRequests++;
   if( b->getPipelineId() != minItemCntr ) {

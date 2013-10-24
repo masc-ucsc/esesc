@@ -70,12 +70,6 @@ int main(int argc, const char **argv) {
       static AddrType lastPC = 0;
       if (dinst) {
         // dinst->dump("");
-
-#ifdef ESESC_FUZE
-// IANLEE1521:
-// Add in the functionality to handle the megaop fusion.
-#endif // ESESC_FUZE
-
         conta++;
         if (dinst->getPC() != lastPC) {
         //  uops->sample(conta);
@@ -85,7 +79,7 @@ int main(int argc, const char **argv) {
         }
         lastPC = dinst->getPC();
         eint->reexecuteTail(i);
-//        dinst->dump(""); 
+        //dinst->dump(""); 
         dinst->scrap(eint);
         instcount++;
       }else{

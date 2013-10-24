@@ -35,11 +35,7 @@ DInst::DInst()
   pend[0].init(this);
   pend[1].init(this);
   pend[2].init(this);
-#ifdef ESESC_FUZE
-  I(MAX_PENDING_SOURCES==16);
-#else
   I(MAX_PENDING_SOURCES==3);
-#endif
   nDeps = 0;
 #ifdef ENABLE_CUDA
   pe_id = 0;

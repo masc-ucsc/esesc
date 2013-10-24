@@ -1020,12 +1020,8 @@ StallCause FURALU::canIssue(DInst *dinst)
     
     return SyscallStall;
   }else if (!dinst->getInst()->hasDstRegister() 
-#ifdef ESESC_FUZE
-            && !dinst->getInst()->hasSrcRegister()
-#else
             && !dinst->getInst()->hasSrc1Register() 
             && !dinst->getInst()->hasSrc2Register()
-#endif
             && !scooreMemory) {
     if (gproc->isROBEmpty())
       return NoStall;

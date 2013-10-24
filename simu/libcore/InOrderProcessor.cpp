@@ -123,22 +123,12 @@ StallCause InOrderProcessor::addInst(DInst *dinst) {
 
   const Instruction *inst = dinst->getInst();
 
-#ifdef ESESC_FUZE
-  // FIXME: IANLEE1521 - Need to do this over all srcs in the iterator.
-  if(RAT[inst->getSrc(0)] != 0 ||
-     RAT[inst->getSrc(1)] != 0 ||
-     RAT[inst->getDst(0)] != 0 ||
-     RAT[inst->getDst(1)] != 0) {
-    return SmallWinStall;
-  }
-#else
   if(RAT[inst->getSrc1()] != 0 ||
      RAT[inst->getSrc2()] != 0 ||
      RAT[inst->getDst1()] != 0 ||
      RAT[inst->getDst2()] != 0) {
     return SmallWinStall;
   }
-#endif
 
   if( (ROB.size()+rROB.size()) >= MaxROBSize )
     return SmallROBStall;
@@ -165,18 +155,10 @@ StallCause InOrderProcessor::addInst(DInst *dinst) {
   I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
 
   // No src check for in-order
-#ifdef ESESC_FUZE
-  // FIXME: IANLEE1521 - Need to do this over all srcs in the iterator.
-  dinst->setRAT1Entry(&RAT[inst->getDst(0)]);
-  dinst->setRAT2Entry(&RAT[inst->getDst(1)]);
-  RAT[inst->getDst(0)] = dinst;
-  RAT[inst->getDst(1)] = dinst;
-#else  
   dinst->setRAT1Entry(&RAT[inst->getDst1()]);
   dinst->setRAT2Entry(&RAT[inst->getDst2()]);
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
-#endif
 
   I(dinst->getCluster());
   dinst->getCluster()->addInst(dinst);

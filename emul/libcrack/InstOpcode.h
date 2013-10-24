@@ -53,8 +53,6 @@ enum InstOpcode {
   iCALU_MULT,
   iCALU_DIV,
   //-----------------
-  iFUZE,
-  //-----------------
   iMAX
 };
 
@@ -519,24 +517,6 @@ enum RegType {
   //LREG_CUDAINT2START = LREG_CUDAINTSTART ,
   LREG_CUDAFPSTART = 512+LREG_CUDAINT2START,
   LREG_CUDAEND   = 512+LREG_CUDAFPSTART,
-
-  LREG_FUZE0 = 1700,
-  LREG_FUZE1,
-  LREG_FUZE2,
-  LREG_FUZE3,
-  LREG_FUZE4,
-  LREG_FUZE5,
-  LREG_FUZE6,
-  LREG_FUZE7,
-  LREG_FUZE8,
-  LREG_FUZE9,
-  LREG_FUZE10,
-  LREG_FUZE11,
-  LREG_FUZE12,
-  LREG_FUZE13,
-  LREG_FUZE14,
-  LREG_FUZE15,
-
 
   LREG_INVALID, // For debug reasons, nobody should use this ID
   LREG_InvalidOutput, // To optimize the RAT code, nobody can read this one, but they can write

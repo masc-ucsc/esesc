@@ -131,11 +131,6 @@ void Cluster::buildUnit(const char *clusterName
     case iCALU_DIV:
       r = new FUGeneric(cluster, gen, lat);
       break ;
-    case iFUZE:
-      //ESESC_FUZE FIXME: IANLEE1521
-      r = new FUFuze(cluster, gen, lat);
-      //r = new FUGeneric(cluster, gen, lat);
-      break;
     case iBALU_LBRANCH:
     case iBALU_LJUMP:
     case iBALU_LCALL:
@@ -268,12 +263,7 @@ void Cluster::addInst(DInst *dinst) {
   
   rdRegPool.add(2, dinst->getStatsFlag()); // 2 reads
 
-#ifdef ESESC_FUZE
   if (dinst->getInst()->hasDstRegister()) {
-#else
-  if (dinst->getInst()->hasDstRegister()) {
-#endif
-
     wrRegPool.inc(dinst->getStatsFlag());
     regPool--;
   }
@@ -303,11 +293,7 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
   if( !done )
     return false;
 
-#ifdef ESESC_FUZE
   bool hasDest = (dinst->getInst()->hasDstRegister());
-#else
-  bool hasDest = (dinst->getInst()->hasDstRegister());
-#endif
 
   if( hasDest )
     regPool++;
@@ -337,11 +323,7 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
   if( !done )
     return false;
 
-#ifdef ESESC_FUZE
   bool hasDest = (dinst->getInst()->hasDstRegister());
-#else
-  bool hasDest = (dinst->getInst()->hasDstRegister());
-#endif
   if( hasDest )
     regPool++;
 
@@ -368,11 +350,7 @@ bool RetiredCluster::retire(DInst *dinst, bool reply) {
   if( !done )
     return false;
 
-#ifdef ESESC_FUZE
   bool hasDest = (dinst->getInst()->hasDstRegister());
-#else
-  bool hasDest = (dinst->getInst()->hasDstRegister());
-#endif
 
   if( hasDest )
     regPool++;

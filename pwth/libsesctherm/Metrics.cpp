@@ -60,61 +60,45 @@ Metrics::Metrics(size_t flpSize)
 	MaxT = new std::vector <GStatsMax *> (flpSize);
 	for (size_t i=0;i<flpSize;i++){
 		(*MaxT)[i] = new GStatsMax("flpBlock[%d]_MaxT",i);
-		(*MaxT)[i]-> setIgnoreSampler();
 	}
 	chipMaxT = new GStatsMax("ChipMaxT");
-  chipMaxT -> setIgnoreSampler();
 	chipAvgT = new GStatsAvg("ChipAvgT");
-  chipAvgT -> setIgnoreSampler();
 	chipGradT = new GStatsMax("ChipGradT");
-  chipGradT -> setIgnoreSampler();
 	//chipMaxTHist = new GStatsHist("ChipMaxTHist");
 
 	EM_fit = new std::vector <GStatsAvg *> (flpSize);
 	for (size_t i=0;i<flpSize;i++){
 		(*EM_fit)[i] = new GStatsAvg("flpBlock[%d]_EM_fit",i);
-		(*EM_fit)[i] -> setIgnoreSampler();
 	}
 
 
 	SM_fit = new std::vector <GStatsAvg *> (flpSize);
 	for (size_t i=0;i<flpSize;i++){
 		(*SM_fit)[i] = new GStatsAvg("flpBlock[%d]_SM_fit",i);
-		(*SM_fit)[i] -> setIgnoreSampler();
 	}
 
 	TDDB_fit = new std::vector <GStatsAvg *> (flpSize);
 	for (size_t i=0;i<flpSize;i++){
 		(*TDDB_fit)[i] = new GStatsAvg("flpBlock[%d]_TDDB_fit",i);
-		(*TDDB_fit)[i] -> setIgnoreSampler();
 	}
 
 	TC_fit = new std::vector <GStatsAvg *> (flpSize);
 	for (size_t i=0;i<flpSize;i++){
 		(*TC_fit)[i] = new GStatsAvg("flpBlock[%d]_TC_fit",i);
-		(*TC_fit)[i] -> setIgnoreSampler();
 	}
 
 	NBTI_fit = new std::vector <GStatsAvg *> (flpSize);
 	for (size_t i=0;i<flpSize;i++){
 		(*NBTI_fit)[i] = new GStatsAvg("flpBlock[%d]_NBTI_fit",i);
-		(*NBTI_fit)[i] -> setIgnoreSampler();
 	}
 
 	Power = new GStatsAvg("ChipPower");
-  Power -> setIgnoreSampler();
 	Leak = new GStatsAvg("ChipLeak");
-  Leak -> setIgnoreSampler();
 	LSQPower = new GStatsAvg("LSQPower");
-  LSQPower -> setIgnoreSampler();
 	DCPower = new GStatsAvg("DCPower");
-  DCPower -> setIgnoreSampler();
 	Throttling    = new GStatsMax("ThrottlingCycles");
-  Throttling -> setIgnoreSampler();
 	sescThermTime = new GStatsMax("sescThermTime");
-  sescThermTime -> setIgnoreSampler();
 	simulatedTime = new GStatsMax("simulatedTime");
-  simulatedTime -> setIgnoreSampler();
 }
 
 

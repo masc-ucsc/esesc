@@ -38,7 +38,7 @@ GStats::Container GStats::store;
 
 GStats::GStats() 
 {
-  ignoreSampler = false;
+
 }
 
 GStats::~GStats() 
@@ -68,7 +68,7 @@ void GStats::subscribe()
   I(strcmp(getName(),"")!=0);
 
   if(store.find(getName()) != store.end()) {
-    MSG("ERROR: gstats is added twice with name [%s]. Use antoher name",getName());
+    MSG("ERROR: gstats is added twice with name [%s]. Use another name",getName());
     I(0);
   }
 

@@ -63,7 +63,6 @@ private:
 
 protected:
   char *name;
-  bool ignoreSampler;
 
   char *getText(const char *format, va_list ap);
   void subscribe();
@@ -91,8 +90,6 @@ public:
   virtual int64_t getSamples() const;
 
   // Some stats just need to be active all the time no matter what the EmSampler says (E.g: sampler stats)
-  void setIgnoreSampler()   { ignoreSampler = true;  }
-  void clearIgnoreSampler() { ignoreSampler = false; }
 };
 
 class GStatsCntr : public GStats {

@@ -52,93 +52,11 @@ static const char *opcode2NameTable[] = {
   "iCALU_MULT",
   "iCALU_DIV",
   //-----------------
-  "iFUZE"
 };
 
 const char *Instruction::opcode2Name(InstOpcode op) {
   return opcode2NameTable[op];
 }
-
-
-
-#ifdef ESESC_FUZE
-Instruction::Instruction() :
-  // Ideally these should be equal to DInst::MAX_PENDING_SOURCES
-  // Here just set to some large number
-  srcs(16),
-  dsts(16)
-  {
-}
-
-
-void Instruction::dump(const char *str) const {
-  //printf("%s: reg%d, reg%d = reg%d %11s reg%d", str, dst1, dst2, src1, opcode2NameTable[opcode], src2);
-  printf("%s: ", str);
-  
-  for( std::vector<RegType>::const_iterator iter = dsts.begin(); iter != dsts.end(); iter++ ) {
-    printf("dreg%d, ", *iter);
-  }
-  
-  printf("%11s ", opcode2NameTable[opcode]);
-
-  for( std::vector<RegType>::const_iterator iter = dsts.begin(); iter != dsts.end(); iter++ ) {
-    printf("sreg%d, ", *iter);
-  }
-}
-
-bool Instruction::hasDstRegister() const { 
-  bool hasReg = false;
-  for( std::vector<RegType>::const_iterator iter = dsts.begin(); iter != dsts.end(); iter++ ) {
-    hasReg = hasReg || (*iter != LREG_InvalidOutput);
-  }
-  return hasReg;
-}
-
-bool Instruction::hasSrcRegister() const { 
-  bool hasReg = false;
-  for(std::vector<RegType>::const_iterator iter = srcs.begin(); iter != srcs.end(); iter++) {
-    hasReg = hasReg || (*iter != LREG_NoDependence);
-  }
-  return hasReg;
-}
-
-void Instruction::set(InstOpcode opcode_, std::vector<RegType> srcs_, std::vector<RegType> dsts_, bool useImm) {
-  I(opcode_ != iOpInvalid);
-
-  opcode    = opcode_;
-  srcs      = srcs_;
-  dsts      = dsts_;
-  imm       = useImm;
-
-  for(std::vector<RegType>::iterator iter = dsts.begin(); iter != dsts.end(); iter++) {
-    if(*iter == LREG_NoDependence) {
-      *iter = LREG_InvalidOutput;
-    }
-  }
-}
-
-void Instruction::set(InstOpcode opcode_, RegType src0_, RegType src1_, RegType dst0_, RegType dst1_, bool useImm) {
-  I(opcode_ != iOpInvalid);
-
-  opcode    = opcode_;
-  srcs[0]   = src0_;
-  srcs[1]   = src1_;
-  imm       = useImm;
-  
-  if (dst0_ == LREG_NoDependence) { 
-    dsts[0] = LREG_InvalidOutput;
-  }else{
-    dsts[0] = dst0_;
-  }
-  if (dst1_ == LREG_NoDependence) { 
-    dsts[1] = LREG_InvalidOutput;
-  }else{
-    dsts[1] = dst1_;
-  }
-}
-
-
-#else
 
 void Instruction::dump(const char *str) const {
   printf("%s: reg%d, reg%d = reg%d %11s reg%d",
@@ -164,4 +82,3 @@ void Instruction::set(InstOpcode opcode_, RegType src1_, RegType src2_, RegType 
   }
 }
 
-#endif

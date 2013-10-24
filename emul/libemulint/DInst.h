@@ -82,13 +82,8 @@ class DInstNext {
 
 class DInst {
 private:
-#ifdef ESESC_FUZE
-  // In a fuzion enabled processor MAX_PENDING_SOURCES could be something larger
-  static const int32_t MAX_PENDING_SOURCES=16;
-#else
   // In a typical RISC processor MAX_PENDING_SOURCES should be 2
   static const int32_t MAX_PENDING_SOURCES=3;
-#endif
 
   static pool<DInst> dInstPool;
 

@@ -70,11 +70,6 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
     nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkipThreads"));
 
   maxnsTicks  = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTicks"));
-#if DEBUG
-  nSampleMax    = static_cast<uint64_t>(SescConf->getDouble(section,"nSampleMax"));
-#else
-  printf("\n\nIgnoring nSampleMax in Release Mode. Only maxnsTicks is used in TBS.\n\n");
-#endif
   nInstMax    = static_cast<uint64_t>(SescConf->getDouble(section,"nInstMax"));
   TempToPerfRatio    =  static_cast<uint64_t>(SescConf->getDouble(section,"TPR"));
 
@@ -367,11 +362,7 @@ void SamplerPeriodic::syncTimeAndTimingModes(FlowID fid) {
       setModeNativeRabbit();
     }
 
-#if DEBUG
-    if (doPower && fid == winnerFid && lastMode == EmuTiming) { 
-      I(0); 
-    }
-#endif
+    I(!(doPower && fid == winnerFid && lastMode == EmuTiming));
     return;
   }
   I(0); // If othersStillInTiming is set and the mode is Rabbit or Warmup, there is a problem!
@@ -429,13 +420,7 @@ void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
 }
 
 bool SamplerPeriodic::isItDone() {
-#if DEBUG
-  if (totalnSamples >= nSampleMax || endSimSiged) {
-#else
-  if (totalnInst >= nInstMax)
-    markDone();
   if (endSimSiged) {
-#endif
     markDone();
     return true;
   }

@@ -140,15 +140,6 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
 
   const Instruction *inst = dinst->getInst();
 
-#ifdef ESESC_FUZE
-  // FIXME: IANLEE1521 - Do better with an iterator over all regs
-  if(RAT[inst->getSrc(0)] != 0 ||
-     RAT[inst->getSrc(1)] != 0 ||
-     RAT[inst->getDst(0)] != 0 ||
-     RAT[inst->getDst(1)] != 0) {
-    return SmallWinStall;
-  }
-
 #if 0
   if(RAT[inst->getSrc(0)+dinst->getPE()*LREG_MAX] != 0 ||
      RAT[inst->getSrc(1)+dinst->getPE()*LREG_MAX] != 0 ||
@@ -157,7 +148,6 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
     return SmallWinStall;
   }
 #endif
-#else
   if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence) && (inst->getSrc1() != LREG_InvalidOutput)) ||
      ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence) && (inst->getSrc2() != LREG_InvalidOutput))||
      ((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
@@ -196,8 +186,6 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
     return SmallWinStall;
   }
 
-#endif
-
   if( (ROB.size()+rROB.size()) >= MaxROBSize )
     return SmallROBStall;
 
@@ -222,18 +210,10 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
   I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
 
 
-#ifdef ESESC_FUZE
-  // FIXME: IANLEE1521 - Need to do this over all srcs in the iterator.
-  dinst->setRAT1Entry(&RAT[inst->getDst(0)]);
-  dinst->setRAT2Entry(&RAT[inst->getDst(1)]);
-  RAT[inst->getDst(0)] = dinst;
-  RAT[inst->getDst(1)] = dinst;
-#else  
   dinst->setRAT1Entry(&RAT[inst->getDst1()]);
   dinst->setRAT2Entry(&RAT[inst->getDst2()]);
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
-#endif
 
   I(dinst->getCluster());
   dinst->getCluster()->addInst(dinst);

@@ -42,7 +42,6 @@ protected:
   uint64_t nInstTiming;
   uint64_t nInstForcedDetail;
   uint64_t maxnsTicks;
-  uint64_t nSampleMax;
 
   uint64_t totalnInstForcedDetail;
   float    intervalRatio;

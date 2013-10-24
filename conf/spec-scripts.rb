@@ -56,8 +56,6 @@ end
 optparse = OptionParser.new do |opts|
   opts.banner = "Usage: cpu2006-scripts.rb [options]"
 
-  #TODO: Need to review parameters and pick more logical letters
-
   opts.on("-b bench1,bench2","--benchmarks bench1,bench2",Array,"specify list of benchmarks to run") do |bench|
     options[:benchmarks] = bench
   end

@@ -103,12 +103,6 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
 
   sampler_count++;
 
-  for(int i=0;i<static_cast<int>(EmuMax);i++) {
-    
-    tusage[i]->setIgnoreSampler();
-    iusage[i]->setIgnoreSampler();
-  }
-
   freq  = SescConf->getDouble("technology","frequency");
 
   stopJustCalled = true; // implicit stop at the beginning

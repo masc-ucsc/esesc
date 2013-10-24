@@ -320,26 +320,6 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
   I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
 
-#ifdef ESESC_FUZE
-  // FIXME: IANLEE1521 - Need to do this over all srcs in the iterator.
-  if( !dinst->isSrc2Ready() ) {
-    // It already has a src2 dep. It means that it is solved at
-    // retirement (Memory consistency. coherence issues)
-    if( RAT[inst->getSrc(0)] )
-      RAT[inst->getSrc(0)]->addSrc1(dinst);
-  }else{
-    if( RAT[inst->getSrc(0)] )
-      RAT[inst->getSrc(0)]->addSrc1(dinst);
-
-    if( RAT[inst->getSrc(1)] )
-      RAT[inst->getSrc(1)]->addSrc2(dinst);
-  }
-
-  dinst->setRAT1Entry(&RAT[inst->getDst(0)]);
-  dinst->setRAT2Entry(&RAT[inst->getDst(1)]);
-  RAT[inst->getDst(0)] = dinst;
-  RAT[inst->getDst(1)] = dinst;
-#else
   if( !dinst->isSrc2Ready() ) {
     // It already has a src2 dep. It means that it is solved at
     // retirement (Memory consistency. coherence issues)
@@ -357,7 +337,6 @@ StallCause OoOProcessor::addInst(DInst *dinst)
   dinst->setRAT2Entry(&RAT[inst->getDst2()]);
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
-#endif
 
   I(dinst->getCluster());
   dinst->getCluster()->addInst(dinst);

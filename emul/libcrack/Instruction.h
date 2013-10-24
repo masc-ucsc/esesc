@@ -36,21 +36,12 @@ class Instruction {
 private:
 protected:
   InstOpcode  opcode;
-#ifdef ESESC_FUZE
-  std::vector<RegType> srcs;
-  std::vector<RegType> dsts;
-  bool imm;
-#else
   RegType     src1;
   RegType     src2;
   RegType     dst1;
   RegType     dst2;
-#endif
   
   public:
-#ifdef ESESC_FUZE
-  Instruction();
-#endif
 
   static const char *opcode2Name(InstOpcode type);
   void set(InstOpcode op, RegType src1, RegType src2, RegType dst1, RegType dst2, bool useImm);
@@ -58,19 +49,6 @@ protected:
   InstOpcode getOpcode() const { return opcode; }
   void forcemult() {opcode = iCALU_FPMULT; }
 
-#ifdef ESESC_FUZE
-  void set(InstOpcode opcode_, std::vector<RegType> srcs_, std::vector<RegType> dsts_, bool useImm);
-
-  RegType getSrc(uint32_t i) const { return srcs[i]; }
-  RegType getDst(uint32_t i) const { return dsts[i]; }
-  std::vector<RegType> getSrcs() const { return srcs; }
-  std::vector<RegType> getDsts() const { return dsts; }
-
-  bool hasDstRegister() const;
-  bool hasSrcRegister() const;
-  bool hasImm() const { return imm; };
-
-#else
   RegType getSrc1() const { return src1;  }
   RegType getSrc2() const { return src2;  }
   RegType getDst1() const { return dst1;  }
@@ -82,7 +60,6 @@ protected:
   bool hasSrc2Register() const { return src2 != LREG_NoDependence;  }
 
   bool hasImm() const { I(0); return false; };
-#endif
 
   bool isFuncCall() const { return opcode == iBALU_RCALL   || opcode == iBALU_LCALL;   }
   bool isFuncRet()  const { return opcode == iBALU_RET;    }

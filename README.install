@@ -17,3 +17,5 @@ apt-get install g++
 apt-get install python2
 apt-get install texinfo
 apt-get insatll libglib2.0-dev
+apt-get install libncurses5-dev
+

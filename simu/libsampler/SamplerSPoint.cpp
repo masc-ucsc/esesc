@@ -48,9 +48,7 @@ SamplerSPoint::SamplerSPoint(const char *iname, const char *section, EmulInterfa
   for(int32_t i=0;i<npoints;i++) {
     double start = SescConf->getDouble(section,"spoint",i);
     spoint[i] = static_cast<uint64_t>(start);
-    //FIXME: figure out bug with SimPoint weights, using 1.0 for now
     spweight[i] = SescConf->getDouble(section,"SPweight",i);
-    //spweight[i] = 1.0; 
     if (i>0) {
       if (spoint[i-1]>spoint[i]) {
         MSG("ERROR: non ordered simulation points spoint %d is bigger than %d",i-1,i);

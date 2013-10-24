@@ -177,7 +177,6 @@ void BootLoader::plugEmulInterfaces() {
   const char* QEMUGPUSection = NULL;
   FlowID sharedGPUFid=0;
 #endif
-  bool sharedCPUSampler = false;
   FlowID sharedCPUFid=0;
   for(FlowID i=0;i<nemul;i++) {
     const char *section = SescConf->getCharPtr("","cpuemul",i);
@@ -193,13 +192,8 @@ void BootLoader::plugEmulInterfaces() {
         return;
       }
       TaskHandler::FlowIDEmulMapping.push_back(0); // Interface 0 is QEMU
-      const char *sampler_sec  = SescConf->getCharPtr(section,"sampler");
-      sharedCPUSampler = SescConf->getBool(sampler_sec,"shared");
 
-      if(!sharedCPUSampler)
-        createEmulInterface(QEMUCPUSection, i); // each CPU has it's own Emul/Sampler
-      else
-        sharedCPUFid = i;
+      createEmulInterface(QEMUCPUSection, i); // each CPU has it's own Emul/Sampler
 
 #ifdef ENABLE_CUDA
     }else if(strcasecmp(type,"GPU") == 0 ) {
@@ -213,12 +207,6 @@ void BootLoader::plugEmulInterfaces() {
         return;
       }
       TaskHandler::FlowIDEmulMapping.push_back(1); // Interface 1 is GPU
-      const char *sampler_sec  = SescConf->getCharPtr(section,"sampler");
-      bool sharedGPUSampler = SescConf->getBool(sampler_sec,"shared");
-      if (!sharedGPUSampler){
-        MSG("ERROR: GPU only supports shared sampler");
-        exit(0);
-      }
 #endif
     }else{
       MSG("ERROR: Unknown type %s of section %s, cpuemul [%d]",type,section,i);
@@ -227,8 +215,6 @@ void BootLoader::plugEmulInterfaces() {
     }
   }
 
-  if(sharedCPUSampler)
-    createEmulInterface(QEMUCPUSection, sharedCPUFid); // CPUs share Emul/Sampler
 #ifdef ENABLE_CUDA
   if (QEMUGPUSection) {
     createEmulInterface(QEMUGPUSection, sharedGPUFid); // GPU shares one Emul/Sampler
@@ -282,8 +268,6 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
 void BootLoader::createEmulInterface(const char *section, FlowID fid) 
 {
   const char *type    = SescConf->getCharPtr(section,"type");
-  const char *sampler_sec  = SescConf->getCharPtr(section,"sampler");
-  const bool sharedCPUSampler = SescConf->getBool(sampler_sec,"shared");
   
   if (type==0) {
     MSG("ERROR: type field should be defined in section [%s]",section);
@@ -294,10 +278,7 @@ void BootLoader::createEmulInterface(const char *section, FlowID fid)
   EmulInterface *eint = 0;
   if(strcasecmp(type,"QEMU") == 0 ) {
     eint = new QEMUEmulInterface(section);
-    if(sharedCPUSampler)
-      TaskHandler::addEmulShared(eint);
-    else
-      TaskHandler::addEmul(eint, fid);
+    TaskHandler::addEmul(eint, fid);
 #ifdef ENABLE_CUDA
   }else if(strcasecmp(type,"GPU") == 0 ) {
     eint = new GPUEmulInterface(section);
@@ -313,13 +294,8 @@ void BootLoader::createEmulInterface(const char *section, FlowID fid)
 
   EmuSampler *sampler = getSampler(section,"sampler",eint, fid);
   I(sampler);
-  if(sharedCPUSampler){
-    FlowID nemul = SescConf->getRecordSize("","cpuemul");
-    for (FlowID i = 0; i < nemul; i++)
-      eint->setSampler(sampler, i);
-  }else{
-      eint->setSampler(sampler, fid);
-  }
+  eint->setSampler(sampler, fid);
+  
 }
 
 void BootLoader::createSimuInterface(const char *section, FlowID i) {

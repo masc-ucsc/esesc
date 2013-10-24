@@ -31,11 +31,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "DInst.h"
 
-#ifdef ESESC_FUZE
-#include "GStats.h"
-#include "MegaOpCluster.h"
-#endif
-
 /*
  * This class simulates a pipeline. Besides this simple operation, it
  * also makes possible to receive the IData out-of-order, and it
@@ -97,33 +92,6 @@ private:
   const int32_t MaxIRequests;
   int32_t nIRequests;
   FastQueue<IBucket *> buffer;
-
-#ifdef ESESC_FUZE
-  GStatsHist mixInstr;
-  GStatsHist numImmed;
-
-  GStatsHist numUniqueSrcs;
-  GStatsHist numUniqueDsts;
-  GStatsHist numUniqueInstr;
-  
-  GStatsHist B_numSrcPost;
-  GStatsHist B_numDstPost;
-  GStatsHist B_numInstPost;
-  GStatsHist B_numMegaOp;
-  
-  GStatsHist N_numSrcPost;
-  GStatsHist N_numDstPost;
-  GStatsHist N_numInstPost;
-  GStatsHist N_numMegaOp;
-
-  GStatsHist Q_numSrcPost;
-  GStatsHist Q_numDstPost;
-  GStatsHist Q_numInstPost;
-  GStatsHist Q_numMegaOp;
-
-  MegaOpCluster mCluster;
-  std::vector<unsigned int> hist_bucket;
-#endif
 
   typedef std::vector<IBucket *> IBucketCont;
   IBucketCont bucketPool;

@@ -1199,15 +1199,6 @@ BPred *BPredictor::getBPred(int32_t id, int32_t fetchWidth, const char *sec)
     return 0;
   }
   I(pred);
-#ifdef ESESC_FUZE
-  // IAN
-  //
-  // Must create another BPred (TracePred?) and pass the current bpred as parameter
-  //
-  // The new TracePred will have a cacheCore with the same parameters as in the
-  // trace cache, but it will also keep 2? bits for the taken/not-taken
-  // history. They should match the bpred or the trace finishes early
-#endif
 
   return pred;
 }

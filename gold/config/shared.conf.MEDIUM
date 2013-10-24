@@ -163,8 +163,6 @@ iAALULat          = 1
 iAALUUnit         = 'AUNIT_AALU'
 iRALULat          = 1
 iRALUUnit         = 'AUNIT_AALU'
-iFUZELat          = 1
-iFUZEUnit         = 'AUNIT_AALU'
 
 
 [BUNIT]
@@ -307,8 +305,6 @@ iSALU_SCLat       = 0
 iSALU_SCUnit      = 'GUNIT_ALU'
 iSALU_ADDRLat     = 0
 iSALU_ADDRUnit    = 'GUNIT_ALU'  # Arithmetic to ALU
-iFUZELat          = 0
-iFUZEUnit         = 'GUNIT_ALU'
 
 [AUNIT_AALU]
 Num               = 1
