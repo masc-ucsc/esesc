@@ -215,6 +215,7 @@ public:
 
   void scrap(EmulInterface *eint); // Destroys the instruction without any other effects
   void destroy(EmulInterface *eint);
+  void recycle();
 
   void setCluster(Cluster *cls, Resource *res) {
     cluster  = cls;
@@ -358,7 +359,7 @@ public:
   }
 
 
-
+  void setAddr(AddrType a)     { addr = a;               }
   AddrType getPC()       const { return pc;              }
   AddrType getAddr()     const { return addr;            }
   DataType getData()     const { return data;            }

@@ -86,10 +86,10 @@ void PowerModel::plug(const char* section)
 
 #ifdef ENABLE_PEQ
   PeqParser peq_parser;
-  peq_parser.getGeneralParams();
-  peq_parser.getCoreParams();
-  peq_parser.getMemParams();
-  peq_parser.testParser();
+//  peq_parser.getGeneralParams();
+//  peq_parser.getCoreParams();
+//  peq_parser.getMemParams();
+//  peq_parser.testParser();
   SRAM my_sram;
   my_sram.testSRAM();
 #endif
@@ -203,7 +203,6 @@ void PowerModel::printStatus()
   fprintf(logfile, "%d\n", valueSum);      
 }
 /* }}} */
-
 
 int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
 /* calcStats {{{1 */
@@ -345,6 +344,14 @@ void PowerModel::dumpLeakage()
     logpwrlkg = fopen(fname_pwr_lkg, "w");  
     GMSG(logpwrlkg == 0, "ERROR: could not open logpwrlkg file \"%s\" (ignoring it)", fname_pwr_lkg);
     free(fname_pwr_lkg);
+
+    if (totalPowerSamples <= 2) { // also write the header
+      for (size_t ii = 0; ii < energyBundle->cntrs.size(); ii++) {
+        fprintf(logpwrlkg, "%s\t", energyBundle->cntrs[ii].getName());
+      }
+      fprintf(logpwrlkg, "\n");
+    }
+
     for (size_t i = 0; i < energyBundle->cntrs.size(); i++) {
       fprintf(logpwrlkg, "%e\t", energyBundle->cntrs[i].getLkg());
     }
@@ -368,10 +375,15 @@ void PowerModel::dumpDeviceTypes()
     GMSG(logDeviceTypes == 0, "ERROR: could not open logDeviceTypes file \"%s\" (ignoring it)", fname_devTypes);
     free(fname_devTypes);
 
+    for (size_t ii = 0; ii < energyBundle->cntrs.size(); ii++) {
+      fprintf(logDeviceTypes, "%s\t", energyBundle->cntrs[ii].getName());
+    }
+    fprintf(logDeviceTypes, "\n");
 
     for (size_t i = 0; i < energyBundle->cntrs.size(); i++) {
       fprintf(logDeviceTypes, "%i\t", energyBundle->cntrs[i].getDevType());
     }
+
     fprintf(logDeviceTypes, "\n");
     if (logDeviceTypes) {
       fclose(logDeviceTypes);
@@ -615,6 +627,10 @@ void PowerModel::dumpTotalPower(const char * str){
     char *fname_p           = static_cast<char *>(malloc(1023));
     sprintf(fname_p,     "%s_%s", str, Report::getNameID());
     FILE * tp = fopen(fname_p, "a");
+
+    if (totalPowerSamples < 2)  {
+      fprintf(logprf, "Time\t TotalPower\t clockInterval\t timeInterval\t Frequency\n");
+    }
     if (doTherm)
       fprintf(tp, "%2.7lf\t", sescThermWrapper->sesctherm.temp_model.get_time());
     else

@@ -198,7 +198,6 @@ IF(ENABLE_SCQEMU)
   ADD_SUBDIRECTORY(emul/libscqemu)
 ENDIF(ENABLE_SCQEMU)
 #################################
-ADD_SUBDIRECTORY(pwth/libpanal)
 ADD_SUBDIRECTORY(pwth/libmcpat)
 ADD_SUBDIRECTORY(pwth/libsesctherm)
 ADD_SUBDIRECTORY(pwth/libpwrmodel)

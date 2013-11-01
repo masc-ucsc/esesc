@@ -107,6 +107,13 @@ DInst *DInst::clone() {
   return i;
 }
 
+void DInst::recycle() {
+  I(nDeps == 0);    // No deps src
+  I(first == 0);    // no dependent instructions
+
+  dInstPool.in(this);
+}
+
 void DInst::scrap(EmulInterface *eint) {
   I(nDeps == 0);   // No deps src
   I(first == 0);   // no dependent instructions

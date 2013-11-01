@@ -1,3 +1,30 @@
+ESESC: Super ESCalar simulator
+Copyright (C) 2009 University of California, Santa Cruz.
+
+Contributed by Edward Kuang
+               Ehsan Ardestani
+               Jose Renau
+
+This file is part of ESESC.
+
+ESESC is free software; you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation;
+either version 2, or (at your option) any later version.
+
+ESESC is distributed in the  hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+ESESC; see the file COPYING. If not, write to the Free Software Foundation, 59
+Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+====================================================================================
+Note: The format of the gold models have been changed from the previous version of
+      the software. The old version used the format FAST.gold. The new version
+      looks like FAST.gold.crafty.
+
+
 The examples here will be based on this default configuration.
 ~/esesc         #This is where esesc has been downloaded to
 ~/build         #This is where esesc will be compiled to
@@ -36,7 +63,7 @@ The examples here will be based on this default configuration.
    ~/build/regression/run and run the script mt-scripts.rb to generate benchmark
    testing files.
 
-4. If esesc has not been compiled, "make regression/gold" will compile esesc with
+5. If esesc has not been compiled, "make regression/gold" will compile esesc with
    2 cores.
 
 ====================================================================================
@@ -79,10 +106,4 @@ This is where the individual report.pl goes after running the scripts.
 This is where the otuput of maketable.sh goes. Here you will find timestamped
 (YYMMDD-HHMM) tables. The syntax is <shared.conf type>.YYMMDD-HHMM.csv
 
-====================================================================================
-
-CREDITS
------------------
-
-Program originally written by Ethan Papp and Jim Herriot. Modified by Edward Kuang.
 

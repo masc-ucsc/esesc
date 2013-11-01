@@ -57,8 +57,8 @@
 #include "globalvar.h"
 #include <time.h>
 #ifdef ENABLE_PEQ
-#include "SRAM.h"
-#include "CacheEq.h"
+#include "../libpeq/SRAM.h"
+#include "../libpeq/CacheEq.h"
 #endif
 
 using namespace std;
@@ -120,8 +120,10 @@ void ArrayST::optimize_array_peq()
 	}
 	else //It is neither SRAM nor Cache
 	{
-		local_result.power.readOp.dynamic = 0;
-		local_result.power.writeOp.dynamic = 0;
+//		local_result.power.readOp.dynamic = 0;
+//		local_result.power.writeOp.dynamic = 0;
+                 optimize_array();
+
 	}
 
 }
@@ -129,7 +131,7 @@ void ArrayST::optimize_array_peq()
 
 void ArrayST::compute_base_power()
     {
-	//l_ip.out_w               =l_ip.line_sz*8;
+	//l_ip.out_w                =l_ip.line_sz*8;
       local_result=cacti_interface(&l_ip);
     }
 
