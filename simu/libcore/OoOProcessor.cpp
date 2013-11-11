@@ -8,6 +8,8 @@
                   James Tuck
                   Milos Prvulovic
                   Luis Ceze
+                  Islam Atta (IBM)
+
 
 This file is part of ESESC.
 
@@ -335,11 +337,13 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
   dinst->setRAT1Entry(&RAT[inst->getDst1()]);
   dinst->setRAT2Entry(&RAT[inst->getDst2()]);
+
+  dinst->getCluster()->addInst(dinst);
+
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
 
   I(dinst->getCluster());
-  dinst->getCluster()->addInst(dinst);
 
   return NoStall;
 }

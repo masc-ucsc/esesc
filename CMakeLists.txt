@@ -98,6 +98,7 @@ ExternalProject_Add(regression
   DOWNLOAD_COMMAND ""
   INSTALL_COMMAND ""
   )
+set_target_properties(regression PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 ExternalProject_Add(gold
   SOURCE_DIR ${esesc_SOURCE_DIR}/gold
@@ -111,7 +112,7 @@ ExternalProject_Add(gold
   DOWNLOAD_COMMAND ""
   INSTALL_COMMAND ""
   )
-
+set_target_properties(gold PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 ExternalProject_Add(floorplan
   SOURCE_DIR ${esesc_SOURCE_DIR}/pwth/floorplan
@@ -125,6 +126,7 @@ ExternalProject_Add(floorplan
   DOWNLOAD_COMMAND ""
   INSTALL_COMMAND ""
   )
+set_target_properties(floorplan PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 ExternalProject_Add(bfd
   SOURCE_DIR ${esesc_SOURCE_DIR}/misc/bfd
@@ -137,6 +139,7 @@ ExternalProject_Add(bfd
   STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/bfd/stampdir
   DOWNLOAD_COMMAND ""
   )
+set_target_properties(bfd PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set(bfd_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/bfd/libbfd.a)
 
 ExternalProject_Add(opcodes
@@ -151,6 +154,7 @@ ExternalProject_Add(opcodes
   STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/opcodes/stampdir
   DOWNLOAD_COMMAND ""
   )
+set_target_properties(opcodes PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set(opcodes_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/opcodes/libopcodes.a)
 
 ExternalProject_Add(libiberty
@@ -165,6 +169,7 @@ ExternalProject_Add(libiberty
   STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/libiberty/stampdir
   DOWNLOAD_COMMAND ""
   )
+set_target_properties(libiberty PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set(libiberty_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/libiberty/libiberty.a)
 
 IF(CMAKE_HOST_ARCH MATCHES "i386")
@@ -172,6 +177,10 @@ IF(CMAKE_HOST_ARCH MATCHES "i386")
 ELSE(CMAKE_HOST_ARCH MATCHES "i386")
   SET(QEMU_EXTRA )
 ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
+
+IF(ENABLE_CUDA)
+  SET(QEMU_EXTRA --cpu=i386 --enable-esesc_cuda)
+ENDIF(ENABLE_CUDA)
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
@@ -184,6 +193,7 @@ ExternalProject_Add(qemu
   STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/qemu/stampdir
   DOWNLOAD_COMMAND ""
   )
+set_target_properties(qemu PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 #################################
 ADD_SUBDIRECTORY(misc/libmigdb)
@@ -198,7 +208,6 @@ IF(ENABLE_SCQEMU)
   ADD_SUBDIRECTORY(emul/libscqemu)
 ENDIF(ENABLE_SCQEMU)
 #################################
-ADD_SUBDIRECTORY(pwth/libpanal)
 ADD_SUBDIRECTORY(pwth/libmcpat)
 ADD_SUBDIRECTORY(pwth/libsesctherm)
 ADD_SUBDIRECTORY(pwth/libpwrmodel)

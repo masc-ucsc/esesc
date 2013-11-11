@@ -32,6 +32,7 @@
 #include "Pipeline.h"
 #include "Resource.h"
 #include "Cluster.h"
+#include "MemStruct.h"
 /* }}} */
 
 MemRequest::MemRequest()
@@ -102,7 +103,6 @@ void MemRequest::dump_calledge(TimeDelta_t lat)
 }
 
 void MemRequest::rawdump_calledge(TimeDelta_t lat, Time_t total) {
-
   if(calledge.empty())
     return;
 
@@ -110,17 +110,22 @@ void MemRequest::rawdump_calledge(TimeDelta_t lat, Time_t total) {
   static int32_t conta=0;
   printf("  ce [label=\"0x%x addr %d# @%lld delta %lu\"]\n",(unsigned int)addr,(int)conta++,(long long)globalClock,total);
 
+  CacheDebugAccess *c = CacheDebugAccess::getInstance();
+
+  c->setAddrsAccessed((int32_t)conta);
+  c->mapReset();
+
   char gname[1024];
   for(size_t i=0;i<calledge.size();i++) {
     CallEdge ce = calledge[i];
     // get Type
     char t;
     switch(ce.type) {
-    case msg_read:       t = 'R'; break;
-    case msg_write:      t = 'W'; break;
-    case msg_writeback:  t = 'B'; break;
-    case msg_invalidate: t = 'I'; break;
-    default: I(0);
+      case msg_read:       t = 'R'; break;
+      case msg_write:      t = 'W'; break;
+      case msg_writeback:  t = 'B'; break;
+      case msg_invalidate: t = 'I'; break;
+      default: I(0);
     }
     int k;
     const char *name;
@@ -131,29 +136,30 @@ void MemRequest::rawdump_calledge(TimeDelta_t lat, Time_t total) {
     }else{
       name = ce.s->getName();
       for(int j=0;name[j]!=0;j++) {
-  if(isalnum(name[j])) {
-    gname[k++]=name[j];
-  }
+        if(isalnum(name[j])) {
+          gname[k++]=name[j];
+        }
       }
       gname[k]=0;
-      
       printf("  %s",gname);
+
+      c->setCacheAccess(gname);
     }
     // get END NAME
     k=0;
     name = ce.e->getName();
     for(int j=0;name[j]!=0;j++) {
       if(isalnum(name[j])) {
-  gname[k++]=name[j];
+        gname[k++]=name[j];
       }
     }
     gname[k]=0;
     printf(" -> %s",gname);
-    
+
     printf(" [label=\"%d%c%d\"]\n", (int)i, t, ce.tismo);
   }
   printf("  %s -> CPU [label=\"%dA%d\"]\n",gname, (int)calledge.size(), lat);
-  
+
   printf("  {rank=same; P0DL1 P0IL1 P1DL1 P1IL1}\n");
   printf("}\n");
 

@@ -177,7 +177,6 @@ void BootLoader::plugEmulInterfaces() {
   const char* QEMUGPUSection = NULL;
   FlowID sharedGPUFid=0;
 #endif
-  FlowID sharedCPUFid=0;
   for(FlowID i=0;i<nemul;i++) {
     const char *section = SescConf->getCharPtr("","cpuemul",i);
     const char *type    = SescConf->getCharPtr(section,"type");

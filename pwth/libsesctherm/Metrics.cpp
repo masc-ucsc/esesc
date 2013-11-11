@@ -92,10 +92,10 @@ Metrics::Metrics(size_t flpSize)
 		(*NBTI_fit)[i] = new GStatsAvg("flpBlock[%d]_NBTI_fit",i);
 	}
 
-	Power = new GStatsAvg("ChipPower");
-	Leak = new GStatsAvg("ChipLeak");
+	ChipPower= new GStatsAvg("ChipPower");
+	ChipLeak = new GStatsAvg("ChipLeak");
 	LSQPower = new GStatsAvg("LSQPower");
-	DCPower = new GStatsAvg("DCPower");
+	DCPower  = new GStatsAvg("DCPower");
 	Throttling    = new GStatsMax("ThrottlingCycles");
 	sescThermTime = new GStatsMax("sescThermTime");
 	simulatedTime = new GStatsMax("simulatedTime");
@@ -130,7 +130,6 @@ void Metrics::updateFITs(double timeinterval, ThermTrace *trace){
 
 	double power = 0;
 	double leak  = 0;
-
 
 	for(size_t i=0;i<(*Temperature).size();i++){
 		double em   = exp(EM1/(*Temperature)[i]) * scaleFactor ;
@@ -170,9 +169,9 @@ void Metrics::updateFITs(double timeinterval, ThermTrace *trace){
 			power += trace->energyCntrValues_->at(0)[i];
 		}
 	}
-	Leak->sample(leak);
-	Power->sample(power);
 
+	ChipLeak->sample(leak);
+	ChipPower->sample(power);
 }
 
 

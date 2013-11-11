@@ -1001,10 +1001,9 @@ FURALU::FURALU(Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, bool scooreMemory
 StallCause FURALU::canIssue(DInst *dinst) 
 /* canIssue {{{1 */
 {
-  if (dinst->getPC() == 0xf00df00d){
-    // This PC is a signal to suspend the emula corresponding to a 
-    return Suspend;
-  }else if (dinst->getPC() == 0xdeaddead){ 
+  I(dinst->getPC() != 0xf00df00d); // It used to be a Syspend, but not longer true
+
+  if (dinst->getPC() == 0xdeaddead){ 
     // This is the PC for a syscall (QEMUReader::syscall)
     if (blockUntil==0) {
       //LOG("syscall %d executed, with %d delay", dinst->getAddr(), dinst->getData());

@@ -4,5 +4,6 @@ cscope*
 *.swp
 *.swo
 *.swn
+*.pyc
 emul/qemu/roms/vgabios/config.mak
 emul/qemu/roms/seabios/config.mak

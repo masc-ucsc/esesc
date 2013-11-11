@@ -54,24 +54,24 @@ extern uint32_t roundDown(uint32_t numToRound, uint32_t multiple);
 
 GPUThreadManager::GPUThreadManager(uint64_t numFlows, uint64_t numPEs){
   totalPTXinst_T = new GStatsCntr("PTXStats:totalPTXinst_T");
-  totalPTXinst_T->setIgnoreSampler();
+  //totalPTXinst_T->setIgnoreSampler();
   //totalPTXinst_T->start();
 
   totalPTXinst_R = new GStatsCntr("PTXStats:totalPTXinst_R");
-  totalPTXinst_R->setIgnoreSampler();
+  //totalPTXinst_R->setIgnoreSampler();
   //totalPTXinst_R->start();
 
 #if 1
   totalPTXmemAccess_Shared = new GStatsCntr("PTXStats:totalmemAccess_Shared");
-  totalPTXmemAccess_Shared->setIgnoreSampler();
+  //totalPTXmemAccess_Shared->setIgnoreSampler();
   //totalPTXmemAccess_Shared->start();
 
   totalPTXmemAccess_Global = new GStatsCntr("PTXStats:totalmemAccess_Global");
-  totalPTXmemAccess_Global->setIgnoreSampler();
+  //totalPTXmemAccess_Global->setIgnoreSampler();
   //totalPTXmemAccess_Global->start();
 
   totalPTXmemAccess_Rest = new GStatsCntr("PTXStats:totalmemAccess_Rest");
-  totalPTXmemAccess_Rest->setIgnoreSampler();
+  //totalPTXmemAccess_Rest->setIgnoreSampler();
   //totalPTXmemAccess_Rest->start();
 #endif
 

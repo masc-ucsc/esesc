@@ -40,8 +40,8 @@ class Metrics {
 		std::vector <GStatsAvg* > * TDDB_fit;
 		std::vector <GStatsAvg* > * TC_fit;
 		std::vector <GStatsAvg* > * NBTI_fit;
-		GStatsAvg * Power;
-		GStatsAvg * Leak;
+		GStatsAvg *ChipPower;
+		GStatsAvg *ChipLeak;
 		GStatsMax * chipMaxT;
 		GStatsMax * chipGradT;
 		GStatsAvg * chipAvgT;

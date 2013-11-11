@@ -35,18 +35,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "callback.h"
 #include "nanassert.h"
 
-struct compare_uint64_t {
-  bool operator () (uint64_t one, uint64_t two) const {
-    return one == two;
-  } 
-};
-
-struct hash_uint64_t {
-  size_t operator () (uint64_t key) const {
-    return key;
-  } 
-};
-
 class GStats_strcasecmp {
 public:
   inline bool operator()(const char* s1, const char* s2) const {
@@ -87,24 +75,22 @@ public:
   }
 
   const char *getName() const { return name; }
-  virtual int64_t getSamples() const;
-
-  // Some stats just need to be active all the time no matter what the EmSampler says (E.g: sampler stats)
+  virtual int64_t getSamples() const = 0;
 };
 
 class GStatsCntr : public GStats {
 private:
-  int64_t data;
+  double data;
 protected:
 public:
   GStatsCntr(const char *format,...);
 
-  GStatsCntr & operator += (const int64_t v) {
+  GStatsCntr & operator += (const double v) {
     data += v;
     return *this;
   }
 
-  void add(const int64_t v, bool en = true) {
+  void add(const double v, bool en = true) {
     data += en ? v : 0;
   }
   void inc(bool en = true) {
@@ -115,8 +101,6 @@ public:
     data -= en ? 1 : 0;
   }
 
-  int64_t getValue() const;
-
   double  getDouble() const;
   int64_t getSamples() const;
 
@@ -126,25 +110,20 @@ public:
 class GStatsAvg : public GStats {
 private:
 protected:
-  int64_t data;
+  double data;
   int64_t nData;
 public:
   GStatsAvg(const char *format,...);
   GStatsAvg() { }
 
-  virtual void sample(const int64_t v, bool en = true) {
-    data += en ? v : 0;
+  void    reset() { data = 0; nData = 0; };
+  double  getDouble() const;
+
+  virtual void sample(const double v, bool en = true) {
+    data  += en ? v : 0;
     nData += en ? 1 : 0;
   }
-
-  virtual void msamples(const int64_t v, int64_t n, bool en = true) {
-    data  += en ? v : 0;
-    nData += en ? n : 0;
-  }
-
-  double  getDouble() const;
   int64_t getSamples() const;
-  void    reset() { data = 0; nData = 0; };
 
   virtual void reportValue() const;
 };
@@ -159,6 +138,7 @@ public:
   GStatsMax(const char *format,...);
 
   void sample(const double v);
+  int64_t getSamples() const;
 
   void reportValue() const;
 };
@@ -167,10 +147,10 @@ class GStatsHist : public GStats {
 private:
 protected:
   
-  typedef HASH_MAP<uint32_t, uint64_t> Histogram;
+  typedef HASH_MAP<uint32_t, double> Histogram;
 
-  uint64_t numSample;
-  uint64_t cumulative;
+  double numSample;
+  double cumulative;
 
   Histogram H;
 
@@ -179,6 +159,8 @@ public:
   GStatsHist() { }
 
   void sample(uint32_t key, double weight=1);
+  int64_t getSamples() const;
+
   void reportValue() const;
 };
 

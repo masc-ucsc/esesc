@@ -214,8 +214,8 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
 
 #endif
 
-    totalThreadCount.setIgnoreSampler();
-    totalTimingThreadCount.setIgnoreSampler();
+    //totalThreadCount.setIgnoreSampler();
+    //totalTimingThreadCount.setIgnoreSampler();
     firstevertime = false;
     MSG("\n\n\n\n\n\n\ ************************************************************** GO AHEAD ****************************************************************\n\n\n\n\n\n\n");
   }

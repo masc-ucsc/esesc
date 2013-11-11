@@ -47,12 +47,6 @@ GStats::~GStats()
   free(name);
 }
 
-int64_t GStats::getSamples() const 
-{ 
-  I(0); 
-  return 1;
-}
-
 char *GStats::getText(const char *format, va_list ap)
 {
   char strid[1024];
@@ -133,16 +127,11 @@ double GStatsCntr::getDouble() const
 
 void GStatsCntr::reportValue() const
 {
-  Report::field("%s=%lld", name, data);
+  Report::field("%s=%f", name, data);
 }
 
 int64_t GStatsCntr::getSamples() const 
 { 
-  return data;
-}
-
-int64_t GStatsCntr::getValue() const 
-{
   return data;
 }
 
@@ -171,7 +160,7 @@ double GStatsAvg::getDouble() const
 
 void GStatsAvg::reportValue() const
 {
-  Report::field("%s:v=%g:n=%lld", name, getDouble(), nData);
+  Report::field("%s:v=%f:n=%lld", name, getDouble(), nData);
 }
 
 int64_t GStatsAvg::getSamples() const 
@@ -200,13 +189,18 @@ GStatsMax::GStatsMax(const char *format,...)
 
 void GStatsMax::reportValue() const
 {
-  Report::field("%s:max=%g:n=%lld", name, maxValue, nData);
+  Report::field("%s:max=%f:n=%lld", name, maxValue, nData);
 }
 
 void GStatsMax::sample(const double v) 
 {
   maxValue = v > maxValue ? v : maxValue;
   nData++;
+}
+
+int64_t GStatsMax::getSamples() const 
+{
+  return nData;
 }
 
 /*********************** GStatsHist */
@@ -234,7 +228,7 @@ void GStatsHist::reportValue() const
   uint32_t maxKey = 0;
 
   for(Histogram::const_iterator it=H.begin();it!=H.end();it++) {
-    Report::field("%s(%lu)=%llu",name,it->first,it->second);
+    Report::field("%s(%lu)=%f",name,it->first,it->second);
     if(it->first > maxKey)
       maxKey = it->first;
   }
@@ -242,8 +236,8 @@ void GStatsHist::reportValue() const
   div /= numSample;
 
   Report::field("%s:max=%lu" ,name,maxKey);
-  Report::field("%s:v=%g"    ,name,(double)div);
-  Report::field("%s:n=%lu"   ,name,numSample);
+  Report::field("%s:v=%f"    ,name,(double)div);
+  Report::field("%s:n=%f"   ,name,numSample);
 }
 
 void GStatsHist::sample(uint32_t key, double weight)
@@ -251,9 +245,14 @@ void GStatsHist::sample(uint32_t key, double weight)
   if(H.find(key)==H.end())
     H[key]=0;
 
-  H[key]+=static_cast<int64_t>(weight);
+  H[key]+=weight;
 
-  numSample += static_cast<int64_t>(weight);
-  cumulative += static_cast<int64_t>(weight * key);
+  numSample += weight;
+  cumulative += weight * key;
+}
+
+int64_t GStatsHist::getSamples() const 
+{
+  return static_cast<int64_t>(numSample);
 }
 
