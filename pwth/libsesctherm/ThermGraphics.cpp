@@ -1024,3 +1024,7 @@ void ThermGraphics::create_open_graphics_file (int data_type, int unit_type,
     std::cerr << "Output File Generated!" << std::endl;
 #endif
 }
+
+bool ThermGraphics::get_enable_graphics(){
+  return (datalibrary_-> config_data_->enable_graphics_);
+}

@@ -1809,9 +1809,11 @@ void ThermModel::recompute_material_properties (int layer)
     }
 }
 
+
 void ThermModel::print_graphics ()
 {
-  datalibrary_->graphics_->print_graphics();
+  if (datalibrary_->graphics_->get_enable_graphics())
+    datalibrary_->graphics_->print_graphics();
 }
 
 void ThermModel::accumulate_sample_data ()

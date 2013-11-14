@@ -210,9 +210,9 @@ int SescTherm::process_trace (ThermModel & temp_model,
     print_at = temp_model.get_time () + 0.0000025;	// every 250us
 #endif 
 
-#ifdef DUMP_SVG
+//#ifdef DUMP_SVG
       temp_model.print_graphics();
-#endif
+//#endif
 
       if (rabbit){
 				std::cout << "R " << temp_model.get_time () << " ";
