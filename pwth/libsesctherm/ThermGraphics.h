@@ -48,6 +48,7 @@ class ThermGraphics {
         DynamicArray<ModelUnit>& layer_dyn,
         int layer);
     void print_graphics();
+    bool get_enable_graphics(); 
     void data_flp2svg(std::vector<ChipFloorplan_Unit>& flp_units, std::vector<MATRIX_DATA>& data_map, MATRIX_DATA min_dval, MATRIX_DATA max_dval, std::ofstream& of_graphics_outfile);
     void data_model2svg(std::vector<ChipFloorplan_Unit>& flp_units, DynamicArray<ModelUnit>& layer_dyn, int data_type, int sample_type, MATRIX_DATA min_dval, MATRIX_DATA max_dval, std::ofstream& of_graphics_outfile);
     void flp2svg(std::vector<ChipFloorplan_Unit>& flp_units,std::vector<MATRIX_DATA> data_map, std::ofstream& of_graphics_outfile, MATRIX_DATA& min_dataval, MATRIX_DATA& max_dataval);

@@ -56,10 +56,10 @@
 #include <assert.h>
 #include "globalvar.h"
 #include <time.h>
-#ifdef ENABLE_PEQ
+
 #include "../libpeq/SRAM.h"
 #include "../libpeq/CacheEq.h"
-#endif
+#include "SescConf.h"
 
 using namespace std;
 
@@ -73,11 +73,17 @@ ArrayST::ArrayST(const InputParameter *configure_interface,
 
 	maxDynPower = new GStatsMax("maxpwr_%s", _name.c_str());
 	l_ip.error_checking();//not only do the error checking but also fill some missing parameters
-#ifdef ENABLE_PEQ
+//#ifdef ENABLE_PEQ
+bool doPeq;
+  const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
+  doPeq = SescConf->getBool(pwrsection,"doPeq",0);
+
+if (doPeq)
 	optimize_array_peq();
-#else
+else
+//#else
 	optimize_array();
-#endif
+//#endif
 
 }
 #ifdef ENABLE_PEQ

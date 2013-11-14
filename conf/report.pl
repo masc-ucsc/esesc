@@ -2054,7 +2054,8 @@ sub thermStats{
     printf "          %.3g",$chippower;
     printf "            %.3f",($chippower*$simulatedTime);
     printf "        %.3f",($nInst/($frequency*$simulatedTime));
-    printf "    %.3f\n",$uipc;
+    printf "        %.3f\n",($nuInst/($frequency*$simulatedTime));
+    #printf "    %.3f\n",$uipc;
 
     print "\n";
 
