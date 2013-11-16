@@ -56,10 +56,9 @@
 #include <assert.h>
 #include "globalvar.h"
 #include <time.h>
-
-#include "../libpeq/SRAM.h"
-#include "../libpeq/CacheEq.h"
 #include "SescConf.h"
+#include "SRAM.h"
+#include "CacheEq.h"
 
 using namespace std;
 
@@ -86,7 +85,7 @@ else
 //#endif
 
 }
-#ifdef ENABLE_PEQ
+//#ifdef ENABLE_PEQ
 void ArrayST::optimize_array_peq()
 {
 	local_result.power.reset();
@@ -133,7 +132,7 @@ void ArrayST::optimize_array_peq()
 	}
 
 }
-#endif
+//#endif
 
 void ArrayST::compute_base_power()
     {

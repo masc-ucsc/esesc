@@ -64,7 +64,7 @@ sub usage {
   print "./report.pl [options] <sescDump>\n";
   print "\t-a            : Reports for all the stat files in current directory\n";
   print "\t-last         : Reports the newest stat file in current directory\n";
-  print "\t-table        : Statistics table sumarry (god for scripts)\n";
+  print "\t-table        : Statistics table summary (good for scripts)\n";
   print "\t-help         : Show this help\n";
 }
 
@@ -567,6 +567,9 @@ sub showStatReport {
     if ($nReplayInst_n==0) {
       $nReplayInst_n += $cf->getResultField("P(${i})_specld","stldViolations"); 
     }
+
+    # FIXME: The iBALU, iCALU should not be hardcoded. the shared.conf can
+    # control the unit names and operations per unit
 
     my $iAALU = $cf->getResultField("P(${i})_ExeEngine_iRALU","n")
       + $cf->getResultField("P(${i})_ExeEngine_iAALU","n");

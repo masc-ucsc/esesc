@@ -6,7 +6,8 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and the ESESC Project
+// Copyright (c) 2005-2013, Regents of the University of California and 
+// the ESESC Project.
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without

@@ -18,7 +18,7 @@ RunDir = ARGV[2]
 MSG=ARGV[3]
 
 esescConf = File.join(RunDir, "esesc.conf")
-thermConf = File.join(RunDir, "therm.conf")
+thermConf = File.join(RunDir, "pwth.conf")
 flpConf = File.join(RunDir, "flp.conf")
 esesc = File.join(BuildDir, "main", "esesc")
 reFloorplan = File.join(SrcDir, "conf", "reFloorplan.rb")
@@ -44,7 +44,7 @@ cmd = "cat #{thermConf} | sed 's/reFloorplan[\ ]*=.*/reFloorplan = true/' > tmp1
 res = `#{cmd}`
 
 # get a new esesc.conf that points to tmp1
-cmd = "cat #{esescConf} | sed 's/therm.conf/tmp1/' > tmp2"
+cmd = "cat #{esescConf} | sed 's/pwth.conf/tmp1/' > tmp2"
 res = `#{cmd}`
 
 cmd = "cat tmp2 | sed 's/enablePower.*/enablePower = true/' > tmp"
@@ -70,13 +70,13 @@ puts "Running the floorplanner...(Go have a cup of coffee if it is a floorplanin
 cmd = "#{reFloorplan} #{BuildDir} #{SrcDir} #{MSG} >> #{flpConf}"
 res = `#{cmd}`
 
-#update therm.conf
-puts "Updating therm.conf to point to the new floorplan and layoutDescr (...#{MSG})"
+#update pwth.conf
+puts "Updating pwth.conf to point to the new floorplan and layoutDescr (...#{MSG})"
 cmd = "cat #{thermConf} | sed \"s/^floorplan\\[0\\].*=.*/floorplan[0] = 'floorplan#{MSG}'/\" > tmp"
 res = `#{cmd}`
 cmd = "cat tmp| sed \"s/layoutDescr\\[0\\].*=.*/layoutDescr[0] = 'layoutDescr#{MSG}'/\" > tmp3"
 res = `#{cmd}`
-cmd = "mv tmp3 therm.conf"
+cmd = "mv tmp3 pwth.conf"
 res = `#{cmd}`
 
 puts "Done."

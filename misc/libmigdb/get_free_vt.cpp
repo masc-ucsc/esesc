@@ -12,7 +12,10 @@ to my needs and changed license from giftware to GPL.@p
   
 ***************************************************************************/
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -145,7 +148,9 @@ mi_aux_term *gmi_look_for_free_vt()
  if (!res)
     return NULL;
  res->pid=-1;
- asprintf(&res->tty,"/dev/tty%d",vt);
+ int size = asprintf(&res->tty,"/dev/tty%d",vt);
+ if ( size == -1 )
+   return NULL;
  return res;
 }
 

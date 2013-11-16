@@ -1384,7 +1384,7 @@ mi_output *mi_get_stop_record(mi_output *r)
 }
 
 static
-char *reason_names[]=
+const char *reason_names[]=
 {
  "breakpoint-hit",
  "watchpoint-trigger",
@@ -1411,7 +1411,7 @@ enum mi_stop_reason reason_values[]=
 };
 
 static
-char *reason_expl[]=
+const char *reason_expl[]=
 {
  "Hit a breakpoint",
  "Write watchpoint",
@@ -1429,7 +1429,7 @@ char *reason_expl[]=
 
 enum mi_stop_reason mi_reason_str_to_enum(const char *s)
 {
- int i;
+ unsigned int i;
 
  for (i=0; i<sizeof(reason_names)/sizeof(char *); i++)
      if (strcmp(reason_names[i],s)==0)
@@ -1439,7 +1439,7 @@ enum mi_stop_reason mi_reason_str_to_enum(const char *s)
 
 const char *mi_reason_enum_to_str(enum mi_stop_reason r)
 {
- int i;
+ unsigned int i;
 
  if (r==sr_unknown)
     return "Unknown (temp bkp?)";

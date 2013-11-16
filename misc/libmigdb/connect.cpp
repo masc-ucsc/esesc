@@ -17,7 +17,10 @@ in a row.
 
 ***************************************************************************/
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -764,9 +767,9 @@ mi_aux_term *gmi_start_xterm()
    {/* We are the child. */
     char *argv[5];
     /* Pass the control to gdb. */
-    argv[0]=(char *)mi_get_xterm_exe(); /* Is that ok? */
-    argv[1]="-e";
-    argv[2]="/bin/sh";
+    argv[0]=const_cast<char *>(mi_get_xterm_exe()); /* Is that ok? */
+    argv[1]=const_cast<char *>("-e");
+    argv[2]=const_cast<char *>("bin/sh");
     argv[3]=nsh;
     argv[4]=0;
     execvp(argv[0],argv);

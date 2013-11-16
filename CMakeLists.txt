@@ -29,11 +29,11 @@ ELSE(ENABLE_CUDA)
 ENDIF(ENABLE_CUDA)
 
 
-IF(ENABLE_PEQ)
-  MESSAGE("  -DENABLE_PEQ=1                Enable Equation based power model support")
-ELSE(ENABLE_PEQ)
-  MESSAGE("  -DENABLE_PEQ=0                Disable Equation based power model Fusupport (default)")
-ENDIF(ENABLE_PEQ)
+#IF(ENABLE_PEQ)
+#  MESSAGE("  -DENABLE_PEQ=1                Enable Equation based power model support")
+#ELSE(ENABLE_PEQ)
+#  MESSAGE("  -DENABLE_PEQ=0                Disable Equation based power model Fusupport (default)")
+#ENDIF(ENABLE_PEQ)
 
 IF(ESESC_QEMU_ISA_ARMEL)
   MESSAGE("  -DESESC_QEMU_ISA=armel        qemu/armel ISA")
@@ -208,13 +208,13 @@ IF(ENABLE_SCQEMU)
   ADD_SUBDIRECTORY(emul/libscqemu)
 ENDIF(ENABLE_SCQEMU)
 #################################
+ADD_SUBDIRECTORY(pwth/libpeq)
 ADD_SUBDIRECTORY(pwth/libmcpat)
 ADD_SUBDIRECTORY(pwth/libsesctherm)
 ADD_SUBDIRECTORY(pwth/libpwrmodel)
 #################################
 ADD_SUBDIRECTORY(simu/libcore)
 ADD_SUBDIRECTORY(simu/libmem)
-ADD_SUBDIRECTORY(pwth/libpeq)
 ADD_SUBDIRECTORY(simu/libsampler)
 #################################
 ADD_SUBDIRECTORY(main)

@@ -400,7 +400,7 @@ void PowerGlue::dumpFlpDescr(uint32_t coreEIdx) {
     printf("McPAT counters generated\n");
     printf("Floorplan descriptors (sysFlp.desc) and TDP (sysTDP.p) generated.\n");
     printf("You need to lunch reFloorplan.rb from the conf directory\n");
-    printf("To run esesc, set the 'reFloorplan = flase' in therm.conf\n");
+    printf("To run esesc, set the 'reFloorplan = flase' in pwth.conf\n");
     exit(0);
 }
 
@@ -478,7 +478,7 @@ void PowerGlue::checkStatCounters(const char *section){
     if (!found){
       printf("\n\nError! stats.conf does not match the configuration.\n");
       printf("Cannot find stats for '%s'.\n",name);
-      printf("rerun eSESC with 'reFloorplan = true' in therm.conf to update the stats.\n");
+      printf("rerun eSESC with 'reFloorplan = true' in pwth.conf to update the stats.\n");
       exit(-1);
     }
   }
@@ -500,7 +500,7 @@ void PowerGlue::checkStatCounters(const char *section){
     if (found){
       printf("\n\nError! stats.conf does not match the configuration.\n");
       printf("stats.conf contains more cores.\n");
-      printf("rerun eSESC with 'reFloorplan = true' in therm.conf to update the stats.\n");
+      printf("rerun eSESC with 'reFloorplan = true' in pwth.conf to update the stats.\n");
       exit(-1);
     }
   }
@@ -522,7 +522,7 @@ void PowerGlue::checkStatCounters(const char *section){
     if(!found) {
     printf("\n\nError! stats.conf does not match the configuration.\n");
     printf("Cannot find stats for '%s'.\n",name.c_str());
-    printf("rerun eSESC with 'reFloorplan = true' in therm.conf to update the stats.\n");
+    printf("rerun eSESC with 'reFloorplan = true' in pwth.conf to update the stats.\n");
     exit(-1);
     }
   }

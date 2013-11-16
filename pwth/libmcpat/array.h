@@ -78,9 +78,9 @@ class ArrayST :public Component{
 
 
   virtual void optimize_array();
-#ifdef ENABLE_PEQ
+//#ifdef ENABLE_PEQ
   virtual void optimize_array_peq();
-#endif
+//#endif
   virtual void compute_base_power();
   virtual ~ArrayST(){};
 };
