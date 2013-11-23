@@ -1,26 +1,37 @@
-/*
-   ESESC: Super ESCalar simulator
-   Copyright (C) 2010 University of California, Santa Cruz.
-
-   Contributed by Jose Renau
-                  Ehsan K.Ardestani
-
-
-This file is part of ESESC.
-
-ESESC is free software; you can redistribute it and/or modify it under the terms
-of the GNU General Public License as published by the Free Software Foundation;
-either version 2, or (at your option) any later version.
-
-ESESC is distributed in the  hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along with
-ESESC; see the file COPYING. If not, write to the Free Software Foundation, 59
-Temple Place - Suite 330, Boston, MA 02111-1307, USA.
-*/
-
+// Contributed by Jose Renau
+//                Ehsan K.Ardestani
+//
+// The ESESC/BSD License
+//
+// Copyright (c) 2005-2013, Regents of the University of California and 
+// the ESESC Project.
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+//   - Redistributions of source code must retain the above copyright notice,
+//   this list of conditions and the following disclaimer.
+//
+//   - Redistributions in binary form must reproduce the above copyright
+//   notice, this list of conditions and the following disclaimer in the
+//   documentation and/or other materials provided with the distribution.
+//
+//   - Neither the name of the University of California, Santa Cruz nor the
+//   names of its contributors may be used to endorse or promote products
+//   derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
 
 #include "SamplerPeriodic.h"
 #include "EmulInterface.h"
@@ -35,12 +46,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 int32_t SamplerPeriodic::PerfSampleLeftForTemp = 0;
 GStatsMax *SamplerPeriodic::progressedTime = 0;
-#if DEBUG
-GStatsCntr*SamplerPeriodic::ipcl01 = 0;
-GStatsCntr*SamplerPeriodic::ipcl03 = 0;
-GStatsCntr*SamplerPeriodic::ipcl05 = 0;
-GStatsCntr*SamplerPeriodic::ipcg05 = 0;
-#endif
 
 SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : SamplerBase(iname,section,  emu, fid)
@@ -48,17 +53,6 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
 {
   if (progressedTime==0)
       progressedTime = new GStatsMax("progressedTime");
-
-#if DEBUG
-  if (ipcl01 == 0)
-    ipcl01      = new GStatsCntr("ipcl01");
-  if (ipcl03 == 0)
-    ipcl03      = new GStatsCntr("ipcl03");
-  if (ipcl05 == 0)
-    ipcl05      = new GStatsCntr("ipcl05");
-  if (ipcg05 == 0)
-    ipcg05      = new GStatsCntr("ipcg05");
-#endif
 
   dsync      = new GStatsCntr("S(%u):dsync", fid);
 
@@ -248,11 +242,6 @@ void SamplerPeriodic::loadPredCPI()
     estCPI = getMeaCPI();
 
   updateIntervalRatio();
-#if DEBUG
-  updateIntervalRatioStats();
-#endif
-
-  //MSG("fid:%d intervalRatio:%f\n", sFid, intervalRatio);
 }
 
 
@@ -325,9 +314,10 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
     }
 
     TaskHandler::syncStats();
-    printf ("fid: %d ", fid);
 
-    std::cout<<"mode "<<lastMode<<" Timeinterval "<<ti<<" mytime "<<mytime<<" last time "<<lastTime<<"freq:"<<getFreq()<<"\n";  
+    //printf ("fid: %d ", fid);
+    //std::cout<<"mode "<<lastMode<<" Timeinterval "<<ti<<" mytime "<<mytime<<" last time "<<lastTime<<"freq:"<<getFreq()<<"\n";  
+
     BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
     BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
     BootLoader::getPowerModelPtr()->sescThermWrapper->sesctherm.updateMetrics(ti);  
@@ -441,18 +431,6 @@ void SamplerPeriodic::doWarmupOpAddrData(char op, uint64_t addr, uint64_t data) 
     }
 }
 
-#if DEBUG
-void SamplerPeriodic::updateIntervalRatioStats() {
-  if (intervalRatio < 0.1)
-    ipcl01->inc();
-  else if (intervalRatio < 0.3)
-    ipcl03->inc();
-  else if (intervalRatio < 0.5)
-    ipcl05->inc();
-  else
-    ipcg05->inc();
-}
-#endif
 
 void SamplerPeriodic::updateIntervalRatio() {
 #ifdef TBS

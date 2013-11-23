@@ -21,7 +21,7 @@ esescConf = File.join(RunDir, "esesc.conf")
 thermConf = File.join(RunDir, "pwth.conf")
 flpConf = File.join(RunDir, "flp.conf")
 esesc = File.join(BuildDir, "main", "esesc")
-reFloorplan = File.join(SrcDir, "conf", "reFloorplan.rb")
+reFloorplan = File.join(SrcDir, "conf", "scripts", "reFloorplan.rb")
 
 cmd = "grep #{MSG} #{flpConf}"
 res = `#{cmd}`

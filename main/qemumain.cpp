@@ -52,7 +52,6 @@ int main(int argc, const char **argv) {
 
   bool allCPUsfinished = false;
 
-  //GStatsHist *uops = new GStatsHist("uops");
 
   while (!allCPUsfinished) {
     allCPUsfinished = true; // Normally set to quit the loop
@@ -72,7 +71,6 @@ int main(int argc, const char **argv) {
         // dinst->dump("");
         conta++;
         if (dinst->getPC() != lastPC) {
-        //  uops->sample(conta);
           if (conta > 10)
             //MSG("oop=%x",lastPC);
           conta = 0;

@@ -81,27 +81,14 @@ PortUnlimited::PortUnlimited(const char *name)
 {
 }
 
-Time_t PortUnlimited::nextSlot(void* mreq) {
-  avgTime.sample(0); // Just to keep usage statistics
+Time_t PortUnlimited::nextSlot(bool en) {
+  avgTime.sample(0, en); // Just to keep usage statistics
   return globalClock;
 }
 
-Time_t PortUnlimited::occupySlots(int32_t nSlots) 
+Time_t PortUnlimited::calcNextSlot() const
 {
   return globalClock;
-}
-
-Time_t PortUnlimited::calcNextSlot(void* mreq) const
-{
-  return globalClock;
-}
-
-void PortUnlimited::lock4nCycles(TimeDelta_t clks)
-{
-  if( lTime < globalClock )
-    lTime = globalClock;
-  
-  lTime += clks;
 }
 
 PortFullyPipe::PortFullyPipe(const char *name) 
@@ -110,7 +97,7 @@ PortFullyPipe::PortFullyPipe(const char *name)
   lTime = globalClock;
 }
 
-Time_t PortFullyPipe::nextSlot(void* mreq) 
+Time_t PortFullyPipe::nextSlot(bool en) 
 {
   ID(Time_t cns = calcNextSlot());
     
@@ -118,35 +105,14 @@ Time_t PortFullyPipe::nextSlot(void* mreq)
     lTime = globalClock;
 
   I(cns  == lTime);
-  avgTime.sample(lTime-globalClock);
+  avgTime.sample(lTime-globalClock, en);
   return lTime++;
 }
 
-Time_t PortFullyPipe::occupySlots(int32_t nSlots) 
-{
-  if(lTime < globalClock)
-    lTime = globalClock;
-  
-  avgTime.sample(lTime-globalClock);
-
-  Time_t t = lTime;
-  lTime+=nSlots;
-  return t;
-}
-
-Time_t PortFullyPipe::calcNextSlot(void* mreq) const
+Time_t PortFullyPipe::calcNextSlot() const
 {
   return ((lTime < globalClock) ? globalClock : lTime);
 }
-
-void PortFullyPipe::lock4nCycles(TimeDelta_t clks)
-{
-  if( lTime < globalClock )
-    lTime = globalClock;
-  
-  lTime += clks;
-}
-
 
 PortFullyNPipe::PortFullyNPipe(const char *name, NumUnits_t nFU)
   : PortGeneric(name), nUnitsMinusOne(nFU-1) 
@@ -158,7 +124,7 @@ PortFullyNPipe::PortFullyNPipe(const char *name, NumUnits_t nFU)
   freeUnits = nFU;
 }
 
-Time_t PortFullyNPipe::nextSlot(void* mreq) 
+Time_t PortFullyNPipe::nextSlot(bool en) 
 {
   ID(Time_t cns = calcNextSlot());
 
@@ -173,34 +139,13 @@ Time_t PortFullyNPipe::nextSlot(void* mreq)
   }
     
   I( cns == lTime);
-  avgTime.sample(lTime-globalClock);
+  avgTime.sample(lTime-globalClock, en);
   return lTime;
 }
 
-Time_t PortFullyNPipe::occupySlots(int32_t nSlots)
-{
-  if(lTime < globalClock)
-    lTime = globalClock;
-  
-  avgTime.sample(lTime-globalClock);
-
-  Time_t t = lTime;
-  lTime += nSlots/(nUnitsMinusOne+1);
-  return t;
-}
-
-Time_t PortFullyNPipe::calcNextSlot(void* mreq) const
+Time_t PortFullyNPipe::calcNextSlot() const
 {
   return ((lTime < globalClock) ? globalClock : (lTime + (freeUnits == 0)));
-}
-
-void PortFullyNPipe::lock4nCycles(TimeDelta_t clks)
-{
-  if( lTime < globalClock )
-    lTime = globalClock;
-
-  lTime +=clks;
-  freeUnits = nUnitsMinusOne+1;
 }
 
 PortPipe::PortPipe(const char *name, TimeDelta_t occ)
@@ -209,7 +154,7 @@ PortPipe::PortPipe(const char *name, TimeDelta_t occ)
   lTime = (globalClock > ocp) ? globalClock - ocp : 0;
 }
 
-Time_t PortPipe::nextSlot(void* mreq) 
+Time_t PortPipe::nextSlot(bool en) 
 {
   ID(Time_t cns = calcNextSlot());
 
@@ -220,35 +165,13 @@ Time_t PortPipe::nextSlot(void* mreq)
   lTime+=ocp;
 
   I(cns == st);
-  avgTime.sample(st-globalClock);
+  avgTime.sample(st-globalClock, en);
   return st;
 }
 
-Time_t PortPipe::occupySlots(int32_t nSlots)
-{
-  if(lTime < globalClock)
-    lTime = globalClock;
-
-  I(ocp>1); // If ocp where <1 other PortPipe should be called
-  
-  avgTime.sample(lTime-globalClock);
-
-  Time_t t = lTime;
-  lTime+=ocp*nSlots;
-  return t;
-}
-
-Time_t PortPipe::calcNextSlot(void* mreq) const
+Time_t PortPipe::calcNextSlot() const
 {
   return ((lTime < globalClock) ? globalClock : lTime);
-}
-
-void PortPipe::lock4nCycles(TimeDelta_t clks)
-{
-  if( lTime < globalClock )
-    lTime = globalClock;
-  
-  lTime += clks;
 }
 
 PortNPipe::PortNPipe(const char *name, NumUnits_t nFU, TimeDelta_t occ) 
@@ -261,7 +184,6 @@ PortNPipe::PortNPipe(const char *name, NumUnits_t nFU, TimeDelta_t occ)
   for(int32_t i=0;i<nFU;i++)
     portBusyUntil[i]= globalClock;
 
-  doStats = true;
 }
 
 PortNPipe::~PortNPipe()
@@ -270,12 +192,12 @@ PortNPipe::~PortNPipe()
 }
 
 
-Time_t PortNPipe::nextSlot(void* mreq) 
+Time_t PortNPipe::nextSlot(bool en) 
 {
-  return nextSlot(ocp);
+  return nextSlot(ocp, en);
 }
 
-Time_t PortNPipe::nextSlot(int32_t occupancy) 
+Time_t PortNPipe::nextSlot(int32_t occupancy, bool en) 
 {
   ID(Time_t cns      = calcNextSlot());
   Time_t bufTime     = portBusyUntil[0];
@@ -283,8 +205,7 @@ Time_t PortNPipe::nextSlot(int32_t occupancy)
   if (bufTime < globalClock) {
     portBusyUntil[0] = globalClock + occupancy;
     I( cns == globalClock );
-    if (doStats)
-      avgTime.sample(0);
+    avgTime.sample(0, en);
     return globalClock;
   }
 
@@ -294,8 +215,7 @@ Time_t PortNPipe::nextSlot(int32_t occupancy)
     if (portBusyUntil[i] < globalClock) {
       portBusyUntil[i] = globalClock + occupancy;
       I( cns == globalClock );
-      if (doStats)
-        avgTime.sample(0);
+      avgTime.sample(0, en);
       return globalClock;
     }
     if (portBusyUntil[i] < bufTime) {
@@ -307,30 +227,13 @@ Time_t PortNPipe::nextSlot(int32_t occupancy)
   portBusyUntil[bufPort] += occupancy;
 
   I(cns == bufTime);
-  if (doStats)
-    avgTime.sample(bufTime-globalClock);
+  avgTime.sample(bufTime-globalClock, en);
   return bufTime;
 }
 
-Time_t PortNPipe::occupySlots(int32_t nSlots)
-{
-  // How to optimize this function (ala PortFullyPipe::occupySlots)?
-  // Can someone do it?
 
-  avgTime.sample(portBusyUntil[0]-globalClock);
 
-  doStats = false;
-  
-  Time_t t = nextSlot();
-  for(int32_t i=1;i<nSlots;i++)
-    nextSlot();
-
-  doStats = true;
-
-  return t;
-}
-
-Time_t PortNPipe::calcNextSlot(void* mreq) const
+Time_t PortNPipe::calcNextSlot() const
 {
   Time_t firsttime = portBusyUntil[0];
 
@@ -340,11 +243,3 @@ Time_t PortNPipe::calcNextSlot(void* mreq) const
   return (firsttime < globalClock) ? globalClock : firsttime;
 }
 
-void PortNPipe::lock4nCycles(TimeDelta_t clks)
-{
-  Time_t cns = calcNextSlot();
-  cns+=clks;
-  for(NumUnits_t i = 0; i < nUnits; i++)
-    if( portBusyUntil[i] < cns )
-      portBusyUntil[i] = cns;
-}

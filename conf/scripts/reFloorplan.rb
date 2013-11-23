@@ -15,7 +15,7 @@ TDP = "sysTDP.p"
 NewFLP = "new.flp"
 MSG=ARGV[2]
 
-FlpConv = File.join(SrcDir, "conf", "flpconv.rb")
+FlpConv = File.join(SrcDir, "conf", "scripts", "flpconv.rb")
 HotFloorplan = File.join(BuildDir,"floorplan", "hotfloorplan")
 Config = File.join(BuildDir,"floorplan", "hotspot.config")
 

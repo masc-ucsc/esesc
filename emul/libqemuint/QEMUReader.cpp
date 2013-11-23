@@ -65,6 +65,8 @@ void *QEMUReader::getSharedMemory(size_t size)
 /* }}} */
 #endif
 
+bool QEMUReader::started = false;
+
 QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint_)
   /* constructor {{{1 */
   : Reader(section),

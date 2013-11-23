@@ -240,15 +240,17 @@ void GStatsHist::reportValue() const
   Report::field("%s:n=%f"   ,name,numSample);
 }
 
-void GStatsHist::sample(uint32_t key, double weight)
+void GStatsHist::sample(bool enable, uint32_t key, double weight)
 {
-  if(H.find(key)==H.end())
-    H[key]=0;
+  if(enable) {
+    if(H.find(key)==H.end())
+      H[key]=0;
 
-  H[key]+=weight;
+    H[key]+=weight;
 
-  numSample += weight;
-  cumulative += weight * key;
+    numSample += weight;
+    cumulative += weight * key;
+  }
 }
 
 int64_t GStatsHist::getSamples() const 

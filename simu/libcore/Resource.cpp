@@ -1,30 +1,42 @@
-/* License & includes {{{1 */
-/*
-  ESESC: Super ESCalar simulator
-  Copyright (C) 2010 University of California, Santa Cruz.
-
-  Contributed by Jose Renau
-  Basilio Fraguela
-  James Tuck
-  Smruti Sarangi
-  Luis Ceze
-  Karin Strauss
-  David Munday
-
-  This file is part of ESESC.
-
-  ESESC is free software; you can redistribute it and/or modify it under the terms
-  of the GNU General Public License as published by the Free Software Foundation;
-  either version 2, or (at your option) any later version.
-
-  ESESC is distributed in the  hope that it will be useful, but WITHOUT ANY
-  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-  PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License along with
-  ESESC; see the file COPYING. If not, write to the Free Software Foundation, 59
-  Temple Place - Suite 330, Boston, MA 02111-1307, USA.
-*/
+//  Contributed by Jose Renau
+//                 Basilio Fraguela
+//                 James Tuck
+//                 Smruti Sarangi
+//                 Luis Ceze
+//                 Karin Strauss
+//                 David Munday
+//
+// The ESESC/BSD License
+//
+// Copyright (c) 2005-2013, Regents of the University of California and 
+// the ESESC Project.
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+//   - Redistributions of source code must retain the above copyright notice,
+//   this list of conditions and the following disclaimer.
+//
+//   - Redistributions in binary form must reproduce the above copyright
+//   notice, this list of conditions and the following disclaimer in the
+//   documentation and/or other materials provided with the distribution.
+//
+//   - Neither the name of the University of California, Santa Cruz nor the
+//   names of its contributors may be used to endorse or promote products
+//   derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
 
 #include <limits.h>
 
@@ -83,9 +95,7 @@ MemResource::MemResource(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *s
   ,DL1(ms->getDL1())
   ,memorySystem(ms)
   ,lsq(_lsq)
-  ,ldldViolations("P(%d)_%s:ldldViolations", id, cad)
   ,stldViolations("P(%d)_%s:stldViolations", id, cad)
-  ,ststViolations("P(%d)_%s:ststViolations", id, cad)
 {
 }
 /* }}} */
@@ -208,7 +218,7 @@ void FUSCOORELoad::executing(DInst *dinst) {
 
   //printf("DEBUG calling Loadexecuting:VPC\n");
   if(!enableDcache) {
-    Time_t when = gen->nextSlot()+vpcDelay;
+    Time_t when = gen->nextSlot(dinst->getStatsFlag())+vpcDelay;
     executedCB::scheduleAbs(when, this, dinst);
     return;
   }    
@@ -491,7 +501,7 @@ void FUSCOOREStore::executing(DInst *dinst) {
   I(vpc);
   //printf("DEBUG Storeexecuting::VPC\n");
   if(!enableDcache) {
-    Time_t when = gen->nextSlot()+vpcDelay;
+    Time_t when = gen->nextSlot(dinst->getStatsFlag())+vpcDelay;
     executedCB::scheduleAbs(when, this, dinst);
     return;
   }
@@ -618,7 +628,7 @@ void FULoad::executing(DInst *dinst) {
   /* executing {{{1 */
 
   cluster->executing(dinst);
-  Time_t when = gen->nextSlot()+lat;
+  Time_t when = gen->nextSlot(dinst->getStatsFlag())+lat;
 
   DInst *qdinst = lsq->executing(dinst);
   I(qdinst==0);
@@ -647,7 +657,7 @@ void FULoad::cacheDispatched(DInst *dinst) {
   I(!dinst->isLoadForwarded());
 
   if(!DL1->canAcceptRead(dinst)) {
-    Time_t when = gen->nextSlot();
+    Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
     return;
   }
@@ -745,7 +755,7 @@ void FUStore::executing(DInst *dinst) {
   }
 
   cluster->executing(dinst);
-  gen->nextSlot();
+  gen->nextSlot(dinst->getStatsFlag());
 
   if (dinst->getInst()->isStoreAddress()) {
 #if 1
@@ -839,7 +849,7 @@ StallCause FUGeneric::canIssue(DInst *dinst) {
 void FUGeneric::executing(DInst *dinst) {
   /* executing {{{1 */
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot()+lat, this, dinst);
+  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
 }
 /* }}} */
 
@@ -889,7 +899,7 @@ StallCause FUFuze::canIssue(DInst *dinst) {
 void FUFuze::executing(DInst *dinst) {
   /* executing {{{1 */
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot()+lat, this, dinst);
+  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
 }
 /* }}} */
 
@@ -945,7 +955,7 @@ StallCause FUBranch::canIssue(DInst *dinst) {
 void FUBranch::executing(DInst *dinst) {
   /* executing {{{1 */
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot()+lat, this, dinst);
+  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
 }
 /* }}} */
 
@@ -1036,7 +1046,7 @@ void FURALU::executing(DInst *dinst)
 /* executing {{{1 */
 {
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot()+lat, this, dinst);
+  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
 
   //Recommended poweron the GPU threads and then poweroff the QEMU thread?
 }
@@ -1101,7 +1111,7 @@ void FULoad_noMemSpec::executing(DInst *dinst) {
   /* executing {{{1 */
 
   cluster->executing(dinst);
-  Time_t when = gen->nextSlot()+lat;
+  Time_t when = gen->nextSlot(dinst->getStatsFlag())+lat;
 
   // The check in the LD Queue is performed always, for hit & miss
   if (dinst->isLoadForwarded() || !enableDcache) {
@@ -1119,7 +1129,7 @@ void FULoad_noMemSpec::cacheDispatched(DInst *dinst) {
   I(!dinst->isLoadForwarded());
 
   if(!DL1->canAcceptRead(dinst)) {
-    Time_t when = gen->nextSlot();
+    Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
     return;
   }
@@ -1191,7 +1201,7 @@ StallCause FUStore_noMemSpec::canIssue(DInst *dinst) {
 void FUStore_noMemSpec::executing(DInst *dinst) {
   /* executing {{{1 */
   cluster->executing(dinst);
-  gen->nextSlot();
+  gen->nextSlot(dinst->getStatsFlag());
 
   if (dinst->getInst()->isStoreAddress()) {
     MemRequest *mreq=MemRequest::createWriteAddress(DL1, dinst, executedCB::create(this,dinst));

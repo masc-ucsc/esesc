@@ -97,7 +97,7 @@ public:
     data += en ? 1 : 0;
   }
 
-  void dec(bool en = true) {
+  void dec(bool en) {
     data -= en ? 1 : 0;
   }
 
@@ -158,7 +158,7 @@ public:
   GStatsHist(const char *format,...);
   GStatsHist() { }
 
-  void sample(uint32_t key, double weight=1);
+  void sample(bool enable, uint32_t key, double weight=1);
   int64_t getSamples() const;
 
   void reportValue() const;

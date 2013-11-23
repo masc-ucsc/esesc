@@ -57,7 +57,7 @@ private:
   pthread_t         qemu_thread;
   FlowID            numFlows;
   FlowID            numAllFlows;
-  bool              started;
+  static bool       started;
   QEMUArgs         *qemuargs;
   EmulInterface    *eint;
 

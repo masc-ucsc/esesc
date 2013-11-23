@@ -392,9 +392,9 @@ Nuca::sim_nuca()
         }
         else {
           nuca_list.back()->nuca_pda.delay = opt_acclat +
-            cont_stats[l2_c][core_in][ro][7][num_cyc/2-1];
+            cont_stats[l2_c][core_in][ro][6][num_cyc/2-1];
           nuca_list.back()->contention =
-            cont_stats[l2_c][core_in][ro][7][num_cyc/2-1];
+            cont_stats[l2_c][core_in][ro][6][num_cyc/2-1];
         }
         nuca_list.back()->nuca_pda.power.readOp.dynamic = opt_dyn_power;
         nuca_list.back()->nuca_pda.power.readOp.leakage = opt_leakage_power;

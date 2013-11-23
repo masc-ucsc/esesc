@@ -1,6 +1,6 @@
 PROJECT(esesc) 
 INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
-SET(CMAKE_MODULE_PATH "${esesc_SOURCE_DIR}/conf")
+SET(CMAKE_MODULE_PATH "${esesc_SOURCE_DIR}/cmake-modules/conf")
 cmake_minimum_required(VERSION 2.4.8)
 
 ################################################

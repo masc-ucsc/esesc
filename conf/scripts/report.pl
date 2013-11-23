@@ -31,6 +31,10 @@ my $op_sim=1;   # Show by default
 my $op_inst=1;  # Show by default
 my $op_help;
 my $op_table;
+my $op_chippower;
+my $op_chippower_L;
+my $op_enPower;
+my $op_enTherm;
 
 my $result = GetOptions("a",\$op_all,
     "last",\$op_last,
@@ -138,6 +142,10 @@ sub main {
     @Processors  = ();
     SeparateSampler();
 
+    my $powersec = $cf->getConfigEntry(key=>"pwrmodel");
+    $op_enPower = $cf->getConfigEntry(key=>"doPower",section=>$powersec);
+    $op_enTherm = $cf->getConfigEntry(key=>"doTherm",section=>$powersec);
+
     simStats($file) if( $op_sim );
     branchStats($file) if( $op_bpred );
     instStats($file)  if( $op_inst );
@@ -145,6 +153,7 @@ sub main {
     tradCPUStats( $file ) if( $op_cpu );
     
     newtradMemStats($file);
+
     powerStats($file) if ($op_cpu);
 
     # The following are not yet checked for correct GPU/multithreaded operation
@@ -205,19 +214,34 @@ sub newtradMemStats {
 
   my $file = shift;
   printf "********************************************************************************************************\n";
-  printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s %9s %9s\n",
-          "Cache",
-          "Occ",
-          "AvgMemLat",
-          "MemAccesses",
-          " MissRate",
-          " (  RD",
-          "WR",
-          "    BUS)",
-          "Pow_dyn",
-          "Pow_lkg"
-          );
-  
+
+  if ($op_enPower eq "true") {
+    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s %9s %9s\n",
+      "Cache",
+      "Occ",
+      "AvgMemLat",
+      "MemAccesses",
+      " MissRate",
+      " (  RD",
+      "WR",
+      "    BUS)",
+      "Pow_dyn",
+      "Pow_lkg"
+    );
+  } else {
+    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s \n",
+      "Cache",
+      "Occ",
+      "AvgMemLat",
+      "MemAccesses",
+      " MissRate",
+      " (  RD",
+      "WR",
+      "    BUS)"
+    );
+
+  }
+
   my @mycaches = `grep -e ".*_MSHR" ${file} | sed -e "s/_MSHR.*//g" | sort -u | sort -t\\( -k1 -n`;
   my @myIcaches = grep(/I/, @mycaches);
   for my $cache (@myIcaches) {
@@ -285,10 +309,7 @@ sub newMemStat {
     printf ",%5.1f%) ", (100*$tmp/$tmp2);
 
 
-    my $powersec = $cf->getConfigEntry(key=>"pwrmodel");
-    my $enPower = $cf->getConfigEntry(key=>"doPower",section=>$powersec);
-
-    if ($enPower eq "true") {
+    if ($op_enPower eq "true") {
 
       my @cache_in_parts = split /[(,)]/, $cache;
 
@@ -296,29 +317,33 @@ sub newMemStat {
       if ($isCache != -1){
         my $mypow = $cf->getResultField("pwrDynP(@cache_in_parts[1])_icache","v");
         printf " %8.0f " ,$mypow;
+        $op_chippower += $mypow;
         $mypow = $cf->getResultField("pwrLkgP(@cache_in_parts[1])_icache","v");
         printf " %8.0f " ,$mypow;
+        $op_chippower_L += $mypow;
 
       } else {
         $isCache = index(@cache_in_parts[0], "DL1");
         if ($isCache != -1){
           my $mypow = $cf->getResultField("pwrDynP(@cache_in_parts[1])_dcache","v");
           printf " %8.0f " ,$mypow;
+          $op_chippower += $mypow;
           $mypow = $cf->getResultField("pwrLkgP(@cache_in_parts[1])_dcache","v");
           printf " %8.0f " ,$mypow;
+          $op_chippower_L += $mypow;
 
         } else {
           my $mypow = $cf->getResultField("pwrDyn@cache_in_parts[0](@cache_in_parts[1])","v");
           printf " %8.0f " ,$mypow;
+          $op_chippower += $mypow;
           $mypow = $cf->getResultField("pwrLkg@cache_in_parts[0](@cache_in_parts[1])","v");
           printf " %8.0f " ,$mypow;
+          $op_chippower_L += $mypow;
 
         }
 
       }
     } else {
-          printf "    N/A    ";
-          printf "    N/A    ";
     }
     printf "\n";
   }
@@ -1884,58 +1909,73 @@ sub powerStats {
 
   my $file = shift;
 
-  my $powersec = $cf->getConfigEntry(key=>"pwrmodel");
-  my $enPower = $cf->getConfigEntry(key=>"doPower",section=>$powersec);
-
-  if ($enPower eq "true") {
+  if ($op_enPower eq "true") {
     printf "********************************************************************************************************\n";
-    print "Power Metrics:\n";
-    printf("          %11s %11s %12s %16s %12s %14s %14s %14s\n",
+    print "Power Metrics: (Dynamic Power,Leakage Power) \n";
+    printf( "%-7s %- 14s %- 14s %- 14s %- 14s %- 14s %- 14s %- 14s %- 18s%- 18s\n",
       "Proc",
-      "RF",
-      "ROB",
-      "fetch",
-      "EXE",
-      "RNU",
-      "LSU",
-      "Membus");
+      "|  RF (mW)",
+      "|  ROB (mW)",
+      "|  fetch (mW)",
+      "|  EXE (mW)", 
+      "|  RNU (mW)", 
+      "|  LSU (mW)", 
+      "|  Total (W)");
+      #  "|  Chip Total (W)");
 
+  printf("------------------------------------------------------------------------------------------------------------------------------\n");
 
     for(my $i=0;$i<$nCPUs;$i++) {
       next unless( $cf->getResultField("P(${i})","clockTicks") );
 
-      printf "Power (Dyn:Lkg)",$i;
-      printf " %3d ",$i;
+      printf "%- 7d",$i;
 
       my $mypow = $cf->getResultField("pwrDynP(${i})_RF","v");
       my $mypowl = $cf->getResultField("pwrLkgP(${i})_RF","v");
-      printf "    ( %3.2f:%3.2f )" ,$mypow,$mypowl;
+      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      $op_chippower += $mypow;
+      $op_chippower_L += $mypowl;
 
-      my $mypow = $cf->getResultField("pwrDynP(${i})_ROB","v");
-      my $mypowl = $cf->getResultField("pwrLkgP(${i})_ROB","v");
-      printf "( %3.2f:%3.2f )" ,$mypow,$mypowl;
 
-      my $mypow = $cf->getResultField("pwrDynP(${i})_fetch","v");
-      my $mypowl = $cf->getResultField("pwrLkgP(${i})_fetch","v");
-      printf "( %3.2f:%3.2f )" ,$mypow,$mypowl;
+      $mypow = $cf->getResultField("pwrDynP(${i})_ROB","v");
+      $mypowl = $cf->getResultField("pwrLkgP(${i})_ROB","v");
+      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      $op_chippower += $mypow;
+      $op_chippower_L += $mypowl;
 
-      my $mypow = $cf->getResultField("pwrDynP(${i})_EXE","v");
-      my $mypowl = $cf->getResultField("pwrLkgP(${i})_EXE","v");
-      printf "( %3.2f:%3.2f )" ,$mypow,$mypowl;
 
-      my $mypow = $cf->getResultField("pwrDynP(${i})_RNU","v");
-      my $mypowl = $cf->getResultField("pwrLkgP(${i})_RNU","v");
-      printf "( %3.2f:%3.2f )" ,$mypow,$mypowl;
+      $mypow = $cf->getResultField("pwrDynP(${i})_fetch","v");
+      $mypowl = $cf->getResultField("pwrLkgP(${i})_fetch","v");
+      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      $op_chippower += $mypow;
+      $op_chippower_L += $mypowl;
 
-      my $mypow = $cf->getResultField("pwrDynP(${i})_LSU","v");
-      my $mypowl = $cf->getResultField("pwrLkgP(${i})_LSU","v");
-      printf "( %3.2f:%3.2f )" ,$mypow,$mypowl;
 
-      my $mypow = $cf->getResultField("pwrDynP(${i})_MemBus","v");
-      my $mypowl = $cf->getResultField("pwrLkgP(${i})_MemBus","v");
-      printf "( %3.2f:%3.2f )" ,$mypow,$mypowl;
+      $mypow = $cf->getResultField("pwrDynP(${i})_EXE","v");
+      $mypowl = $cf->getResultField("pwrLkgP(${i})_EXE","v");
+      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      $op_chippower += $mypow;
+      $op_chippower_L += $mypowl;
 
+ 
+      $mypow = $cf->getResultField("pwrDynP(${i})_RNU","v");
+      $mypowl = $cf->getResultField("pwrLkgP(${i})_RNU","v");
+      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      $op_chippower += $mypow;
+      $op_chippower_L += $mypowl;
+
+ 
+      $mypow = $cf->getResultField("pwrDynP(${i})_LSU","v");
+      $mypowl = $cf->getResultField("pwrLkgP(${i})_LSU","v");
+      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      $op_chippower += $mypow;
+      $op_chippower_L += $mypowl;
+
+      printf " | %- 8.2f,%- 3.2f " ,$op_chippower/1000,$op_chippower_L/1000;
+#      printf " | %- 10.2f " ,($op_chippower + $op_chippower_L)/1000;
       print "\n";
+      $op_chippower = 0;
+      $op_chippower_L = 0;
     }
   }
 }
@@ -1947,9 +1987,8 @@ sub thermStats{
   my $file = shift;
 
   my $powersec = $cf->getConfigEntry(key=>"pwrmodel");
-  my $enTherm = $cf->getConfigEntry(key=>"doTherm",section=>$powersec);
 
-  if ($enTherm eq "true") {
+  if ($op_enTherm eq "true") {
 
 
     my $totCycles = 0;

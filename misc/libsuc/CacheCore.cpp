@@ -388,7 +388,7 @@ CacheDMSkew<State, Addr_t>::CacheDMSkew(int32_t size, int32_t blksize, int32_t a
   : CacheGeneric<State, Addr_t>(size, 1, blksize, addrUnit) 
 {
   I(numLines>0);
-  
+
   mem     = (Line *)malloc(sizeof(Line)*(numLines + 1));
   for(uint32_t i=0;i<numLines;i++) {
     new(&mem[i]) Line(blksize);
@@ -412,29 +412,43 @@ typename CacheDMSkew<State, Addr_t>::Line *CacheDMSkew<State, Addr_t>::findLineP
 
   if (line->getTag() == tag1) {
     I(line->isValid()); 
+    line->recent = true;
     return line;
   }
+  Line *line0 = line;
 
   // BEGIN Skew cache
-  Addr_t tag2 = (tag1 ^ (tag1>>1));
+  // Addr_t tag2 = (tag1 ^ (tag1>>1));
+  Addr_t addrh = (addr>>5) ^ (addr>>11);
+  Addr_t tag2 = this->calcTag(addrh);
   I(tag2);
   line = content[this->calcIndex4Tag(tag2)];
 
   if (line->getTag() == tag1) { // FIRST TAG, tag2 is JUST used for indexing the table
     I(line->isValid());
+    line->recent = true;
     return line;
   }
+  Line *line1 = line;
 
 #if 1
-  Addr_t tag3 = (tag1 ^ ((tag1>>1) + ((tag1 & 0xFFFF))));
+  //Addr_t tag3 = (tag1 ^ ((tag1>>1) + ((tag1 & 0xFFFF))));
+  addrh = addrh + (addr & 0xFF);
+  Addr_t tag3 = this->calcTag(addrh);
   I(tag3);
   line = content[this->calcIndex4Tag(tag3)];
 
   if (line->getTag() == tag1) { // FIRST TAG, tag2 is JUST used for indexing the table
     I(line->isValid());
+    line->recent = true;
     return line;
   }
+  Line *line3 = line;
+
+  line3->recent = false;
 #endif
+  line1->recent = false;
+  line0->recent = false;
 
   return 0;
 }
@@ -452,7 +466,9 @@ typename CacheDMSkew<State, Addr_t>::Line
   }
 
   // BEGIN Skew cache
-  Addr_t tag2 = (tag1 ^ (tag1>>1));
+  //Addr_t tag2 = (tag1 ^ (tag1>>1));
+  Addr_t addrh = (addr>>5) ^ (addr>>11);
+  Addr_t tag2 = this->calcTag(addrh);
   Line *line2 = content[this->calcIndex4Tag(tag2)];
 
   if (line2->getTag() == tag1) { // FIRST TAG, tag2 is JUST used for indexing the table
@@ -464,7 +480,9 @@ typename CacheDMSkew<State, Addr_t>::Line
   rand_number++;
 
 #if 1
-  Addr_t tag3 = (tag1 ^ ((tag1>>1) + ((tag1 & 0xFFFF))));
+  //Addr_t tag3 = (tag1 ^ ((tag1>>1) + ((tag1 & 0xFFFF))));
+  addrh = addrh + (addr & 0xFF);
+  Addr_t tag3 = this->calcTag(addrh);
   Line *line3 = content[this->calcIndex4Tag(tag3)];
 
   if (line3->getTag() == tag1) { // FIRST TAG, tag2 is JUST used for indexing the table
@@ -472,15 +490,39 @@ typename CacheDMSkew<State, Addr_t>::Line
     return line3;
   }
 
-  if (rand_number >2)
-    rand_number = 0;
-  
-  if (rand_number == 0)
-    return line1;
-  if (rand_number == 1)
-    return line2;
-  
-  return line3;
+  while(1) {
+    if (rand_number >2)
+      rand_number = 0;
+
+    if (rand_number == 0) {
+      if(line1->recent)
+        line1->recent = false;
+      else {
+        line1->recent = true;
+        line2->recent = false;
+        line3->recent = false;
+        return line1;
+      }
+    }if (rand_number == 1) {
+      if(line2->recent)
+        line2->recent = false;
+      else {
+        line1->recent = false;
+        line2->recent = true;
+        line3->recent = false;
+        return line2;
+      }
+    }else{
+      if(line3->recent)
+        line3->recent = false;
+      else {
+        line1->recent = false;
+        line2->recent = false;
+        line3->recent = true;
+        return line3;
+      }
+    }
+  }
 #else
   if ((rand_number & 1) == 0)
     return line1;

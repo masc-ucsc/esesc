@@ -78,26 +78,6 @@ extern "C" uint64_t QEMUReader_get_time()
 
 extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, char op, uint64_t icount, void *env) 
 {
-#if 0
-  static GStatsHist *hist = 0;
-  if (hist==0) {
-    hist = new GStatsHist("QEMU");
-    hist->setIgnoreSampler();
-  }
-
-  hist->sample(icount);
-
-  //I(icount<100);
-  if (op == 2 || op == 1)
-    MSG("pc=0x%x addr=0x%x data=0x%x op=%d",pc,addr,data,op);
-#endif
-
-  //printf("in queue_inst fid=%d  pc=0x%x insn:0x%x addr=0x%x data=0x%x op=%d icount=%d\n",fid, pc,insn, addr,data,(int)op,(int)icount);
-  // if((pc > 0x8e60)&&(pc < 0x8e70)){
-  //   printf("QEMUInterface PC Print: 0x%X exit.\n",pc);
-  //   fflush(stdout);
-  //   //exit(1);
-  // } 
   qsamplerlist[fid]->queue(insn,pc,addr,data,fid,op,icount,env);
 }
 

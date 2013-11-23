@@ -77,6 +77,7 @@ template<class State, class Addr_t>
   public:
   class CacheLine : public State {
     public:
+    bool recent; // used by skew cache
     CacheLine(int32_t lineSize) : State(lineSize) {
     }
     // Pure virtual class defines interface

@@ -66,10 +66,10 @@ public:
   void subscribe() {  nUsers++; }
   void unsubscribe(){ nUsers--; }
 
-  TimeDelta_t nextSlotDelta() { return nextSlot() - globalClock; }
+  TimeDelta_t nextSlotDelta(bool en) { return nextSlot(en) - globalClock; }
   //! occupy a time slot in the port. 
   //! Returns when the slot started to be occupied
-  virtual Time_t nextSlot(void *mreq = 0) = 0;
+  virtual Time_t nextSlot(bool en) = 0;
 
   //! occupy the port for a number of slots. 
   //! Returns the time that the first slot was allocated.
@@ -80,19 +80,9 @@ public:
   //!  nextSlot();
   //! }
   //! return t;
-  virtual Time_t occupySlots(int32_t nSlots) = 0;
 
   //! returns when the next slot can be free without occupying any slot
-  virtual Time_t calcNextSlot(void *mreq = 0) const =0;
-
-  //! Lock the port for a given number of cycles.
-  //!
-  //! This is a risky parameter. If there is a multi-port or 
-  //! multi-occupancy-port, the user must be aware that it is 
-  //! blocking all the ports in arbitrary places. This methods 
-  //! locks the port until cycle busy. Use occupySlots for modeling
-  //! the transfer of multiple packets.
-  virtual void lock4nCycles(TimeDelta_t clks) = 0;
+  virtual Time_t calcNextSlot() const =0;
 
   static PortGeneric *create(const char *name, 
            NumUnits_t nUnits, 
@@ -106,10 +96,8 @@ class PortUnlimited : public PortGeneric {
 public:
   PortUnlimited(const char *name);
   
-  Time_t nextSlot(void *mreq = 0);
-  Time_t occupySlots(int32_t nSlots);
-  Time_t calcNextSlot(void *mreq = 0) const;
-  void lock4nCycles(TimeDelta_t clks);
+  Time_t nextSlot(bool en);
+  Time_t calcNextSlot() const;
 };
 
 class PortFullyPipe : public PortGeneric {
@@ -120,10 +108,8 @@ protected:
 public:
   PortFullyPipe(const char *name);
 
-  Time_t nextSlot(void *mreq = 0);
-  Time_t occupySlots(int32_t nSlots);
-  Time_t calcNextSlot(void *mreq = 0) const;
-  void lock4nCycles(TimeDelta_t clks);
+  Time_t nextSlot(bool en);
+  Time_t calcNextSlot() const;
 };
 
 class PortFullyNPipe : public PortGeneric {
@@ -135,10 +121,8 @@ protected:
 public:
   PortFullyNPipe(const char *name, NumUnits_t nFU);
 
-  Time_t nextSlot(void *mreq = 0);
-  Time_t occupySlots(int32_t nSlots);
-  Time_t calcNextSlot(void *mreq = 0) const;
-  void lock4nCycles(TimeDelta_t clks);
+  Time_t nextSlot(bool en);
+  Time_t calcNextSlot() const;
 };
 
 class PortPipe : public PortGeneric {
@@ -149,16 +133,13 @@ protected:
 public:
   PortPipe(const char *name, TimeDelta_t occ);
 
-  Time_t nextSlot(void *mreq = 0);
-  Time_t occupySlots(int32_t nSlots);
-  Time_t calcNextSlot(void *mreq = 0) const;
-  void lock4nCycles(TimeDelta_t clks);
+  Time_t nextSlot(bool en);
+  Time_t calcNextSlot() const;
 };
 
 class PortNPipe : public PortGeneric {
 private:
 protected:
-  bool doStats;
   const TimeDelta_t ocp;
   const NumUnits_t nUnits;
   Time_t  *portBusyUntil;
@@ -166,11 +147,9 @@ public:
   PortNPipe(const char *name, NumUnits_t nFU, TimeDelta_t occ);
   virtual ~PortNPipe();
 
-  Time_t nextSlot(void *mreq = 0);
-  Time_t nextSlot(int32_t occupancy);
-  Time_t occupySlots(int32_t nSlots);
-  Time_t calcNextSlot(void *mreq = 0) const;
-  void lock4nCycles(TimeDelta_t clks);
+  Time_t nextSlot(bool en);
+  Time_t nextSlot(int32_t occupancy, bool en);
+  Time_t calcNextSlot() const;
 };
 
 #endif // PORT_H
