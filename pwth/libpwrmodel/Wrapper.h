@@ -60,7 +60,6 @@ class ChipEnergyBundle;
 
 class Wrapper {
 private:
-  char* xmlConfig;
   ParseXML *p;
   Processor *proc;
   uint32_t totalPowerSamples;

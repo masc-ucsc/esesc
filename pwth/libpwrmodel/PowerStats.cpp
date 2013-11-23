@@ -62,7 +62,8 @@ void PowerStats::addGStat(const char *str, const int32_t scale)
     Container c(ref, scale);
     stats.push_back(c);
   } else if (strcmp(str, "testCounter")) {
-    MSG("WARNING: GStat '%s' needed by PowerModel not found", str);
+    // These can point out to legitimate warnings. Should we redirect to a power_model.warnings file?
+    IS(MSG("WARNING: GStat '%s' needed by PowerModel not found", str));
 		I(0);
   }
 }

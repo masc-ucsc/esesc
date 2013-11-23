@@ -54,7 +54,6 @@ RuntimeParameter mcpat_call; //eka, to keep track of #of calls to mcpat
 Wrapper::Wrapper()
   /* constructor {{{1 */
 {
-  xmlConfig = 0;
   p = 0;
   proc = 0;
   nPowerCall = 0;
@@ -101,9 +100,7 @@ void Wrapper::plug(const char *section,
 
   //Initialize mcpat strctures
   p = new ParseXML();
-  xmlConfig = const_cast<char*>(SescConf->getCharPtr(section, "xmlconfig"));
   p->initialize(statsVector, mcpat_map, coreIndex, gpuIndex);
-  //p->parse(xmlConfig);
   p->parseEsescConf(section);
 
   proc = new Processor(p); 

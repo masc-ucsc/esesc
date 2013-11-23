@@ -6,14 +6,14 @@ style  is also  very similar  to K&R.  With "indent  -kr -i2"  you get
 similar results.
 
 ----------------------------------------------------------------------
-	 	Chapter 1: Indentation
+Chapter 1: Indentation
 
 Tabs are 2 characters (2 spaces,  not a tab \t), and thus indentations
 are also 2 characters.
 
 
 ----------------------------------------------------------------------
-		Chapter 2: Placing Braces
+Chapter 2: Placing Braces
 
 The other issue that always comes  up in C styling is the placement of
 braces.  Unlike  the indent size,  there are few technical  reasons to
@@ -22,10 +22,10 @@ as shown  to us by the prophets  Kernighan and Ritchie, is  to put the
 opening  brace last  on the  line, and  put the  closing  brace first,
 thusly:
 
-	if (x is true) {
-                func(a, b, c);
-		we do y
-	}
+    if (x is true) {
+                  func(a, b, c);
+      we do y
+    }
 
 
 Note that the closing brace is empty on a line of its own, _except_ in
@@ -33,39 +33,39 @@ the  cases  where  it  is  followed  by a  continuation  of  the  same
 statement,  ie  a  "while"  in  a  do-statement or  an  "else"  in  an
 if-statement, like this:
 
-	do {
-		body of do-loop
-	} while (condition);
+    do {
+      body of do-loop
+    } while (condition);
 
 and
 
-	if (x == y) {
-		..
-	}else if (x > y) {
-		...
-	}else{
-		....
-	}
-			
+    if (x == y) {
+      ..
+    }else if (x > y) {
+      ...
+    }else{
+      ....
+    }
+        
 
 ----------------------------------------------------------------------
-		Chapter 3: Naming
+Chapter 3: Naming
 
 Descriptive names for  global variables are a must.   To call a global
-function "foo" is a shooting offense.
+function `foo` is a shooting offense.
 
-If a word has a subpart with "max" or "min", type max or min always at
+If a word has a subpart with `max` or `min`, type max or min always at
 the beginning of the word. Like in maxNumInst or maxMentalWonking.
 
 GLOBAL variables (to  be used only if you _really_  need them) need to
 have  descriptive  names, as  do  global  functions.   If you  have  a
 function that counts the number  of active users, you should call that
-"countActiveUsers()" or similar, you should _not_ call it "cntusr()".
+`countActiveUsers()` or similar, you should _not_ call it `cntusr()`.
 
 LOCAL variable names  should be short, and to the  point.  If you have
-some random  integer loop counter,  it should probably be  called "i".
-Calling it "loop_counter" is non-productive,  if there is no chance of
-it being mis-understood.  Similarly, "tmp"  can be just about any type
+some random  integer loop counter,  it should probably be  called `i`.
+Calling it `loop_counter` is non-productive,  if there is no chance of
+it being mis-understood.  Similarly, `tmp`  can be just about any type
 of variable that is used to hold a temporary value.
 
 Composed names  for variables and functions begin  with lowercase, and
@@ -74,7 +74,7 @@ the    following     words/abbreviations    begin    with    uppercase
 uppercase.
 		
 ----------------------------------------------------------------------
-		Chapter 4: Functions
+Chapter 4: Functions
 
 Functions  should be short  and sweet,  and do  just one  thing.  They
 should fit on  one or two screenfuls of text  (for a 124x50 terminal),
@@ -97,9 +97,9 @@ and it gets confused.  You know you're brilliant, but maybe you'd like
 to understand what you did 2 weeks from now.
 
 ----------------------------------------------------------------------
-		Chapter 5: Commenting
+Chapter 5: Commenting
 
-Use C++ comment style: // bla bla bla 
+Use C++ comment style: `// bla bla bla`
 
 Comments  are good,  but there  is also  a danger  of over-commenting.
 NEVER  try to  explain HOW  your code  works in  a comment:  it's much
@@ -119,9 +119,9 @@ Many times  much better than adding  a comment is to  add an assertion
 (See Chapter 6).
 
 ----------------------------------------------------------------------
-	 	Chapter 6: Assertions
+Chapter 6: Assertions
 
-For all the code that you write always use nanassert.h.  This provides
+For all the code that you write always use `nanassert.h`.  This provides
 an extension over  the traditional assert system. At  the beginning of
 the function check for the  preconditions that you have assumed (don't
 check for postconditions, it slowsdown the code too much).
@@ -136,24 +136,24 @@ the bug is to compile in debug mode an execute it.
 All the code like that should be transformed to assertions. 
 
 Original:
-	if (pointer == 0) {
-		printf("Error....");
-	}
+    if (pointer == 0) {
+      printf("Error....");
+    }
 New:
-        I(pointer);
+    I(pointer);
 
 ----------------------------------------------------------------------
-	 	Chapter 7: Includes
+Chapter 7: Includes
 
-Place system includes first using  <...>. Leave a blank line and place
-sesc includes in ALPHABETICAL order includes "....". Example:
+Place system includes first using  `<...>`. Leave a blank line and place
+sesc includes in ALPHABETICAL order includes `"...."`. Example:
 
-#include <stdlib.h>
-#include <strings.h>
+    #include <stdlib.h>
+    #include <strings.h>
 
-#include "Port.h"
-#include "TaskHandler.h"
-#include "TaskContext.h"
-#include "VBus.h"
-#include "VMemorySystem.h"
+    #include "Port.h"
+    #include "TaskHandler.h"
+    #include "TaskContext.h"
+    #include "VBus.h"
+    #include "VMemorySystem.h"
 

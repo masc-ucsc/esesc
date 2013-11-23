@@ -216,7 +216,7 @@ sub newtradMemStats {
   printf "********************************************************************************************************\n";
 
   if ($op_enPower eq "true") {
-    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s %9s %9s\n",
+    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s   %12s %12s\n",
       "Cache",
       "Occ",
       "AvgMemLat",
@@ -225,8 +225,8 @@ sub newtradMemStats {
       " (  RD",
       "WR",
       "    BUS)",
-      "Pow_dyn",
-      "Pow_lkg"
+      "Dyn_Pow (mW)",
+      "Lkg_Pow (mW)"
     );
   } else {
     printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s \n",
@@ -1912,7 +1912,7 @@ sub powerStats {
   if ($op_enPower eq "true") {
     printf "********************************************************************************************************\n";
     print "Power Metrics: (Dynamic Power,Leakage Power) \n";
-    printf( "%-7s %- 14s %- 14s %- 14s %- 14s %- 14s %- 14s %- 14s %- 18s%- 18s\n",
+    printf( "%-4s %- 13s %- 13s %- 13s %- 13s %- 13s %- 13s %- 13s %- 13s%- 18s\n",
       "Proc",
       "|  RF (mW)",
       "|  ROB (mW)",
@@ -1923,55 +1923,55 @@ sub powerStats {
       "|  Total (W)");
       #  "|  Chip Total (W)");
 
-  printf("------------------------------------------------------------------------------------------------------------------------------\n");
+  printf("--------------------------------------------------------------------------------------------------------\n");
 
     for(my $i=0;$i<$nCPUs;$i++) {
       next unless( $cf->getResultField("P(${i})","clockTicks") );
 
-      printf "%- 7d",$i;
+      printf "%- 4d ",$i;
 
       my $mypow = $cf->getResultField("pwrDynP(${i})_RF","v");
       my $mypowl = $cf->getResultField("pwrLkgP(${i})_RF","v");
-      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
       $op_chippower += $mypow;
       $op_chippower_L += $mypowl;
 
 
       $mypow = $cf->getResultField("pwrDynP(${i})_ROB","v");
       $mypowl = $cf->getResultField("pwrLkgP(${i})_ROB","v");
-      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
       $op_chippower += $mypow;
       $op_chippower_L += $mypowl;
 
 
       $mypow = $cf->getResultField("pwrDynP(${i})_fetch","v");
       $mypowl = $cf->getResultField("pwrLkgP(${i})_fetch","v");
-      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
       $op_chippower += $mypow;
       $op_chippower_L += $mypowl;
 
 
       $mypow = $cf->getResultField("pwrDynP(${i})_EXE","v");
       $mypowl = $cf->getResultField("pwrLkgP(${i})_EXE","v");
-      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
       $op_chippower += $mypow;
       $op_chippower_L += $mypowl;
 
  
       $mypow = $cf->getResultField("pwrDynP(${i})_RNU","v");
       $mypowl = $cf->getResultField("pwrLkgP(${i})_RNU","v");
-      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
       $op_chippower += $mypow;
       $op_chippower_L += $mypowl;
 
  
       $mypow = $cf->getResultField("pwrDynP(${i})_LSU","v");
       $mypowl = $cf->getResultField("pwrLkgP(${i})_LSU","v");
-      printf " | %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+      printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
       $op_chippower += $mypow;
       $op_chippower_L += $mypowl;
 
-      printf " | %- 8.2f,%- 3.2f " ,$op_chippower/1000,$op_chippower_L/1000;
+      printf "| %- 6.2f,%- 3.2f " ,$op_chippower/1000,$op_chippower_L/1000;
 #      printf " | %- 10.2f " ,($op_chippower + $op_chippower_L)/1000;
       print "\n";
       $op_chippower = 0;
