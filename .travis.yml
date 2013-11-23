@@ -4,10 +4,10 @@ compiler:
   - clang
 
 before_install:
-  - apt-get install libboost-dev                                                                                                                                                    
-  - apt-get install bison flex                                                                                                                                                      
-  - apt-get insatll libglib2.0-dev                                                                                                                                                  
-  - apt-get install libncurses5-dev  
+  - sudo apt-get install libboost-dev                                                                                                                                                    
+  - sudo apt-get install bison flex                                                                                                                                                      
+  - sudo apt-get insatll libglib2.0-dev                                                                                                                                                  
+  - sudo apt-get install libncurses5-dev  
 
 before_script:
   - cd ..
