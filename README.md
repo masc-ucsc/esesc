@@ -1,6 +1,8 @@
 ESESC
 =====
 
+[![Build Status](https://travis-ci.org/masc-ucsc/esesc.png)](https://travis-ci.org/masc-ucsc/esesc)
+
 ESESC: A Fast Multicore Simulator
 
 What is ESESC?
