@@ -6,7 +6,7 @@ compiler:
 before_install:
   - sudo apt-get install libboost-dev                                                                                                                                                    
   - sudo apt-get install bison flex                                                                                                                                                      
-  - sudo apt-get insatll libglib2.0-dev                                                                                                                                                  
+  - sudo apt-get install libglib2.0-dev                                                                                                                                                  
   - sudo apt-get install libncurses5-dev  
 
 before_script:
