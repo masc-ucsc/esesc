@@ -31,4 +31,15 @@ ESESC is a significant evolution/improvement over [SESC](http://sesc.sourceforge
 * ESESC is actively maintained, sesc is no longer mantained.
 * ESESC has many bugs solved.
 
+For more information on running ESESC see the `docs` directory.  There is also an [ESESC blog](http://masc.cse.ucsc.edu/esesc/) where updates, announcements, and uses cases are posted.  And a [forum](https://groups.google.com/forum/#!forum/esesc) where you can ask questions and discuss using ESESC.
+
+If you publish research using ESESC please cite our paper, [ESESC: A Fast Multicore Simulator Using Time-Based Sampling](http://masc.soe.ucsc.edu/docs/hpca13.pdf), from HPCA 2013.
+
+    @INPROCEEDINGS{esesc,
+    author = {K. Ardestani, E. and Renau, J.},
+    title = { {ESESC: A Fast Multicore Simulator Using Time-Based Sampling} },
+    booktitle = {International Symposium on High Performance Computer Architecture},
+    series = {HPCA'19},
+    year = {2013}
+    }
 
