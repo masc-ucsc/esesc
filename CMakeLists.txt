@@ -184,7 +184,7 @@ ENDIF(ENABLE_CUDA)
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu --target-list=arm-linux-user --enable-esesc_user --python=python2 --disable-docs --disable-smartcard --disable-guest-base ${QEMU_EXTRA}
+  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu --target-list=arm-linux-user --enable-esesc_user --python=python2 --disable-docs --disable-smartcard --disable-guest-base --cc=gcc ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0
