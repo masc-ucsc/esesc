@@ -2065,29 +2065,13 @@ sub thermStats{
     my $throttlingCycles  = $cf->getResultField("ThrottlingCycles", "max");
     my $ThrottlingPerc = 100.0 * $throttlingCycles*$updateInterval*$throttleCycleRatio/($frequency*$simulatedTime);
 
-    # GET IPC
-    my $nInst = 0;        
-    my $nuInst = 0;        
-    my $clockTicks;
-
-    for(my $i=0;$i<$nCPUs;$i++) {
-      $clockTicks = $cf->getResultField("P(${i})","clockTicks");
-      next unless( $clockTicks > 1 );
-      $nInst = $cf->getResultField("S(${i})","TimingInst");
-      $nuInst  = getProcnInst($i);
-    }
     my $name = $file;
     $name =~ /.*sesc\_([^ ]*)......./;
     $name = $1;
-    printf "IPC       maxT(K)      gradT      Reliability     ChipLeak(W)    ChipPower(W)     Energy(J)    IPC     uIPC\n";
-    my $ipc = 0;
-    my $uipc = 0;
-    if ($clockTicks != 0){
-      $ipc = $nInst/($clockTicks);
-      $uipc = $nuInst/($clockTicks);
-    }
+    printf "maxT(K)      gradT      Reliability     ChipLeak(W)    ChipPower(W)     Energy(J)\n";
+    
     #maximum temperature throughout the chip
-    printf "%.3f     %.3f", $ipc, $maxT;
+    printf "%.3f", $maxT;
     #largest temperature difference across chip
     printf "    %.3f",$gradT;
     #reliablility metrics
@@ -2095,15 +2079,12 @@ sub thermStats{
     printf "        %.3g",$chipleak;
     printf "          %.3g",$chippower;
     printf "            %.3f",($chippower*$simulatedTime);
-    printf "        %.3f",($nInst/($frequency*$simulatedTime));
-    printf "        %.3f\n",($nuInst/($frequency*$simulatedTime));
-    #printf "    %.3f\n",$uipc;
 
-    print "\n";
+    print "\n\n";
 
     #Thermal Throttling
-    printf "Freq       ThrotCyleRatio      ThrotThresh ThrotCycles\t    Throttling\t     sescThermTime\t SimulatedTime \n";
-    printf "%.3e   %9u    %9u   %9.3g\t \t%9.4g\t \t%9g\t\t%2.3g\n",
-    $frequency, $throttleCycleRatio,$thermalThrottle, $throttlingCycles, $ThrottlingPerc, $sescThermTime, $simulatedTime;
+    printf "ThrotCyleRatio      ThrotThresh ThrotCycles\t    Throttling\t     sescThermTime\t SimulatedTime \n";
+    printf "%9u    %9u   %9.3g\t \t%9.4g\t \t%9g\t\t%2.3g\n",
+    $throttleCycleRatio,$thermalThrottle, $throttlingCycles, $ThrottlingPerc, $sescThermTime, $simulatedTime;
   }
 }

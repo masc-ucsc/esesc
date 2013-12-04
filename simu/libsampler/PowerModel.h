@@ -48,7 +48,6 @@
 #include "EmuSampler.h"
 #include "Bundle.h"
 
-//#define DUMP_ALLPT  //enables dumping of total power, total scaled leakage, max Temperature, and signature vectors
 /* }}} */
 
 const float INITIAL_TEMP = 300.0; // TODO: read this from conf file instead

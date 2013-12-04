@@ -58,7 +58,14 @@ void sescthermRK4Matrix::realloc_matrices(size_t newNumelems)
     return;
   free_mem();
 
-  I(0);
+#ifdef DEBUG
+  //sescthermRK4Matrix::realloc_matrices should only be called a few times.
+  //Trigger an assertion if it is called more than 5 times.
+  static int call_count = 0;
+  call_count++;
+  I(call_count <= 5);
+#endif
+
   unsolved_matrix_dyn_ = (MATRIX_DATA **) calloc(newNumelems, sizeof(MATRIX_DATA *));
   I(unsolved_matrix_dyn_);
   size_t matrix_size = newNumelems;

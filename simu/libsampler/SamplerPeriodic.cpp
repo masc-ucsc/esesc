@@ -299,13 +299,13 @@ void SamplerPeriodic::nextMode(bool rotate, FlowID fid, EmuMode mod) {
 
 
 void SamplerPeriodic::doPWTH(FlowID fid) {
-  uint64_t mytime = 0.0;
+  uint64_t mytime = 0;
   if (PerfSampleLeftForTemp == 0){
 
     mytime   = getLocalTime();
     I(mytime > lastTime);
 
-    uint64_t ti = static_cast<uint64_t> (mytime - lastTime);
+    uint64_t ti = mytime - lastTime;
     I(ti);
 
     if (ti == 0) {
@@ -314,9 +314,6 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
     }
 
     TaskHandler::syncStats();
-
-    //printf ("fid: %d ", fid);
-    //std::cout<<"mode "<<lastMode<<" Timeinterval "<<ti<<" mytime "<<mytime<<" last time "<<lastTime<<"freq:"<<getFreq()<<"\n";  
 
     BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
     BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 

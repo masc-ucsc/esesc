@@ -46,7 +46,6 @@ Classes:        SescTherm
 #define FPGA 1
 #define AMD 2
 //#define METRICS_AT_SIMPOINTS 1
-//#define DUMP_SVG 1
 
 #include "sescthermMacro.h"
 #include "ThermTrace.h"
@@ -85,9 +84,7 @@ class SescTherm {
     std::vector<double>   spweight;
     double weight; 
 #endif 
-#ifdef DUMP_ALLPT
-    FILE *logMaxTemp;
-#endif 
+
     const char* tfilename;
     std::vector<MATRIX_DATA> max_power;
     const char * model;

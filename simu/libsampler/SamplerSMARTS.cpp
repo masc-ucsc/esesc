@@ -184,20 +184,19 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t da
   nextMode(ROTATE, fid);
   if (doPower && fid == winnerFid) {
     if (lastMode == EmuTiming) { // timing is going to be over
-      uint64_t mytime          = getLocalTime();
+      uint64_t mytime = getLocalTime();
       int64_t ti = mytime - lastTime;
       I(ti > 0);
       ti = freq*ti/1e9;
-
-      //std::cout<<"mode "<<lastMode<<" Timeinterval "<<ti<<" mytime "<<mytime<<" last time "<<lastTime<<"\n";  
 
       BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
       int32_t simt = BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
       lastTime = mytime;
       updateCPI(fid); 
       endSimSiged = (simt==90)?1:0;
-      if (doTherm)
+      if (doTherm) {
         BootLoader::getPowerModelPtr()->sescThermWrapper->sesctherm.updateMetrics(ti);  
+      }
     }
   }
   pthread_mutex_unlock (&mode_lock);
@@ -210,7 +209,6 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t da
 void SamplerSMARTS::updateCPI(FlowID fid){
   //extract cpi of last sample interval 
  
-  localTicksUptodate = false;
   estCPI = getMeaCPI();
   return; 
 

@@ -231,9 +231,6 @@ ThermTrace::ThermTrace(){
   energyCntrSample_ = 0;
   totalPowerSamples = 0;
   loglkg = NULL;
-#ifdef DUMP_ALLPT
-  loglkgTotal = NULL;
-#endif 
   }
 
 void ThermTrace::dump() const {
@@ -513,12 +510,6 @@ ThermTrace::~ThermTrace(){
     loglkg = NULL;
   }
   
-#ifdef DUMP_ALLPT
-   if(loglkgTotal != NULL){
-     fclose(loglkgTotal);
-     loglkgTotal = NULL;
-   }
-#endif
   scaledLkgCntrValues_->clear();
  
 }
@@ -589,31 +580,12 @@ void ThermTrace::initDumpLeakage(){
 			}
 			fprintf(loglkg, "\n");
 		}
-#ifdef DUMP_ALLPT
-    char *fname_lkg_total = (char *) malloc(1023);
-    sprintf(fname_lkg_total, "total_sesctherm_scaled_lkg_%s",Report::getNameID());
-    loglkgTotal = fopen(fname_lkg_total,"w");
-    GMSG(loglkgTotal==0,"ERROR: could not open loglkgTotal file \"%s\" (ignoring it)",fname_lkg_total);
-#endif
   }
   return;
 
 }
 
 void ThermTrace::dumpLeakage() {
-#ifdef DUMP_ALLPT
-  double total = 0.0;
-	if (dumppwth){
-		for (size_t i=0; i< scaledLkgCntrValues_->size(); i++){
-			fprintf(loglkg, "%e\t", scaledLkgCntrValues_->at(i));
-      total += scaledLkgCntrValues_->at(i) ;
-		}  
-		fprintf(loglkg, "\n");
-		fflush(loglkg);
-    fprintf(loglkgTotal, "%e\n", total);
-	}
-  fflush(loglkgTotal);
-#endif
 	if (dumppwth){
 		for (size_t i=0; i< scaledLkgCntrValues_->size(); i++){
 			fprintf(loglkg, "%e\t", scaledLkgCntrValues_->at(i));

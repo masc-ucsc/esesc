@@ -46,53 +46,19 @@ PowerGlue::PowerGlue() {
 
 void PowerGlue::plug(const char *section, ChipEnergyBundle *eBundle)
 {
-
   energyBundle = eBundle;
   pwr_sec = section;
   reFloorplan = SescConf->getBool(section, "reFloorplan");
-
-
-
-
-
-
-
 }
 
 void PowerGlue::createStatCounters() {
   
   nStats = 0;
-  initStatCounters();
   createCoreStats();
   createMemStats();
 
-//  if (reFloorplan) {
-//    nStats = 0;
-//    createCoreLayoutDescr();
-//    createMemLayoutDescr();
-//  }
-
-  closeStatCounters();
 }
 
-void PowerGlue::initStatCounters() {
-
-  string fname = SescConf->getFpname();// "stats.conf";//SescConf->getCharPtr("", "statsTemplate", 0);
-  size_t pos = fname.find("esesc.conf");
-  I(0); //fixme: change the implementation. maybe another name is used instead of esesc.conf!
-
-  fname.replace(pos,10,"stats.conf");
-
-  statsFile.open(fname.c_str());
-  if (statsFile.fail()) {
-    printf("\nCannot open file %s!\n", fname.c_str());
-    SescConf->notCorrect();
-  }
-}
-
-void PowerGlue::closeStatCounters() {
-  statsFile.close();
-}
 
 void PowerGlue::createCoreStats() {
 
@@ -124,7 +90,6 @@ void PowerGlue::createCoreStats(const char *temp_sec, uint32_t i) {
     sprintf(s, "P(%d)",i);
     str = replicateVar(stats_string, s, s);
     addVRecord(pwr_sec, str);
-    //statsFile<<str<<std::endl;
     nStats++;
   }
 }
@@ -146,7 +111,6 @@ void PowerGlue::createCoreDescr(const char *temp_sec, uint32_t i) {
       ret_str.erase(pos,1);
     }
     addVRecord(layoutDescr_sec, ret_str.c_str());
-    //statsFile<<ret_str.c_str()<<std::endl;
     nStats++;
   }
 }
@@ -205,7 +169,6 @@ void PowerGlue::createMemObjStats(const char *temp_sec, const char *pname, const
     const char *stats_string = SescConf->getCharPtr(temp_sec, "template", i);
     str = replicateVar(stats_string, pname, name);
     addVRecord(pwr_sec, str);
-    //statsFile<<str<<std::endl;
     nStats++;
   }
 
@@ -255,7 +218,6 @@ void PowerGlue::createMemLayoutDescr() {
     char *pname = privateName(&name); // all the objects will have a (%d) at the end 
     sprintf(str, "blockMatch[%d] = %s", nStats++, pname);
     addVRecord(layoutDescr_sec, str);
-    //statsFile<<str<<std::endl;
     free(pname);
   }
 

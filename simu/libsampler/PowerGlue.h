@@ -51,10 +51,6 @@ class PowerGlue {
     ChipEnergyBundle *energyBundle;
     bool reFloorplan;
     uint32_t nStats;
-    ofstream statsFile;
-
-
-
 
     GProcessor *getSimu(FlowID fid)              { return TaskHandler::getSimu(fid); };
     void initStatCounters();

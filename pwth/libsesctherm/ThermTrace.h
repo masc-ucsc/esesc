@@ -62,9 +62,6 @@ class ThermTrace {
     const char* pwrsection;
     FILE *loglkg;
     FILE *logdyn;
-#ifdef DUMP_ALLPT
-    FILE *loglkgTotal;
-#endif
     FILE * input_fd_;
     bool dumppwth;
     //elnaz, added for scaling leakage based on temperature

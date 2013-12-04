@@ -59,7 +59,6 @@ protected:
   uint64_t interval;
   static uint64_t local_nsticks;
   uint64_t gClock;
-  bool     localTicksUptodate;
   bool     endSimSiged;
   std::vector<EmuMode>  sequence_mode;
   std::vector<uint64_t> sequence_size;

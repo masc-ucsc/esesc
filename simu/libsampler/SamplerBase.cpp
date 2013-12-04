@@ -76,7 +76,6 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
   for (unsigned int i=0; i<cpiHistSize;i++)
     cpiHist.push_back(1.0);
 
-  localTicksUptodate = true;
   endSimSiged = false;
   pthread_mutex_init(&mode_lock, NULL);
   lastGlobalClock = 0;
@@ -136,7 +135,6 @@ uint64_t SamplerBase::getLocalTime(FlowID fid)
 /* time in ns since the beginning {{{1 */
 {
   // predicted cpi for Rabbit and Warmup, globalClock for Detail and Timing
-  I(localTicksUptodate == true);
   uint64_t nsticks; 
 
   FlowID lfid = fid;
@@ -185,8 +183,9 @@ void SamplerBase::addLocalTime(FlowID fid, uint64_t nsticks)
 void SamplerBase::updateLocalTime() 
 /* update local time (non timing/detail modes) in ns since the beginning {{{1 */
 {
-  if (lastMode == EmuTiming || lastMode == EmuDetail || lastMode == EmuInit) 
+  if (lastMode == EmuTiming || lastMode == EmuDetail || lastMode == EmuInit)  {
     return;
+  }
 
   I(stopJustCalled == false);
 
@@ -197,7 +196,6 @@ void SamplerBase::updateLocalTime()
   
   nsTicks[sFid] +=  static_cast<uint64_t>(addtime);
   local_nsticks = nsTicks[sFid];
-  localTicksUptodate = true;
 }
 
 /* }}} */

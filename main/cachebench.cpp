@@ -1,14 +1,15 @@
 
 #include <sys/time.h>
 
-#include "ReportGen.h"
+#include "Report.h"
+#include "SescConf.h"
 #include "CacheCore.h"
 
 class SampleState : public StateGeneric<long> {
 public:
   int32_t id;
 
-  SampleState() {
+  SampleState(int32_t lineSize) {
     id = 0;
   }
   bool operator==(SampleState s) const {
@@ -16,7 +17,7 @@ public:
   }
 };
 
-typedef CacheGeneric<SampleState, long, false> MyCacheType;
+typedef CacheGeneric<SampleState, long> MyCacheType;
 
 MyCacheType *cache;
 
@@ -110,7 +111,7 @@ void benchMatrix(const char *str)
   endBench(str);
 }
 
-int32_t main(int32_t argc, char **argv)
+int main(int32_t argc, const char **argv)
 {
   if( argc != 2 ){
     MSG("use: CacheSample <cfg_file>");
@@ -119,18 +120,17 @@ int32_t main(int32_t argc, char **argv)
 
   Report::openFile("report.log");
 
-  SescConf = new SConfig(argv[1]);
-  EnergyMgr::init();
+  SescConf = new SConfig(argc,argv);
 
-  cache = MyCacheType::create("tst1","","tst1");
+  cache = MyCacheType::create("DL1_core","","tst1");
 
-  int32_t assoc = SescConf->getInt("tst1","assoc");
+  int32_t assoc = SescConf->getInt("DL1_core","assoc");
   for(int32_t i=0;i<assoc;i++) {
     ulong addr = (i<<8)+0xfa;
 
     MyCacheType::CacheLine *line = cache->findLine(addr);
     if(line) {
-      fprintf(stderr,"ERROR: Line 0x%x (0x%x) found\n"
+      fprintf(stderr,"ERROR: Line 0x%lX (0x%lX) found\n"
 	      ,cache->calcAddr4Tag(line->getTag())
 	      ,addr);
       exit(-1);
@@ -144,12 +144,12 @@ int32_t main(int32_t argc, char **argv)
 
     MyCacheType::CacheLine *line = cache->findLine(addr);
     if(line == 0) {
-      fprintf(stderr,"ERROR: Line (0x%x) NOT found\n"
+      fprintf(stderr,"ERROR: Line (0x%lX) NOT found\n"
 	      ,addr);
       exit(-1);
     }
     if (line->id != i) {
-      fprintf(stderr,"ERROR: Line 0x%x (0x%x) line->id %d vs id %d (bad LRU policy)\n"
+      fprintf(stderr,"ERROR: Line 0x%lX (0x%lX) line->id %d vs id %d (bad LRU policy)\n"
 	      ,cache->calcAddr4Tag(line->getTag())
 	      ,addr
 	      ,line->id, i
@@ -159,23 +159,25 @@ int32_t main(int32_t argc, char **argv)
   }
 
 
-  cache = MyCacheType::create("TLB","","TLB");
-  benchMatrix("TLB");
+  cache = MyCacheType::create("PerCore_TLB","","TLB");
+  benchMatrix("PerCore_TLB");
 
-  cache = MyCacheType::create("L1Cache","","L1");
-  benchMatrix("DL1");
+  cache = MyCacheType::create("DL1_core","","L1");
+  benchMatrix("DL1_core");
 
+#if 0
   cache = MyCacheType::create("BTB","","BTB");
   benchMatrix("BTB");
 
   cache = MyCacheType::create("DM","","DM");
   benchMatrix("DM");
+#endif
 
   GStats::report("Cache Stats");
 
   Report::close();
 
-  cache->destroy();
+  //cache->destroy();
 
   return 0;
 }

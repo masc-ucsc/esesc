@@ -30,9 +30,9 @@ SOURCE_GROUP("Header Files" FILES ${main_HEADER})
 # esesc and mainbench
 
 IF(ENABLE_CUDA)
-  SET(EXELIST "esesc" "lsqtest" "qemumain" "membench" "gpumain")
+  SET(EXELIST "esesc" "lsqtest" "qemumain" "membench" "cachebench""gpumain")
 ELSE(ENABLE_CUDA)
-  SET(EXELIST "esesc" "lsqtest" "qemumain" "membench" )
+  SET(EXELIST "esesc" "lsqtest" "qemumain" "membench" "cachebench")
   FILE(GLOB exec_SOURCE "gpumain.cpp")
   LIST(REMOVE_ITEM main_SOURCE ${exec_SOURCE})
 ENDIF(ENABLE_CUDA)

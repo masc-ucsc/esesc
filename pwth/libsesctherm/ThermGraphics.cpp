@@ -959,27 +959,27 @@ void ThermGraphics::create_open_graphics_file (int data_type, int unit_type,
 
   switch (layer_computation) {
     case GFX_LAYER_AVE:
-      filename += "[lcomp:AVE][layers:";
+      filename += "lcomp-AVE_layers-";
       //print layers used in average
       filename += Utilities::stringify (layers[0]);
       for (unsigned int i = 1; i < layers.size (); i++)
         filename += "," + Utilities::stringify (layers[i]);
 
-      filename += "]";
+      filename += "_";
       break;
     case GFX_LAYER_NORMAL:
-      filename += "[lcomp:NORM][layer:" + Utilities::stringify (layer) + "]";
+      filename += "lcomp-NORM_layer-" + Utilities::stringify (layer) + "_";
       break;
     case GFX_LAYER_DIF:
-      filename += "[lcomp:DIF][layers:";
+      filename += "lcomp-DIF_layers-";
       for (unsigned int i = 1; i < layers.size (); i++)
         filename += "," + Utilities::stringify (layers[i]);
 
-      filename += "]";
+      filename += "_";
       break;
     case GFX_LAYER_FLOORPLAN:
-      filename += "[lcomp:FLOORPLAN][layer:" +
-        Utilities::stringify (layer) + "].svg";
+      filename += "lcomp-FLOORPLAN_layer-" +
+        Utilities::stringify (layer) + ".svg";
       (of_graphics_outfile).open (filename.c_str (), std::ifstream::out);
       if (!(of_graphics_outfile))
         Utilities::fatal ("Cannot create graphics output (.svg) file" + filename + "\n");
@@ -992,8 +992,8 @@ void ThermGraphics::create_open_graphics_file (int data_type, int unit_type,
 
   switch (sample_type) {
     case GFX_CUR: filename +=
-                  "[smpltype:CUR][" +
-                    Utilities::stringify (datalibrary_->time_) + "s]";
+                  "smpltype-CUR_" +
+                    Utilities::stringify (datalibrary_->time_) + "s_";
                   break;
     default:
                   std::cerr << "ThermGraphics::create_open_graphics_file => invalid sample type" << std::endl;
@@ -1002,10 +1002,10 @@ void ThermGraphics::create_open_graphics_file (int data_type, int unit_type,
 
   switch (unit_type) {
     case GFX_FUNIT:
-      filename += "[utype:FUNIT]";
+      filename += "utype-FUNIT_";
       break;
     case GFX_MUNIT:
-      filename += "[utype:MUNIT]";
+      filename += "utype-MUNIT_";
       break;
     default:
       std::cerr << "ThermGraphics::create_open_graphics_file => invalid unit type" << std::endl;
@@ -1014,10 +1014,10 @@ void ThermGraphics::create_open_graphics_file (int data_type, int unit_type,
 
   switch (data_type) {
     case GFX_POWER:
-      filename += "[dtype:PWR]";
+      filename += "dtype-PWR";
       break;
     case GFX_TEMP:
-      filename += "[dtype:TEMP]";
+      filename += "dtype-TEMP";
       break;
     default:
       std::cerr << "ThermGraphics::create_open_graphics_file => invalid unit type" << std::endl;

@@ -50,6 +50,7 @@ Description:    Sample driver for SescTherm Library
 #include "SescConf.h"
 #include "SescTherm.h"
 #include "Report.h"
+#include "nanassert.h"
 SescTherm::SescTherm ()
 {
   conf_file   = NULL;
@@ -70,7 +71,6 @@ uint32_t SescTherm::cooldown(ThermModel & temp_model, int transistor_layer)
   if (!option_cooldown)
     return 0;
 
-  //std::cout << " Cooldown section, delay: "<<throttleTime<<"\n";
   for (size_t j = 0; j < max_power.size (); j++) {
     temp_model.set_power_flp (j, transistor_layer, max_power[j] / 50);	// 5% of the max power per block
   }
@@ -97,11 +97,11 @@ uint32_t SescTherm::cooldown(ThermModel & temp_model, int transistor_layer)
   }while(option_cooldown);
 
 
-    std::cout << "C " << temp_model.get_time () << " ";
+    //std::cout << "C " << temp_model.get_time () << " ";
     for (unsigned int i = 0; i < flp_temperature_map.size (); i++) {
-      std::cout << flp_temperature_map[i] << "\t";
+      //std::cout << flp_temperature_map[i] << "\t";
     }
-    std::cout << std::endl;
+    //std::cout << std::endl;
     return d;
   //}
 }
@@ -111,98 +111,44 @@ int SescTherm::process_trace (ThermModel & temp_model,
     MATRIX_DATA initialTemp, int power_samples_per_therm_sample,
     bool rabbit)
 {
-  //int num_computations = 0;
   static std::vector <MATRIX_DATA > power (trace.get_energy_size());
-  int samples = 0;
+  std::vector <MATRIX_DATA> flp_temperature_map;
+  bool throttle = true;
+  option_cooldown = false;
+
+  while (throttle){
+    flp_temperature_map.clear(); 
+    flp_temperature_map = temp_model.get_temperature_layer_map (transistor_layer, transistor_layer);
+    for (size_t i = 0; i < flp_temperature_map.size (); i++) {
+      if (flp_temperature_map[i] > thermalThrottle){ 
+        option_cooldown=true;
+        break;
+      }
+    }
+
+    if (option_cooldown){
+      throttleLength+=cooldown (temp_model, transistor_layer);
+    } else {
+      throttle = false;
+    }
+
+    option_cooldown = false;
+  }
 
 
-			//static uint32_t beshmar = 0;
-#if 1 //eka, Check the thermalThrottle and cooldown if necessary
-		{
-			//std::cout << "T " << std::setprecision(6)<< temp_model.get_time() << " - ";
-			std::vector <MATRIX_DATA> flp_temperature_map;
-
-			bool throttle = true;
-			option_cooldown = false;
-			//throttleLength = 0;
-			while (throttle){
-		  flp_temperature_map.clear(); 
-			flp_temperature_map = temp_model.get_temperature_layer_map (transistor_layer, transistor_layer);
-				for (size_t i = 0; i < flp_temperature_map.size (); i++) {
-					if (flp_temperature_map[i] > thermalThrottle){ 
-						option_cooldown=true;
-						break;
-					}
-				}
-
-				if (option_cooldown){
-					throttleLength+=cooldown (temp_model, transistor_layer);
-				}else
-					throttle = false;
-
-				option_cooldown=false;
-
-			}
-		}
-		//beshmar = throttleLength;
-		//std::cout << "-T " << std::setprecision(6)<< temp_model.get_time()<< "-- "<<throttleLength<< " "<<beshmar<< " " <<beshmar*throttleCycles ;
-		//std::cout << std::endl;
-#endif
-
-  while (trace.read_energy (false)) {
-
-		for (size_t j = 0; j < trace.get_energy_size (); j++) {
-			power[j] = trace.get_energy (j);
-		}
-
-		samples = 1;
-
-#if DEBUG
-		{
-			std::cout << "D " << temp_model.get_time () << " ";
-			MATRIX_DATA total = 0;
-			MATRIX_DATA p;
-			for (size_t j = 0; j < power.size (); j++) {
-				p = ((power[j] / samples) / trace.get_area(j))/10000; //W/cm^2
-				std::cout << trace.get_name(j) << "=" << p << "\t";
-				if (p>1.2e3) {
-					std::cout << "\nTOO DENSE!!!\n";
-				//	std::cout << "ADJUSTED";
-				//	power[j] *= 1/p;
-				}
-				total += p;
-			}
-			std::cout << ": " << std::endl;
-		}
-#endif
-#if 0
-		{
-			std::cout << "P " << temp_model.get_time () << " ";
-			MATRIX_DATA total = 0;
-			MATRIX_DATA p;
-			for (size_t j = 0; j < power.size (); j++) {
-				p = power[j] / samples;
-				std::cout << j << "=" << p << "\t";
-				total += p;
-			}
-			std::cout << "\t:\t" << total << std::endl;
-			std::cout << ": " << samples << std::endl;
-		}
-#endif
+  while (trace.read_energy(false)) {
+    for (size_t j = 0; j < trace.get_energy_size (); j++) {
+      power[j] = trace.get_energy (j);
+    }
 
     for (size_t j = 0; j < trace.get_energy_size (); j++) {
-      power[j] /= samples;
       if (max_power[j] < power[j])
         max_power[j] = power[j];
       temp_model.set_power_flp (j, transistor_layer, power[j]);
       power[j] = 0.0;
     }
 
-    //-------------------------------------
-    // Advance Thermal
-
-		//std::cout << "TC " << std::setprecision(6)<< temp_model.get_time() << " - ";
-    MATRIX_DATA ts = power_timestep * samples;
+    MATRIX_DATA ts = power_timestep;
     static int each_ten_update = -1;
     if (each_ten_update < 0) {
       temp_model.compute(ts, true); 
@@ -211,63 +157,10 @@ int SescTherm::process_trace (ThermModel & temp_model,
       temp_model.compute(ts, false);
       each_ten_update--;
     }
-
-		//std::cout << "-TC " << std::setprecision(6)<< temp_model.get_time() << " -- " << ts;
-		//std::cout << std::endl;
-    //num_computations++;
-
-    //-------------
-		static MATRIX_DATA print_at = 0;
-    if (temp_model.get_time () > print_at) { //eka, TEMPORARY
-#ifndef DUMP_ALLPT
-    print_at = temp_model.get_time () + 0.0000025;	// every 250us
-#endif 
-
-//#ifdef DUMP_SVG
-      temp_model.print_graphics();
-//#endif
-
-      if (rabbit){
-				std::cout << "R " << temp_model.get_time () << " ";
-			//	if (logtemp)
-			//		fprintf(logtemp, "R\t%f\t", temp_model.get_time()); 
-
-			}else{
-        std::cout << std::setprecision(6) << "T " << temp_model.get_time () << " ";
-			if (logtemp)
-					fprintf(logtemp, "T\t%f\t", temp_model.get_time()); 
-			}
-
-      std::vector < MATRIX_DATA > flp_temperature_map =
-        temp_model.get_temperature_layer_map (transistor_layer,
-            transistor_layer);
-#ifdef DUMP_ALLPT
-      double maxTemp = flp_temperature_map[0];
-      for (unsigned int i = 0; i < flp_temperature_map.size (); i++) {
-        std::cout << std::setprecision(3) << flp_temperature_map[i] << " ";
-        if (flp_temperature_map[i+1] > maxTemp)
-          maxTemp = flp_temperature_map[i+1];
-			  //if (logtemp)
-        //  fprintf(logtemp, "%f\t", flp_temperature_map[i]); 
-      }
-      //if (logMaxTemp){
-      //  fprintf(logMaxTemp, "%f\n",maxTemp);
-      //}
-      fflush(logMaxTemp);
-#else 
-      for (unsigned int i = 0; i < flp_temperature_map.size (); i++) {
-        std::cout << std::setprecision(3) << flp_temperature_map[i] << " ";
-			  if (logtemp)
-          fprintf(logtemp, "%f\t", flp_temperature_map[i]); 
-      }
-#endif 
-      std::cout << std::endl;
-			if (logtemp){
-				fprintf(logtemp,"\n");
-        fflush(logtemp);
-      }
-    }
   }
+
+  //DUMP_SVG
+  temp_model.print_graphics();
   return 0;
 }
 
@@ -277,15 +170,7 @@ void SescTherm::configure(ChipEnergyBundle * energyBundle){
 	elapsed = 0;
   
 	trace.loadLkgPtrs(energyBundle);
-  //eka, set_parameter in the class constructor will do that
-  //read_parameters (argc, const_cast<char **>(argv));
-
-  //SescConf = new SConfig (argc, argv);
-  //if (SescConf == 0) {
-   // std::cout << "Cannot open configuration file" << std::endl;
-   // exit (1);
-  //}
-
+  
   std::cout << "STARTING SESCTHERM" << std::endl;
 
   model = SescConf->getCharPtr ("thermal", "model");
@@ -293,25 +178,14 @@ void SescTherm::configure(ChipEnergyBundle * energyBundle){
   trace.dumppwth    = 0; 
   trace.pwrsection = (char *) SescConf->getCharPtr("","pwrmodel",0);
   trace.dumppwth  = SescConf->getBool(trace.pwrsection,"dumpPower",0);
-  //if (trace.dumppwth){
-    //dumping temperature
-    char *fname = (char *) malloc(1023); 
-    sprintf(fname, "temp_%s",Report::getNameID());
-    logtemp   = fopen(fname,"w");  
-    GMSG(logtemp==0,"ERROR: could not open logtemp file \"%s\" (ignoring it)",fname);
-#ifdef DUMP_ALLPT 
-  char *tempfname = (char *) malloc(1023);
-  sprintf(tempfname, "max_temp_%s",Report::getNameID());
-  logMaxTemp   = fopen(tempfname,"w");  
-  GMSG(logMaxTemp==0,"ERROR: could not open logtemp file \"%s\" (ignoring it)",tempfname);
-#endif 
-  //}
+  char *fname = (char *) malloc(1023); 
+  sprintf(fname, "temp_%s",Report::getNameID());
+  logtemp   = fopen(fname,"w");  
+  GMSG(logtemp==0,"ERROR: could not open logtemp file \"%s\" (ignoring it)",fname);
   trace.initDumpLeakage();
   start = clock ();
   useRK4 = SescConf->getBool(model,"useRK4");
-  //eka, flp_file? what should I do with that?
-  temp_model.ThermModelInit(flp_file, 0, useRK4, output_file, 
-      true, false);
+  temp_model.ThermModelInit(flp_file, 0, useRK4, output_file, true, false);
   end = clock ();
 
   std::cout << "MODEL INITIALIZED" << std::endl;
@@ -323,10 +197,6 @@ void SescTherm::configure(ChipEnergyBundle * energyBundle){
   std::cout << "RECOMMENDED MODEL TIMESTEP: " << temp_model.get_recommended_timestep () << std::endl;
 
   temp_model.datalibrary_->set_timestep(temp_model.get_recommended_timestep());
-
-  //this is a map of maps
-  //it stores the time index of the run, and the corresponding temperature map, 
-  // where flp_temperature_map[1.0][0] returns the temperature for flp unit 0 at timestep 1.0 
 
   initialTemp = SescConf->getDouble (model, "initialTemp");	// sesctherm works in K (not C)
   ambientTemp = SescConf->getDouble (model, "ambientTemp");
@@ -437,13 +307,10 @@ int SescTherm::computeTemp(ChipEnergyBundle *energyBundle,
 		// eka, dump block temperature
     std::vector < MATRIX_DATA > flp_temperature_map = 
         temp_model.get_temperature_layer_map (transistor_layer, transistor_layer);
-    //  eka, map block temperature to power model structure temperature
 		trace.BlockT2StrcT(&flp_temperature_map, temperatures);
     
     cooldown (temp_model, transistor_layer);
 
-    //std::cout << " COMPUTATION TIME FOR " << num_computations << " ITERATIONS IS "
-    //    << elapsed << "  (" << elapsed / num_computations << "SECONDS PER ITERATION )" << std::endl;
 		return return_signal;
 }
 
@@ -451,25 +318,11 @@ void SescTherm::dumpTemp(std::vector <MATRIX_DATA> * flp_temperature_map){
 			if (logtemp)
 					fprintf(logtemp, "T\t%f\t", temp_model.get_time()); 
 			
-
-#ifdef DUMP_ALLPT
-      double maxTemp = (*flp_temperature_map)[0];
-      for (unsigned int i = 0; i < (*flp_temperature_map).size (); i++) {
-        if ((*flp_temperature_map)[i+1] > maxTemp)
-          maxTemp = (*flp_temperature_map)[i+1];
-			  if (logtemp)
-          fprintf(logtemp, "%f\t", (*flp_temperature_map)[i]); 
-      }
-      if (logMaxTemp){
-        fprintf(logMaxTemp, "%f\n",maxTemp);
-      }
-      fflush(logMaxTemp);
-#else 
       for (unsigned int i = 0; i < (*flp_temperature_map).size(); i++) {
 			  if (logtemp)
           fprintf(logtemp, "%f\t", (*flp_temperature_map)[i]); 
       }
-#endif 
+
 			if (logtemp)
 				fprintf(logtemp,"\n");
       fflush(logtemp);
@@ -477,14 +330,8 @@ void SescTherm::dumpTemp(std::vector <MATRIX_DATA> * flp_temperature_map){
 
 
 SescTherm::~SescTherm(){
-  //if (trace.dumppwth){
     if (logtemp)
       fclose(logtemp);
- // }
-#ifdef DUMP_ALLPT
-    if (logMaxTemp)
-     fclose(logMaxTemp); 
-#endif
 }
 
 void SescTherm::updateMetrics(uint64_t timeinterval){

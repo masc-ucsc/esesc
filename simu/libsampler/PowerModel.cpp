@@ -707,7 +707,7 @@ bool PowerModel::throttle(FlowID fid, uint32_t throttleLength) {
   uint32_t tc = throttleLength - throttleLengthPrev;
   uint32_t throttleCycles = tCycQuanta*tc * samplingRatio;
   if (tc > 0) {
-    MSG("Thermal throttling cpu ?? (0) @%lld, %d %d", static_cast<long long>(globalClock), throttleCycles, throttleLength);
+    LOG("Thermal throttling cpu ?? (0) @%lld, %d %d", static_cast<long long>(globalClock), throttleCycles, throttleLength);
     freeze(fid, static_cast<Time_t>(throttleCycles));
   }
   throttleLengthPrev = throttleLength;
