@@ -317,7 +317,9 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
 
     BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
     BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
-    BootLoader::getPowerModelPtr()->sescThermWrapper->sesctherm.updateMetrics(ti);  
+    if(doTherm) {
+      BootLoader::getPowerModelPtr()->sescThermWrapper->sesctherm.updateMetrics(ti);  
+    }
     PerfSampleLeftForTemp = TempToPerfRatio;
     lastTime = mytime;
   }
