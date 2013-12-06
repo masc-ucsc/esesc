@@ -651,10 +651,10 @@ void PowerModel::dumpTotalPower(const char * str){
       fprintf(tp, "%2.7lf\t", getPowerTime());
 
     fprintf(tp, "%f\t", getLastTotalPower());
-    for(size_t i=0; i<ncores;i++)
-      fprintf(tp, "%ld\t", (unsigned long) clockInterval[i]);
-    fprintf(tp, "%ld\t", (unsigned long) timeInterval);
-    fprintf(tp, "%ld\t", (unsigned long) getFreq());
+    //for(size_t i=0; i<ncores;i++)
+      //fprintf(tp, "%ld\t", (unsigned long) clockInterval[i]);
+    //fprintf(tp, "%ld\t", (unsigned long) timeInterval);
+    //fprintf(tp, "%ld\t", (unsigned long) getFreq());
     fprintf(tp,"\n");
     fclose(tp);
     free(fname_p);

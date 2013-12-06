@@ -203,12 +203,13 @@ void ArrayST::optimize_array()
 			l_ip.cycle_time_dev-=10;
 			//l_ip.delay_dev-=10;
 		}
+
     static bool first = true;
     if (first) {
-      printf("\nOptimization done for");
+    IS(printf("\nnOptimization done for"));
       first = false;
     }
-      printf("\t'%s' ", name.c_str());
+    IS(printf("\t'%s' ", name.c_str()));
 
 	//Give warning but still provide a result with best timing found
 	if (throughput_overflow==true)

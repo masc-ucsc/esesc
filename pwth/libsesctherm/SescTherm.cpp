@@ -316,7 +316,7 @@ int SescTherm::computeTemp(ChipEnergyBundle *energyBundle,
 
 void SescTherm::dumpTemp(std::vector <MATRIX_DATA> * flp_temperature_map){
 			if (logtemp)
-					fprintf(logtemp, "T\t%f\t", temp_model.get_time()); 
+					fprintf(logtemp, "T\t%2.7lf\t", temp_model.get_time()); 
 			
       for (unsigned int i = 0; i < (*flp_temperature_map).size(); i++) {
 			  if (logtemp)
