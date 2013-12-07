@@ -1423,14 +1423,14 @@ sub simStats {
 
       printf " %6.3f ms Sim",(1e-3/$freq)*$clockTicks;
       print " (${freq}MHz)\n";
-      printf "  Inst (M)  ";
+      printf "  Inst  ";
 
       foreach my $mode ("Rabbit", "Warmup", "Detail", "Timing") {
         my $inst = $cf->getResultField("S(${s})","${mode}Inst");
         printf " %4.1f%%\t",(100*$inst/($inst_t+1));
 
         if ($mode eq "Timing") {
-          printf ": Approx Total Time %6.3f ms Sim",(1e-3/$freq)*$clockTicks;
+          printf "        : Approx Total Time %6.3f ms Sim",(1e-3/$freq)*$clockTicks;
           print " (${freq}MHz)";
         }
       }
