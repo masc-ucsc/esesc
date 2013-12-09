@@ -3,6 +3,11 @@ compiler:
   - gcc
   - clang
 
+env:
+  matrix:
+    - BUILD_TYPE=Release
+    - BUILD_TYPE=Debug
+
 before_install:
   - sudo apt-get install libboost-dev                                                                                                                                                    
   - sudo apt-get install bison flex                                                                                                                                                      
@@ -13,7 +18,7 @@ before_script:
   - cd ..
   - mkdir build
   - cd build
-  - cmake ../esesc
+  - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
 
 script: make
 
