@@ -23,9 +23,9 @@ before_script:
 script: make
 
 after_script:
-  mkdir run
-  cd run
-  cp ../../esesc/conf/* .
-  cp ../../esesc/bins/* .
-  ../main/esesc
+  - mkdir run
+  - cd run
+  - cp ../../esesc/conf/* .
+  - cp ../../esesc/bins/* .
+  - ../main/esesc
 
