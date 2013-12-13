@@ -72,8 +72,8 @@ void TaskHandler::report(const char *str) {
     cpuid_sub++;
     if (cpuid_sub>=cpus[cpuid]->getMaxFlows()) {
       cpuid_sub = 0;
-      cpuid     = cpuid+1;
       GI((cpus.size() > 1), (cpuid < cpus.size()));
+      cpuid     = cpuid+1;
     }
   }
   Report::field("OSSim:nSampler=%d",samplercount+1);

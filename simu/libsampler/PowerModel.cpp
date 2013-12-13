@@ -643,7 +643,8 @@ void PowerModel::dumpTotalPower(const char * str){
     FILE * tp = fopen(fname_p, "a");
 
     if (totalPowerSamples < 2)  {
-      fprintf(logprf, "Time\t TotalPower\t clockInterval\t timeInterval\t Frequency\n");
+      //fprintf(tp, "Time\t TotalPower\t clockInterval\t timeInterval\t Frequency\n");
+      fprintf(tp, "Time\t TotalPower\t\n");
     }
     if (doTherm)
       fprintf(tp, "%2.7lf\t", sescThermWrapper->sesctherm.temp_model.get_time());
@@ -652,7 +653,7 @@ void PowerModel::dumpTotalPower(const char * str){
 
     fprintf(tp, "%f\t", getLastTotalPower());
     //for(size_t i=0; i<ncores;i++)
-      //fprintf(tp, "%ld\t", (unsigned long) clockInterval[i]);
+    //fprintf(tp, "%ld\t", (unsigned long) clockInterval[i]);
     //fprintf(tp, "%ld\t", (unsigned long) timeInterval);
     //fprintf(tp, "%ld\t", (unsigned long) getFreq());
     fprintf(tp,"\n");

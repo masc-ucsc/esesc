@@ -1034,7 +1034,7 @@ static inline int target_to_host_resource(int code)
     }
 }
 
-static inline abi_long copy_from_user_timeval(struct timeval *tv,
+static abi_long copy_from_user_timeval(struct timeval *tv,
                                               abi_ulong target_tv_addr)
 {
     struct target_timeval *target_tv;
@@ -1050,7 +1050,7 @@ static inline abi_long copy_from_user_timeval(struct timeval *tv,
     return 0;
 }
 
-static inline abi_long copy_to_user_timeval(abi_ulong target_tv_addr,
+static abi_long copy_to_user_timeval(abi_ulong target_tv_addr,
                                             const struct timeval *tv)
 {
     struct target_timeval *target_tv;
@@ -1078,7 +1078,7 @@ static inline abi_long copy_to_user_timeval(abi_ulong target_tv_addr,
         curr_time.tv_nsec -= 1e9;
       }
 
-      /* fprintf(stderr,"QEMU Time: sec %d, nsec %d [ticks %llu freq %f]\n",curr_time.tv_sec, curr_time.tv_nsec, ticks, freq); */
+      //fprintf(stderr,"QEMU Time: sec %ld, nsec %ld, ntics %llu\n",curr_time.tv_sec, curr_time.tv_nsec, (unsigned long long )nsticks);
 
       __put_user(curr_time.tv_sec, &target_tv->tv_sec);
       __put_user(curr_time.tv_nsec/1e3, &target_tv->tv_usec);

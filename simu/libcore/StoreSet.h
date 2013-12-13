@@ -46,7 +46,7 @@
 /* }}} */
 #define STORESET_MERGING 1
 #define STORESET_CLEARING 1
-#define CLR_INTRVL 100000000
+#define CLR_INTRVL 90000000
 
 class StoreSet {
 private:

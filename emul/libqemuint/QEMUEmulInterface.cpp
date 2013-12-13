@@ -98,6 +98,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
     }
   }
 
+  firstassign = 1; // zero is already assigned as FID
+  if (firstassign >= fidFreePool.size())
+    firstassign = 0;
+
   MSG("QEMUEmulInterface.cpp : nFlows = %d",nFlows);
   reader = new QEMUReader(qargs, section, this);
 }
@@ -113,6 +117,19 @@ FlowID QEMUEmulInterface::getFid(FlowID last_fid)
 {
   //pthread_mutex_lock(&mutex);
   I(fidFreePool.size() == nEmuls); 
+
+  if (last_fid == FID_NULL) {
+    // If it is the first time, try to assign in round robin
+    if (fidFreePool[firstassign] != FID_TAKEN) {
+      fidFreePool[firstassign] = FID_TAKEN;
+      int i= firstassign;
+      firstassign++;
+      if (firstassign >= fidFreePool.size())
+        firstassign = 0;
+
+      return i;
+    }
+  }
 
   FlowID fid2 = FID_NULL;
   for(size_t i=0; i<nEmuls ; i++){ // Search for fids that are used and freed recently

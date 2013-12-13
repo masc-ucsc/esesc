@@ -40,6 +40,7 @@ class QEMUEmulInterface : public EmulInterface {
   FlowID      nFlows;
   FlowID      nEmuls;
   QEMUReader *reader;
+  FlowID      firstassign;
 
  protected:
   static std::vector<FlowID> fidFreePool; 

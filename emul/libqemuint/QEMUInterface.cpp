@@ -108,6 +108,7 @@ extern "C" FlowID QEMUReader_resumeThreadGPU(FlowID uid) {
 extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid) { 
 
   uint32_t fid = qsamplerlist[0]->getFid(last_fid); 
+  MSG("resume %d -> %d",last_fid,fid);
   return(qsamplerlist[fid]->resumeThread(uid, fid));
 }
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
