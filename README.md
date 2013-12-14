@@ -52,3 +52,7 @@ If you publish research using ESESC please cite the paper [ESESC: A Fast Multico
 [2]:https://groups.google.com/forum/#!forum/esesc 
 [3]:http://masc.soe.ucsc.edu/docs/hpca13.pdf
 
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/masc-ucsc/esesc/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
