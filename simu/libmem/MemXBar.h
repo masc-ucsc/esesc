@@ -1,3 +1,4 @@
+// copyright and includes {{{1
 // Contributed by David Munday
 //                Jose Renau                  
 //
@@ -48,44 +49,31 @@ protected:
   uint32_t LineSize;
   uint32_t Modfactor;
 
+  GStatsCntr  readHit;
+  GStatsCntr  writeHit;
+
 public:
   MemXBar(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
   ~MemXBar() {}
 
-  Time_t nextReadSlot(       const MemRequest *mreq);
-  Time_t nextWriteSlot(      const MemRequest *mreq);
-  Time_t nextBusReadSlot(    const MemRequest *mreq);
-  Time_t nextPushDownSlot(   const MemRequest *mreq);
-  Time_t nextPushUpSlot(     const MemRequest *mreq);
-  Time_t nextInvalidateSlot( const MemRequest *mreq);
+	// Entry points to schedule that may schedule a do?? if needed
+	void req(MemRequest *req)         { doReq(req); };
+	void reqAck(MemRequest *req)      { doReqAck(req); };
+	void setState(MemRequest *req)    { doSetState(req); };
+	void setStateAck(MemRequest *req) { doSetStateAck(req); };
+	void disp(MemRequest *req)        { doDisp(req); }
 
-  GStatsCntr  readHit;
-  GStatsCntr  writeHit;
+	// This do the real work
+	void doReq(MemRequest *r);
+	void doReqAck(MemRequest *req);
+	void doSetState(MemRequest *req);
+	void doSetStateAck(MemRequest *req);
+	void doDisp(MemRequest *req);
 
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
 
-  // processor direct requests
-  void read(MemRequest  *req);
-  void write(MemRequest *req);
-  void writeAddress(MemRequest *req);
-
-  // DOWN
-  void busRead(MemRequest *req);
-  void pushDown(MemRequest *req);
-  
-  // UP
-  void pushUp(MemRequest *req);
-  void invalidate(MemRequest *req);
-
-  // Status/state
-  uint16_t getLineSize() const;
-
-  bool canAcceptRead(DInst *dinst) const;
-  bool canAcceptWrite(DInst *dinst) const;
-
-  TimeDelta_t ffread(AddrType addr, DataType data);
-  TimeDelta_t ffwrite(AddrType addr, DataType data);
-  void        ffinvalidate(AddrType addr, int32_t lineSize);
-
+	bool isBusy(AddrType addr) const;
 };
 
 #endif

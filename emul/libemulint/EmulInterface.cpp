@@ -5,8 +5,6 @@
 // Copyright (c) 2005-2013, Regents of the University of California and 
 // the ESESC Project.
 // All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 //
 //   - Redistributions of source code must retain the above copyright notice,
@@ -43,7 +41,7 @@
 
   EmulInterface::EmulInterface(const char *sect)
 : section(strdup( sect ))
-  /* Base class EmulInterface constructor {{{1 */
+  /* Base class EmulInterface constructor  */
 {
   sampler  = 0;
   numFlows = 0;
@@ -63,13 +61,13 @@
 
 
 }
-/* }}} */
+/*  */
 
 EmulInterface::~EmulInterface() 
-  /* EmulInterface destructor {{{1 */
+  /* EmulInterface destructor  */
 {
 }
-/* }}} */
+/*  */
 
 void EmulInterface::setSampler(EmuSampler *a_sampler, FlowID fid)
 {

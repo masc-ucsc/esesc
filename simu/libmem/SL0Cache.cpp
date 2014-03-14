@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Luis Ceze
 //                Jose Renau
 //                Karin Strauss
@@ -257,3 +258,4 @@ bool SL0Cache::canAcceptWrite(DInst *dinst)
   //return true;
 }
 /* }}} */
+#endif

@@ -71,6 +71,7 @@ ArrayST::ArrayST(const InputParameter *configure_interface,
     {
 
 	maxDynPower = new GStatsMax("maxpwr_%s", _name.c_str());
+	if (l_ip.cache_sz<64) l_ip.cache_sz=64;
 	l_ip.error_checking();//not only do the error checking but also fill some missing parameters
 //#ifdef ENABLE_PEQ
 bool doPeq;

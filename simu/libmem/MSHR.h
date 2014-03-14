@@ -39,7 +39,6 @@
 #include "estl.h"
 #include <queue>
 
-#include "MemRequest.h"
 #include "callback.h"
 #include "nanassert.h"
 #include "GStats.h"

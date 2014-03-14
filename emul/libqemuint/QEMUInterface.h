@@ -46,7 +46,6 @@ extern "C" {
   void QEMUReader_queue_inst(uint32_t insn
       ,uint32_t pc
       ,uint32_t addr
-      ,uint32_t data
       ,uint32_t fid
       ,char op       // opcode 0 other, 1 LD, 2 ST, 3 BR
       ,uint64_t icount   // #inst >1 while in rabbit or warmup

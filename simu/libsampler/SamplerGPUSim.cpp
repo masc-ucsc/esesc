@@ -64,7 +64,7 @@ SamplerGPUSim::~SamplerGPUSim()
 }
 /* }}} */
 
-void SamplerGPUSim::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, uint64_t icount, void *env)
+void SamplerGPUSim::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   if(!execute(fid,icount))
@@ -133,7 +133,7 @@ void SamplerGPUSim::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t da
     MSG("%5.3f",(100.0*seenPC_active)/(1.0+seenPC_total)); */
 #endif
 
-  emul->queueInstruction(insn,pc,addr,data, (op&0x80) /* thumb */, fid, env);
+  emul->queueInstruction(insn,pc,addr, (op&0x80) /* thumb */, fid, env);
 }
 /* }}} */
 

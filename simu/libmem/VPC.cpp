@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Jose Renau
 //                David Munday
 //
@@ -786,3 +787,4 @@ void VPC::ffinvalidate(AddrType addr, int32_t ilineSize)
   if (allInvalid)
     return;
 }
+#endif

@@ -38,7 +38,8 @@
 #include "Report.h"
 #include "GMemorySystem.h"
 #include "GProcessor.h"
-
+#include "Wrapper.h"
+#include "Bundle.h"
 
 PowerGlue::PowerGlue() {
   nStats              = 0;

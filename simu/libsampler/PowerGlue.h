@@ -37,11 +37,11 @@
 
 #include <vector>
 #include <map>
-#include "Wrapper.h"
 #include "TaskHandler.h"
-#include "Bundle.h"
+#include <string>
 
-
+class ChipEnergyBundle;
+class SescThermWrapper;
 
 class PowerGlue {
 
@@ -68,7 +68,7 @@ class PowerGlue {
     char *replicateVar(const char *format, const char *s1, const char *s);
     uint32_t size(const char *str);
     char *getStr(const char *str, uint32_t i); 
-    char *privateName(const string *name);
+    char *privateName(const std::string *name);
     void checkStatCounters(const char *section);
     void addVRecord(const char *sec, const char *str);
 

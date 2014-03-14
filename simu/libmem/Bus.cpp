@@ -64,165 +64,65 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   lower_level = current->declareMemoryObj(section, "lowerLevel");   
   if (lower_level)
     addLowerLevel(lower_level);
-
-  isMemoryBus = false; // DELETE ME
 }
 /* }}} */
 
-Time_t Bus::nextReadSlot(       const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  I(0);
-  return globalClock;
-}
-/* }}} */
-Time_t Bus::nextWriteSlot(      const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  I(0);
-  return globalClock;
-}
-/* }}} */
-Time_t Bus::nextBusReadSlot(    const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t Bus::nextPushDownSlot(   const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t Bus::nextPushUpSlot(     const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return dataPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t Bus::nextInvalidateSlot( const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-
-void Bus::read(MemRequest *mreq)
-  /* no read in bus {{{1 */
-{
-  I(0); // Bus should not be a first level object
-}
-/* }}} */
-void Bus::write(MemRequest *mreq)
-  /* no write in bus {{{1 */
-{
-  I(0); // Bus should not be a first level object
-}
-/* }}} */
-void Bus::writeAddress(MemRequest *mreq)
-  /* no writeAddress in bus {{{1 */
-{
-  I(0); // Bus should not be a first level object
-}
-/* }}} */
-
-void Bus::busRead(MemRequest *mreq)
+void Bus::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-  if(isMemoryBus) {
-
-    mreq->front = NULL;
-    mreq->back  = NULL;
-    int chID = DRAM[0]->getChannelID(mreq);
-    DRAM[chID]->arrive(mreq);
-
-    return;
-  }
-  router->fwdBusRead(mreq);
+  TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+	router->scheduleReq(mreq, when);
 }
 /* }}} */
-void Bus::pushDown(MemRequest *mreq)
-  /* push down {{{1 */
+
+void Bus::doDisp(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
-  if (mreq->isInvalidate()) {
-    I(!isMemoryBus);
-        mreq->decPending();
-    if (!mreq->hasPending()) {
-      MemRequest *parent = mreq->getParent();
-      router->fwdPushDown(parent);
-    }
-
-    mreq->destroy();
-    return;
-  }
-  if(isMemoryBus) {
-
-    mreq->front = NULL;
-    mreq->back  = NULL;
-    int chID = DRAM[0]->getChannelID(mreq);
-    DRAM[chID]->arrive(mreq);
-
-    return;
-  }
-
-  I(mreq->isWriteback());
-
-  router->fwdPushDown(mreq);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+	router->scheduleDisp(mreq, when);
 }
 /* }}} */
-void Bus::pushUp(MemRequest *mreq)
-  /* push up {{{1 */
+
+void Bus::doReqAck(MemRequest *mreq)
+  /* data is coming back {{{1 */
 {
-  I(!isMemoryBus);
-
-  router->fwdPushUp(mreq);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleReqAck(mreq, when);
 }
 /* }}} */
-void Bus::invalidate(MemRequest *mreq)
-  /* forward invalidate to the higher levels {{{1 */
+
+void Bus::doSetState(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
 {
-  I(!isMemoryBus);
-  // broadcast the invalidate through the upper nodes
-  router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
+  router->sendSetStateAll(mreq, mreq->getAction(), delay);
 }
 /* }}} */
 
-bool Bus::canAcceptRead(DInst *dinst) const
+void Bus::doSetStateAck(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
+{
+  router->scheduleSetStateAck(mreq, delay);
+}
+/* }}} */
+
+bool Bus::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  return true;
+  return false;
 }
 /* }}} */
 
-bool Bus::canAcceptWrite(DInst *disnt) const
-/* always can accept reads {{{1 */
-{
-  return true;
-}
-/* }}} */
-
-TimeDelta_t Bus::ffread(AddrType addr, DataType data)
+TimeDelta_t Bus::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
-  //I(0);
-  return router->ffread(addr,data) + delay;
+  return delay;
 }
 /* }}} */
 
-TimeDelta_t Bus::ffwrite(AddrType addr, DataType data)
+TimeDelta_t Bus::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
-  //I(0);
-  return router->ffwrite(addr,data) + delay;
-}
-/* }}} */
-
-void Bus::ffinvalidate(AddrType addr, int32_t ilineSize)
-  /* fast forward invalidate {{{1 */
-{ 
-  //I(0);
-  // FIXME: router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
+  return delay;
 }
 /* }}} */
 

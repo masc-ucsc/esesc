@@ -408,6 +408,7 @@ FunctionalUnit::FunctionalUnit(const InputParameter *configure_interface, enum F
     double area_t, energy, leakage, gate_leakage;
     double pmos_to_nmos_sizing_r = pmos_to_nmos_sz_ratio();
 
+    exist = true;
 	//XML_interface=_XML_interface;
 	//uca_org_t result2;
 	local_result = init_interface(&l_ip);

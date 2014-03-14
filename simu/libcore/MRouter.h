@@ -40,15 +40,42 @@
 
 #include "Snippets.h"
 #include "RAWDInst.h"
+#include "Resource.h"
 
 #include "nanassert.h"
 
-//DM
-#include "Resource.h"
 /* }}} */
 
 class MemObj;
 class MemRequest;
+
+// MsgAction enumerate {{{1
+//
+// MOESI States:
+//
+// M: Single copy, memory not consistent
+//
+// E: Single copy, memory is consistent
+//
+// I: invalid
+//
+// S: one of (potentially) several copies. Share does not respond to other bus snoop reads
+// 
+// O: Like shared, but the O is responsible to update memory. If O does
+// a write back, it can change to S
+//
+enum MsgAction {
+	ma_setInvalid,
+	ma_setValid,
+	ma_setDirty,
+	ma_setShared,
+	ma_setExclusive,
+	ma_MMU,
+	ma_VPCWU,
+	ma_MAX
+};
+
+// }}}
 
 class MRouter {
 private:
@@ -74,80 +101,43 @@ public:
   MRouter(MemObj *obj);
   virtual ~MRouter();
 
+  int16_t getCreatorPort(const MemRequest *mreq) const;
+
   void fillRouteTables();
   void addUpNode(MemObj *upm);
   void addDownNode(MemObj *upm);
 
-  void fwdReadPos(uint32_t pos, MemRequest              *mreq);
-  void fwdReadPos(uint32_t pos, MemRequest              *mreq,  TimeDelta_t lat);
-  void fwdRead(MemRequest              *mreq) { 
-    fwdReadPos(0,mreq); 
-  }
-  void fwdRead(MemRequest              *mreq,  TimeDelta_t lat) {
-    fwdReadPos(0,mreq,lat); 
-  }
+  void scheduleReqPos(     uint32_t pos, MemRequest *mreq    , TimeDelta_t lat=0);
+  void scheduleReq(                      MemRequest *mreq    , TimeDelta_t lat=0);
 
-  void fwdWritePos(uint32_t pos, MemRequest             *mreq);
-  void fwdWritePos(uint32_t pos, MemRequest             *mreq,  TimeDelta_t lat);
-  void fwdWrite(MemRequest             *mreq) {
-    fwdWritePos(0,mreq);
-  };
-  void fwdWrite(MemRequest             *mreq,  TimeDelta_t lat) {
-    fwdWritePos(0,mreq,lat);
-  };
+  void scheduleReqAck(                   MemRequest *mreq    , TimeDelta_t lat=0);
+  void scheduleReqAckAbs(                MemRequest *mreq    , Time_t w);
+  void scheduleReqAckPos(  uint32_t pos, MemRequest *mreq    , TimeDelta_t lat=0);
 
-  void fwdPushDownPos(uint32_t pos, MemRequest          *mreq);
-  void fwdPushDownPos(uint32_t pos, MemRequest          *mreq,  TimeDelta_t lat);
-  void fwdPushDown(MemRequest          *mreq) {
-    fwdPushDownPos(0,mreq);
-  }
-  void fwdPushDown(MemRequest          *mreq,  TimeDelta_t lat) {
-    fwdPushDownPos(0,mreq,lat);
-  }
+  void scheduleSetStatePos(uint32_t pos, MemRequest *mreq    , TimeDelta_t lat=0);
+  void scheduleSetStateAck(              MemRequest *mreq    , TimeDelta_t lat=0);
+  void scheduleSetStateAckPos(uint32_t pos, MemRequest *mreq    , TimeDelta_t lat=0);
 
-  void fwdPushUpPos(uint32_t pos, MemRequest            *mreq);
-  void fwdPushUpPos(uint32_t pos, MemRequest            *mreq,  TimeDelta_t lat);
-  void fwdPushUp(MemRequest            *mreq);
-  void fwdPushUp(MemRequest            *mreq,  TimeDelta_t lat);
+  void scheduleDispPos(    uint32_t pos, MemRequest *mreq    , TimeDelta_t lat=0);
+  void scheduleDisp(                     MemRequest *mreq    , TimeDelta_t lat=0);
+	void sendDisp(AddrType addr, bool doStats, TimeDelta_t lat=0);
 
-  void fwdBusReadPos(uint32_t pos, MemRequest           *mreq);
-  void fwdBusReadPos(uint32_t pos, MemRequest           *mreq,  TimeDelta_t lat);
-  void fwdBusRead(MemRequest           *mreq) {
-    fwdBusReadPos(0,mreq);
-  }
-  void fwdBusRead(MemRequest           *mreq,  TimeDelta_t lat) {
-    fwdBusReadPos(0,mreq,lat);
-  }
+  int32_t sendSetStateOthers(                 MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
+  int32_t sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
+  int32_t sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
 
-  void sendBusReadPos(uint32_t pos, MemRequest          *mreq);
-  void sendBusReadPos(uint32_t pos, MemRequest          *mreq,  TimeDelta_t lat);
-  void sendBusRead(MemRequest          *mreq) {
-    sendBusReadPos(0,mreq);
-  }
-  void sendBusRead(MemRequest          *mreq,  TimeDelta_t lat) {
-    sendBusReadPos(0,mreq,lat);
-  }
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
+  TimeDelta_t ffreadPos(uint32_t pos, AddrType addr);
+  TimeDelta_t ffwritePos(uint32_t pos, AddrType addr);
 
-  bool sendInvalidateOthers(int32_t    lsize, const MemRequest *mreq, AddrType naddr,  TimeDelta_t lat);
-  bool sendInvalidateAll(int32_t       lsize, const MemRequest *mreq, AddrType naddr,  TimeDelta_t lat);
-  bool sendInvalidatePos(uint32_t pos, int32_t       lsize, const MemRequest *mreq, AddrType naddr,  TimeDelta_t lat);
+  bool isBusyPos(uint32_t pos, AddrType addr) const;
 
-  bool canAcceptReadPos(uint32_t pos, DInst *dinst) const;
-  bool canAcceptWritePos(uint32_t pos, DInst *dinst) const;
-  bool canAcceptRead(DInst *dinst) const {
-    return canAcceptReadPos(0,dinst);
-  }
-  bool canAcceptWrite(DInst *dinst) const {
-    return canAcceptWritePos(0,dinst);
-  }
+  bool isTopLevel() const { return up_node.empty(); }
 
-  TimeDelta_t ffreadPos(uint32_t pos, AddrType addr, DataType data);
-  TimeDelta_t ffwritePos(uint32_t pos, AddrType addr, DataType data);
-  TimeDelta_t ffread(AddrType addr, DataType data) {
-    return ffreadPos(0,addr,data);
-  }
-  TimeDelta_t ffwrite(AddrType addr, DataType data) {
-    return ffwritePos(0,addr,data);
+  MemObj *getDownNode() const {
+    I(down_node.size()==1);
+    return down_node[0];
   }
 };
 

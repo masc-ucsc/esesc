@@ -1,38 +1,26 @@
-// Contributed by  Alamelu Sankaranarayanan
-//                 Jose Renau
-//                 Gabriel Southern
-//
-// The ESESC/BSD License
-//
-// Copyright (c) 2005-2013, Regents of the University of California and 
-// the ESESC Project.
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//   - Redistributions of source code must retain the above copyright notice,
-//   this list of conditions and the following disclaimer.
-//
-//   - Redistributions in binary form must reproduce the above copyright
-//   notice, this list of conditions and the following disclaimer in the
-//   documentation and/or other materials provided with the distribution.
-//
-//   - Neither the name of the University of California, Santa Cruz nor the
-//   names of its contributors may be used to endorse or promote products
-//   derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
+/* License & includes  */
+/*
+ESESC: Super ESCalar simulator
+Copyright (C) 2005 University California, Santa Cruz.
+
+Contributed by  Alamelu Sankaranarayanan
+Jose Renau
+Gabriel Southern
+
+This file is part of ESESC.
+
+ESESC is free software; you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation;
+either version 2, or (at your option) any later version.
+
+ESESC is    distributed in the  hope that  it will  be  useful, but  WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should  have received a copy of  the GNU General  Public License along with
+ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
+Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+*/
 
 #include <sys/types.h>
 #include <dirent.h>
@@ -556,7 +544,8 @@ void GPUReader::start() {
 GPUReader::~GPUReader() {
 }
 
-void GPUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, DataType data,char thumb,  FlowID fid, void *env, bool inEmuTiming) {
+//void GPUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, DataType data,char thumb,  FlowID fid, void *env, bool inEmuTiming) {
+void GPUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb,  FlowID fid, void *env, bool inEmuTiming) {
 
   if (cuda_execution_complete) {
     I(0);      // Should not happen
@@ -565,6 +554,7 @@ void GPUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, Data
 
   if (tsfifo[fid].full()) {
     istsfifoBlocked = true;
+    gsampler->decCount->add(gsampler->dec_icount);
     gsampler->AtomicDecrPhasenInst(1);
     gsampler->AtomicDecrTotalnInst(1);
     return;
@@ -574,11 +564,13 @@ void GPUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, Data
   I(rinst);
   I(insn);
 
-  float L1clkRatio = 1.0;
-  float L3clkRatio = EmuSampler::getTurboRatioGPU();
+  //float L1clkRatio = 1.0;
+  //float L3clkRatio = EmuSampler::getTurboRatioGPU();
+  //rinst->set(insn, pc, addr, data, L1clkRatio, L3clkRatio, inEmuTiming);
 
-  rinst->set(insn, pc, addr, data, L1clkRatio, L3clkRatio, inEmuTiming);
-  esesc_disas_cuda_inst(rinst,data);
+  rinst->set(insn, pc, addr,inEmuTiming);
+  
+  esesc_disas_cuda_inst(rinst,addr);
 
   I(rawInst.size() > fid);
   //rawInst[fid]->add(1);
@@ -596,7 +588,7 @@ DInst *GPUReader::executeHead(FlowID fid){
 */
   // executeHead is called by the sampler, which knows only globafid
   uint64_t conta = 0;
-  bool breaknow = true;
+  //bool breaknow = true;
 
   if (ruffer[fid].empty()) {
     while ((!tsfifo[fid].full()) /* && (breaknow == false) */ ) {
@@ -640,7 +632,10 @@ DInst *GPUReader::executeHead(FlowID fid){
         for (size_t j = 0; j < rinst->getNumInst(); j++) {
           DInst **dinsth = ruffer[fid].getInsertPointRef();  // DInst
           // ruffer holder(not a dinst, but a place to put the dinst *)
-          *dinsth = DInst::create(rinst->getInstRef(j), rinst,rinst->getAddr(), fid);
+          AddrType addr = rinst->getAddr();
+          addr          = addr & 0xFFFFFFFF;
+          *dinsth = DInst::create(rinst->getInstRef(j), rinst,addr, fid);
+          (*dinsth)->setcudastats(rinst); 
           ruffer[fid].add();
         }
 
@@ -653,7 +648,10 @@ DInst *GPUReader::executeHead(FlowID fid){
       for (size_t j = 0; j < rinst->getNumInst(); j++) {
         DInst **dinsth = ruffer[fid].getInsertPointRef();  // DInst
         // ruffer holder(not a dinst, but a place to put the dinst *)
-        *dinsth = DInst::create(rinst->getInstRef(j), rinst,rinst->getAddr(), fid);
+        AddrType addr = rinst->getAddr();
+        addr          = addr & 0xFFFFFFFF;
+        *dinsth = DInst::create(rinst->getInstRef(j), rinst,addr , fid);
+        (*dinsth)->setcudastats(rinst); 
         ruffer[fid].add();
       }
 
@@ -680,24 +678,24 @@ DInst *GPUReader::executeHead(FlowID fid){
   return dinst;
 }
 
-  /* }}} */
+  /*  */
 
   void GPUReader::reexecuteTail(FlowID fid) {
-    /* safe/retire advance of execution {{{1 */
+    /* safe/retire advance of execution  */
     ruffer[fid].advanceTail();
   }
 
-  /* }}} */
+  /*  */
 
   void GPUReader::syncHeadTail(FlowID fid) {
-    /* replay triggers a syncHeadTail {{{1 */
+    /* replay triggers a syncHeadTail  */
     ruffer[fid].moveHead2Tail();
   }
 
-  /* }}} */
+  /*  */
 
   void GPUReader::drainFIFO(FlowID fid)
-    /* Drain the tsfifo as much as possible due to a mode change {{{1 */
+    /* Drain the tsfifo as much as possible due to a mode change  */
   {
     while (!tsfifo[fid].empty() && !ruffer[fid].empty()) {
       printf(".");
@@ -705,7 +703,7 @@ DInst *GPUReader::executeHead(FlowID fid){
     }
   }
 
-  /* }}} */
+  /*  */
 
   bool GPUReader::drainedFIFO(FlowID fid)
   /* Is the tsfifo drained? */

@@ -1864,7 +1864,6 @@ CPUState *cpu_copy(CPUState *env)
     new_env->op_cnt  = 0;
     new_env->op_pc   = new_env->op_pc_raw;
     new_env->op_insn = new_env->op_insn_raw;
-    new_env->op_data = new_env->op_data_raw;
     new_env->op_addr = new_env->op_addr_raw;
 #endif
 

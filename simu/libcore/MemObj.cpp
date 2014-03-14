@@ -52,12 +52,14 @@ public:
 /* }}} */
 #endif
 
+uint16_t MemObj::id_counter = 0;
+
 MemObj::MemObj(const char *sSection, const char *sName)
    /* constructor {{{1 */
   :section(sSection)
   ,name(sName)
+  ,id(id_counter++)
 {
-  
   // Create router (different objects may override the default router)
   router = new MRouter(this);
 
@@ -85,6 +87,19 @@ MemObj::~MemObj()
 }
 /* }}} */
 
+
+void MemObj::addLowerLevel(MemObj *obj) { 
+	router->addDownNode(obj);
+	I( obj );
+	obj->addUpperLevel(this);
+	printf("%s with lower level %s\n",getName(),obj->getName());
+}
+
+void MemObj::addUpperLevel(MemObj *obj) { 
+	printf("%s upper level is %s\n",getName(),obj->getName());
+	router->addUpNode(obj);
+}
+
 void MemObj::dump() const
 /* dump statistics {{{1 */
 {
@@ -106,131 +121,86 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 }
 /* }}} */
 
-Time_t DummyMemObj::nextReadSlot(       const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t DummyMemObj::nextWriteSlot(      const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t DummyMemObj::nextBusReadSlot(    const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t DummyMemObj::nextPushDownSlot(   const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t DummyMemObj::nextPushUpSlot(     const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t DummyMemObj::nextInvalidateSlot( const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-
-void DummyMemObj::read(MemRequest *req)    
-  /* read (down) {{{1 */
+void DummyMemObj::doReq(MemRequest *req)    
+  /* req {{{1 */
 { 
   req->ack();
 }
 /* }}} */
 
-void DummyMemObj::write(MemRequest *req)    
-  /* write (down) {{{1 */
-{ 
-  req->ack();
-}
-/* }}} */
-
-void DummyMemObj::writeAddress(MemRequest *req)    
-  /* write (down) {{{1 */
-{ 
-  req->ack();
-}
-/* }}} */
-
-void DummyMemObj::busRead(MemRequest *req)    
-  /* bus read (down) {{{1 */
-{ 
-  router->fwdPushUp(req); // ack the busRead
-}
-/* }}} */
-
-void DummyMemObj::pushDown(MemRequest *req)    
-  /* push (down) {{{1 */
+void DummyMemObj::doReqAck(MemRequest *req)    
+  /* reqAck {{{1 */
 { 
   I(0);
 }
 /* }}} */
 
-void DummyMemObj::pushUp(MemRequest *req)    
-  /* push (up) {{{1 */
+void DummyMemObj::doSetState(MemRequest *req)    
+  /* setState {{{1 */
+{ 
+  req->ack(); 
+}
+/* }}} */
+
+void DummyMemObj::doSetStateAck(MemRequest *req)    
+  /* setStateAck {{{1 */
 { 
   I(0);
 }
 /* }}} */
 
-void DummyMemObj::invalidate(MemRequest *req)    
-  /* push (up) {{{1 */
+void DummyMemObj::doDisp(MemRequest *req)    
+  /* disp {{{1 */
 { 
-  router->fwdPushDown(req); // invalidate ack
+  I(0);
 }
 /* }}} */
 
-bool DummyMemObj::canAcceptRead(DInst *dinst) const
-  /* can accept reads? {{{1 */
-{ 
-  return true;  
+bool DummyMemObj::isBusy(AddrType addr) const 
+// Can it accept more requests {{{1
+{
+	return false;
 }
-/* }}} */
+// }}}
 
-bool DummyMemObj::canAcceptWrite(DInst *dinst) const
-  /* can accept writes? {{{1 */
-{ 
-  return true;  
-}
-/* }}} */
-
-TimeDelta_t DummyMemObj::ffread(AddrType addr, DataType data)
+TimeDelta_t DummyMemObj::ffread(AddrType addr)
   /* fast forward read {{{1 */
 { 
   return 1;   // 1 cycle does everything :)
 }
 /* }}} */
 
-TimeDelta_t DummyMemObj::ffwrite(AddrType addr, DataType data)
+TimeDelta_t DummyMemObj::ffwrite(AddrType addr)
   /* fast forward write {{{1 */
 { 
   return 1;   // 1 cycle does everything :)
 }
 /* }}} */
 
-void DummyMemObj::ffinvalidate(AddrType addr, int32_t lineSize)
-  /* fast forward invalidate {{{1 */
-
-{
-  // Nothing to do
-}
-/* }}} */
-
+/* Optional virtual methods {{{1 */
 bool MemObj::checkL2TLBHit(MemRequest *req) {
   // If called, it should be redefined by the object
   I(0);
   return false;
 }
-
+void MemObj::replayCheckLSQ_removeStore(DInst *) {
+	I(0);
+}
+void MemObj::updateXCoreStores(AddrType addr) {
+	I(0);
+}
+void MemObj::replayflush() {
+	I(0);
+}
+void MemObj::setTurboRatio(float r) { 
+	I(0);
+}
+void MemObj::plug() {
+	I(0);
+}
+void MemObj::setNeedsCoherence() {
+	// Only cache uses this
+}
+void MemObj::clearNeedsCoherence() {
+}
+/* }}} */

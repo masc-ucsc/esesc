@@ -39,16 +39,15 @@
 
 #include <vector>
 #include <map>
-#include "PowerStats.h"
 #include "PowerGlue.h"
 #include "callback.h"
-#include "Wrapper.h"
-#include "SescThermWrapper.h"
 #include "TaskHandler.h"
 #include "EmuSampler.h"
-#include "Bundle.h"
-
 /* }}} */
+
+class PowerStats;
+class Wrapper;
+class MemObj;
 
 const float INITIAL_TEMP = 300.0; // TODO: read this from conf file instead
 
@@ -133,6 +132,8 @@ private:
   uint32_t nL3;
   std::vector<uint32_t> *coreIndex;
   std::vector<uint32_t> *gpuIndex;
+  typedef std::vector<MemObj *> CoupledObjectsType;
+  CoupledObjectsType coupledObjects;
 
   std::vector<float> totalPowHist;
   std::vector<std::vector<float> > powerHist;
@@ -155,18 +156,20 @@ private:
   void syncStats()                             { return TaskHandler::syncStats();  };
   void freeze(FlowID fid, Time_t nCycles)      { return TaskHandler::freeze(fid, nCycles); };
   FlowID getNumActiveCores()                   { return TaskHandler::getNumActiveCores(); }; 
-  void setTurboRatio(float freqCoef)           { return EmuSampler::setTurboRatio(freqCoef); };
   float getTurboRatio()                        { return EmuSampler::getTurboRatio(); };
 
-  float getDyn(uint32_t i)       { return energyBundle->cntrs[i].getDyn();       };
-  float getLkg(uint32_t i)       { return energyBundle->cntrs[i].getLkg();       };
-  float getScaledLkg(uint32_t i) { return energyBundle->cntrs[i].getScaledLkg(); };
-  uint32_t getCyc(uint32_t i)    { return energyBundle->cntrs[i].getCyc();       };
+  float getDyn(uint32_t i);
+  float getLkg(uint32_t i);
+  float getScaledLkg(uint32_t i);
+  uint32_t getCyc(uint32_t i);
 
   FILE *dpowerf;
 
-public:
+  SescThermWrapper *sescThermWrapper;
 
+public:
+	void addTurboCoupledMemory(MemObj *mobj);
+  void setTurboRatio(float freqCoef);
 
   ChipEnergyBundle *energyBundle;
 
@@ -181,7 +184,7 @@ public:
   PowerModel();
   ~PowerModel();
 
-  SescThermWrapper *sescThermWrapper;
+  void updateSescTherm(int64_t ti);
 
   void plug(const char *section);
   void unplug();
@@ -230,6 +233,7 @@ public:
   int updateFreqDVFS_T();
   float getMaxT();
   double getFreq()                             { return freq; };
+
 #ifdef ENABLE_CUDA
   void  setTurboRatioGPU(float freqCoef)       { return EmuSampler::setTurboRatioGPU(freqCoef); };
   void  updatePowerNTC();
@@ -244,7 +248,6 @@ public:
   void stackingValidator();
 
   void setSamplingRatio(float r) {samplingRatio = r;};
-
 };
 
 #endif //POWERMODEL_H

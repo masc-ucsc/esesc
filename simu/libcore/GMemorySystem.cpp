@@ -38,6 +38,7 @@
 #include <math.h>
 
 #include "SescConf.h"
+#include "MemObj.h"
 #include "GMemorySystem.h"
 #include "MemObj.h"
 #include "DrawArch.h"
@@ -126,7 +127,6 @@ MemObj *GMemorySystem::buildMemoryObj(const char *type, const char *section, con
 {
   if (!(   strcasecmp(type, "dummy")   == 0
         || strcasecmp(type, "cache")   == 0
-        || strcasecmp(type, "mvcache") == 0
         || strcasecmp(type, "icache")  == 0
         || strcasecmp(type, "scache")  == 0
 /* prefetcher */

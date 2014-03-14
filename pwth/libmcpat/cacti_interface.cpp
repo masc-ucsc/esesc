@@ -161,4 +161,50 @@ void uca_org_t::find_cyc()
   }
 }
 
+void uca_org_t :: cleanup()
+{
+	//	uca_org_t * it_uca_org;
+	if (data_array2!=0){
+		delete data_array2;
+		data_array2 =0;
+	}
+
+	if (tag_array2!=0){
+		delete tag_array2;
+		tag_array2 =0;
+	}
+
+	std::vector<uca_org_t * >::size_type sz = uca_q.size();
+	for (int i=sz-1; i>=0; i--)
+	{
+		if (uca_q[i]->data_array2!=0)
+		{
+			delete uca_q[i]->data_array2;
+			uca_q[i]->data_array2 =0;
+		}
+		if (uca_q[i]->tag_array2!=0){
+			delete uca_q[i]->tag_array2;
+			uca_q[i]->tag_array2 =0;
+		}
+		delete uca_q[i];
+		uca_q[i] =0;
+		uca_q.pop_back();
+	}
+
+	if (uca_pg_reference!=0)
+	{
+		if (uca_pg_reference->data_array2!=0)
+		{
+			delete uca_pg_reference->data_array2;
+			uca_pg_reference->data_array2 =0;
+		}
+		if (uca_pg_reference->tag_array2!=0){
+			delete uca_pg_reference->tag_array2;
+			uca_pg_reference->tag_array2 =0;
+		}
+		delete uca_pg_reference;
+		uca_pg_reference =0;
+	}
+}
+
 

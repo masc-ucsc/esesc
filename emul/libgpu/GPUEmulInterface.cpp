@@ -1,37 +1,24 @@
-// Contributed by Jose Renau
-//                Alamelu Sankaranarayanan
-//
-// The ESESC/BSD License
-//
-// Copyright (c) 2005-2013, Regents of the University of California and 
-// the ESESC Project.
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//   - Redistributions of source code must retain the above copyright notice,
-//   this list of conditions and the following disclaimer.
-//
-//   - Redistributions in binary form must reproduce the above copyright
-//   notice, this list of conditions and the following disclaimer in the
-//   documentation and/or other materials provided with the distribution.
-//
-//   - Neither the name of the University of California, Santa Cruz nor the
-//   names of its contributors may be used to endorse or promote products
-//   derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
+/*
+ESESC: Enhanced Super ESCalar simulator
+Copyright (C) 2009 University of California, Santa Cruz.
+
+Contributed by  Jose Renau
+                Alamelu Sankaranarayanan
+
+This file is part of ESESC.
+
+ESESC is free software; you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation;
+either version 2, or (at your option) any later version.
+
+ESESC is    distributed in the  hope that  it will  be  useful, but  WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should  have received a copy of  the GNU General  Public License along with
+ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
+Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+*/
 
 #include <string.h>
 
@@ -40,6 +27,7 @@
 #include "SescConf.h"
 
 extern   bool     unifiedCPUGPUmem;
+extern   div_type branch_div_mech;
 
 GPUEmulInterface::GPUEmulInterface(const char *section)
   :EmulInterface(section) {
@@ -72,6 +60,30 @@ GPUEmulInterface::GPUEmulInterface(const char *section)
       IS(fprintf(stderr,"Assuming no memcpy needed between CPU & GPU\n"));
     }else{
       IS(fprintf(stderr,"Assuming memcpy needed between CPU & GPU\n"));
+    }
+
+    if (SescConf->checkCharPtr(section, "branch_divergence")) {
+      const char* branch_div = SescConf->getCharPtr(section, "branch_divergence");
+      if (branch_div != NULL) {
+        if (strcasecmp(branch_div, "serial") == 0) {
+          branch_div_mech = serial;
+        } else if (strcasecmp(branch_div, "post_dom") == 0) {
+          branch_div_mech = post_dom;
+        } else if (strcasecmp(branch_div, "sbi") == 0) {
+          branch_div_mech = sbi;
+        } else if (strcasecmp(branch_div, "sbi_swi") == 0) {
+          branch_div_mech = sbi_swi;
+        } else {
+          IS(fprintf(stderr,"\n Unable to parse %s? Branch divergence mechanism set to post_dom",branch_div));
+          branch_div_mech = post_dom;
+        }
+      } else {
+          IS(fprintf(stderr,"\n Branch divergence mechanism not specified, set to post_dom"));      
+          branch_div_mech = post_dom;
+      }
+    } else {
+      IS(fprintf(stderr,"\nBranch divergence mechanism (branch_divergence =) not found not specified  in esesc.conf..."));
+      branch_div_mech = post_dom;
     }
 
     for (FlowID i = 0; i < nEmuls; i++) {

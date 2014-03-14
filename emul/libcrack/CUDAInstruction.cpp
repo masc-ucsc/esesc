@@ -61,17 +61,20 @@ static uint32_t max_tracesize = 0;
 
 
 
-void esesc_disas_cuda_inst(RAWDInst *rinst, uint64_t peid_warpid)
+void esesc_disas_cuda_inst(RAWDInst *rinst, uint64_t addr)
 {
   uint32_t pe_id   = 0;
   uint32_t warp_id = 0;
+  uint32_t peid_warpid = 0;
 
-  warp_id          = (peid_warpid & 0x0000FFFF);
-//  I(warp_id <= 24*32);
-  pe_id            = ((peid_warpid >> 32) & 0x0000FFFF);
-
-  //MSG("pe_id = %d, warpid = %d",pe_id,warp_id);
-
+  
+  //MSG (" ---------> ADDR is 0x%016llX",addr);
+  peid_warpid = (addr >> 32);
+  warp_id     = (peid_warpid & 0x0000FFFF);
+  //  I(warp_id <= 24*32);
+  //MSG (" ---------> WARPID is 0x%04X",warp_id);
+  pe_id       = ((peid_warpid >> 16) & 0x0000FFFF);
+  //MSG (" ---------> PE_ID is 0x%04X",pe_id);
 
   if (((rinst->getInsn() == 0xFFFF) || (rinst->getInsn() == 0xFFFB))){
 

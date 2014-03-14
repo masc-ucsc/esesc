@@ -35,13 +35,18 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include "FetchEngine.h"
+
 #include "SescConf.h"
 #include "alloca.h"
-#include "FetchEngine.h"
-#include "GMemorySystem.h"
+
+#include "MemObj.h"
 #include "MemRequest.h"
-#include "GProcessor.h"
+#include "GMemorySystem.h"
+//#include "GProcessor.h"
+
 #include "Pipeline.h"
+
 
 FetchEngine::FetchEngine(FlowID id
   ,GProcessor *gproc_
@@ -242,8 +247,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
   nFetched.add(tmp, getStatsFlag);
 
   if(enableICache && !bucket->empty()) {
-    MemRequest *mreq=MemRequest::createRead(gms->getIL1(), bucket->top(), bucket->top()->getPC(), &(bucket->markFetchedCB));
-    mreq->fwdRead();
+    MemRequest::sendReqRead(gms->getIL1(), bucket->top(), bucket->top()->getPC(), &(bucket->markFetchedCB));
   }else{
     bucket->markFetchedCB.schedule(IL1HitDelay);
   }
@@ -304,6 +308,6 @@ void FetchEngine::setMissInst(DInst * dinst) {
 
   I(!missInst[dinst->getPE()]);
   missInst[dinst->getPE()] = true;
-  lastd[ dinst->getPE()] = dinst;
+  lastd[dinst->getPE()] = dinst;
 } 
 

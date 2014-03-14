@@ -59,7 +59,7 @@ CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(int32_t size, i
   }
 
   if (skew) {
-    I(assoc=1); // Skew cache should be direct map
+    I(assoc==1); // Skew cache should be direct map
     cache = new CacheDMSkew<State, Addr_t>(size, bsize, addrUnit, pStr);
   }else if (assoc==1) {
     // Direct Map cache

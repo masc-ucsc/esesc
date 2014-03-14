@@ -1,3 +1,4 @@
+// copyright and includes {{{1
 // Contributed by David Munday
 //                Jose Renau
 //
@@ -90,45 +91,8 @@ MemXBar::MemXBar(MemorySystem* current ,const char *section ,const char *name)
 }
 /* }}} */
 
-Time_t MemXBar::nextReadSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t MemXBar::nextWriteSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t MemXBar::nextBusReadSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t MemXBar::nextPushDownSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t MemXBar::nextPushUpSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t MemXBar::nextInvalidateSlot( const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-
-void MemXBar::read(MemRequest *mreq)
-  /* read if splitter above L1 {{{1 */
+void MemXBar::doReq(MemRequest *mreq)
+  /* read if splitter above L1 (down) {{{1 */
 {
   if(mreq->getAddr() == 0) {
     mreq->ack();
@@ -136,112 +100,69 @@ void MemXBar::read(MemRequest *mreq)
   } 
   readHit.inc(mreq->getStatsFlag());
   uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);  
-  router->fwdBusReadPos(pos, mreq);
-}
-/* }}} */
-void MemXBar::write(MemRequest *mreq)
-  /* no write in bus {{{1 */
-{
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  }
-  writeHit.inc(mreq->getStatsFlag());
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);
-  router->fwdBusReadPos(pos, mreq);
-}
-/* }}} */
-void MemXBar::writeAddress(MemRequest *mreq)
-  /* FIXME don't know if needed in MemXBar {{{1 */
-{
-  mreq->ack();
-
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  }
+  router->scheduleReqPos(pos, mreq);
 }
 /* }}} */
 
-void MemXBar::busRead(MemRequest *mreq)
-  /* MemXBar busRead (exclusive or shared) request {{{1 */
-{
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  }
-  readHit.inc(mreq->getStatsFlag());
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
-  router->fwdBusReadPos(pos, mreq);
-}
-/* }}} */
-
-void MemXBar::pushDown(MemRequest *mreq)
-  /* MemXBar push down (writeback or invalidate ack) {{{1 */
-{  
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
-  router->fwdPushDownPos(pos, mreq);
-}
-/* }}} */
-void MemXBar::pushUp(MemRequest *mreq)
-  /* MemXBar push up (fwdBusRead ack) {{{1 */
+void MemXBar::doReqAck(MemRequest *mreq)
+  /* req ack (up) {{{1 */
 {
   if(mreq->isHomeNode()) {
     mreq->ack();
     return;
   }
-  router->fwdPushUp(mreq, 0); 
+  router->scheduleReqAck(mreq); 
 }
 /* }}} */
 
-void MemXBar::invalidate(MemRequest *mreq)
-  /* forward invalidate to the higher levels {{{1 */
+void MemXBar::doSetState(MemRequest *mreq)
+  /* setState (up) {{{1 */
+{  
+  router->sendSetStateAll(mreq, mreq->getAction());
+}
+/* }}} */
+
+void MemXBar::doSetStateAck(MemRequest *mreq)
+  /* setStateAck (down) {{{1 */
 {
-  // broadcast the invalidate through the upper nodes
-  writeHit.inc(mreq->getStatsFlag());
-  router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), 0);
   uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
-  router->fwdPushDownPos(pos, mreq);
+  router->scheduleSetStateAckPos(pos, mreq);
+	I(0); 
+	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
 }
 /* }}} */
 
-bool MemXBar::canAcceptRead(DInst *dinst) const
+void MemXBar::doDisp(MemRequest *mreq)
+  /* disp (down) {{{1 */
+{
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
+  router->scheduleDispPos(pos, mreq);
+	I(0); 
+	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
+}
+/* }}} */
+
+bool MemXBar::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  uint32_t pos = addrHash(dinst->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
-  return router->canAcceptReadPos(pos, dinst);
+  uint32_t pos = addrHash(addr,LineSize,Modfactor,numLowerLevelBanks);
+  return router->isBusyPos(pos, addr);
 }
 /* }}} */
 
-bool MemXBar::canAcceptWrite(DInst *dinst) const
-/* always can accept reads {{{1 */
-{
-  uint32_t pos = addrHash(dinst->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
-  return router->canAcceptWritePos(pos, dinst);
-}
-/* }}} */
-
-TimeDelta_t MemXBar::ffread(AddrType addr, DataType data)
+TimeDelta_t MemXBar::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
   uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
-  return router->ffreadPos(pos, addr, data);
+  return router->ffreadPos(pos, addr);
 }
 /* }}} */
 
-TimeDelta_t MemXBar::ffwrite(AddrType addr, DataType data)
+TimeDelta_t MemXBar::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
   uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
-  return router->ffwritePos(pos, addr, data);
-}
-/* }}} */
-
-void MemXBar::ffinvalidate(AddrType addr, int32_t ilineSize)
-  /* fast forward invalidate {{{1 */
-{ 
-  I(0);
-  exit(1);
+  return router->ffwritePos(pos, addr);
 }
 /* }}} */
 

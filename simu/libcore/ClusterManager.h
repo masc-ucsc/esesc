@@ -39,6 +39,7 @@
 #include "DepWindow.h"
 #include "Instruction.h"
 #include "ClusterScheduler.h"
+#include "DInst.h"
 
 #include "nanassert.h"
 

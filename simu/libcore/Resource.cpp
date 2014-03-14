@@ -62,6 +62,7 @@ Resource::Resource(Cluster *cls, PortGeneric *aGen, TimeDelta_t l)
   ,gen(aGen)
   ,gproc(cls->getGProcessor()) 
   ,lat(l)
+  ,usedTime(0)
 {
   I(cls);
   if(gen)
@@ -158,14 +159,9 @@ void FUSCOORELoad::retryvpc(DInst *dinst)
 /* retry vpc request {{{1 */
 {
 
-  if (vpc->canAcceptRead(dinst)) {
-    MemRequest *mreq=MemRequest::createRead(vpc, dinst, dinst->getAddr(), executedCB::create(this, dinst));
-#ifdef DEBUG
-    dinst->setmreq_id(mreq->getid());
-#endif
-    mreq->fwdRead(lat);
-    //pendLoadBuff[dinst->getAddr()] = dinst; 
-    return; //DO WE NEED TO do a retire here?
+  if (!vpc->isBusy(dinst->getAddr())) {
+    MemRequest::sendReqRead(vpc, dinst, dinst->getAddr(), executedCB::create(this, dinst));
+    return; 
   }
 
   retryvpcCB::schedule(7, this, dinst);
@@ -194,7 +190,7 @@ StallCause FUSCOORELoad::canIssue(DInst *dinst) {
 #endif
   
 
-#if 1
+#if 0
   if (fixaddr[fixhash(dinst->getAddr())] == dinst->getAddr()) {
     DataType data = fixdata[fixhash(dinst->getAddr())];
     //I(data == dinst->getData());
@@ -260,7 +256,6 @@ void MemReplay::replayManage(DInst* dinst) {
         lf[i].id   = dinst->getID();
         lf[i].pc   = dinst->getPC();
         lf[i].addr = dinst->getAddr();
-        lf[i].data = dinst->getData();
         lf[i].op   = dinst->getInst()->getOpcode();
         updated    = true;
       }
@@ -272,7 +267,6 @@ void MemReplay::replayManage(DInst* dinst) {
         lf[i].id   = dinst->getID();
         lf[i].pc   = dinst->getPC();
         lf[i].addr = dinst->getAddr();
-        lf[i].data = dinst->getData();
         lf[i].op   = dinst->getInst()->getOpcode();
         updated    = true;
       }
@@ -304,7 +298,6 @@ void MemReplay::replayManage(DInst* dinst) {
       lf[i].id   = dinst->getID();
       lf[i].pc   = dinst->getPC();
       lf[i].addr = dinst->getAddr();
-      lf[i].data = dinst->getData();
       lf[i].op   = dinst->getInst()->getOpcode();
       updated    = true;
     }
@@ -378,15 +371,10 @@ bool FUSCOORELoad::preretire(DInst *dinst, bool flushing)
     return true;
   }
         
-  if(!DL1->canAcceptRead(dinst))
+  if(DL1->isBusy(dinst->getAddr()))
     return false;
         
-  MemRequest *mreq = MemRequest::createRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
-  mreq->fwdRead();
-
-  // std::map<AddrType,DInst>::iterator it;
-  // it = pendLoadBuff.find(dinst->getAddr());
-  // pendLoadBuff.erase(it);
+  MemRequest::sendReqRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
   
   return true;
 }
@@ -459,7 +447,6 @@ StallCause FUSCOOREStore::canIssue(DInst *dinst) {
 #endif
 
 #if 1
-  fixdata[fixhash(dinst->getAddr())] = dinst->getData();
   fixaddr[fixhash(dinst->getAddr())] = dinst->getAddr();
 #endif
   
@@ -476,20 +463,17 @@ StallCause FUSCOOREStore::canIssue(DInst *dinst) {
 void FUSCOOREStore::retryvpc(DInst *dinst)
 /* retry vpc request {{{1 */
 {
-  //printf("DEBUG calling retryvpc from SCOORE Store\n");
   I(dinst->getInst()->isStoreAddress() || dinst->getInst()->isStore());
 
-  if (!vpc->canAcceptWrite(dinst)) {
+  if (vpc->isBusy(dinst->getAddr())) {
     retryvpcCB::schedule(3, this, dinst);
     return;
   }
 
   if (dinst->getInst()->isStoreAddress()) {
-    MemRequest *mreq=MemRequest::createWriteAddress(vpc, dinst, executedCB::create(this,dinst));
-    mreq->fwdWriteAddress(); 
+    MemRequest::sendReqWritePrefetch(vpc, dinst, dinst->getAddr(), executedCB::create(this,dinst));
   }else{
-    MemRequest *mreq=MemRequest::createWrite(vpc, dinst, performedCB::create(this,dinst));
-    mreq->fwdWrite();
+    MemRequest::sendReqWrite(vpc, dinst, dinst->getAddr(), performedCB::create(this,dinst));
   }
 }
 /* }}} */
@@ -540,19 +524,18 @@ bool FUSCOOREStore::preretire(DInst *dinst, bool flushing)
     return true;
   }
 
-  if(!DL1->canAcceptWrite(dinst))
+  if(DL1->isBusy(dinst->getAddr()))
     return false;
 
   vpc->replayCheckLSQ_removeStore(dinst);
 
   vpc->updateXCoreStores(dinst->getAddr());
 
-  MemRequest *mreq_vpc = MemRequest::createVPCWriteUpdate(vpc, dinst); //no callback needed
-  mreq_vpc->fwdWrite();
+	I(0); // FIXME
+//  MemRequest::createVPCWriteUpdate(vpc, dinst); //no callback needed
+  MemRequest::sendReqWrite(vpc, dinst, dinst->getAddr());
 
-
-  MemRequest *mreq_DL1 = MemRequest::createWrite(DL1, dinst, performedCB::create(this,dinst)); 
-  mreq_DL1->fwdWrite();
+  MemRequest::sendReqWrite(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst)); 
 
   return true;
 }
@@ -656,14 +639,13 @@ void FULoad::cacheDispatched(DInst *dinst) {
   I(enableDcache);
   I(!dinst->isLoadForwarded());
 
-  if(!DL1->canAcceptRead(dinst)) {
+  if(DL1->isBusy(dinst->getAddr())) {
     Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
     return;
   }
 
-  MemRequest *mreq=MemRequest::createRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
-  mreq->fwdRead();
+  MemRequest::sendReqRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
 }
 /* }}} */
 
@@ -759,8 +741,10 @@ void FUStore::executing(DInst *dinst) {
 
   if (dinst->getInst()->isStoreAddress()) {
 #if 1
-    MemRequest *mreq=MemRequest::createWriteAddress(DL1, dinst, executedCB::create(this,dinst));
-    mreq->fwdWriteAddress(); 
+    if (enableDcache)
+      MemRequest::sendReqWritePrefetch(DL1, dinst, dinst->getAddr(), executedCB::create(this,dinst));
+    else
+      executed(dinst);
 #else
     executed(dinst);
 #endif
@@ -799,12 +783,11 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
     return false;
   }
 
-  if(!DL1->canAcceptWrite(dinst) ) {
+  if(DL1->isBusy(dinst->getAddr()) ) {
     return false;
   }
 
-  MemRequest *mreq=MemRequest::createWrite(DL1, dinst, performedCB::create(this,dinst));
-  mreq->fwdWrite();
+  MemRequest::sendReqWrite(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
 
   return true;
 }
@@ -1017,7 +1000,8 @@ StallCause FURALU::canIssue(DInst *dinst)
     // This is the PC for a syscall (QEMUReader::syscall)
     if (blockUntil==0) {
       //LOG("syscall %d executed, with %d delay", dinst->getAddr(), dinst->getData());
-      blockUntil = globalClock+dinst->getData();
+      //blockUntil = globalClock+dinst->getData();
+      blockUntil = globalClock+100;
       return SyscallStall;
     }
     
@@ -1128,14 +1112,13 @@ void FULoad_noMemSpec::cacheDispatched(DInst *dinst) {
   I(enableDcache);
   I(!dinst->isLoadForwarded());
 
-  if(!DL1->canAcceptRead(dinst)) {
+  if(DL1->isBusy(dinst->getAddr())) {
     Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
     return;
   }
 
-  MemRequest *mreq=MemRequest::createRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
-  mreq->fwdRead();
+  MemRequest::sendReqRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
 }
 /* }}} */
 
@@ -1204,8 +1187,7 @@ void FUStore_noMemSpec::executing(DInst *dinst) {
   gen->nextSlot(dinst->getStatsFlag());
 
   if (dinst->getInst()->isStoreAddress()) {
-    MemRequest *mreq=MemRequest::createWriteAddress(DL1, dinst, executedCB::create(this,dinst));
-    mreq->fwdWriteAddress(); 
+    MemRequest::sendReqWritePrefetch(DL1, dinst, dinst->getAddr(), executedCB::create(this,dinst));
   }else{
     executed(dinst);
   }
@@ -1243,12 +1225,11 @@ bool FUStore_noMemSpec::preretire(DInst *dinst, bool flushing) {
     return false;
   }
 
-  if(!DL1->canAcceptWrite(dinst) ) {
+  if(DL1->isBusy(dinst->getAddr()) ) {
     return false;
   }
 
-  MemRequest *mreq=MemRequest::createWrite(DL1, dinst, performedCB::create(this,dinst));
-  mreq->fwdWrite();
+  MemRequest::sendReqWrite(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
 
   return true;
 }

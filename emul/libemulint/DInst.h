@@ -116,8 +116,6 @@ private:
   bool performed;
 
   bool keepStats;
-  float L1clkRatio;
-  float L3clkRatio;
 
 #ifdef ENABLE_CUDA
   CUDAMemType memaccess;
@@ -135,7 +133,6 @@ private:
   Instruction  inst;
   AddrType     pc;    // PC for the dinst
   AddrType     addr;  // Either load/store address or jump/branch address
-  DataType     data;  // load/store data value
   Cluster    *cluster;
   Resource   *resource;
   DInst      **RAT1Entry;
@@ -196,9 +193,6 @@ public:
 
   bool getStatsFlag() const { return keepStats; }
 
-  float getL1clkRatio() const { return L1clkRatio; }
-  float getL3clkRatio() const { return L3clkRatio; }
-
   static DInst *create(const Instruction *inst, RAWDInst *rinst, AddrType address, FlowID fid) {
     DInst *i = dInstPool.out(); 
 
@@ -207,15 +201,8 @@ public:
     I(inst);
     i->pc            = rinst->getPC();
     i->addr          = address;
-    i->data          = rinst->getData();
     i->fetchTime = 0;
-#ifdef ENABLE_CUDA
-    i->memaccess = rinst->getMemaccesstype();
-    i->pe_id =((rinst->getData() >> 32) & 0x0000FFFF);
-#endif
-    i->L3clkRatio = rinst->getL3clkRatio();
     i->keepStats  = rinst->getStatsFlag();
-    i->L1clkRatio = rinst->getL1clkRatio();
 
     //GI(inst->isMemory(), (i->getAddr() & 0x3) == 0); // Always word aligned access
     //GI(i->getAddr(), (i->getAddr() & 0x3) == 0); // Even branches should be word aligned
@@ -376,8 +363,6 @@ public:
   void setAddr(AddrType a)     { addr = a;               }
   AddrType getPC()       const { return pc;              }
   AddrType getAddr()     const { return addr;            }
-  DataType getData()     const { return data;            }
-  void     setData(DataType newData) { data = newData;   }
   FlowID   getFlowId()   const { return fid;             }
 
   char     getnDeps()    const { return nDeps;           }
@@ -485,14 +470,24 @@ public:
     return (memaccess==SharedMem);
   }
 
-  void setPE(DataType data){
-    pe_id = ((data >> 32) & 0x0000FFFF);
+  void setcudastats(RAWDInst *rinst){
+    memaccess            = rinst->getMemaccesstype();
+    uint64_t local_addr        = rinst->getAddr();
+    uint32_t peid_warpid = (local_addr >> 32);
+    pe_id                = ((peid_warpid >> 16) & 0x0000FFFF);
   }
+
+  void setPE(uint64_t local_addr){
+    uint32_t peid_warpid = (local_addr >> 32);
+    pe_id       = ((peid_warpid >> 16) & 0x0000FFFF);
+  }
+
 
   void markAddressLocal(FlowID fid){
     memaccess = LocalMem;
   }
 #endif
+
   uint32_t getPE() const {
 #ifdef ENABLE_CUDA
     return pe_id;

@@ -1,39 +1,25 @@
-// Contributed by  Alamelu Sankaranarayanan
-//                 Jose Renau
-//                 Gabriel Southern
-//
-// The ESESC/BSD License
-//
-// Copyright (c) 2005-2013, Regents of the University of California and 
-// the ESESC Project.
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//   - Redistributions of source code must retain the above copyright notice,
-//   this list of conditions and the following disclaimer.
-//
-//   - Redistributions in binary form must reproduce the above copyright
-//   notice, this list of conditions and the following disclaimer in the
-//   documentation and/or other materials provided with the distribution.
-//
-//   - Neither the name of the University of California, Santa Cruz nor the
-//   names of its contributors may be used to endorse or promote products
-//   derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
+/*
+ESESC: Super ESCalar simulator
+Copyright (C) 2005 University California, Santa Cruz.
 
+Contributed by  Alamelu Sankaranarayanan
+Jose Renau
+Gabriel Southern
+
+This file is part of ESESC.
+
+ESESC is free software; you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation;
+either version 2, or (at your option) any later version.
+
+ESESC is    distributed in the  hope that  it will  be  useful, but  WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should  have received a copy of  the GNU General  Public License along with
+ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
+Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+*/
 #define DO_MEMCPY 1
 #define CPU_DOES_MEMCPY 1
 #define SPECRATE_SYNC 0
@@ -58,6 +44,8 @@ GStatsCntr totalTimingThreadCount("PTXStats:totalTimingThreadCount");
 GStatsCntr memcpy2device("PTXStats:memcpy2device");
 GStatsCntr memcpy2host("PTXStats:memcpy2host");
 GStatsCntr cudamalloc("PTXStats:cudamalloc");
+GStatsHist avgMemcpy("PTXStats:avgMemcpy");
+
 
 extern bool cuda_go_ahead;
 CUDAKernel *kernel       = NULL;
@@ -91,6 +79,9 @@ uint32_t max_regs_sm        = 0;
 uint32_t max_warps_sm       = 0;
 uint32_t max_blocks_sm      = 0;
 bool unifiedCPUGPUmem       = false;
+div_type branch_div_mech    = serial;
+uint64_t loopcounter = 0;
+uint64_t relaunchcounter = 1;
 
 extern EmuSampler *qsamplerlist[];
 extern EmuSampler *qsampler;
@@ -131,8 +122,8 @@ extern "C" void GPUReader_declareLaunch() {
   totalThreadCount.add(numThreads);
 }
 
-extern "C" void GPUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, char op, uint64_t icount, void *env) {
-  gsampler->queue(insn, pc, addr, data, fid, op, icount, env);
+extern "C" void GPUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void *env) {
+  gsampler->queue(insn, pc, addr, fid, op, icount, env);
 }
 
 extern "C" uint64_t GPUReader_getNumThreads() {
@@ -177,7 +168,7 @@ extern "C" void GPUReader_mallocAddress(uint32_t dev_addr, uint32_t size, uint32
 
   cudamalloc.add(size);
   if (unifiedCPUGPUmem){
-    MSG("Mapping %d bytes of memory on the GPU starting from address %p ", (int)size, dev_addr);
+    MSG("Mapping %d bytes of memory on the GPU starting from address %x ", (int)size, dev_addr);
     AddrRange a; 
 
     a.dev_start = dev_addr;
@@ -194,6 +185,7 @@ extern "C" void GPUReader_mallocAddress(uint32_t dev_addr, uint32_t size, uint32
 extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t size, uint32_t kind,void *env, uint32_t* cpufid){
   uint32_t dev_addr  = 0;
   uint32_t host_addr = 0;
+  //avgMemcpy.sample(size);
 
   if (firstevertime == true){
 
@@ -228,7 +220,7 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
     //totalThreadCount.setIgnoreSampler();
     //totalTimingThreadCount.setIgnoreSampler();
     firstevertime = false;
-    MSG("\n\n\n\n\n\n\ ************************************************************** GO AHEAD ****************************************************************\n\n\n\n\n\n\n");
+    MSG("\n\n\n\n\n\n\n************************************************************** GO AHEAD ****************************************************************\n\n\n\n\n\n\n");
   }
 
 
@@ -255,7 +247,7 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
       memcpy2host.add(size);
     }
 
-    IS(MSG("Map %d bytes of memory between CPU address %p, and GPU address %p", (int)size, host_addr, dev_addr));
+    IS(MSG("Map %d bytes of memory between CPU address %x, and GPU address %x", (int)size, host_addr, dev_addr));
 
     bool notfound = true;
     for (uint32_t i = 0; i < Addrmap.size(); i++){
@@ -319,7 +311,7 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
     char        op4        = 2; // ARM32
     char        op5        = 3; // ARM32
 
-    DataType    data      = 0;
+    //DataType    data      = 0;
 
     uint64_t    icount    = 1;
     int32_t bytecount     = size;
@@ -334,22 +326,22 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
       do {
         //loadSampler(cpufid);
 
-        qsamplerlist[*cpufid]->queue(insn1,pc1, 0xdeadf00d ,data,*cpufid,op1,icount,env);
+        qsamplerlist[*cpufid]->queue(insn1,pc1, 0xdeadf00d ,*cpufid,op1,icount,env);
         for(int i=0;i<8;i++) // 8 LD
-          qsamplerlist[*cpufid]->queue(insn2,pc2, host_addr + i*4,data,*cpufid,op2,icount,env);
-        qsamplerlist[*cpufid]->queue(insn3,pc3, 0,data,*cpufid,op3,icount,env);
+          qsamplerlist[*cpufid]->queue(insn2,pc2, host_addr + i*4,*cpufid,op2,icount,env);
+        qsamplerlist[*cpufid]->queue(insn3,pc3, 0,*cpufid,op3,icount,env);
         for(int i=0;i<8;i++) // 8 ST
-          qsamplerlist[*cpufid]->queue(insn4,pc4, dev_addr + i*4,data,*cpufid,op4,icount,env);
-        qsamplerlist[*cpufid]->queue(insn5,pc5, pc1 ,data,*cpufid,op5,icount,env);
+          qsamplerlist[*cpufid]->queue(insn4,pc4, dev_addr + i*4,*cpufid,op4,icount,env);
+        qsamplerlist[*cpufid]->queue(insn5,pc5, pc1 ,*cpufid,op5,icount,env);
 
         //op        = 1; //Load from host
-        //qsamplerlist[*cpufid]->queue(loadinsn1,loadpc1,host_addr,data,*cpufid,op,icount,env);
-        //qsamplerlist[*cpufid]->queue(loadinsn2,loadpc1,host_addr,data,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(loadinsn1,loadpc1,host_addr,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(loadinsn2,loadpc1,host_addr,*cpufid,op,icount,env);
         //gsampler->queue(insn,pc,addr,data,*cpufid,op,icount,env);
 
         //op        = 2; // Store to device
-        //qsamplerlist[*cpufid]->queue(storeinsn1,storepc1,dev_addr,data,*cpufid,op,icount,env);
-        //qsamplerlist[*cpufid]->queue(storeinsn2,storepc2,dev_addr,data,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(storeinsn1,storepc1,dev_addr,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(storeinsn2,storepc2,dev_addr,*cpufid,op,icount,env);
         //gsampler->queue(insn,pc,addr,data,*cpufid,op,icount,env);
         host_addr += datachunk;
         dev_addr  += datachunk;
@@ -366,23 +358,23 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
       do {
         //loadSampler(cpufid);
 
-        qsamplerlist[*cpufid]->queue(insn1,pc1, 0xdeadf00d ,data,*cpufid,op1,icount,env);
+        qsamplerlist[*cpufid]->queue(insn1,pc1, 0xdeadf00d ,*cpufid,op1,icount,env);
         for(int i=0;i<8;i++) // 8 LD
-          qsamplerlist[*cpufid]->queue(insn2,pc2, dev_addr + i*4,data,*cpufid,op2,icount,env);
-        qsamplerlist[*cpufid]->queue(insn3,pc3, 0,data,*cpufid,op3,icount,env);
+          qsamplerlist[*cpufid]->queue(insn2,pc2, dev_addr + i*4,*cpufid,op2,icount,env);
+        qsamplerlist[*cpufid]->queue(insn3,pc3, 0,*cpufid,op3,icount,env);
         for(int i=0;i<8;i++) // 8 LD
-          qsamplerlist[*cpufid]->queue(insn4,pc4, host_addr + i*4,data,*cpufid,op4,icount,env);
-        qsamplerlist[*cpufid]->queue(insn5,pc5, pc1 ,data,*cpufid,op5,icount,env);
+          qsamplerlist[*cpufid]->queue(insn4,pc4, host_addr + i*4,*cpufid,op4,icount,env);
+        qsamplerlist[*cpufid]->queue(insn5,pc5, pc1 ,*cpufid,op5,icount,env);
 
         //op        = 1; // Load from device
-        //qsamplerlist[*cpufid]->queue(loadinsn1,loadpc1,dev_addr,data,*cpufid,op,icount,env);
-        //qsamplerlist[*cpufid]->queue(loadinsn2,loadpc2,dev_addr,data,*cpufid,op,icount,env);
-        //gsampler->queue(insn,pc,addr,data,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(loadinsn1,loadpc1,dev_addr,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(loadinsn2,loadpc2,dev_addr,*cpufid,op,icount,env);
+        //gsampler->queue(insn,pc,addr,*cpufid,op,icount,env);
 
         //op        = 2; //Store to host
-        //qsamplerlist[*cpufid]->queue(storeinsn1,storepc1,host_addr,data,*cpufid,op,icount,env);
-        //qsamplerlist[*cpufid]->queue(storeinsn2,storepc2,host_addr,data,*cpufid,op,icount,env);
-        //gsampler->queue(insn,pc,addr,data,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(storeinsn1,storepc1,host_addr,*cpufid,op,icount,env);
+        //qsamplerlist[*cpufid]->queue(storeinsn2,storepc2,host_addr,*cpufid,op,icount,env);
+        //gsampler->queue(insn,pc,addr,*cpufid,op,icount,env);
         
         dev_addr += datachunk;
         host_addr += datachunk;
@@ -404,7 +396,6 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
     uint32_t    storepc  = 0xf00ddeb1;
 
     AddrType    addr     = 0;
-    DataType    data     = 0;
     char        op       = 0;
     uint64_t    icount   = 1;
 
@@ -429,13 +420,13 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         glofid          = gpuTM->mapLocalID(smid);
 
         //Load
-        gsampler->queue(loadinsn,loadpc,host_addr,0,glofid,op,1,env); 
+        gsampler->queue(loadinsn,loadpc,host_addr,glofid,op,1,env); 
 
         if (istsfifoBlocked){
           gsampler->resumeThread(glofid);
         } else {
           //Store
-          gsampler->queue(storeinsn,storepc,dev_addr,0,glofid,op,1,env); 
+          gsampler->queue(storeinsn,storepc,dev_addr,glofid,op,1,env); 
           host_addr += datachunk;
           dev_addr  += datachunk;
           bytecount -= datachunk;
@@ -472,12 +463,12 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         glofid          = gpuTM->mapLocalID(smid);
 
         //Load
-        gsampler->queue(loadinsn,loadpc,host_addr,0,glofid,op,1,env); 
+        gsampler->queue(loadinsn,loadpc,host_addr,glofid,op,1,env); 
         if (istsfifoBlocked){
           gsampler->resumeThread(glofid);
         } else {
           //Store
-          gsampler->queue(storeinsn,storepc,dev_addr,0,glofid,op,1,env); 
+          gsampler->queue(storeinsn,storepc,dev_addr,glofid,op,1,env); 
           host_addr += datachunk;
           dev_addr  += datachunk;
           bytecount -= datachunk;
@@ -681,7 +672,9 @@ extern "C" uint32_t GPUReader_decode_trace(uint32_t * h_trace, uint32_t * qemuid
     *qemuid = newqemuid;
     if (oldqemuid != newqemuid)
       oldqemuid = newqemuid;
-  } 
+  }  else {
+    relaunchcounter++;
+  }
 
   return (alldone);    // no pause
 
@@ -712,8 +705,8 @@ extern "C" uint64_t GPUReader_translate_d2h(AddrType addr_ptr){
 
   } else {
     //If it not unified memory address, then just mark the memory as GPU memory and we are good. 
-    uint64_t ret_addr_ptr  = (0x0FFFFFFFFFFFFFFF & addr_ptr); 
-    ret_addr_ptr  = (0xA000000000000000 | ret_addr_ptr); 
+    uint64_t ret_addr_ptr  = (0x0FFFFFFFFFFFFFFFULL & addr_ptr); 
+    ret_addr_ptr  = (0xA000000000000000ULL | ret_addr_ptr); 
     //IS(MSG("Returning Addr %llx",(ret_addr_ptr)));
     return ret_addr_ptr;
   }
@@ -739,8 +732,8 @@ extern "C" uint64_t GPUReader_translate_shared(AddrType addr_ptr, uint32_t block
 
   uint64_t upper = wid<<16;
   upper          = upper | bid;
-  raw_addr       = (upper<<32) | (0x00000000FFFFFFFF & raw_addr);
-  raw_addr  = (0xC000000000000000 | raw_addr); 
+  raw_addr       = (upper<<32) | (0x00000000FFFFFFFFULL & raw_addr);
+  raw_addr  = (0xC000000000000000ULL | raw_addr); 
 
   //IS(MSG("Returning Addr %llx",raw_addr));
   return raw_addr;

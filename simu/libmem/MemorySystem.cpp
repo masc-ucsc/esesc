@@ -28,7 +28,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "SescConf.h"
 
-#include "Cache.h"
+#include "CCache.h"
 #include "NICECache.h"
 #include "SL0Cache.h"
 #include "VPC.h"
@@ -37,8 +37,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "StridePrefetcher.h"
 #include "GlobalHistoryBuffer.h"
 #include "Splitter.h"
-#include "SiftCacheSplitter.h"
-#include "SiftCacheSplicer.h"
 #include "MemXBar.h"
 #include "UnMemXBar.h"
 #include "MemorySystem.h"
@@ -65,24 +63,27 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
 {
   // Returns new created MemoryObj or NULL in known-error mode 
   MemObj *mdev=0;
-  uint32_t devtype = 0; //Cache
+  uint32_t devtype = 0; //CCache
 
   std::string mystr("");
   // You may insert here the further specializations you may need
   if (!strcasecmp(device_type, "cache") || !strcasecmp(device_type, "icache")) {
-    mdev = new Cache(this, dev_section, dev_name);
+    mdev = new CCache(this, dev_section, dev_name);
     devtype = 0;
-  } else if (!strcasecmp(device_type, "niceCache")) {
+  } else if (!strcasecmp(device_type, "nicecache")) {
     mdev = new NICECache(this, dev_section, dev_name);
     devtype = 1;
   } else if (!strcasecmp(device_type, "SL0")) {
-    mdev = new SL0Cache(this, dev_section, dev_name);
+    //mdev = new SL0Cache(this, dev_section, dev_name);
+		I(0);
     devtype = 2;
   } else if (!strcasecmp(device_type, "VPC")) {
-    mdev = new VPC(this, dev_section, dev_name);
+    //mdev = new VPC(this, dev_section, dev_name);
+		I(0);
     devtype = 3;
   } else if (!strcasecmp(device_type, "ghb")) {
-    mdev = new GHB(this, dev_section, dev_name);
+    //mdev = new GHB(this, dev_section, dev_name);
+		I(0);
     devtype = 4;
 #if 0
   } else if (!strcasecmp(device_type, "stridePrefetcher")) {
@@ -99,26 +100,22 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     mdev = new Bus(this, dev_section, dev_name);
     devtype = 8;
   } else if (!strcasecmp(device_type, "tlb")) {
-    mdev = new TLB(this, dev_section, dev_name);
+		I(0);
+    //mdev = new TLB(this, dev_section, dev_name);
     devtype = 9;
   } else if (!strcasecmp(device_type, "splitter")) {
-    mdev = new Splitter(this, dev_section, dev_name);
+    //mdev = new Splitter(this, dev_section, dev_name);
+		I(0);
     devtype = 10;
-  }  else if (!strcasecmp(device_type, "siftsplitter")) {
-    mdev = new SiftCacheSplitter(this, dev_section, dev_name);
-    devtype = 11;
-  } else if (!strcasecmp(device_type, "siftsplicer")) {
-    mdev = new SiftCacheSplicer(this, dev_section, dev_name);
-    devtype = 15;
   } else if (!strcasecmp(device_type, "memxbar")) {
     mdev = new MemXBar(this, dev_section, dev_name);    
-    devtype = 13;
+    devtype = 11;
   } else if (!strcasecmp(device_type, "unmemxbar")) {
     mdev = new UnMemXBar(this, dev_section, dev_name);    
-    devtype = 14;
+    devtype = 12;
   }  else if (!strcasecmp(device_type, "memcontroller")) {
     mdev = new MemController(this, dev_section, dev_name);
-    devtype = 12;
+    devtype = 13;
   } else if (!strcasecmp(device_type, "void")) {
     return NULL;
   } else {
@@ -133,12 +130,12 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
   mystr += mdev->getName();
 
   switch(devtype){
-    case 0: //Cache
+    case 0: //CCache
     case 1: //NiceCache
     case 2: //SL0
     case 3: //VPC
       mystr += "\"[shape=record,sides=5,peripheries=2,color=darkseagreen,style=filled]";
-      //Fetch the cache related parameters : Size, bsize, name, inclusive, ports
+      //Fetch the CCache related parameters : Size, bsize, name, inclusive, ports
       break;
     case 4: //GHB
     case 5: //stridePrefetcher
@@ -150,14 +147,8 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
       mystr += "\"[shape=record,sides=5,peripheries=1,color=lightpink,style=filled]";
       break;
     case 10: //Splitter
-    case 11: //SiftSplitter
-    case 15: //SiftSplicer
-    case 13: //MemXBar
-    case 14: //UnMemXBar
+    case 11: //MemXBar
       mystr += "\"[shape=record,sides=5,peripheries=1,color=thistle,style=filled]";
-      break;
-    case 9: //tlb
-      mystr += "\"[shape=record,sides=5,peripheries=1,color=green,style=filled]";
       break;
     case 12: //memcontroller
       mystr += "\"[shape=record,sides=5,peripheries=1,color=skyblue,style=filled]";

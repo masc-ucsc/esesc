@@ -57,6 +57,8 @@ public:
     EmuTiming,
     EmuMax
   };
+
+
 protected:
   const char *name;
   FlowID sFid;
@@ -85,9 +87,11 @@ protected:
   bool     calcCPIJustCalled;
   bool     keepStats;  // Do we keep the stats or ignore them (Detail vs. Timing)
 
+  GStatsCntr *nSwitches;
   GStatsCntr *tusage[EmuMax];
   GStatsCntr *iusage[EmuMax];
   GStatsCntr *globalClock_Timing;
+
   GStats *nCommitted;
   GStatsAvg *ipc;
   GStatsAvg *uipc;
@@ -171,6 +175,7 @@ public:
   virtual uint64_t getTime() = 0;
 
   bool execute(FlowID fid, uint64_t icount);
+
   void AtomicDecrPhasenInst(uint64_t i){
     AtomicSub(&phasenInst, i);
   }
@@ -186,16 +191,14 @@ public:
   }
 
   virtual bool isActive(FlowID fid) = 0;
-  virtual void syncStats() = 0;
 
-  virtual void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, uint64_t icount, void *env) = 0;
+  virtual void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env) = 0;
   virtual void getGPUCycles(FlowID fid, float ratio = 1.0) = 0;
   void syscall(uint32_t num, uint64_t usecs, FlowID fid);
 
   virtual FlowID resumeThread(FlowID uid, FlowID last_fid) = 0;
   virtual FlowID resumeThread(FlowID uid) = 0;
   virtual void pauseThread(FlowID fid) = 0;
-  virtual void syncRunning() = 0;
   virtual void terminate() = 0;
 
   float getMeaCPI() {
@@ -227,7 +230,6 @@ public:
   }
   virtual int64_t getThreads2Simulate(){ return 0; }
   virtual int isSamplerDone() = 0;
-  bool othersStillInTiming(FlowID fid);
   void clearInTiming(FlowID fid);
   void setInTiming(FlowID fid); 
   void updatenSamples();
@@ -237,7 +239,6 @@ public:
   //bool getStatsFlag() { return keepStats; } // True is to keep stats}
   bool getKeepStatsFlag() { return keepStats; } // True is to keep stats}
   virtual void syncnSamples(FlowID fid) = 0; 
-  virtual void syncTimes(FlowID fid) = 0; 
   virtual void dumpThreadProgressedTime(FlowID fid) {};
 };
 #endif

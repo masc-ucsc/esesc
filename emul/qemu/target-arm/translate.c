@@ -100,7 +100,6 @@ static TCGv_i32 cpu_exclusive_info;
 // 128 should match count in main.c
 static TCGv cpu_op_cnt;
 static TCGv_ptr cpu_op_insn;
-static TCGv_ptr cpu_op_data;
 static TCGv_ptr cpu_op_addr;
 static TCGv_ptr cpu_op_pc;
 
@@ -154,7 +153,6 @@ void arm_translate_init_esescqueue(uint32_t fid)
 
 	cpu_op_cnt  = tcg_global_mem_new(TCG_AREG0, offsetof(CPUState, op_cnt), "op_cnt");
 	cpu_op_insn = tcg_global_mem_new_ptr(TCG_AREG0, offsetof(CPUState, op_insn), "op_insn");
-	cpu_op_data = tcg_global_mem_new_ptr(TCG_AREG0, offsetof(CPUState, op_data), "op_data");
 	cpu_op_addr = tcg_global_mem_new_ptr(TCG_AREG0, offsetof(CPUState, op_addr), "op_addr");
 	cpu_op_pc   = tcg_global_mem_new_ptr(TCG_AREG0, offsetof(CPUState, op_pc), "op_pc");
 
@@ -257,16 +255,6 @@ static void store_reg(DisasContext *s, int reg, TCGv var)
 		tcg_gen_add_ptr(tmp_pos, cpu_op_addr, (tmp_off)); \
 		tcg_gen_st_tl(tmp_val, tmp_pos, 0);
 
-#define DATA_TRACE() \
-    tcg_gen_qemu_ld32u(tmp_val, tmp_val, index); \
-		tcg_gen_add_ptr(tmp_pos, cpu_op_data, (tmp_off)); \
-		tcg_gen_st_tl(tmp_val, tmp_pos, 0);
-
-#define DATA_0_TRACE() \
-		tcg_gen_movi_tl(tmp_val, 0); \
-		tcg_gen_add_ptr(tmp_pos, cpu_op_data, (tmp_off)); \
-		tcg_gen_st_tl(tmp_val, tmp_pos, 0);
-
 #define END_TRACE() \
 	tcg_temp_free(tmp_val); \
   tcg_temp_free_ptr(tmp_pos); \
@@ -314,7 +302,6 @@ static inline void tcg_gen_trace_prectrl(int thumb, uint32_t pc)
 
 	PC_TRACE();
 	ADDR_0_TRACE();
-	DATA_0_TRACE();
 	INSN_TRACE(3);
 
 	END_TRACE(); 
@@ -346,7 +333,6 @@ static inline void tcg_gen_trace_ctrl_ptr(int thumb, uint32_t pc, TCGv addr)
 
 	PC_TRACE();
 	ADDR_PTR_TRACE();
-	DATA_0_TRACE();
 	INSN_TRACE(3);
 
 	END_TRACE();
@@ -361,7 +347,6 @@ static inline void tcg_gen_trace_ctrl(int thumb, uint32_t pc, uint32_t addr)
 
 	PC_TRACE();
 	ADDR_TRACE();
-	DATA_0_TRACE();
 	INSN_TRACE(3);
 
 	END_TRACE();
@@ -371,7 +356,6 @@ static inline void tcg_gen_trace_postld(int thumb, TCGv addr, int index)
 	BEGIN_POSTTRACE();
 
 	ADDR_MOP_TRACE();
-	DATA_TRACE();
 	INSN_TRACE(1);
 
 	END_POSTTRACE(); 
@@ -388,7 +372,6 @@ static inline void tcg_gen_trace_ld(int thumb, uint32_t pc, TCGv addr, int index
 
 	PC_TRACE();
 	ADDR_MOP_TRACE();
-	DATA_TRACE();
 	INSN_TRACE(1);
 
 	END_TRACE();
@@ -398,7 +381,6 @@ static inline void tcg_gen_trace_postst(int thumb,TCGv addr, int index)
 	BEGIN_POSTTRACE();
 
 	ADDR_MOP_TRACE();
-	DATA_TRACE();
 	INSN_TRACE(2);
 
 	END_POSTTRACE(); 
@@ -413,7 +395,6 @@ static inline void tcg_gen_trace_st(int thumb, uint32_t pc, TCGv addr, int index
 
 	PC_TRACE();
 	ADDR_MOP_TRACE();
-	DATA_TRACE();
 	INSN_TRACE(2);
 
 	END_TRACE();

@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //                Luis Ceze
@@ -77,7 +78,7 @@ Time_t Splitter::nextReadSlot(       const MemRequest *mreq)
 {
   return globalClock;
 // Bus style or cache style?
-  // return max(rdPort->nextSlot(),nextBankSlot()); 
+  // return max(rdPort->nextSlot(mreq->getStatsFlag()),nextBankSlot()); 
 }
 /* }}} */
 
@@ -86,7 +87,7 @@ Time_t Splitter::nextWriteSlot(      const MemRequest *mreq)
 {
   return globalClock;
 // Bus style or cache style?
-  // return max(wrPort->nextSlot(),nextBankSlot()); 
+  // return max(wrPort->nextSlot(mreq->getStatsFlag()),nextBankSlot()); 
 }
 /* }}} */
 Time_t Splitter::nextBusReadSlot(    const MemRequest *mreq)
@@ -123,7 +124,7 @@ void Splitter::read(MemRequest *mreq)
   }
 #ifdef ENABLE_CUDA
   if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot();
+    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
     //routerLeft->fwdBusRead(mreq, when-globalClock); 
     router->fwdBusReadPos(1,mreq, when-globalClock);
     return;
@@ -144,7 +145,7 @@ void Splitter::write(MemRequest *mreq)
   }
 #ifdef ENABLE_CUDA
   if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot();
+    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
     //routerLeft->fwdBusRead(mreq, when-globalClock); 
     router->fwdBusReadPos(1, mreq, when-globalClock);
     return;
@@ -170,7 +171,7 @@ void Splitter::busRead(MemRequest *mreq)
   }
 #ifdef ENABLE_CUDA
   if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot();
+    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
     //routerLeft->fwdBusRead(mreq, when-globalClock); 
     router->fwdBusReadPos(1, mreq, when-globalClock); 
     return;
@@ -195,7 +196,7 @@ void Splitter::pushDown(MemRequest *mreq)
 
 #ifdef ENABLE_CUDA
   if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot();
+    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
     router->fwdPushDownPos(1, mreq, when-globalClock);
     return;
   }
@@ -219,7 +220,7 @@ void Splitter::pushUp(MemRequest *mreq)
 
 #ifdef ENABLE_CUDA
   if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot();
+    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
     //router->fwdPushUpPos(1,mreq, when-globalClock); // Note, you don't need a pos here, because the splitter sends both shared and global addresses to the same upper level.
     router->fwdPushUp(mreq, when-globalClock); 
     return;
@@ -283,4 +284,6 @@ void Splitter::ffinvalidate(AddrType addr, int32_t ilineSize)
   // FIXME: router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
 }
 /* }}} */
+
+#endif
 

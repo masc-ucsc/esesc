@@ -1,3 +1,4 @@
+// Copyright and includes {{{1
 // Contributed by Jose Renau
 //
 // The ESESC/BSD License
@@ -56,19 +57,68 @@ MRouter::~MRouter()
 }
 /* }}} */
 
-void MRouter::fillRouteTables() {
+int16_t MRouter::getCreatorPort(const MemRequest *mreq) const
+{
+  if (up_node.empty())
+    return -1;
+
+  if (up_node.size() == 1)
+    return 0; // Most common case
+
+  UPMapType::const_iterator it = up_map.find(mreq->getCreator());
+  if (it == up_map.end()) {
+    I(mreq->isHomeNode());
+    return -1; // This happens when a mreq is created by the middle node
+  }
+
+  MemObj *obj = it->second;
+
+  for(size_t i=0;i<up_node.size();i++) {
+    if (up_node[i] == obj)
+      return i;
+  }
+
+  return -1; // Not Found
+}
+
+void MRouter::fillRouteTables() 
+  // populate router tables with the up/down nodes {{{1
+{
+
   I(up_node.size()==0); // First level cache only
   I(up_map.size() == 0);
+  MSG("Fill router is %s",self_mobj->getName());
 
   I(down_node.size()>=1);
   for (size_t i = 0; i < down_node.size(); i++){
     down_node[i]->getRouter()->updateRouteTables(self_mobj, self_mobj);
   }
+
+  // Look for nicecache or memory, and propagate up to the nodes that do not need coherence (llc)
+  MemObj *bottom = self_mobj;
+  MRouter *rb    = this;
+  while(rb) {
+    bottom = rb->self_mobj;
+    if (rb->down_node.empty())
+      rb = 0;
+    else
+      rb = rb->down_node[0]->getRouter();
+  }
+  MSG("Bottom router is %s",bottom->getName());
+  rb = bottom->getRouter();
+  rb->self_mobj->clearNeedsCoherence();
+  while(rb->up_node.size()==1) {
+    MemObj *uobj = rb->up_node[0];
+    uobj->clearNeedsCoherence();
+    rb = uobj->router;
+  }
 }
+// }}}
 
 void MRouter::updateRouteTables(MemObj *upmobj, MemObj * const top_node)
   /* regenerate the routing tables {{{1 */
 {  
+  upmobj->setNeedsCoherence();
 
   up_map[top_node] = upmobj;
   for(size_t i=0;i<down_node.size();i++) {
@@ -134,25 +184,26 @@ void MRouter::addDownNode(MemObj *dpm)
 }
 /* }}} */
 
-void MRouter::fwdPushDownPos(uint32_t pos, MemRequest *mreq)
-  /* fwd push down {{{1 */
+void MRouter::scheduleReqPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
+  /* schedule req down {{{1 */
 {
   I(down_node.size()>pos);
   mreq->setNextHop(down_node[pos]);
-  mreq->fwdPushDown();
-}
-/* }}} */
-void MRouter::fwdPushDownPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
-  /* fwd push down {{{1 */
-{
-  I(down_node.size()>pos);
-  mreq->setNextHop(down_node[pos]);
-  mreq->fwdPushDown(lat);
+  mreq->scheduleReq(lat);
 }
 /* }}} */
 
-void MRouter::fwdPushUp(MemRequest *mreq)
-  /* fwd push up {{{1 */
+void MRouter::scheduleReq(MemRequest *mreq, TimeDelta_t lat)
+  /* schedule req down {{{1 */
+{
+  I(down_node.size()==1);
+  mreq->setNextHop(down_node[0]);
+  mreq->scheduleReq(lat);
+}
+/* }}} */
+
+void MRouter::scheduleReqAck(MemRequest *mreq, TimeDelta_t lat)
+  /* schedule reqAck up {{{1 */
 {
   I(!up_node.empty());
   MemObj *obj = up_node[0];
@@ -162,162 +213,206 @@ void MRouter::fwdPushUp(MemRequest *mreq)
     obj = it->second;
   }
   mreq->setNextHop(obj);
-  mreq->fwdPushUp();
+  mreq->scheduleReqAck(lat);
 }
 /* }}} */
 
-void MRouter::fwdPushUpPos(uint32_t pos, MemRequest *mreq)
-  /* fwd push up {{{1 */
-{
-  I(!up_node.empty());
-  I(pos<up_node.size());
-
-  mreq->setNextHop(up_node[pos]);
-  mreq->fwdPushUp();
-}
-/* }}} */
-void MRouter::fwdPushUp(MemRequest *mreq, TimeDelta_t lat)
-  /* fwd push up {{{1 */
+void MRouter::scheduleReqAckAbs(MemRequest *mreq, Time_t w)
+  /* schedule reqAck up {{{1 */
 {
   I(!up_node.empty());
   MemObj *obj = up_node[0];
-  UPMapType::const_iterator it;
-
   if (up_node.size()>1) {
-    it = up_map.find(mreq->getHomeNode());
+    UPMapType::const_iterator it = up_map.find(mreq->getHomeNode());
     I(it != up_map.end());
     obj = it->second;
   }
-
-  I(obj);
-
   mreq->setNextHop(obj);
-  mreq->fwdPushUp(lat);
+  mreq->scheduleReqAckAbs(w);
 }
 /* }}} */
-void MRouter::fwdPushUpPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
-  /* fwd push up {{{1 */
+
+void MRouter::scheduleReqAckPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
+  /* schedule push up {{{1 */
 {
   I(!up_node.empty());
   I(pos<up_node.size());
 
   mreq->setNextHop(up_node[pos]);
-  mreq->fwdPushUp(lat);
+  mreq->scheduleReqAck(lat);
 }
 /* }}} */
 
-void MRouter::fwdBusReadPos(uint32_t pos, MemRequest *mreq)
-  /* fwd bus read (down) {{{1 */
+void MRouter::scheduleSetStatePos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
+  /* schedule setState up {{{1 */
 {
-  I(down_node.size()>pos);
-  mreq->setNextHop(down_node[pos]);
-  mreq->fwdBusRead();
-}
-/* }}} */
-void MRouter::fwdBusReadPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
-  /* fwd bus read (down) {{{1 */
-{
-  I(down_node.size()>pos);
-  mreq->setNextHop(down_node[pos]);
-  mreq->fwdBusRead(lat);
+  I(!up_node.empty());
+  I(pos<up_node.size());
+
+  mreq->setNextHop(up_node[pos]);
+  mreq->scheduleSetState(lat);
 }
 /* }}} */
 
-bool MRouter::sendInvalidateOthers(int32_t lsize, const MemRequest *mreq, AddrType naddr, TimeDelta_t lat)
-  /* send invalidate {{{1 */
+void MRouter::scheduleSetStateAck(MemRequest *mreq, TimeDelta_t lat)
+  /* schedule setStateAck down {{{1 */
+{
+	I(down_node.size()==1);
+
+  mreq->setNextHop(down_node[0]);
+  mreq->scheduleSetStateAck(lat);
+}
+/* }}} */
+
+void MRouter::scheduleSetStateAckPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
+  /* schedule setStateAck down {{{1 */
+{
+	I(down_node.size()>pos);
+
+  mreq->setNextHop(down_node[pos]);
+  mreq->scheduleSetStateAck(lat);
+}
+/* }}} */
+
+void MRouter::scheduleDispPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
+  /* schedule Displace (down) {{{1 */
+{
+  I(down_node.size()>pos);
+  mreq->setNextHop(down_node[pos]);
+  mreq->scheduleDisp(lat);
+}
+/* }}} */
+
+void MRouter::scheduleDisp(MemRequest *mreq, TimeDelta_t lat)
+  /* schedule Displace (down) {{{1 */
+{
+  I(down_node.size()==1);
+  mreq->setNextHop(down_node[0]);
+  mreq->scheduleDisp(lat);
+}
+/* }}} */
+
+void MRouter::sendDisp(AddrType addr, bool doStats, TimeDelta_t lat)
+  /* schedule Displace (down) {{{1 */
+{
+  I(down_node.size()==1);
+  MemRequest::sendDisp(down_node[0], addr, doStats);
+}
+/* }}} */
+
+int32_t MRouter::sendSetStateOthers(MemRequest *mreq, MsgAction ma, TimeDelta_t lat)
+  /* send setState to others, return how many {{{1 */
 {
   if (up_node.size() <= 1)
-    return false; // if single node, for sure it does not get one
+    return 0; // if single node, for sure it does not get one
+
+  int32_t lsize = mreq->getLineSize();
+  bool doStats  = mreq->getStatsFlag();
+  AddrType addr = mreq->getAddr();
 
   MemObj *skip_mobj            = 0;
   UPMapType::const_iterator it = up_map.find(mreq->getHomeNode());
   I(it != up_map.end());
   skip_mobj                    = it->second;
 
-  MemRequest *ireq = 0;
+  int32_t conta = 0;
+  I(mreq->isReq());
   for(size_t i=0;i<up_node.size();i++) {
     if (up_node[i] == skip_mobj) 
       continue;
 
-    MemRequest *breq;
-    if(ireq==0) {
-      ireq = MemRequest::createInvalidate(self_mobj, naddr, lsize, false /*not a capacity Invalidate */);
-      breq = ireq;
-    }else{
-      breq = ireq->createInvalidate();
-    }
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, lsize, doStats);
+    breq->addPendingSetStateAck(mreq);
+
     breq->setNextHop(up_node[i]);
-    breq->fwdInvalidate(lat);
+    breq->scheduleSetState(lat);
+    conta++;
   }
 
-  return true;
+  return conta;
 }
 /* }}} */
 
-bool MRouter::sendInvalidateAll(int32_t lsize, const MemRequest *mreq, AddrType naddr, TimeDelta_t lat)
-  /* send invalidate to all the up nodes {{{1 */
+int32_t MRouter::sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction ma, TimeDelta_t lat)
+  /* send setState to specific pos, return how many {{{1 */
 {
-  if(up_node.empty())
-    return false;
+  if (up_node.size() <= 1)
+    return 0; // if single node, for sure it does not get one
 
-  MemRequest *ireq = 0;
-  for(size_t i=0;i<up_node.size();i++) {
-    MemRequest *breq;
-    if(ireq==0) {
-      ireq = MemRequest::createInvalidate(self_mobj, naddr, lsize, true /*capacity Invalidate*/);
-      breq = ireq;
-    }else{
-      breq = ireq->createInvalidate();
-    }
-    breq->setNextHop(up_node[i]);
-    breq->fwdInvalidate(lat);
-  }
+  int32_t lsize = mreq->getLineSize();
+  bool doStats  = mreq->getStatsFlag();
+  AddrType addr = mreq->getAddr();
 
-  return true;
-}
-/* }}} */
-bool MRouter::sendInvalidatePos(uint32_t pos, int32_t lsize, const MemRequest *mreq, AddrType naddr, TimeDelta_t lat)
-  /* send invalidate to all the up nodes {{{1 */
-{
-  if(up_node.empty())
-    return false;
-
-  I(up_node.size()>pos);
-  MemRequest *breq= MemRequest::createInvalidate(self_mobj, naddr, lsize, true /*capacity Invalidate*/);
+  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, lsize, doStats);
+  breq->addPendingSetStateAck(mreq);
 
   breq->setNextHop(up_node[pos]);
-  breq->fwdInvalidate(lat);
+  breq->scheduleSetState(lat);
 
-  return true;
+  return 1;
 }
 /* }}} */
 
-bool MRouter::canAcceptReadPos(uint32_t pos, DInst *dinst) const 
-/* Check if the lower level can accept a new addr request {{{1 */
+int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat)
+  /* send setState to others, return how many {{{1 */
 {
-  //I(down_node.size()==1);
-  return down_node[pos]->canAcceptRead(dinst);
-}
-/* }}} */
-bool MRouter::canAcceptWritePos(uint32_t pos, DInst *dinst) const 
-/* Check if the lower level can accept a new addr request {{{1 */
-{
-  //I(down_node.size()==1);
-  return down_node[pos]->canAcceptWrite(dinst);
+  if(up_node.empty())
+    return 0; // top node?
+
+  int32_t lsize = mreq->getLineSize();
+  bool doStats  = mreq->getStatsFlag();
+  AddrType addr = mreq->getAddr();
+
+  I(mreq->isSetState());
+  int32_t conta = 0;
+  for(size_t i=0;i<up_node.size();i++) {
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, lsize, doStats);
+    breq->addPendingSetStateAck(mreq);
+
+    breq->setNextHop(up_node[i]);
+    breq->scheduleSetState(lat);
+    conta++;
+  }
+
+  return conta;
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffreadPos(uint32_t pos, AddrType addr, DataType data)
+TimeDelta_t MRouter::ffread(AddrType addr)
   /* propagate the read to the lower level {{{1 */
 {
-  return down_node[pos]->ffread(addr,data);
+  return down_node[0]->ffread(addr);
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffwritePos(uint32_t pos, AddrType addr, DataType data)
+TimeDelta_t MRouter::ffwrite(AddrType addr)
   /* propagate the read to the lower level {{{1 */
 {
-  return down_node[pos]->ffwrite(addr,data);
+  return down_node[0]->ffwrite(addr);
+}
+/* }}} */
+
+TimeDelta_t MRouter::ffreadPos(uint32_t pos, AddrType addr)
+  /* propagate the read to the lower level {{{1 */
+{
+  I(pos<down_node.size());
+  return down_node[pos]->ffread(addr);
+}
+/* }}} */
+
+TimeDelta_t MRouter::ffwritePos(uint32_t pos ,AddrType addr)
+  /* propagate the read to the lower level {{{1 */
+{
+  I(pos<down_node.size());
+  return down_node[pos]->ffwrite(addr);
+}
+/* }}} */
+
+bool MRouter::isBusyPos(uint32_t pos, AddrType addr) const
+  /* propagate the isBusy {{{1 */
+{
+  I(pos<down_node.size());
+  return down_node[pos]->isBusy(addr);
 }
 /* }}} */
 

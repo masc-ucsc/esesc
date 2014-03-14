@@ -1537,7 +1537,7 @@ sub instStats {
 sub branchStats {
   my $file = shift;
 
-  print "Proc : Avg.Time : BPType :  Total  :         RAS        :  BPred  :         BTB         :  BTAC";
+  print "Proc : Avg.Time :  BPType           :  Total  :         RAS        :  BPred  :         BTB         :  BTAC";
   my $preType = $cf->getConfigEntry(key=>"preType");
   if( $preType > 0 ) {
     print "         " . $preType;
@@ -1574,7 +1574,7 @@ sub branchStats {
 
     printf "%8.3f :  ",$avgBranchTime;
 
-    printf "%-5s :",$type;
+    printf "%-16s :",$type;
 
     printf "%7.2f%% :",100*($nBranches-$nMiss)/($nBranches);
 
@@ -1751,9 +1751,9 @@ sub thermStats_table {
 sub tradCPUStats {
   my $file = shift;
 
-  print "Proc  IPC  uIPC";
-  print " Active ";
-  print "      Cycles  Busy   LDQ   STQ  IWin   ROB";
+  print "Proc  IPC     uIPC";
+  print "    Active    ";
+  print "    Cycles    Busy   LDQ   STQ  IWin   ROB";
   print "  Regs    IO  maxBr  MisBr Br4Clk brDelay \n";
 
   my $inst_t = 0;
@@ -1813,9 +1813,9 @@ sub tradCPUStats {
   ##########################
   # pid, IPC, uIPC, active, cycles
 
-    printf " %3d  %3.2f %3.2f",$i,$timingInst/$clockTicks,$nInst/$clockTicks;
-    printf " %4.3f ",$clockTicks/$globalClock;
-    printf " %12.0f ",$clockTicks;
+  printf " %3d  %05.2f  % 5.2f  ",$i,$timingInst/$clockTicks,$nInst/$clockTicks;
+  printf " %- 12.2f",$clockTicks/$globalClock;
+  printf " %- 9.0f  ",$clockTicks;
 
   ##########################
   # Substract BUSY time
@@ -1825,7 +1825,7 @@ sub tradCPUStats {
     my $idealInst = $issue*$clockTicks;
     $temp = 100*$nInst/($idealInst);
 
-    printf " %4.1f ",$temp;
+    printf " %04.1f ",$temp;
 
     my $remaining = 100; # 100% of the time
     $remaining-=$temp;

@@ -119,8 +119,9 @@ class GProcessor {
     static GStatsCntr   *wallClock;
 
     // END Statistics
+    float        throttingRatio;
     uint32_t     throtting_cntr;
-    uint32_t     throtting;
+
     uint64_t     lastReplay;
 
     // Construction
@@ -166,6 +167,7 @@ class GProcessor {
     void setEmulInterface(EmulInterface *e) {
       eint = e;
     }
+
     void freeze(Time_t nCycles) {
       nFreeze.add(nCycles);
       clockTicks.add(nCycles);

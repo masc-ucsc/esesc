@@ -426,6 +426,10 @@ class uca_org_t
     void find_energy();
     void find_area();
     void find_cyc();
+    
+    std::vector<uca_org_t * > uca_q;
+    uca_org_t * uca_pg_reference;
+    void cleanup();
 };
 
 

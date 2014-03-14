@@ -1,3 +1,4 @@
+#if 0
 #include "GlobalHistoryBuffer.h"
 #include "CacheCore.h"
 
@@ -241,4 +242,4 @@ void        GHB::ffinvalidate(AddrType addr, int32_t lineSize){
   I(0);
 }
 
-
+#endif

@@ -42,25 +42,13 @@
 #include "Port.h"
 #include "MemRequest.h"
 #include "MemObj.h"
-#include "DDR2.h"
-#include "MSHR.h"
 
 #include "SescConf.h"
-#include "MemorySystem.h"
-#include "Cache.h"
-#include "MSHR.h"
-#include "GProcessor.h"
 #include "callback.h"
 
-#include "estl.h"
-#include "CacheCore.h"
-#include "Port.h"
-#include "MemObj.h"
-#include "MemorySystem.h"
-#include "MSHR.h"
 #include "Snippets.h"
-#include "MemController.h"
 
+class MemorySystem;
 
 #include <queue>
 /* }}} */
@@ -125,30 +113,27 @@ public:
   MemController(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
   ~MemController() {}
 
-  Time_t nextReadSlot(       const MemRequest *mreq);
-  Time_t nextWriteSlot(      const MemRequest *mreq);
-  Time_t nextBusReadSlot(    const MemRequest *mreq);
-  Time_t nextPushDownSlot(   const MemRequest *mreq);
-  Time_t nextPushUpSlot(     const MemRequest *mreq);
-  Time_t nextInvalidateSlot( const MemRequest *mreq);
+	// Entry points to schedule that may schedule a do?? if needed
+	void req(MemRequest *req)         { doReq(req); };
+	void reqAck(MemRequest *req)      { doReqAck(req); };
+	void setState(MemRequest *req)    { doSetState(req); };
+	void setStateAck(MemRequest *req) { doSetStateAck(req); };
+	void disp(MemRequest *req)        { doDisp(req); }
 
-  // processor direct requests
-  void read(MemRequest  *req);
-  void write(MemRequest *req);
-  void writeAddress(MemRequest *req);
+	// This do the real work
+	void doReq(MemRequest *req);
+	void doReqAck(MemRequest *req);
+	void doSetState(MemRequest *req);
+	void doSetStateAck(MemRequest *req);
+	void doDisp(MemRequest *req);
 
-  // DOWN
-  void busRead(MemRequest *req);
-  void pushDown(MemRequest *req);
-  
-  // UP
-  void pushUp(MemRequest *req);
-  void invalidate(MemRequest *req);
-  // Status/state
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
+
+	bool isBusy(AddrType addr) const;
+
   uint16_t getLineSize() const;
 
-  bool canAcceptRead(DInst *dinst) const;
-  bool canAcceptWrite(DInst *dinst) const;
   void manageRam(void);
 
   typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;

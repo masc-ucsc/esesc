@@ -39,43 +39,26 @@
 #include "DInst.h"
 #include "callback.h"
 
-#include "MRouter.h"
 #include "nanassert.h"
 
 #include "Resource.h"
+#include "MRouter.h"
 
-class MemRequest;      // Memory Request (from processor to cache)
+class MemRequest;
 
 class MemObj {
 private:
 protected:
+  friend class MRouter;
+
   MRouter *router;
   const char *section;
   const char *name;
+  const uint16_t id;
+  static uint16_t id_counter;
 
-  void addLowerLevel(MemObj *obj) { 
-    router->addDownNode(obj);
-    I( obj );
-    obj->addUpperLevel(this);
-    printf("%s with lower level %s\n",getName(),obj->getName());
-  }
-  void addLowerLevel(MRouter *router, MemObj *obj) { 
-    I(0); // Stop using this OLD CODE
-    router->addDownNode(obj);
-    I( obj );
-    obj->addUpperLevel(this);
-    printf("%s with lower level %s\n",getName(),obj->getName());
-  }
-
-  void addUpperLevel(MemObj *obj) { 
-    printf("%s upper level is %s\n",getName(),obj->getName());
-    router->addUpNode(obj);
-  }
-  void addUpperLevel(MRouter *router, MemObj *obj) { 
-    I(0); // Stop using this OLD CODE
-    printf("%s upper level is %s\n",getName(),obj->getName());
-    router->addUpNode(obj);
-  }
+  void addLowerLevel(MemObj *obj);
+	void addUpperLevel(MemObj *obj);
 
 public:
   MemObj(const char *section, const char *sName);
@@ -84,94 +67,72 @@ public:
 
   const char *getSection() const { return section; }
   const char *getName() const    { return name;    }
+  uint16_t getID() const         { return id;      }
 
   MRouter *getRouter()           { return router;  }
   
-  virtual Time_t nextReadSlot(       const MemRequest *mreq) = 0;
-  virtual Time_t nextWriteSlot(      const MemRequest *mreq) = 0;
-  virtual Time_t nextBusReadSlot(    const MemRequest *mreq) = 0;
-  virtual Time_t nextPushDownSlot(   const MemRequest *mreq) = 0;
-  virtual Time_t nextPushUpSlot(     const MemRequest *mreq) = 0;
-  virtual Time_t nextInvalidateSlot( const MemRequest *mreq) = 0;
-
   // Interface for fast-forward (no BW, just warmup caches)
-  virtual TimeDelta_t ffread(AddrType addr, DataType data) = 0;
-  virtual TimeDelta_t ffwrite(AddrType addr, DataType data) = 0;
-  virtual void        ffinvalidate(AddrType addr, int32_t lineSize) = 0;
-
-  // processor direct requests
-  virtual void read(MemRequest  *req) = 0;
-  virtual void write(MemRequest *req) = 0;
-  virtual void writeAddress(MemRequest *req) = 0;
+  virtual TimeDelta_t ffread(AddrType addr) = 0;
+  virtual TimeDelta_t ffwrite(AddrType addr) = 0;
 
   // DOWN
-  virtual void busRead(MemRequest *req) = 0;
-  virtual void pushDown(MemRequest *req) = 0;
+  virtual void req(MemRequest *req) = 0;
+  virtual void setStateAck(MemRequest *req) = 0;
+  virtual void disp(MemRequest *req) = 0;
+
+  virtual void doReq(MemRequest *req) = 0;
+  virtual void doSetStateAck(MemRequest *req) = 0;
+  virtual void doDisp(MemRequest *req) = 0;
 
   // UP
-  virtual void pushUp(MemRequest *req) = 0;
-  virtual void invalidate(MemRequest *req) = 0;
-  
-  // When the buffers in the cache are full and it does not accept more requests
-  virtual bool canAcceptRead(DInst *dinst) const = 0;
-  virtual bool canAcceptWrite(DInst *dinst) const = 0;
+  virtual void reqAck(MemRequest *req) = 0;
+  virtual void setState(MemRequest *req) = 0;
 
+  virtual void doReqAck(MemRequest *req) = 0;
+  virtual void doSetState(MemRequest *req) = 0;
+
+	virtual bool isBusy(AddrType addr) const = 0;
+  
   // Print stats
   virtual void dump() const;
 
-  virtual void plug() {
-    // nothing by default, but it can be use to link with gprocessor
-  };
-
-  // TLB direct requests  
+  // Optional virtual methods
   virtual bool checkL2TLBHit(MemRequest *req);
+  virtual void replayCheckLSQ_removeStore(DInst *);
+  virtual void updateXCoreStores(AddrType addr);
+  virtual void replayflush();
+  virtual void setTurboRatio(float r);
+  virtual void plug();
 
-  virtual void replayCheckLSQ_removeStore(DInst *) {};
-  virtual void updateXCoreStores(AddrType addr) {};
-  virtual void replayflush() {};
-
+	virtual void setNeedsCoherence();
+	virtual void clearNeedsCoherence();
 };
 
 class DummyMemObj : public MemObj {
 private:
 protected:
-
-  Time_t nextReadSlot(       const MemRequest *mreq);
-  Time_t nextWriteSlot(      const MemRequest *mreq);
-  Time_t nextBusReadSlot(    const MemRequest *mreq);
-  Time_t nextPushDownSlot(   const MemRequest *mreq);
-  Time_t nextPushUpSlot(     const MemRequest *mreq);
-  Time_t nextInvalidateSlot( const MemRequest *mreq);
-
-  // processor direct requests
-  void read(MemRequest  *req);      // processor read (not propagated down)
-  void write(MemRequest *req);      // processor write (not propagated down)
-  void writeAddress(MemRequest *req);   // processor write (not propagated down)
-
-  // DOWN
-  void busRead(MemRequest *req);    // cache miss or exclusive request (busRead | busReadX)
-  void pushDown(MemRequest *req);   // Writeback or Invalidate Ack (it can be empty)
-
-  // UP
-  void pushUp(MemRequest *req);     // Similar to pushDown but bottom->up direction (busRead Ack)
-  void invalidate(MemRequest *req); // A busRead (X) would trigger invalidates (which should trigger pushLine)
-
-  bool canAcceptRead(DInst *dinst) const;
-  bool canAcceptWrite(DInst *dinst) const;
-
-  // TLB direct requests  
-  bool cheatCheckHit(MemRequest *req){
-    return false;
-  };
-
 public:
   DummyMemObj();
   DummyMemObj(const char *section, const char *sName);
 
-  TimeDelta_t ffread(AddrType addr, DataType data);
-  TimeDelta_t ffwrite(AddrType addr, DataType data);
-  void        ffinvalidate(AddrType addr, int32_t lineSize);
+	// Entry points to schedule that may schedule a do?? if needed
+	void req(MemRequest *req)         { doReq(req); };
+	void reqAck(MemRequest *req)      { doReqAck(req); };
+	void setState(MemRequest *req)    { doSetState(req); };
+	void setStateAck(MemRequest *req) { doSetStateAck(req); };
+	void disp(MemRequest *req)        { doDisp(req); }
 
+	// This do the real work
+	void doReq(MemRequest *req);
+	void doReqAck(MemRequest *req);
+	void doSetState(MemRequest *req);
+	void doSetStateAck(MemRequest *req);
+	void doDisp(MemRequest *req);
+
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
+
+	bool isBusy(AddrType addr) const;
 };
 
 #endif // MEMOBJ_H

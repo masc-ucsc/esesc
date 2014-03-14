@@ -270,7 +270,6 @@ void cpu_reset(CPUARMState *env)
     env->op_cnt  = 0;
     env->op_pc   = env->op_pc_raw;
     env->op_insn = env->op_insn_raw;
-    env->op_data = env->op_data_raw;
     env->op_addr = env->op_addr_raw;
 #endif
 #if defined (CONFIG_USER_ONLY)

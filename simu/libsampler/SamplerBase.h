@@ -51,14 +51,24 @@ class MemObj;
 class SamplerBase : public EmuSampler {
 protected:
 
+	MemObj  *DL1; // For warmup
+
+  uint64_t nInstRabbit;
+  uint64_t nInstWarmup;
+  uint64_t nInstDetail;
+  uint64_t nInstTiming;
+  uint64_t nInstForcedDetail;
+  uint64_t maxnsTime;
+
   uint64_t nInstSkip;
   uint64_t nInstMax;
+
+  uint64_t nextSwitch;
+
+  EmuMode  next2EmuTiming;
   EmuMode lastMode;
 
-  uint64_t nextCheck;
-  uint64_t interval;
-  static uint64_t local_nsticks;
-  uint64_t gClock;
+  uint64_t pwr_updateInterval;
   bool     endSimSiged;
   std::vector<EmuMode>  sequence_mode;
   std::vector<uint64_t> sequence_size;
@@ -70,12 +80,10 @@ protected:
   float           gpuSampledRatio;
 
   static uint64_t lastTime;
-  static uint64_t prednsTicks;
-  static uint64_t nsTicks[128];
   static bool     justResumed[128];
   static bool     finished[128];
 
-
+	double   dt_ratio;
   double   estIPC;
   double   estCPI;
   double   freq;
@@ -92,27 +100,22 @@ protected:
   uint64_t SamplInterval;     // can be removed?
   uint64_t rabbitPwrSkip;
 
-
-
   void     allDone();
   FILE *genReportFileNameAndOpen(const char *str);
   void fetchNextMode();
+	void doWarmupOpAddr(char op, uint64_t addr);
+
 public:
   SamplerBase(const char *name, const char *section, EmulInterface *emul, FlowID fid = 0);
   virtual ~SamplerBase();
 
-  virtual void syncStats();
   uint64_t getTime();
-  uint64_t getLocalTime(FlowID fid = 999);
-  uint64_t getLocalnsTicks();
-  void     updateLocalTime();
-  void addLocalTime(FlowID fid, uint64_t nsticks);
   void getGPUCycles(FlowID fid, float ratio = 1.0);
   void getClockTicks();
 
   uint64_t get_totalnInst(){return totalnInst;}
   EmuMode get_mode(){return mode;}
-  bool callPowerModel(uint64_t &ti, FlowID fid);
+  bool callPowerModel(FlowID fid);
   bool isActive(FlowID fid);
 
   void setRabbit();
@@ -127,15 +130,10 @@ public:
   FlowID resumeThread(FlowID uid, FlowID last_fid);
   FlowID resumeThread(FlowID uid);
   FlowID getFid(FlowID last_fid);
-  void syncRunning();
   void terminate();
   int isSamplerDone();
   void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
-  void syncnsTicks(FlowID fid);
-  void syncTimes(FlowID fid);
   void syncnSamples(FlowID fid);
-  void setgClock() { gClock = globalClock; }
-  uint64_t getgClock() { return gClock; }
   double getFreq(){ return freq*getTurboRatio(); }
   double getNominatedFreq(){ return freq; }
 

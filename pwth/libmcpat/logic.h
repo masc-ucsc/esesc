@@ -160,6 +160,8 @@ public:
 	const ParseXML *XML_interface;
 	double num_fu, FU_height;
 	bool  is_default;
+	
+	bool exist;
 
 };
 

@@ -40,15 +40,17 @@
 #include "MemObj.h"
 #include "GProcessor.h"
 #include "GMemorySystem.h"
+#include "Report.h"
+
+#include <iostream>
 
 uint64_t SamplerBase::lastTime = 0;
-uint64_t SamplerBase::prednsTicks = 0;
-uint64_t SamplerBase::nsTicks[128] = {0};
 bool     SamplerBase::justResumed[128] = {false};
-uint64_t SamplerBase::local_nsticks;
 bool     SamplerBase::finished[128] = {true};
 uint64_t SamplerBase::pastGlobalTicks = 0;
 uint64_t SamplerBase::gpuEstimatedCycles = 0;
+
+uint64_t cuda_inst_skip;
 
 SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : EmuSampler(iname, emu, fid)
@@ -56,47 +58,112 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
 {
   nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkip"));
 
+  nInstRabbit = static_cast<uint64_t>(SescConf->getDouble(section,"nInstRabbit"));
+  nInstWarmup = static_cast<uint64_t>(SescConf->getDouble(section,"nInstWarmup"));
+  nInstDetail = static_cast<uint64_t>(SescConf->getDouble(section,"nInstDetail"));
+  nInstTiming = static_cast<uint64_t>(SescConf->getDouble(section,"nInstTiming"));
+
+  if (fid != 0){ // first thread might need a different skip
+    nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkipThreads"));
+    cuda_inst_skip = nInstSkip;
+  }
+  nInstMax    = static_cast<uint64_t>(SescConf->getDouble(section,"nInstMax"));
+
+  if (nInstWarmup>0) {
+    sequence_mode.push_back(EmuWarmup);
+    sequence_size.push_back(nInstWarmup);
+    next2EmuTiming = EmuWarmup;
+  }
+  if (nInstDetail>0) {
+    sequence_mode.push_back(EmuDetail);
+    sequence_size.push_back(nInstDetail);
+    next2EmuTiming = EmuDetail;
+  }
+  if (nInstTiming>0) {
+    sequence_mode.push_back(EmuTiming);
+    sequence_size.push_back(nInstTiming);
+    next2EmuTiming = EmuTiming;
+  }
+
+  // Rabbit last because we start with nInstSkip
+  if (nInstRabbit>0) {
+    sequence_mode.push_back(EmuRabbit);
+    sequence_size.push_back(nInstRabbit);
+    next2EmuTiming = EmuRabbit;
+  }
+
+  if (sequence_mode.empty()) {
+    MSG("ERROR: SamplerSMARTS needs at least one valid interval");
+    exit(-2);
+  }
+
+  sequence_pos = 0;
+
+
+
   const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
 
   freq      = SescConf->getDouble("technology","frequency");
   doPower = SescConf->getBool(pwrsection,"doPower",0);
   if(doPower) {
     doTherm = SescConf->getBool(pwrsection,"doTherm",0);
-    interval  = static_cast<uint64_t>(SescConf->getDouble("pwrmodel","updateInterval"));
-    nextCheck = nInstSkip;
+    pwr_updateInterval  = static_cast<uint64_t>(SescConf->getDouble("pwrmodel","updateInterval"));
   }
 
-  local_nsticks = 0; 
   estCPI           = 1.0;
 
-  cpiHistSize = 1;
-  first = true;
-
+  doIPCPred  = SescConf->getBool(section, "doPowPrediction"); 
+  cpiHistSize = static_cast<uint32_t>(SescConf->getDouble(section, "PowPredictionHist")); 
+  cpiHist.resize(cpiHistSize);
   
+  first = true;
   for (unsigned int i=0; i<cpiHistSize;i++)
     cpiHist.push_back(1.0);
 
   endSimSiged = false;
   pthread_mutex_init(&mode_lock, NULL);
   lastGlobalClock = 0;
+
+  GProcessor *gproc = TaskHandler::getSimu(fid);
+  MemObj *mobj      =  gproc->getMemorySystem()->getDL1();
+  DL1 = mobj;
+
+  double ninst_d = SescConf->getDouble(section,"nInstDetail");
+  double ninst_t = SescConf->getDouble(section,"nInstTiming");
+  dt_ratio       = ninst_t/(ninst_t+ninst_d+1);
+
+  lastMode = EmuInit;
 }
 /* }}} */
 
+void SamplerBase::doWarmupOpAddr(char op, uint64_t addr) {
+  // {{{1 update cache stats when in warmup mode
+	if(addr==0)
+		return;
 
-bool SamplerBase::callPowerModel(uint64_t &ti, FlowID fid)
-  /* Check if it's time to call Power/Thermal Model*/
+  I(mode == EmuWarmup);
+	I(emul->cputype != GPU);
+
+	if ( (op&0x3F) == 1)
+		DL1->ffread(addr);
+	else if ( (op&0x3F) == 2)
+		DL1->ffwrite(addr);
+}
+// 1}}}
+
+bool SamplerBase::callPowerModel(FlowID fid)
+  // {{{1 Check if it's time to call Power/Thermal Model
 {
+  if (!doPower)
+    return false;
 
-  // Update metrics at each power interval, now the same for all threads
-  static uint32_t nextCheck = interval;
-
+  // Update metrics at each power pwr_updateInterval, now the same for all threads
   static std::vector<uint64_t> totalnInstPrev(emul->getNumFlows());
 
   uint64_t nPassedInst = totalnInst - totalnInstPrev[fid];
-  if (nPassedInst>= nextCheck){ 
-    uint64_t mytime  = getLocalTime();
-    ti = static_cast<uint64_t> (mytime - lastTime);
-    //ti = static_cast<uint64_t> (getFreq()*(mytime - lastTime)/1e9);
+  if (nPassedInst>= pwr_updateInterval){ 
+    uint64_t mytime  = getTime();
+    uint64_t ti = mytime - lastTime;
     I(ti>0);
     totalnInstPrev[fid] = totalnInst;
     lastTime = mytime;
@@ -104,10 +171,14 @@ bool SamplerBase::callPowerModel(uint64_t &ti, FlowID fid)
       first = false;
       return false;
     }
+
+    BootLoader::getPowerModelPtr()->calcStats(ti, !(mode == EmuTiming), fid);
+
     return true;
   }
   return false;
 }
+// }}}
 
 SamplerBase::~SamplerBase() 
   /* DestructorRabbit {{{1 */
@@ -121,92 +192,12 @@ uint64_t SamplerBase::getTime()
 {
   double addtime = phasenInst;
 
-  addtime *= 1.0e9; // ns
   addtime *= estCPI;
-  addtime /= getFreq();
-  addtime += getLocalTime();
+  addtime += globalClock * dt_ratio;
+
+  addtime = addtime * (1e9/getFreq());
 
   return static_cast<uint64_t>(addtime);
-}
-/* }}} */
-
-
-uint64_t SamplerBase::getLocalTime(FlowID fid)  
-/* time in ns since the beginning {{{1 */
-{
-  // predicted cpi for Rabbit and Warmup, globalClock for Detail and Timing
-  uint64_t nsticks; 
-
-  FlowID lfid = fid;
-  if (fid == 999)
-    lfid = sFid;
-  //nsticks so far (from globalClock_Timing)
-  nsticks                = pastGlobalTicks;
-
-  char str[255];
-  sprintf(str, "S(%d):globalClock_Timing", lfid);
-  GStats *gref = 0;
-  gref = GStats::getRef(str);
-  I(gref);
-  uint64_t gClock = gref->getSamples();
-
-  uint64_t clkTicks = gClock - lastGlobalClock;
-  lastGlobalClock   = gClock;
-  // nsticks advanced in the last sample
-  nsticks          += static_cast<uint64_t>(((double)clkTicks/getFreq())*1.0e9);
-  pastGlobalTicks   = nsticks;
-
-
-
-  nsticks += nsTicks[lfid];
-
-  return nsticks;
-}
-/* }}} */
-
-
-uint64_t SamplerBase::getLocalnsTicks() {
-  for(size_t i=0; i<emul->getNumFlows(); i++) {
-    if (isActive(mapLid(i))) {
-      return nsTicks[mapLid(i)];
-    }
-  }
-  return 0;
-}
-
-void SamplerBase::addLocalTime(FlowID fid, uint64_t nsticks) 
-{
-  nsTicks[fid] +=  static_cast<uint64_t>(nsticks);
-  local_nsticks = nsTicks[fid];
-}
-
-void SamplerBase::updateLocalTime() 
-/* update local time (non timing/detail modes) in ns since the beginning {{{1 */
-{
-  if (lastMode == EmuTiming || lastMode == EmuDetail || lastMode == EmuInit)  {
-    return;
-  }
-
-  I(stopJustCalled == false);
-
-  double addtime = lastPhasenInst;
-  addtime *= 1.0e9; // ns
-  addtime *= estCPI;
-  addtime /= getFreq();
-  
-  nsTicks[sFid] +=  static_cast<uint64_t>(addtime);
-  local_nsticks = nsTicks[sFid];
-}
-
-/* }}} */
-void SamplerBase::syncStats() 
-  /* make sure that all the stats are uptodate {{{1 */
-{
-  if (phasenInst==0 || mode == EmuInit) {
-    return;
-  }
-  stop();
-  beginTiming(mode);
 }
 /* }}} */
 
@@ -234,11 +225,6 @@ FlowID SamplerBase::resumeThread(FlowID uid)
   return(TaskHandler::resumeThread(uid));
 }
 
-void SamplerBase::syncRunning()
-{
-  //TaskHandler::syncRunning();
-}
-
 void SamplerBase::terminate()
 {
   TaskHandler::terminate();
@@ -257,65 +243,9 @@ int SamplerBase::isSamplerDone()
     return 0;
 }
 
-void SamplerBase::syncTimes(FlowID fid) {
-  uint64_t totalnsTicks = 0;
-  uint32_t cnt          = 0;
-
-  // syncMode:
-  //          's': Single, the winning Fid will decide the time
-  //          'm': Max, the maximum time of all active threads decide the time
-  //          'a': Avg, the average time of all the active threads decide the time
-  char syncMode = 's'; 
-
-  if (syncMode == 's'){
-    totalnsTicks = nsTicks[fid];
-    for(size_t i=0; i<emul->getNumFlows();i++) {
-      FlowID ifid = mapLid(i);
-      nsTicks[ifid] = totalnsTicks;
-    }
-    local_nsticks = totalnsTicks;
-  }else if (syncMode == 'm'){
-    for(size_t i=0; i<emul->getNumFlows();i++) {
-      FlowID ifid = mapLid(i);
-      if (isActive(ifid)) {
-        if (nsTicks[ifid] > totalnsTicks)
-          totalnsTicks = nsTicks[ifid];
-      }
-    }
-    for(size_t i=0; i<emul->getNumFlows();i++) {
-      FlowID ifid = mapLid(i);
-      nsTicks[ifid] = totalnsTicks;
-    }
-    local_nsticks = totalnsTicks;
-  }else{
-    for(size_t i=0; i<emul->getNumFlows();i++) {
-      FlowID ifid = mapLid(i);
-      if (isActive(ifid)) {
-        totalnsTicks += nsTicks[ifid];
-        cnt++;
-      }
-    }
-
-    uint64_t avgnsTicks = totalnsTicks/cnt;
-
-    for(size_t i=0; i<emul->getNumFlows();i++) {
-      FlowID ifid = mapLid(i);
-      nsTicks[ifid] = avgnsTicks;
-    }
-
-    local_nsticks = avgnsTicks;
-  }
-
-  //MSG("synced to(%d): ticks:%lu time:%lu ", fid, local_nsticks, getLocalTime(fid));
-}
-
-void SamplerBase::syncnsTicks(FlowID fid) {
-    nsTicks[fid] = local_nsticks;
-}
 
 void SamplerBase::syncnSamples(FlowID fid) { 
   nSamples[fid] = totalnSamples;
-  syncnsTicks(fid);
 }
 
 void SamplerBase::getGPUCycles(FlowID fid, float ratio) {

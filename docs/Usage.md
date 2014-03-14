@@ -54,6 +54,10 @@ These steps assume that the ESESC repo is checked out in the `~/projs/esesc` dir
 
 cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_HOST_ARCH=armel -DESESC_QEMU_ISA=armel ~/projs/esesc
 
+# Compile ESESC with DEBUG and clang compiler
+
+CC=clang cmake -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
+
 # Compile scmain (SCCORE) 
 
 cmake ~/projs/esesc/ -DENABLE_SCQEMU=1 -DCMAKE_HOST_ARCH=i386 -DESESC_QEMU_ISA=armel -DCMAKE_BUILD_TYPE=Debug

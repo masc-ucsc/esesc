@@ -33,6 +33,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <iostream>
+
 #include "SamplerPeriodic.h"
 #include "EmulInterface.h"
 #include "SescConf.h"
@@ -56,42 +58,9 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
 
   dsync      = new GStatsCntr("S(%u):dsync", fid);
 
-  nInstRabbit = static_cast<uint64_t>(SescConf->getDouble(section,"nInstRabbit"));
-  nInstWarmup = static_cast<uint64_t>(SescConf->getDouble(section,"nInstWarmup"));
-  nInstDetail = static_cast<uint64_t>(SescConf->getDouble(section,"nInstDetail"));
-  nInstTiming = static_cast<uint64_t>(SescConf->getDouble(section,"nInstTiming"));
-  if (fid != 0) // first thread might need a different skip
-    nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkipThreads"));
+  maxnsTime   = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTime"));
 
-  maxnsTicks  = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTicks"));
-  nInstMax    = static_cast<uint64_t>(SescConf->getDouble(section,"nInstMax"));
-  TempToPerfRatio    =  static_cast<uint64_t>(SescConf->getDouble(section,"TPR"));
-
-  if (nInstWarmup>0) {
-    sequence_mode.push_back(EmuWarmup);
-    sequence_size.push_back(nInstWarmup);
-    next2EmuTiming = EmuWarmup;
-  }
-
-  if (nInstDetail>0) {
-    sequence_mode.push_back(EmuDetail);
-    sequence_size.push_back(nInstDetail);
-    if (nInstWarmup == 0)
-      next2EmuTiming = EmuDetail;
-  }
-  if (nInstTiming>0) {
-    sequence_mode.push_back(EmuTiming);
-    sequence_size.push_back(nInstTiming);
-    if (nInstWarmup == 0 && nInstDetail == 0)
-      next2EmuTiming = EmuTiming;
-  }
-
-  // Rabbit last because we start with nInstSkip
-  if (nInstRabbit>0) {
-    sequence_mode.push_back(EmuRabbit);
-    sequence_size.push_back(nInstRabbit);
-    next2EmuTiming = EmuRabbit;
-  }
+  TempToPerfRatio    =  static_cast<uint64_t>(SescConf->getDouble(section,"TempToPerfRatio"));
 
   if (nInstDetail != 0 && nInstTiming != 0 && 
       nInstRabbit == 0 && nInstWarmup == 0){
@@ -99,8 +68,6 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
     exit(0);
   }
 
-
-  //nInstForcedDetail = nInstDetail==0? nInstTiming/5:nInstDetail;
   nInstForcedDetail = 1000;
 
   if (sequence_mode.empty()) {
@@ -110,7 +77,6 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
 
   sequence_pos = 0;
   intervalRatio = 1.0;
-
 
   if (emul->cputype != GPU) {
     {
@@ -124,30 +90,10 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
   if (nInstSkip)
     startInit(fid);
 
-
   validP  = 0;
   headPtr = 0;
 
-  doIPCPred  = SescConf->getBool(section, "doPowPrediction"); 
-  if (doIPCPred) { 
-    cpiHistSize =SescConf->getInt(section, "PowPredictionHist"); 
-  }else{
-    cpiHistSize = 1;
-  }
-  cpiHist.resize(cpiHistSize);
-
   lastMode = EmuInit;
-  std::cout << "Sampler: TBS, R:" << nInstRabbit
-            << ", W:"             << nInstWarmup
-            << ", D:"             << nInstDetail
-            << ", T:"             << nInstTiming
-            << endl;
-
-  std::cout << "Sampler: TBS, nInstMax:" << nInstMax
-            << ", nInstSkip:"            << nInstSkip
-            << ", maxnsTicks:"           << maxnsTicks
-            << endl;
-
 }
 /* }}} */
 
@@ -158,7 +104,7 @@ SamplerPeriodic::~SamplerPeriodic()
 }
 /* }}} */
 
-void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t data, FlowID fid, char op, uint64_t icount, void *env)
+void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
@@ -172,18 +118,17 @@ void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t 
     if (mode == EmuRabbit || mode == EmuInit)
       return;
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(insn,pc,addr,data, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
+      emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
       return;
     }
     I(mode == EmuWarmup);
-    doWarmupOpAddrData(op, addr, data);
+    doWarmupOpAddr(op, addr);
     return;
   }
 
   // We did enough
   if (isItDone())
     return;
- 
 
   // We are not done yet though. Look for the new mode
   I(nextSwitch <= totalnInst);
@@ -195,10 +140,11 @@ void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t 
 void SamplerPeriodic::updateCPI()
   /* extract cpi of last sample interval {{{1 */
 {
-  if(lastMode == EmuTiming) {
-    updateCPIHist();
-    loadPredCPI();
-  }
+  if(lastMode != EmuTiming)
+		return;
+
+	updateCPIHist();
+	loadPredCPI();
 }
 /* }}} */
 
@@ -302,7 +248,7 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
   uint64_t mytime = 0;
   if (PerfSampleLeftForTemp == 0){
 
-    mytime   = getLocalTime();
+    mytime   = getTime();
     I(mytime > lastTime);
 
     uint64_t ti = mytime - lastTime;
@@ -313,25 +259,25 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
       return;
     }
 
-    TaskHandler::syncStats();
-
-    BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
-    BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
-    if (doTherm) {
-      BootLoader::getPowerModelPtr()->sescThermWrapper->sesctherm.updateMetrics(ti);  
+    if (doPower) {
+      BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
+      BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
+      if (doTherm) {
+        BootLoader::getPowerModelPtr()->updateSescTherm(ti);  
+      }
     }
     PerfSampleLeftForTemp = TempToPerfRatio;
     lastTime = mytime;
   }
   if (PerfSampleLeftForTemp) PerfSampleLeftForTemp--;
 
-  endSimSiged = (mytime>=maxnsTicks)?1:0;
+  endSimSiged = (mytime>=maxnsTime)?1:0;
 }
 
 
 void SamplerPeriodic::syncTimeAndTimingModes(FlowID fid) {
-  if(mode == EmuTiming /*&& next_mode != EmuTiming*/)
-  {
+
+  if(mode == EmuTiming /*&& next_mode != EmuTiming*/) {
     clearInTiming(fid);
     lastMode = mode;
     syncTimeAndWaitForOthers(fid);
@@ -342,7 +288,6 @@ void SamplerPeriodic::syncTimeAndTimingModes(FlowID fid) {
 
   if( mode == EmuDetail && lastMode == EmuTiming){
     syncTimeAndWaitForOthers(fid);
-    return;
   }else{
     lastMode = mode;
     syncTimeAndContinue(fid);
@@ -352,12 +297,8 @@ void SamplerPeriodic::syncTimeAndTimingModes(FlowID fid) {
     }
 
     I(!(doPower && fid == winnerFid && lastMode == EmuTiming));
-    return;
   }
-  I(0); // If othersStillInTiming is set and the mode is Rabbit or Warmup, there is a problem!
-
 }
-
 
 void SamplerPeriodic::syncTimeAndSamples(FlowID fid) {
   if( mode == EmuDetail && lastMode == EmuTiming) {
@@ -380,56 +321,31 @@ void SamplerPeriodic::syncTimeAndSamples(FlowID fid) {
 
 void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
 
-  fetchNextMode();
+	fetchNextMode();
 
-#ifdef TBS
-  if (othersStillInTiming(fid))
-#else
-  if(false)
-#endif
-  {
-    syncTimeAndTimingModes(fid);
-  } else{
-    syncTimeAndSamples(fid);
+	syncTimeAndSamples(fid);
 
-    if (lastMode == EmuTiming) { 
-      progressedTime->sample(getLocalTime());
-      endSimSiged = (getLocalTime()>=maxnsTicks)?1:0;
-      //std::cout<<"mode "<<lastMode<<" fid:"<<sFid<<" sID:"<<nSamples[sFid]<<" totalSamples:"<<totalnSamples<<" time:"<<getLocalTime()<<"\n";  
-    }
+	if (lastMode == EmuTiming) { 
+		progressedTime->sample(getTime());
+		endSimSiged = (getTime()>=maxnsTime)?1:0;
+		//std::cout<<"mode "<<lastMode<<" fid:"<<sFid<<" sID:"<<nSamples[sFid]<<" totalSamples:"<<totalnSamples<<" time:"<<getTime()<<"\n";  
+	}
 
-    if (doPower && fid == winnerFid) {
-      if (lastMode == EmuTiming) { // timing is going to be over
-        doPWTH(fid);
-      }
-    }
-
-    return ;
-  }
+	if (fid == winnerFid) {
+		if (lastMode == EmuTiming) { // timing is going to be over
+			doPWTH(fid);
+		}
+	}
 }
 
 bool SamplerPeriodic::isItDone() {
-  if (endSimSiged) {
+
+  if (getTime()>=maxnsTime) {
     markDone();
     return true;
   }
   return false;
 }
-
-
-void SamplerPeriodic::doWarmupOpAddrData(char op, uint64_t addr, uint64_t data) {
-    if(addr) {
-      if (emul->cputype == GPU) {
-        I(0); // GPU uses its own shared sampler
-      } else {
-        if ( (op&0x3F) == 1)
-          DL1->ffread(addr,data);
-        else if ( (op&0x3F) == 2)
-          DL1->ffwrite(addr,data);
-      }
-    }
-}
-
 
 void SamplerPeriodic::updateIntervalRatio() {
 #ifdef TBS
@@ -442,19 +358,16 @@ void SamplerPeriodic::updateIntervalRatio() {
 void SamplerPeriodic::syncTimeAndWaitForOthers(FlowID fid) {
       nextMode(SET_MODE, fid, EmuDetail);
       updateCPI();
-      updateLocalTime();
       dsync->inc();
 }
 
 void SamplerPeriodic::syncTimeAndContinue(FlowID fid) {
       nextMode(ROTATE, fid);
       updateCPI();
-      updateLocalTime();
 }
 
 void SamplerPeriodic::syncTimeAndFinishWaitingForOthers(FlowID fid) {
       nextMode(SET_MODE, fid, next2EmuTiming);
-      updateLocalTime();
 }
 
 
@@ -480,7 +393,7 @@ void SamplerPeriodic::dumpTime() {
 
   for(size_t i=0; i<emul->getNumFlows(); i++) {
     if (isActive(mapLid(i)))
-      fprintf(log, "%lu ", getLocalTime(mapLid(i)));
+      fprintf(log, "%lu ", getTime());
     else
       fprintf(log, "%d ", 0);
   }
@@ -492,6 +405,6 @@ void SamplerPeriodic::dumpTime() {
 void SamplerPeriodic::dumpThreadProgressedTime(FlowID fid) {
   if (getKeepStatsFlag()) {
     threadProgressedTime = new GStatsMax("P(%d)_progressedTime", fid);
-    threadProgressedTime->sample(getLocalTime(fid));
+    threadProgressedTime->sample(getTime());
   }
 }

@@ -48,19 +48,9 @@ class SamplerPeriodic : public SamplerBase {
 private:
 protected:
 
-  uint64_t nInstRabbit;
-  uint64_t nInstWarmup;
-  uint64_t nInstDetail;
-  uint64_t nInstTiming;
-  uint64_t nInstForcedDetail;
-  uint64_t maxnsTicks;
-
   uint64_t totalnInstForcedDetail;
   float    intervalRatio;
   uint32_t TempToPerfRatio;
-
-  uint64_t nextSwitch;
-  EmuMode  next2EmuTiming;
 
   FlowID winnerFid;
 
@@ -68,11 +58,7 @@ protected:
   GStatsMax  *threadProgressedTime;
   static GStatsMax  *progressedTime;
 
-  MemObj * DL1;
-
   static int32_t PerfSampleLeftForTemp; 
-
-  void doWarmupOpAddrData(char op, uint64_t addr, uint64_t data);
 
   bool isItDone();
   void allDone();
@@ -103,7 +89,7 @@ public:
   SamplerPeriodic(const char *name, const char *section, EmulInterface *emu, FlowID fid);
   virtual ~SamplerPeriodic();
 
-  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, uint64_t icount, void *env);
+  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
 
   void dumpThreadProgressedTime(FlowID fid);
   float getSamplingRatio() {return static_cast<float>(nInstTiming)/static_cast<float>(nInstRabbit + nInstWarmup + nInstDetail + nInstTiming);};

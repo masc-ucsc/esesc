@@ -1,7 +1,7 @@
 PROJECT(esesc) 
 INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
 SET(CMAKE_MODULE_PATH "${esesc_SOURCE_DIR}/cmake-modules/conf")
-cmake_minimum_required(VERSION 2.4.8)
+cmake_minimum_required(VERSION 2.7)
 
 ################################################
 # QEMU System/User and ISA configuration options
@@ -214,8 +214,8 @@ ADD_SUBDIRECTORY(pwth/libsesctherm)
 ADD_SUBDIRECTORY(pwth/libpwrmodel)
 #################################
 ADD_SUBDIRECTORY(simu/libcore)
-ADD_SUBDIRECTORY(simu/libmem)
 ADD_SUBDIRECTORY(simu/libsampler)
+ADD_SUBDIRECTORY(simu/libmem)
 #################################
 ADD_SUBDIRECTORY(main)
 

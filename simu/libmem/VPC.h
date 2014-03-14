@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Luis Ceze
 //                Karin Strauss
 //                Jose Renau
@@ -300,4 +301,5 @@ class VPC: public MemObj {
 
 };
 
+#endif
 #endif

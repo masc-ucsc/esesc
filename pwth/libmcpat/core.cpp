@@ -65,6 +65,8 @@ InstFetchU::InstFetchU(ParseXML* XML_interface, int ithCore_, InputParameter* in
   IB  (0),
   BTB (0)
 {
+  
+  exist = true;
   clockRate = coredynp.clockRate;
   executionTime = coredynp.executionTime;
 
@@ -92,7 +94,8 @@ SchedulerU::SchedulerU(ParseXML* XML_interface, int ithCore_, InputParameter* in
 
   if ((coredynp.core_ty==Inorder && coredynp.multithreaded)) {
     buildInorderScheduler();
-  } else {
+  } 
+  else if(coredynp.core_ty==OOO){
     buildIntInstWindow();
     buildFPInstWindow();
     buildROB();
@@ -107,7 +110,7 @@ LoadStoreU::LoadStoreU(ParseXML* XML_interface, int ithCore_, InputParameter* in
   coredynp(dyn_p_),
   LSQ(0)
 {
-  
+  exist = true;
   clockRate = coredynp.clockRate;
   executionTime = coredynp.executionTime;
 
@@ -149,6 +152,8 @@ MemManU::MemManU(ParseXML* XML_interface, int ithCore_, InputParameter* interfac
   dtlb(0)
 {
 
+  exist = true;
+  
   clockRate = coredynp.clockRate;
   executionTime = coredynp.executionTime;
 
@@ -196,17 +201,25 @@ EXECU::EXECU(ParseXML* XML_interface, int ithCore_, InputParameter* interface_ip
   fpTagBypass(0)
 {
 
-
+  exist = true;
+  
   clockRate = coredynp.clockRate;
   executionTime = coredynp.executionTime;
+  
   rfu   = new RegFU(XML, ithCore, &interface_ip,coredynp);
   scheu = new SchedulerU(XML, ithCore, &interface_ip,coredynp);
   int num_fpu, num_alu;
   num_fpu = XML->sys.core[ithCore].FPU_per_core;
   num_alu = XML->sys.core[ithCore].ALU_per_core;
+  
   exeu = new FunctionalUnit(&interface_ip, ALU, num_alu);
-  fp_u = new FunctionalUnit(&interface_ip, FPU, num_fpu);
-  area.set_area(area.get_area()+ exeu->area.get_area() + fp_u->area.get_area() + rfu->area.get_area() +scheu->area.get_area() );
+  
+
+  
+
+   fp_u = new FunctionalUnit(&interface_ip, FPU, num_fpu);
+   area.set_area(area.get_area()+ exeu->area.get_area() + fp_u->area.get_area() + rfu->area.get_area() +scheu->area.get_area() );
+
 
   /*
    * broadcast logic, including int-broadcast; int_tag-broadcast; fp-broadcast; fp_tag-broadcast
@@ -352,6 +365,7 @@ RENAMINGU::RENAMINGU(ParseXML* XML_interface, int ithCore_, InputParameter* inte
   }
 }
 
+
 Core::Core(ParseXML* XML_interface, int ithCore_, InputParameter* interface_ip_)
  :XML(XML_interface),
   ithCore(ithCore_),
@@ -364,10 +378,9 @@ Core::Core(ParseXML* XML_interface, int ithCore_, InputParameter* interface_ip_)
   corepipe (0),
   undiffCore (0)
 {
-  /*
-   * initialize, compute and optimize individual components.
-   */
+  
 
+  exist = true;
   interface_ip.freq = XML->sys.core[ithCore].clock_rate;
   double pipeline_area_per_unit;
 
@@ -396,10 +409,23 @@ Core::Core(ParseXML* XML_interface, int ithCore_, InputParameter* interface_ip_)
   }
 
   area.set_area(area.get_area()+ corepipe->area.get_area());
+  
+
   ifu->area.set_area(ifu->area.get_area() + pipeline_area_per_unit);
-  lsu->area.set_area(lsu->area.get_area() + pipeline_area_per_unit);
-  exu->area.set_area(exu->area.get_area() + pipeline_area_per_unit);
-  mmu->area.set_area(mmu->area.get_area() + pipeline_area_per_unit);
+  
+  if (lsu->exist)
+  {
+      lsu->area.set_area(lsu->area.get_area() + pipeline_area_per_unit);
+  }
+  if (exu->exist)
+  {
+      exu->area.set_area(exu->area.get_area() + pipeline_area_per_unit);
+  }
+  
+  if (mmu->exist)
+  {
+      mmu->area.set_area(mmu->area.get_area() + pipeline_area_per_unit);
+  }
 
   area.set_area(exu->area.get_area() + lsu->area.get_area() + ifu->area.get_area() + mmu->area.get_area());
   if (coredynp.core_ty==OOO)
@@ -429,6 +455,114 @@ Core::Core(ParseXML* XML_interface, int ithCore_, InputParameter* interface_ip_)
   //  clockNetwork.optimize_wire();
 }
 
+
+/*
+
+Core::Core(ParseXML* XML_interface, int ithCore_, InputParameter* interface_ip_)
+:XML(XML_interface),
+ ithCore(ithCore_),
+ interface_ip(*interface_ip_),
+ ifu  (0),
+ lsu  (0),
+ mmu  (0),
+ exu  (0),
+ rnu  (0),
+ corepipe (0),
+ undiffCore (0),
+ l2cache (0)
+{
+ 
+
+  bool exit_flag = true;
+
+  double pipeline_area_per_unit;
+  //  interface_ip.wire_is_mat_type = 2;
+  //  interface_ip.wire_os_mat_type = 2;
+  //  interface_ip.wt               =Global_30;
+  set_core_param();
+
+  if (XML->sys.Private_L2)
+  {
+	  l2cache = new SharedCache(XML,ithCore, &interface_ip);
+
+  }
+
+  clockRate = coredynp.clockRate;
+  executionTime = coredynp.executionTime;
+  ifu          = new InstFetchU(XML, ithCore, &interface_ip,coredynp,exit_flag);
+  lsu          = new LoadStoreU(XML, ithCore, &interface_ip,coredynp,exit_flag);
+  mmu          = new MemManU   (XML, ithCore, &interface_ip,coredynp,exit_flag);
+  exu          = new EXECU     (XML, ithCore, &interface_ip,lsu->lsq_height, coredynp,exit_flag);
+  undiffCore   = new UndiffCore(XML, ithCore, &interface_ip,coredynp,exit_flag);
+  if (coredynp.core_ty==OOO)
+  {
+	  rnu = new RENAMINGU(XML, ithCore, &interface_ip,coredynp);
+  }
+  corepipe = new PipelinePower(&interface_ip,coredynp);
+
+  if (coredynp.core_ty==OOO)
+  {
+	  pipeline_area_per_unit    = (corepipe->area.get_area()*coredynp.num_pipelines)/5.0;
+	  if (rnu->exist)
+	  {
+		  rnu->area.set_area(rnu->area.get_area() + pipeline_area_per_unit);
+	  }
+  }
+  else {
+	  pipeline_area_per_unit    = (corepipe->area.get_area()*coredynp.num_pipelines)/4.0;
+  }
+
+  //area.set_area(area.get_area()+ corepipe->area.get_area());
+  if (ifu->exist)
+  {
+	  ifu->area.set_area(ifu->area.get_area() + pipeline_area_per_unit);
+	  area.set_area(area.get_area() + ifu->area.get_area());
+  }
+  if (lsu->exist)
+  {
+	  lsu->area.set_area(lsu->area.get_area() + pipeline_area_per_unit);
+      area.set_area(area.get_area() + lsu->area.get_area());
+  }
+  if (exu->exist)
+  {
+	  exu->area.set_area(exu->area.get_area() + pipeline_area_per_unit);
+	  area.set_area(area.get_area()+exu->area.get_area());
+  }
+  if (mmu->exist)
+  {
+	  mmu->area.set_area(mmu->area.get_area() + pipeline_area_per_unit);
+      area.set_area(area.get_area()+mmu->area.get_area());
+  }
+
+  if (coredynp.core_ty==OOO)
+  {
+	  if (rnu->exist)
+	  {
+
+		  area.set_area(area.get_area() + rnu->area.get_area());
+	  }
+  }
+
+  if (undiffCore->exist)
+  {
+	  area.set_area(area.get_area() + undiffCore->area.get_area());
+  }
+
+  if (XML->sys.Private_L2)
+  {
+	  area.set_area(area.get_area() + l2cache->area.get_area());
+
+  }
+//  //clock power
+//  clockNetwork.init_wire_external(is_default, &interface_ip);
+//  clockNetwork.clk_area           =area*1.1;//10% of placement overhead. rule of thumb
+//  clockNetwork.end_wiring_level   =5;//toplevel metal
+//  clockNetwork.start_wiring_level =5;//toplevel metal
+//  clockNetwork.num_regs           = corepipe.tot_stage_vector;
+//  clockNetwork.optimize_wire();
+}
+
+*/
 
 void BranchPredictor::computeEnergy(bool is_tdp)
 {
@@ -1294,6 +1428,7 @@ void SchedulerU::computeEnergy(bool is_tdp)
           int_inst_window->stats_t.writeAc.access = XML->sys.core[ithCore].int_instructions + XML->sys.core[ithCore].fp_instructions;
           int_inst_window->rtp_stats       = int_inst_window->stats_t;
         }
+        
     }
 
   //computation engine
@@ -1327,6 +1462,8 @@ void SchedulerU::computeEnergy(bool is_tdp)
         + int_inst_window->local_result.power.writeOp.dynamic * int_inst_window->stats_t.writeAc.access
         + int_inst_window->stats_t.writeAc.access * instruction_selection->power.readOp.dynamic;
     }
+    
+
 
   //assign values
   if (is_tdp)
@@ -1345,6 +1482,8 @@ void SchedulerU::computeEnergy(bool is_tdp)
           int_inst_window->power = int_inst_window->power_t + (int_inst_window->local_result.power +instruction_selection->power) *pppm_lkg;
           power	   = power + int_inst_window->power;
         }
+        
+
 
     }
   else
@@ -1364,6 +1503,8 @@ void SchedulerU::computeEnergy(bool is_tdp)
           int_inst_window->rt_power = int_inst_window->power_t + (int_inst_window->local_result.power +instruction_selection->power) *pppm_lkg;
           rt_power	              = rt_power + int_inst_window->rt_power;
         }
+        
+
     }
   //	set_pppm(pppm_t, XML->sys.core[ithCore].issue_width,1, 1, 1);
   //	cout<<"Scheduler power="<<power.readOp.dynamic<<"leakage="<<power.readOp.leakage<<endl;
@@ -2036,6 +2177,7 @@ void RegFU::computeEnergy(bool is_tdp)
    * And the same stats can be used for both.
    */
 
+  if (!exist) return;
 
   if (is_tdp)
     {
@@ -2182,8 +2324,14 @@ void EXECU::computeEnergy(bool is_tdp)
 {
   double pppm_t[4]    = {1,1,1,1};
 
+  
+
   rfu->computeEnergy(is_tdp);
+
   scheu->computeEnergy(is_tdp);
+
+  
+
   if (is_tdp)
     {
       //eka
@@ -2280,20 +2428,40 @@ void Core::computeEnergy(bool is_tdp)
       exu->computeEnergy(is_tdp);
       //pipeline
       if (coredynp.core_ty==OOO)
-        {
+      {
           rnu->computeEnergy();
           power     = power + rnu->power;
           set_pppm(pppm_t, 1/5.0, 1/5.0, 1/5.0, 1/5.0);
-        }
+      }
       else {
         set_pppm(pppm_t, 1/4.0, 1/4.0, 1/4.0, 1/4.0);
       }
-      ifu->power = ifu->power + corepipe->power*pppm_t;
-      lsu->power = lsu->power + corepipe->power*pppm_t;
-      exu->power = exu->power + corepipe->power*pppm_t;
-      mmu->power = mmu->power + corepipe->power*pppm_t;
+      
+      
+      if (ifu->exist) 
+      { 
+	  ifu->power = ifu->power + corepipe->power*pppm_t; 
+	  power = power + ifu->power;
+	
+      }
+      if (lsu->exist) 
+      { 
+	  lsu->power = lsu->power + corepipe->power*pppm_t;
+	  power = power + lsu->power;
+      }
+      if (exu->exist)
+      {
+	  exu->power = exu->power + corepipe->power*pppm_t;
+	  power = power + exu->power;
+      }
+      if (mmu->exist)
+      {
+	  mmu->power = mmu->power + corepipe->power*pppm_t;
+	  power = power + mmu->power;
+      }
 
-      power    = exu->power +lsu->power + ifu->power + mmu->power + rnu->rt_power;// + clockNetwork.total_power.readOp.dynamic;// + corepipe.power.readOp.dynamic; + branchPredictor.maxDynamicPower
+
+      //power    = exu->power +lsu->power + ifu->power + mmu->power + rnu->rt_power;// + clockNetwork.total_power.readOp.dynamic;// + corepipe.power.readOp.dynamic; + branchPredictor.maxDynamicPower
     }
   else{
     //eka
@@ -2304,21 +2472,39 @@ void Core::computeEnergy(bool is_tdp)
     exu->computeEnergy(is_tdp);
     //pipeline
     if (coredynp.core_ty==OOO)
-      {
+    {
         rnu->computeEnergy(is_tdp);
         set_pppm(pppm_t, 1/5.0, 1/5.0, 1/5.0, 1/5.0);
         rnu->rt_power = rnu->rt_power + corepipe->power*pppm_t;
-      }
+    }
     else {
       set_pppm(pppm_t, 1/4.0, 1/4.0, 1/4.0, 1/4.0);
     }
-    ifu->rt_power = ifu->rt_power + corepipe->power*pppm_t;
-    lsu->rt_power = lsu->rt_power + corepipe->power*pppm_t;
-    exu->rt_power = exu->rt_power + corepipe->power*pppm_t;
-    mmu->rt_power = mmu->rt_power + corepipe->power*pppm_t;
+    
+    if (ifu->exist)
+    {
+	ifu->rt_power = ifu->rt_power + corepipe->power*pppm_t;
+	rt_power = rt_power + ifu->rt_power;
+    }
+    if (lsu->exist) 
+    {
+	lsu->rt_power = lsu->rt_power + corepipe->power*pppm_t;
+	rt_power  = rt_power + lsu->rt_power;
+    }
+    if (exu->exist)
+    {
+	exu->rt_power = exu->rt_power + corepipe->power*pppm_t;
+	rt_power = rt_power + exu->rt_power;
+    }
+    if (mmu->exist)
+    {
+	mmu->rt_power = mmu->rt_power + corepipe->power*pppm_t;
+	rt_power = rt_power + mmu->rt_power;
+    }
 
-    rt_power     = rt_power + ifu->rt_power + lsu->rt_power + mmu->rt_power + exu->rt_power + rnu->rt_power;
+    //rt_power     = rt_power + ifu->rt_power + lsu->rt_power + mmu->rt_power + exu->rt_power + rnu->rt_power;
   }
+  
 
 }
 
@@ -2555,13 +2741,17 @@ void Core::update_rtparam(ParseXML *XML_interface, int ithCore_,
 {
   ithCore = ithCore_;
   core->ifu->ithCore = ithCore_;
-  core->ifu->BPT->ithCore = ithCore_;
+  if (core->coredynp.predictionW>0){
+      core->ifu->BPT->ithCore = ithCore_;
+  }
   core->lsu->ithCore = ithCore_;
   core->mmu->ithCore = ithCore_;
   core->exu->ithCore = ithCore_;
   core->exu->rfu->ithCore = ithCore_;
   core->exu->scheu->ithCore = ithCore_;
-  core->rnu->ithCore = ithCore_;
+  if (core->coredynp.core_ty==OOO){
+    core->rnu->ithCore = ithCore_;
+  }
 
 
   XML          = XML_interface;
@@ -2576,8 +2766,11 @@ void Core::update_rtparam(ParseXML *XML_interface, int ithCore_,
   core->exu->XML = XML;
   core->exu->rfu->XML = XML;
   core->exu->scheu->XML = XML;
-  core->rnu->XML = XML;
+  if (core->coredynp.core_ty==OOO){
+      core->rnu->XML = XML;
+  }
 
+  
   XML->sys.core[ithCore].scoore               = XML->sys.core[0].scoore;
   XML->sys.core[ithCore].VPCfilter.dcache_config[0] =  XML->sys.core[0].VPCfilter.dcache_config[0];
 

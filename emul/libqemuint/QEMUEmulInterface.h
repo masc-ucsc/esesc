@@ -64,8 +64,8 @@ class QEMUEmulInterface : public EmulInterface {
     reader->start();
   }
 
-  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, DataType data, char thumb, FlowID fid, void *env, bool inEmuTiming) {
-    reader->queueInstruction(insn,pc,addr,data, thumb, fid, env, inEmuTiming);
+  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool inEmuTiming) {
+    reader->queueInstruction(insn,pc,addr, thumb, fid, env, inEmuTiming);
   }
 
 #ifdef ENABLE_CUDA

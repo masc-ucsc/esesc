@@ -405,11 +405,9 @@ typedef struct CPUSPARCState {
     uint32_t op_cnt; // number of uops executed
     target_ulong op_pc_raw[128+2048];
     target_ulong op_insn_raw[128+2048];
-    target_ulong op_data_raw[128+2048];
     target_ulong op_addr_raw[128+2048];
     target_ulong *op_insn;
     target_ulong *op_pc;
-    target_ulong *op_data;
     target_ulong *op_addr;
 #endif
     uint32_t cwp;      /* index of current register window (extracted

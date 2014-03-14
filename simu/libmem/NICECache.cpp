@@ -1,3 +1,4 @@
+// includes and copyright notice {{{1
 // Contributed by Jose Renau
 //
 // The ESESC/BSD License
@@ -38,7 +39,6 @@
 
 #include "NICECache.h"
 /* }}} */
-
 NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   /* dummy constructor {{{1 */
   : MemObj(section, sName)
@@ -47,136 +47,77 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   ,pushDownHit     ("%s:pushDownHit",     sName)
   ,writeHit        ("%s:writeHit",        sName)
 {
+
+	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
 }
 /* }}} */
 
-Time_t NICECache::nextReadSlot(       const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+hitDelay;
-}
-/* }}}*/
-Time_t NICECache::nextWriteSlot(      const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+hitDelay;
-}
-/* }}}*/
-Time_t NICECache::nextBusReadSlot(    const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+hitDelay;
-}
-/* }}}*/
-Time_t NICECache::nextPushDownSlot(   const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t NICECache::nextPushUpSlot(     const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-Time_t NICECache::nextInvalidateSlot( const MemRequest *mreq)
-  /* get next free slot {{{1 */
-{
-  return globalClock+1;
-}
-/* }}}*/
-
-void NICECache::read(MemRequest *req)    
+void NICECache::doReq(MemRequest *mreq)    
   /* read (down) {{{1 */
 { 
-  readHit.inc(req->getStatsFlag());
-  req->ack();
+  readHit.inc(mreq->getStatsFlag());
+
+	if (mreq->isHomeNode()) {
+		mreq->ack(hitDelay);
+		return;
+	}
+	if (mreq->getAction() == ma_setValid) {
+		mreq->convert2ReqAck(ma_setExclusive);
+		//MSG("rdnice %x",mreq->getAddr());
+	}else {
+		mreq->convert2ReqAck(ma_setDirty);
+		//MSG("wrnice %x",mreq->getAddr());
+	}
+
+  router->scheduleReqAck(mreq, hitDelay);
 }
 /* }}} */
 
-void NICECache::write(MemRequest *req)    
-  /* write (down) {{{1 */
-{ 
-  writeHit.inc(req->getStatsFlag());
-  req->ack();
-}
-/* }}} */
-
-void NICECache::writeAddress(MemRequest *req)    
-  /* write (down) {{{1 */
-{ 
-  req->ack();
-}
-/* }}} */
-
-void NICECache::busRead(MemRequest *req)    
-  /* bus read (down) {{{1 */
-{ 
-  readHit.inc(req->getStatsFlag());
-  router->fwdPushUp(req); // ack the busRead
-}
-/* }}} */
-
-void NICECache::pushDown(MemRequest *req)    
-  /* push (down) {{{1 */
-{ 
-  pushDownHit.inc(req->getStatsFlag());
-  I(req->isWriteback());
-  req->destroy();
-}
-/* }}} */
-
-void NICECache::pushUp(MemRequest *req)    
-  /* push (up) {{{1 */
+void NICECache::doReqAck(MemRequest *req)    
+  /* req ack {{{1 */
 { 
   I(0);
 }
+
+void NICECache::doSetState(MemRequest *req)    
+  /* change state request  (up) {{{1 */
+{ 
+	I(0);
+}
 /* }}} */
 
-void NICECache::invalidate(MemRequest *req)    
+void NICECache::doSetStateAck(MemRequest *req)    
+  /* push (down) {{{1 */
+{ 
+	I(0);
+}
+/* }}} */
+
+void NICECache::doDisp(MemRequest *req)    
   /* push (up) {{{1 */
 { 
-  router->fwdPushDown(req); // invalidate ack
+  req->ack();
 }
 /* }}} */
 
-//DM
-//bool NICECache::canAcceptRead(AddrType addr) const
-bool NICECache::canAcceptRead(DInst *dinst) const
+bool NICECache::isBusy(AddrType addr) const
   /* can accept reads? {{{1 */
 { 
-  return true;  
+  return false;  
 }
 /* }}} */
 
-//DM
-//bool NICECache::canAcceptWrite(AddrType addr) const
-bool NICECache::canAcceptWrite(DInst *dinst) const
-  /* can accept writes? {{{1 */
+TimeDelta_t NICECache::ffread(AddrType addr)
+  /* warmup fast forward read {{{1 */
 { 
-  return true;  
+  return 1;
 }
 /* }}} */
 
-TimeDelta_t NICECache::ffread(AddrType addr, DataType data)
-  /* can accept writes? {{{1 */
+TimeDelta_t NICECache::ffwrite(AddrType addr)
+  /* warmup fast forward writed {{{1 */
 { 
-  return 1;   // 1 cycle does everything :)
-}
-/* }}} */
-
-TimeDelta_t NICECache::ffwrite(AddrType addr, DataType data)
-  /* can accept writes? {{{1 */
-{ 
-  return 1;   // 1 cycle does everything :)
-}
-/* }}} */
-
-void NICECache::ffinvalidate(AddrType addr, int32_t lineSize)
-  /* can accept writes? {{{1 */
-{
-  // Nothing to do
+  return 1;
 }
 /* }}} */
 

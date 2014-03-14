@@ -73,7 +73,6 @@ private:
   bool isClear;
 #else
   AddrType    addr;
-  DataType    data;
 #endif
 #ifdef ENABLE_CUDA
   CUDAMemType memaccess;
@@ -81,8 +80,6 @@ private:
 
   bool keepStats;
   bool inITBlock;
-  float L1clkRatio;
-  float L3clkRatio;
 
 protected:
   uint32_t ninst;
@@ -106,7 +103,6 @@ public:
     isClear = p.isClear;
 #else
     addr = p.addr;
-    data = p.data;
 #endif
     ninst = p.ninst;
     predec = p.predec;
@@ -126,9 +122,8 @@ public:
     keepStats = _keepStats;
   }
 #else
-  void set(RAWInstType _insn, AddrType _pc, AddrType _addr, DataType _data, float _L1clkRatio = 1.0, float _L3clkRatio = 1.0, bool _keepStats = false) {
+  void set(RAWInstType _insn, AddrType _pc, AddrType _addr, bool _keepStats = false) {
     clearInst();
-    L3clkRatio = _L3clkRatio;
  #ifdef ENABLE_CUDA
     if ((addr >> 61) == 6)
     {
@@ -140,9 +135,7 @@ public:
     insn = _insn;
     pc   = _pc;
     addr = _addr;
-    data = _data;
     keepStats = _keepStats;
-    L1clkRatio = _L1clkRatio;
   }
 #endif
 
@@ -184,7 +177,6 @@ public:
     pc   = 0;
 #ifndef SCOORE
     addr = 0;
-    data = 0;
 #else
     isClear = true;
 #endif
@@ -194,10 +186,8 @@ public:
   RAWInstType getInsn() const { return insn; };
 #ifdef SCOORE
   AddrType    getAddr() const { I(0); return 0; };
-  DataType    getData() const { I(0); return 0; };
 #else
   AddrType    getAddr() const { return addr; };
-  DataType    getData() const { return data; };
 #endif
   bool getStatsFlag(){
     return keepStats;
@@ -208,8 +198,6 @@ public:
   void setInITBlock(bool _flag) {
     inITBlock = _flag;
   };
-  float getL1clkRatio() { return L1clkRatio; };
-  float getL3clkRatio() { return L3clkRatio; };
 };
 
 #endif

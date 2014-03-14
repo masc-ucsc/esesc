@@ -108,10 +108,10 @@ bool GPUSMProcessor::execute() {
   clockTicks.inc();
   setWallClock();
 
-  if (throtting) { 
+  if (unlikely(throttingRatio>1)) { 
     throtting_cntr++;
 
-    int skip = ceil(throtting/getTurboRatioGPU()); 
+    uint32_t skip = ceil(throttingRatio/getTurboRatioGPU()); 
 
     if (throtting_cntr < skip) {
       return true;

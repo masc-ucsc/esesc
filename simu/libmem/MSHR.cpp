@@ -34,9 +34,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "MSHR.h"
 #include "Snippets.h"
 #include "SescConf.h"
+#include "MemorySystem.h"
+#include "MSHR.h"
 
 /* }}} */
 

@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Luis Ceze
 //                Karin Strauss
 //                Jose Renau
@@ -379,4 +380,5 @@ class SL0Cache: public Cache {
 
 };
 
+#endif
 #endif

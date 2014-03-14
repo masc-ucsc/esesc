@@ -15,7 +15,7 @@ typedef uint32_t T_SHARED_ADDR;
 
 uint64_t QEMUReader_get_time(void);
 uint32_t QEMUReader_getFid(uint32_t last_fid); //FIXME: use FlowID instead of unint32_t
-void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, uint32_t op, uint64_t icount, void *env);
+void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, uint32_t op, uint64_t icount, void *env);
 int32_t QEMUReader_setnoStats(uint32_t fid);
 // icount: # instruction executed
 //    -must be 1 during TIMING and DETAIL modeling
@@ -50,10 +50,10 @@ uint16_t esesc_ldu16(uint32_t addr);
 uint8_t  esesc_ldu08(uint32_t addr);
  int8_t  esesc_lds08(uint32_t addr);
 
-void esesc_st64(uint32_t addr, uint64_t data);
-void esesc_st32(uint32_t addr, uint32_t data);
-void esesc_st16(uint32_t addr, uint16_t data);
-void esesc_st08(uint32_t addr, uint8_t data);
+void esesc_st64(uint32_t addr);
+void esesc_st32(uint32_t addr);
+void esesc_st16(uint32_t addr);
+void esesc_st08(uint32_t addr);
 
 // defined in exec-all.h
 //extern int esesc_allow_large_tb;
@@ -64,7 +64,7 @@ void esesc_st08(uint32_t addr, uint8_t data);
 void     GPUReader_init_trace(uint32_t* h_trace);
 void     GPUReader_declareLaunch(void);
 
-void     GPUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, char op, uint64_t icount, void* env);
+void     GPUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void* env);
 uint32_t GPUReader_decode_trace(uint32_t* h_trace, uint32_t* qemuid, void* env); //returns if the execution should be paused or no
 
 uint64_t  GPUReader_getNumThreads(void);

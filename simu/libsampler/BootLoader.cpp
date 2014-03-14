@@ -36,14 +36,14 @@
 
 #include "BootLoader.h"
 
+#ifndef ENABLE_NOEMU
 #include "QEMUEmulInterface.h"
+#endif
 #ifdef ENABLE_CUDA
 #include "GPUEmulInterface.h"
 #endif
 
-#include "SamplerSkipSim.h"
 #include "SamplerSMARTS.h"
-#include "SamplerSPoint.h"
 #include "SamplerPeriodic.h"
 
 #ifdef ENABLE_CUDA
@@ -57,7 +57,7 @@
 #include "InOrderProcessor.h"
 #include "GPUSMProcessor.h"
 #include "GMemorySystem.h"
-#include "MemorySystem.h"
+#include "../libmem/MemorySystem.h"
 
 #include "Report.h"
 #include "SescConf.h"
@@ -110,6 +110,9 @@ bool        BootLoader::doPower;
 void BootLoader::check() 
 {
   if (!SescConf->check()) {
+    Report::field("**** ESESC CONFIGURATION INCORRECT ****");
+    fprintf(stderr, "\n\n**** ESESC CONFIGURATION INCORRECT ****\n\nDeleting report File %s\n\n",Report::getNameID());
+    remove(Report::getNameID());
     exit(-1);
   }
 }
@@ -212,6 +215,7 @@ void BootLoader::plugEmulInterfaces() {
       if (QEMUGPUSection == NULL) {
         QEMUGPUSection = section;
         sharedGPUFid = i;
+        createEmulInterface(QEMUGPUSection, sharedGPUFid); // GPU shares one Emul/Sampler
       } else if (strcasecmp(QEMUGPUSection,section)){
         MSG("ERROR: eSESC supports only a single GPU");
         MSG("cpuemul[%d] specifies a different section %s",i,section);
@@ -226,12 +230,6 @@ void BootLoader::plugEmulInterfaces() {
       return;
     }
   }
-
-#ifdef ENABLE_CUDA
-  if (QEMUGPUSection) {
-    createEmulInterface(QEMUGPUSection, sharedGPUFid); // GPU shares one Emul/Sampler
-  }
-#endif
 }
 
 void BootLoader::plugSimuInterfaces() {
@@ -253,18 +251,11 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
 
   cout<<keyword<<" " <<section<<sampler_sec<<" "<<sampler_type<<"___________________________"<<endl<<endl;
   EmuSampler *sampler = 0;
-  if(strcasecmp(sampler_type,"SkipSim") == 0 ) {
-    sampler = new SamplerSkipSim("SkipSim",sampler_sec,eint, fid);
-  }else if(strcasecmp(sampler_type,"SMARTS") == 0 ) {
-    sampler = new SamplerSMARTS("SMARTS",sampler_sec,eint, fid);
-  }else if(strcasecmp(sampler_type,"SPoint") == 0 ) {
-    sampler = new SamplerSPoint("SPoint",sampler_sec,eint);
-  }else if(strcasecmp(sampler_type,"Periodic") == 0 ) {
-    sampler = new SamplerPeriodic("Periodic",sampler_sec,eint, fid);
+  if(strcasecmp(sampler_type,"inst") == 0 ) {
+    sampler = new SamplerSMARTS("TASS",sampler_sec,eint, fid);
+  }else if(strcasecmp(sampler_type,"time") == 0 ) {
+    sampler = new SamplerPeriodic("TBS",sampler_sec,eint, fid);
 #ifdef ENABLE_CUDA
-//  }else if(strcasecmp(sampler_type,"GPUSim") == 0 ) {
-//    I(strcasecmp(sampler_type,"GPUSim")==0); // In theory, only the GPU should use it (but it may be OK)
-//    sampler = new SamplerGPUSim("GPUSim",sampler_sec,eint);
   }else if(strcasecmp(sampler_type,"GPUSpacial") == 0 ) {
     I(strcasecmp(sampler_type,"GPUSpacial")==0);
     sampler = new SamplerGPUSpacial("GPUSpacial",sampler_sec,eint, fid);
@@ -279,6 +270,7 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
 
 void BootLoader::createEmulInterface(const char *section, FlowID fid) 
 {
+#ifndef ENABLE_NOEMU
   const char *type    = SescConf->getCharPtr(section,"type");
   
   if (type==0) {
@@ -307,7 +299,7 @@ void BootLoader::createEmulInterface(const char *section, FlowID fid)
   EmuSampler *sampler = getSampler(section,"sampler",eint, fid);
   I(sampler);
   eint->setSampler(sampler, fid);
-  
+#endif
 }
 
 void BootLoader::createSimuInterface(const char *section, FlowID i) {
@@ -354,6 +346,7 @@ void BootLoader::plug(int argc, const char **argv) {
   // Before boot
   SescConf = new SConfig(argc, argv);
 
+  pwrmodel = new PowerModel;
 
   TaskHandler::plugBegin();
   plugSimuInterfaces();
@@ -375,13 +368,13 @@ void BootLoader::plug(int argc, const char **argv) {
   }
 
   Report::openFile(reportFile);
+  
   SescConf->getDouble("technology","frequency"); // Just read it to get it in the dump
 
   check();
   plugEmulInterfaces();
   check();
 
-  pwrmodel = new PowerModel;
 
   const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
   doPower = SescConf->getBool(pwrsection,"doPower",0);

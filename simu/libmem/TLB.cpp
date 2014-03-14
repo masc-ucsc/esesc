@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Jose Renau
 //                Alamelu Sankaranarayanan
 //
@@ -372,4 +373,4 @@ bool TLB::checkL2TLBHit(MemRequest *mreq) {
   }
   return false;
 }
-
+#endif

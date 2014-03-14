@@ -218,3 +218,27 @@ PipeQueue::~PipeQueue()
 {
   // do nothing
 }
+
+
+IBucket *Pipeline::newItem() {
+  if(nIRequests == 0 || bucketPool.empty())
+    return 0;
+
+  nIRequests--;
+
+  IBucket *b = bucketPool.back();
+  bucketPool.pop_back();
+
+  b->setPipelineId(maxItemCntr);
+  maxItemCntr++;
+
+  IS(b->fetched = false);
+
+  I(b->empty());
+  return b;
+}
+
+bool Pipeline::hasOutstandingItems() const {
+    // bucketPool.size() has lineal time O(n)
+  return !buffer.empty() || !received.empty() || nIRequests < MaxIRequests;
+} 

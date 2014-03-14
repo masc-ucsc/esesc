@@ -1,3 +1,4 @@
+#if 0
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //
@@ -89,4 +90,5 @@ public:
 
 };
 
+#endif
 #endif

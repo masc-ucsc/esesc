@@ -220,11 +220,9 @@ typedef struct CPUARMState {
     uint32_t op_cnt; // number of uops executed
     target_ulong op_pc_raw[128+CF_COUNT_MASK];
     target_ulong op_insn_raw[128+CF_COUNT_MASK];
-    target_ulong op_data_raw[128+CF_COUNT_MASK];
     target_ulong op_addr_raw[128+CF_COUNT_MASK];
     target_ulong *op_insn;
     target_ulong *op_pc;
-    target_ulong *op_data;
     target_ulong *op_addr;
 #endif
 

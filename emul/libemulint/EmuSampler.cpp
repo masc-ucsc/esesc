@@ -41,14 +41,15 @@
 
 bool cuda_go_ahead = false;
 std        :: vector<bool> EmuSampler :: done;
-int32_t  EmuSampler :: inTiming[];
-uint64_t EmuSampler :: nSamples[];
-uint64_t EmuSampler :: totalnSamples                = 0;
-bool     EmuSampler :: justUpdatedtotalnSamples     = false;
-uint64_t *EmuSampler :: instPrev;
-uint64_t *EmuSampler :: clockPrev;
-uint64_t *EmuSampler :: fticksPrev;
-uint64_t __thread EmuSampler::local_icount=0;
+int32_t   EmuSampler::inTiming[];
+uint64_t  EmuSampler::nSamples[];
+uint64_t  EmuSampler::totalnSamples                = 0;
+bool      EmuSampler::justUpdatedtotalnSamples     = false;
+uint64_t *EmuSampler::instPrev;
+uint64_t *EmuSampler::clockPrev;
+uint64_t *EmuSampler::fticksPrev;
+
+uint64_t __thread EmuSampler::local_icount=0; // private per thread
 
 float EmuSampler::turboRatio = 1.0;
 #ifdef ENABLE_CUDA
@@ -56,7 +57,7 @@ float EmuSampler::turboRatioGPU = 1.0;
 #endif
  
 EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
-  /* EmuSampler constructor {{{1 */
+  /* EmuSampler constructor  */
   : name(strdup(iname))
     ,sFid(fid)
     ,emul(emu)
@@ -89,6 +90,8 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   globalClock_Timing_prev = 0;
 
   static int sampler_count = 0;
+
+  nSwitches = new GStatsCntr("S(%d):nSwitches"  ,sampler_count);
 
   tusage[EmuInit  ] = new GStatsCntr("S(%d):InitTime"  ,sampler_count);
   tusage[EmuRabbit] = new GStatsCntr("S(%d):RabbitTime",sampler_count);
@@ -146,22 +149,23 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
    fticksPrev[i] = 0;
   }
 }
-/* }}} */
+/*  */
 
 EmuSampler::~EmuSampler() 
-  /* Destructor {{{1 */
+  /* Destructor  */
 {
   if (syscall_file) {
     fclose(syscall_file);
     syscall_file = 0;
   }
 }
-/* }}} */
+/*  */
 
 void EmuSampler::setMode(EmuMode mod, FlowID fid)
-  /* Stop and start statistics for a given mode {{{1 */
+  /* Stop and start statistics for a given mode  */
 {
   //printf("Thread: %u, set to mode: %u\n", fid, mod);
+  nSwitches->inc();
   stop();
   switch(mod) {
     case EmuRabbit:
@@ -180,18 +184,17 @@ void EmuSampler::setMode(EmuMode mod, FlowID fid)
       I(0);
   }
 }
-/* }}} */
+/*  */
 
-  FlowID EmuSampler::getNumFlows(){
-    return emul->getNumFlows();
-  }
-
-//  FlowID EmuSampler::getFirstFlow(){
-//    return emul->getFirstFlow();
-//  }
+FlowID EmuSampler::getNumFlows() 
+  // get number of flows 
+{
+  return emul->getNumFlows();
+}
+// 
 
 void EmuSampler::beginTiming(EmuMode mod)
-  /* Start sampling a new mode {{{1 */
+  /* Start sampling a new mode  */
 {
   I(stopJustCalled);
   stopJustCalled = false;
@@ -203,23 +206,21 @@ void EmuSampler::beginTiming(EmuMode mod)
   const char *mode2name[] = { "Init","Rabbit","Warmup","Detail","Timing","InvalidValue"};
   GMSG(mode!=mod,"Sampler %s: starting %s mode", name, mode2name[mod]);
 }
-/* }}} */
+/*  */
 
-/* }}} */
 void EmuSampler::stop()
-  /* stop a given mode, and assign statistics {{{1 */
+  /* stop a given mode, and assign statistics  */
 { 
   if (totalnInst >= cuda_inst_skip)
-  {
     cuda_go_ahead = true;
-  }
 
   //MSG("Sampler:STOP");
-  pthread_mutex_lock (&stop_lock);
+  pthread_mutex_lock(&stop_lock);
   if(stopJustCalled){
     pthread_mutex_unlock (&stop_lock);
     return;
   }
+
   struct timespec endTime;
   clock_gettime(CLOCK_REALTIME,&endTime);
   uint64_t usecs = endTime.tv_sec - startTime.tv_sec;
@@ -228,7 +229,7 @@ void EmuSampler::stop()
   tusage[mode]->add(usecs);
 #ifdef ENABLE_CUDA
   //AtomicAdd(&phasenInst, icount); FIXME:
-  iusage[mode]->add(phasenInst);
+  //iusage[mode]->add(phasenInst);
 #endif
   iusage[mode]->add(phasenInst);
 
@@ -249,16 +250,17 @@ void EmuSampler::stop()
 
   I(!stopJustCalled);
   I(phasenInst); // There should be something executed (more likely)
-  lastPhasenInst = phasenInst;
-  phasenInst = 0;
-  stopJustCalled = true;
+  lastPhasenInst    = phasenInst;
+  phasenInst        = 0;
+  stopJustCalled    = true;
   calcCPIJustCalled = false;
+
   pthread_mutex_unlock (&stop_lock);
 }
-/* }}} */
+/*  */
 
 void EmuSampler::startInit(FlowID fid)
-  /* Start Init Mode : No timing or warmup, go as fast as possible {{{1 */
+  /* Start Init Mode : No timing or warmup, go as fast as possible  */
 {
   //MSG("Sampler:STARTRABBIT");
   I(stopJustCalled);
@@ -266,10 +268,10 @@ void EmuSampler::startInit(FlowID fid)
     emul->startRabbit(fid);
   beginTiming(EmuInit);
 }
-
+/// 
 
 void EmuSampler::startRabbit(FlowID fid)
-  /* Start Rabbit Mode : No timing or warmup, go as fast as possible {{{1 */
+  /* Start Rabbit Mode : No timing or warmup, go as fast as possible  */
 {
   //MSG("Sampler:STARTRABBIT");
   I(stopJustCalled);
@@ -277,31 +279,30 @@ void EmuSampler::startRabbit(FlowID fid)
     emul->startRabbit(fid);
   beginTiming(EmuRabbit);
 }
-/* }}} */
+/*  */
 
 void EmuSampler::startWarmup(FlowID fid)
-  /* Start Rabbit Mode : No timing but it has cache/bpred warmup {{{1 */
+  /* Start Rabbit Mode : No timing but it has cache/bpred warmup  */
 {
   I(stopJustCalled);
   if (mode!=EmuWarmup)
     emul->startWarmup(fid);
   beginTiming(EmuWarmup);
 }
-/* }}} */
+/*  */
 
 void EmuSampler::startDetail(FlowID fid)
-  /* Start Rabbit Mode : Detailing modeling without no statistics gathering {{{1 */
+  /* Start Rabbit Mode : Detailing modeling without no statistics gathering  */
 {
   I(stopJustCalled);
   if (mode!=EmuDetail)
     emul->startDetail(fid);
-  syncRunning();
   beginTiming(EmuDetail);
 }
-/* }}} */
+/*  */
 
 void EmuSampler::startTiming(FlowID fid)
-  /* Start Timing Mode : full timing model {{{1 */
+  /* Start Timing Mode : full timing model  */
 {
   //MSG("Sampler:STARTTIMING");
   I(stopJustCalled);
@@ -311,23 +312,22 @@ void EmuSampler::startTiming(FlowID fid)
   //if (mode!=EmuTiming)
   emul->startTiming(fid);
 
-  syncRunning();
   beginTiming(EmuTiming);
 }
-/* }}} */
+/*  */
 
 bool EmuSampler::execute(FlowID fid, uint64_t icount)
-  /* called for every instruction that qemu/gpu executes {{{1 */
+  /* called for every instruction that qemu/gpu executes  */
 {
+
   GI(mode==EmuTiming, icount==1);
 
   local_icount+=icount; // There can be several samplers, but each has its own thread
-  if ( likely(local_icount < 100))
-    return !done[fid];
+  //if ( likely(local_icount < 100))
+  //  return !done[fid];
 
   AtomicAdd(&phasenInst, local_icount);
   AtomicAdd(&totalnInst, local_icount);
-
   local_icount = 0;
 
   if( likely(totalnInst <= next) )  // This is an likely taken branch, pass the info to gcc
@@ -345,25 +345,25 @@ bool EmuSampler::execute(FlowID fid, uint64_t icount)
     }
   }else{
     if (mode==EmuRabbit)
-      fprintf(stderr,"r" );
+      fprintf(stderr,"r%d",fid );
     else if (mode==EmuWarmup)
-      fprintf(stderr,"w" );
+      fprintf(stderr,"w%d",fid );
     else if (mode==EmuDetail)
-      fprintf(stderr,"d" );
+      fprintf(stderr,"d%d",fid );
     else if (mode==EmuTiming) 
-      fprintf(stderr,"t" );
+      fprintf(stderr,"t%d",fid );
     else if (mode==EmuInit) 
-      fprintf(stderr,">" );
+      fprintf(stderr,">%d",fid );
     else
-      fprintf(stderr,"?" );
+      fprintf(stderr,"?%d",fid );
   }
 
   return !done[fid];
 }
-/* }}} */
+/*  */
 
 void EmuSampler::markDone()
-/* indicate the sampler that a flow is done for good {{{1 */
+/* indicate the sampler that a flow is done for good  */
 {
   uint32_t endfid = emul->getNumEmuls() - 1;
   stop();
@@ -378,10 +378,10 @@ void EmuSampler::markDone()
 //  mode       = EmuInit;
   terminate();
 }
-/* }}} */
+/*  */
 
 void EmuSampler::syscall(uint32_t num, uint64_t usecs, FlowID fid)
-  /* Create an syscall instruction and inject in the pipeline {{{1 */
+  /* Create an syscall instruction and inject in the pipeline  */
 {
   if (!syscall_enable)
     return;
@@ -411,31 +411,36 @@ void EmuSampler::syscall(uint32_t num, uint64_t usecs, FlowID fid)
 
   emul->syscall(num,nsticks,fid);
 }
-/* }}} */
+/*  */
 
 void EmuSampler::calcCPI()
-  /* calculates cpi for the last EmuTiming mode {{{1 */
+  /* calculates cpi for the last EmuTiming mode  */
 {
   if (mode != EmuTiming)
     return;
+
   I(calcCPIJustCalled == false); 
   I(!stopJustCalled);
   calcCPIJustCalled = true;
 
   //get instruction count
-  uint64_t timingInst      = iusage[EmuTiming]->getSamples();
-  uint64_t instCount       = timingInst - instPrev[sFid];
-  I(instCount>0);
-  instPrev[sFid]                 = timingInst;
+  uint64_t timingInst = iusage[EmuTiming]->getSamples();
+  uint64_t instCount  = timingInst - instPrev[sFid];
 
   char str[255];
   sprintf(str, "P(%d):clockTicks", sFid); //FIXME: needs mapping
   GStats *gref = 0;
   gref = GStats::getRef(str);
   I(gref);
-  uint64_t cticks = gref->getSamples();
-  uint64_t clockInterval    =  cticks - clockPrev[sFid] + 1;
-  clockPrev[sFid]        =  cticks;
+  //fprintf(stderr, "\n\nCalcCPI: %s->getSamples returns %lld (previously : %lld)\n\n",str,gref->getSamples(),clockPrev[sFid]);
+  uint64_t cticks        = gref->getSamples();
+  uint64_t clockInterval = cticks - clockPrev[sFid] + 1;
+
+  if(instCount<100 || clockInterval <100) // To avoid too frequent sampling errors
+    return;
+
+  instPrev[sFid]      = timingInst;
+  clockPrev[sFid]        = cticks;
   
   //Get freezed cycles due to thermal throttling 
   sprintf(str, "P(%d):nFreeze", sFid); //FIXME: needs mapping
@@ -443,6 +448,7 @@ void EmuSampler::calcCPI()
   gref = GStats::getRef(str);
   I(gref);
   uint64_t fticks = gref->getSamples();
+  //fprintf(stderr,"\n\nCalcCPI: %s->getSamples returns %lld\n\n",str,gref->getSamples());
   uint64_t fticksInterval    =  fticks - fticksPrev[sFid] + 1;
   fticksPrev[sFid]        =  fticks;
 
@@ -451,19 +457,22 @@ void EmuSampler::calcCPI()
 
   uint64_t adjustedClock = clockInterval - fticksInterval;
 
-  //printf("InstCnt:%ld, prevInst:%ld, clock:%ld, ipc:%f\n", instCount, instPrev, clockInterval, static_cast<float>(instCount)/static_cast<float>(clockInterval));
   float newCPI  =  static_cast<float>(adjustedClock)/static_cast<float>(instCount);
   // newuCPI should be used, but as the sampler, we can only scale Inst, not uInst.
   //float newCPI  =  static_cast<float>(clockInterval)/static_cast<float>(uInstCount);
   I(newCPI>0);
 
-
+  /*
+  //printf("InstCnt:%ld, prevInst:%ld, clock:%ld, ipc:%f\n", instCount, instPrev, clockInterval, static_cast<float>(instCount)/static_cast<float>(clockInterval));
+  if (newCPI <= 0){
+    fprintf(stderr,"newCPI = %f, clockInterval = %lld, adjustedClock = %lld, uInstCount = %lld",newCPI,clockInterval,adjustedClock, uInstCount);
+  }
+  */
 
   float newipc = static_cast<float>(instCount)/static_cast<float>(adjustedClock);
   float newuipc = static_cast<float>(uInstCount)/static_cast<float>(adjustedClock);
   uipc->sample(100*newuipc);
   ipc->sample(100*newipc);
-
 
   //I(newCPI<=4);
   if (newCPI > 5) {
@@ -474,32 +483,14 @@ void EmuSampler::calcCPI()
   meaCPI = newCPI;
   meauCPI = 1.0/newuipc;
 }
-/* }}} */
-
-bool EmuSampler::othersStillInTiming(FlowID fid){
-  return false;
-  pthread_mutex_lock (&mode_lock);
-  for (uint32_t i = 0 ; i < getNumFlows() ; i++) {
-    if (isActive(mapLid(i))){
-      if ( (inTiming[mapLid(i)] && mapLid(i) != fid) || 
-          (nSamples[mapLid(i)] < nSamples[fid]) ) {
-        pthread_mutex_unlock (&mode_lock);
-        return true;
-      }
-    }
-  }
-
-  pthread_mutex_unlock (&mode_lock);
-  return false;
-}
+/*  */
 
 void EmuSampler::updatenSamples() {
   if (justUpdatedtotalnSamples)
     return;
 
-  totalnSamples ++ ;
+  totalnSamples++;
   I(totalnSamples == nSamples[sFid]);
-  syncTimes(sFid);
   justUpdatedtotalnSamples = true;
   //MSG(" %lu ", totalnSamples);
 }

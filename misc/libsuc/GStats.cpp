@@ -122,7 +122,7 @@ GStatsCntr::GStatsCntr(const char *format,...)
 
 double GStatsCntr::getDouble() const
 {
-  return (double)data;
+  return data;
 }
 
 void GStatsCntr::reportValue() const
@@ -132,7 +132,7 @@ void GStatsCntr::reportValue() const
 
 int64_t GStatsCntr::getSamples() const 
 { 
-  return data;
+  return (int64_t)data;
 }
 
 /*********************** GStatsAvg */

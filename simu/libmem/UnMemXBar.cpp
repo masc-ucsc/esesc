@@ -1,3 +1,4 @@
+// copyright and includes {{{1
 // Contributed by David Munday
 //                Jose Renau
 //
@@ -74,149 +75,67 @@ UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *nam
 }
 /* }}} */
 
-Time_t UnMemXBar::nextReadSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
+void UnMemXBar::doReq(MemRequest *mreq)
+  /* read if splitter above L1 (down) {{{1 */
 {
-  return globalClock;
-}
-/* }}} */
-Time_t UnMemXBar::nextWriteSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t UnMemXBar::nextBusReadSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t UnMemXBar::nextPushDownSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t UnMemXBar::nextPushUpSlot(const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t UnMemXBar::nextInvalidateSlot( const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
+  router->scheduleReq(mreq);
 }
 /* }}} */
 
-void UnMemXBar::read(MemRequest *mreq)
-  /* read if splitter above L1 {{{1 */
+void UnMemXBar::doReqAck(MemRequest *mreq)
+  /* req ack (up) {{{1 */
 {
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  } 
+  I(!mreq->isHomeNode());
 
-  router->fwdBusRead(mreq);
-}
-/* }}} */
-void UnMemXBar::write(MemRequest *mreq)
-  /* no write in bus {{{1 */
-{
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  }
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);  
+  router->scheduleReqAckPos(pos, mreq);
 
-  router->fwdBusRead(mreq);
-}
-/* }}} */
-void UnMemXBar::writeAddress(MemRequest *mreq)
-  /* FIXME don't know if needed in MemXBar {{{1 */
-{
-  I(0);
+	I(0); 
+	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
 
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  }
 }
 /* }}} */
 
-void UnMemXBar::busRead(MemRequest *mreq)
-  /* MemXBar busRead (exclusive or shared) request {{{1 */
-{
-  if(mreq->getAddr() == 0) {
-    mreq->ack();
-    return;
-  }
-  router->fwdBusRead(mreq);
-}
-/* }}} */
-
-void UnMemXBar::pushDown(MemRequest *mreq)
-  /* MemXBar push down (writeback or invalidate ack) {{{1 */
+void UnMemXBar::doSetState(MemRequest *mreq)
+  /* setState (up) {{{1 */
 {  
-  router->fwdPushDown(mreq);
-}
-/* }}} */
-void UnMemXBar::pushUp(MemRequest *mreq)
-  /* MemXBar push up (fwdBusRead ack) {{{1 */
-{
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);
-  router->fwdPushUpPos(pos, mreq, 0); 
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
+  router->scheduleSetStatePos(pos, mreq);
 }
 /* }}} */
 
-void UnMemXBar::invalidate(MemRequest *mreq)
-  /* forward invalidate to the higher levels {{{1 */
+void UnMemXBar::doSetStateAck(MemRequest *mreq)
+  /* setStateAck (down) {{{1 */
 {
-  I(0);
-  // FIXME: Something like this:
-  // uint32_t pos = addrHash(mreq->getAddr(),numLowerLevelBanks); 
-  // router->fwdPushUpPos(pos, mreq, 0); 
- 
-  // broadcast the invalidate through the upper nodes
-  router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), 0);
+  router->scheduleSetStateAck(mreq);
 }
 /* }}} */
 
-bool UnMemXBar::canAcceptRead(DInst *dinst) const
+void UnMemXBar::doDisp(MemRequest *mreq)
+  /* disp (down) {{{1 */
+{
+  router->scheduleDisp(mreq);
+}
+/* }}} */
+
+bool UnMemXBar::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  return router->canAcceptRead(dinst);
+  return router->isBusyPos(0, addr);
 }
 /* }}} */
 
-bool UnMemXBar::canAcceptWrite(DInst *dinst) const
-/* always can accept reads {{{1 */
-{
-  return router->canAcceptWrite(dinst);
-}
-/* }}} */
-
-TimeDelta_t UnMemXBar::ffread(AddrType addr, DataType data)
+TimeDelta_t UnMemXBar::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
-  return router->ffread(addr, data);
+  return router->ffread(addr);
 }
 /* }}} */
 
-TimeDelta_t UnMemXBar::ffwrite(AddrType addr, DataType data)
+TimeDelta_t UnMemXBar::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
-  return router->ffwrite(addr, data);
-}
-/* }}} */
-
-void UnMemXBar::ffinvalidate(AddrType addr, int32_t ilineSize)
-  /* fast forward invalidate {{{1 */
-{ 
-  //routerarray[addrHash(addr)]->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
-  I(0);
-  exit(1);
+  return router->ffwrite(addr);
 }
 /* }}} */
 

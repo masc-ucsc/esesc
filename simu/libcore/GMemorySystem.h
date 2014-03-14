@@ -37,9 +37,10 @@
 #ifndef GMEMORYSYSTEM_H
 #define GMEMORYSYSTEM_H
 
+#include "nanassert.h"
 #include "estl.h"
 
-#include "MemObj.h"
+class MemObj;
 
 //Class for comparison to be used in hashes of char * where the
 //content is to be compared

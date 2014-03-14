@@ -50,17 +50,17 @@ uint8_t esesc_ldu08(uint32_t addr) {
 int8_t esesc_lds08(uint32_t addr) {
   return ldsb_raw(addr);
 }
-void esesc_st64(uint32_t addr, uint64_t data) {
-  stq_raw(addr,data);
+void esesc_st64(uint32_t addr) {
+  //stq_raw(addr);
 }
-void esesc_st32(uint32_t addr, uint32_t data) {
-  stl_raw(addr,data);
+void esesc_st32(uint32_t addr) {
+  //stl_raw(addr);
 }
-void esesc_st16(uint32_t addr, uint16_t data) {
-  stw_raw(addr,data);
+void esesc_st16(uint32_t addr) {
+  //stw_raw(addr);
 }
-void esesc_st08(uint32_t addr, uint8_t data) {
-  stb_raw(addr,data);
+void esesc_st08(uint32_t addr) {
+  //stb_raw(addr);
 }
 
 static int pending_flush=0;
@@ -651,17 +651,17 @@ int cpu_exec(CPUState *env)
                           uint32_t ninst = env->op_cnt;
                           if (ninst == 0)
                             ninst = tb->icount;
-                          QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, 0, env->fid, env->op_insn[ninst-1], ninst, (void *) env);
+                          QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, env->op_insn[ninst-1], ninst, (void *) env);
                             //printf("%d op:%x:%x:%x %x:%x\n",0, env->op_pc[ninst-1], ldl_code(env->op_pc[ninst-1]), env->op_insn[ninst-1],env->op_addr[ninst-1],env->op_data[ninst-1]);
                         }else if (esesc_allow_large_tb[env->fid]==0 && esesc_single_inst_tb[env->fid] == 0) { // WARMUP
                           for(i=0;i<env->op_cnt;i++) {
-                            QEMUReader_queue_inst(0xdeadbeaf, env->op_pc[i], env->op_addr[i], env->op_data[i], env->fid, env->op_insn[i], 1, (void *) env);
+                            QEMUReader_queue_inst(0xdeadbeaf, env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
                           }
                         }else{
                           // FIXME: what if env->op_cnt == 0
                           for(i=0;i<env->op_cnt;i++) {
                             // the msb of op_inst indicates thumb mode for ARM
-                            QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->op_data[i], env->fid, env->op_insn[i], 1, (void *) env);
+                            QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
                             //printf("%d %d op:%x:%x:%x %x:%x\n", env->fid, i, env->op_pc[i], ldl_code(env->op_pc[i]), env->op_insn[i],env->op_addr[i],env->op_data[i]);
                           }
                         }
@@ -699,16 +699,16 @@ int cpu_exec(CPUState *env)
 																		uint32_t ninst = env->op_cnt;
 																		if (ninst == 0)
 																			ninst = tb->icount;
-																		QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, 0, env->fid, 0, ninst, (void *) env);
+																		QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, 0, ninst, (void *) env);
 																	}else if (esesc_allow_large_tb[env->fid]==0 && esesc_single_inst_tb[env->fid] == 0) { // WARMUP
 																		for(i=0;i<env->op_cnt;i++) {
-																			QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->op_data[i], env->fid, env->op_insn[i], 1, (void *) env);
+																			QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
 																		}
 																	}else{
 																		// FIXME: what if env->op_cnt == 0
 																		for(i=0;i<env->op_cnt;i++) {
                                       // the msb of op_inst indicates thumb mode for ARM
-                                      QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->op_data[i], env->fid, env->op_insn[i], 1, (void *) env);
+                                      QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
                                       //printf("%d op:%x:%x:%x %x:%x\n",i, env->op_pc[i], ldl_code(env->op_pc[i]), env->op_insn[i],env->op_addr[i],env->op_data[i]);
                                     }
                                   }

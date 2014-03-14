@@ -104,138 +104,75 @@ MemController::MemController(MemorySystem* current ,const char *section ,const c
 }
 /* }}} */
 
-Time_t MemController::nextReadSlot(       const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  I(0); // It can not be at the first level 
-  return globalClock; 
-}
-/* }}} */
-Time_t MemController::nextWriteSlot(      const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  I(0); // It can not be at the first level
-  return globalClock;
-}
-/* }}} */
-Time_t MemController::nextBusReadSlot(    const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t MemController::nextPushDownSlot(   const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t MemController::nextPushUpSlot(     const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  I(0); // Nobody is under MemController
-  return globalClock;
-}
-/* }}} */
-Time_t MemController::nextInvalidateSlot( const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  I(0); // Nobody is under MemController
-  return globalClock;
-}
-/* }}} */
-
-void MemController::read(MemRequest *mreq)
-  /* no read in bus {{{1 */
-{
-  I(0); // Bus should not be a first level object
-}
-/* }}} */
-void MemController::write(MemRequest *mreq)
-  /* no write in bus {{{1 */
-{
-  I(0); // Bus should not be a first level object
-}
-/* }}} */
-void MemController::writeAddress(MemRequest *mreq)
-  /* no writeAddress in bus {{{1 */
-{
-  I(0); // Bus should not be a first level object
-}
-/* }}} */
-
-void MemController::busRead(MemRequest *mreq)
-  /* forward bus read {{{1 */
+void MemController::doReq(MemRequest *mreq)
+  /* request reaches the memory controller {{{1 */
 {
   addMemRequest(mreq);
 }
 /* }}} */
-void MemController::pushDown(MemRequest *mreq)
-  /* push down {{{1 */
-{
-  addMemRequest(mreq);
-}
-/* }}} */
-void MemController::pushUp(MemRequest *mreq)
+
+void MemController::doReqAck(MemRequest *mreq)
   /* push up {{{1 */
 {
   I(0);
 }
 /* }}} */
 
-void MemController::invalidate(MemRequest *mreq)
-  /* forward invalidate to the higher levels {{{1 */
+void MemController::doDisp(MemRequest *mreq)
+  /* push down {{{1 */
+{
+  addMemRequest(mreq);
+}
+/* }}} */
+
+void MemController::doSetState(MemRequest *mreq)
+  /* push up {{{1 */
 {
   I(0);
 }
 /* }}} */
 
-bool MemController::canAcceptRead(DInst *dinst) const
+void MemController::doSetStateAck(MemRequest *mreq)
+  /* push up {{{1 */
+{
+  I(0);
+}
+/* }}} */
+
+bool MemController::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  return true;
+  return false;
 }
 /* }}} */
 
-bool MemController::canAcceptWrite(DInst *disnt) const
-/* always can accept reads {{{1 */
-{
-  return true;
-}
-/* }}} */
-
-TimeDelta_t MemController::ffread(AddrType addr, DataType data)
+TimeDelta_t MemController::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
   return delay + RowAccessLatency;
 }
 /* }}} */
 
-TimeDelta_t MemController::ffwrite(AddrType addr, DataType data)
+TimeDelta_t MemController::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
   return delay + RowAccessLatency;
 }
 /* }}} */
 
-void MemController::ffinvalidate(AddrType addr, int32_t ilineSize)
-  /* fast forward invalidate {{{1 */
-{ 
-  I(0);
-  // FIXME: router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
-}
-/* }}} */
-
 
 void MemController::addMemRequest(MemRequest *mreq)
 {
-  FCFSField *newEntry= new FCFSField;
-  newEntry->Bank=getBank(mreq);
-  newEntry->Row=getRow(mreq);
-  newEntry->Column=getColumn(mreq);
-  newEntry->mreq=mreq;
-  newEntry->TimeEntered=globalClock;
+  FCFSField *newEntry   = new FCFSField;
+
+  newEntry->Bank        = getBank(mreq);
+  newEntry->Row         = getRow(mreq);
+  newEntry->Column      = getColumn(mreq);
+  newEntry->mreq        = mreq;
+  newEntry->TimeEntered = globalClock;
+
   OverflowMemoryRequests.push(newEntry);
+
   manageRam();
 }
 
@@ -266,12 +203,21 @@ void MemController::manageRam(void)
         if((curBank==tempMem->Bank)&&(bankState[curBank].activeRow==tempMem->Row)) {
 
           I(tempMem->mreq);
-          if(tempMem->mreq->isWriteback())
-            tempMem->mreq->destroy();
-          else {
-            router->fwdPushUp(tempMem->mreq,globalClock-tempMem->TimeEntered);
-            avgMemLat.sample(globalClock-tempMem->TimeEntered);
+          if(!tempMem->mreq->isDisp()) {
+						MemRequest *mreq = tempMem->mreq;
+						I(mreq->isReq());
+
+            if (mreq->getAction() == ma_setValid)
+              mreq->convert2ReqAck(ma_setExclusive);
+            else
+              mreq->convert2ReqAck(ma_setDirty);
+
+						TimeDelta_t lat = globalClock-tempMem->TimeEntered;
+
+            router->scheduleSetStateAck(mreq,lat);
+            avgMemLat.sample(lat,mreq->getStatsFlag());
           }
+					tempMem->mreq->destroy();
           IS(tempMem->mreq = 0);
           
           curMemRequests.erase(it);

@@ -1,36 +1,23 @@
-// Contributed by  Alamelu Sankaranarayanan
-//
-// The ESESC/BSD License
-//
-// Copyright (c) 2005-2013, Regents of the University of California and 
-// the ESESC Project.
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//   - Redistributions of source code must retain the above copyright notice,
-//   this list of conditions and the following disclaimer.
-//
-//   - Redistributions in binary form must reproduce the above copyright
-//   notice, this list of conditions and the following disclaimer in the
-//   documentation and/or other materials provided with the distribution.
-//
-//   - Neither the name of the University of California, Santa Cruz nor the
-//   names of its contributors may be used to endorse or promote products
-//   derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
+/*
+ESESC: Super ESCalar simulator
+Copyright (C) 2006 University California, Santa Cruz.
+
+Contributed by  Alamelu Sankaranarayanan
+
+This file is part of ESESC.
+
+ESESC is free software; you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation;
+either version 2, or (at your option) any later version.
+
+ESESC is    distributed in the  hope that  it will  be  useful, but  WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should  have received a copy of  the GNU General  Public License along with
+ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
+Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+*/
 
 #ifndef GPU_THREADMANAGER_H
 #define GPU_THREADMANAGER_H
@@ -39,6 +26,8 @@
 #include <stdint.h>
 #include <string>
 #include <queue>
+#include <set>
+#include <map>
 
 #include "nanassert.h"
 #include "GPUInterface.h"
@@ -149,6 +138,11 @@ class ThreadBlockStatus {
 
 } ;
 
+struct divergence_data {
+    std::set<uint32_t> divergent_bbs;
+    std::multimap<uint32_t,uint64_t> bb_mapped_threads;
+};
+
 class esescSM {
   private:
 
@@ -171,6 +165,10 @@ class esescSM {
     std::vector < uint32_t >        warp_blocked;
     std::vector < uint32_t >        warp_block_map;
     std::vector < uint32_t >        warp_threadcount;
+    // Divergence related
+    std::vector < divergence_data > warp_divergence;
+    std::vector < uint32_t >        unmasked_bb;
+    std::vector < bool >            divergence_data_valid;
 
     bool warpchange;
     bool warprollover;
@@ -563,7 +561,10 @@ class GPUThreadManager {
       return numSM;
     }
 
-    void setNumSM(uint32_t kid) {  numSM = kernelsNumSM[kid]; printf("numSM:%d\n", numSM);};
+    void setNumSM(uint64_t kid) {  
+      numSM = kernelsNumSM[kid]; 
+      printf("numSM:%llu\n", numSM);
+    };
     void setKernelsNumSM(uint32_t kid, uint64_t nsm) { kernelsNumSM[kid] = nsm; };
 
     // Empties all the arrays
@@ -594,17 +595,32 @@ class GPUThreadManager {
     // Initialize h_trace before launching the same kernel but for a different BB
     void init_trace_newBB (uint32_t * h_trace);
 
-    // Decode a h_trace before a kernel launch
-    bool decode_trace(EmuSampler * gsampler, uint32_t * h_trace, void *env, uint32_t* qemuid);
-    bool Timing(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
-    bool Rabbit(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
-
+    // Control functions
     void possiblyturnOFFSM(uint32_t smid);
     bool switch2nextwarp(uint32_t smid,uint32_t* h_trace);
     void reset_nextRabbitBB(uint32_t* h_trace_qemu);
     void reset_continueAllTiming(bool afterrabbit);
     void reset_nextTimingBB(uint32_t* h_trace_qemu);
     void reset_pauseAllRabbit(uint32_t* h_trace_qemu);
+
+    //Divergence related functions
+    void printDivergentList(uint64_t smid, uint64_t warpid, uint32_t bbid);
+    bool switch2nextDivergentBB(uint64_t smid, uint64_t warpid);
+    void removeFromDivergentList(uint64_t smid, uint64_t warpid, uint32_t bbid, uint64_t active_thread);
+
+   // Decode a h_trace before a kernel launch
+    bool decode_trace(EmuSampler * gsampler, uint32_t * h_trace, void *env, uint32_t* qemuid);
+    bool Timing(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+#if 0
+		bool Timing_serial_branchdiv(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+		bool Timing_postdom_branchdiv(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+		bool Timing_sbi_branchdiv(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+		bool Timing_sbi_swi_branchdiv(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+#endif
+    bool Timing_Original_buggy(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+    bool Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+    bool Rabbit(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid);
+
 
 
     // Reset the status flags of the SMs

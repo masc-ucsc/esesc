@@ -39,6 +39,7 @@
 #include <vector>
 #include <set>
 #include <queue>
+//#include <boost/heap/priority_queue.hpp>
 
 #include "nanassert.h"
 #include "FastQueue.h"
@@ -57,9 +58,51 @@
  *  doneItem();  // when all the instructions are executed
  */
 
-class Pipeline;
 
 typedef uint32_t CPU_t;
+class IBucket;
+
+class PipeIBucketLess {
+ public:
+  bool operator()(const IBucket *x, const IBucket *y) const;
+};
+
+class Pipeline {
+private:
+  const size_t PipeLength;
+  const size_t bucketPoolMaxSize;
+  const int32_t MaxIRequests;
+  int32_t nIRequests;
+  FastQueue<IBucket *> buffer;
+
+  typedef std::vector<IBucket *> IBucketCont;
+  IBucketCont bucketPool;
+  IBucketCont cleanBucketPool;
+
+  //typedef boost::heap::priority_queue<IBucket *,boost::heap::compare<PipeIBucketLess> > ReceivedType;
+  typedef std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> ReceivedType;
+  //std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> received;
+  ReceivedType received;
+
+  Time_t maxItemCntr;
+  Time_t minItemCntr;
+  
+protected:
+  void clearItems();
+public:
+  Pipeline(size_t s, size_t fetch, int32_t maxReqs);
+  virtual ~Pipeline();
+ 
+  void cleanMark();
+
+  IBucket *newItem();
+  bool hasOutstandingItems() const;
+  void readyItem(IBucket *b);
+  void doneItem(IBucket *b);
+  IBucket *nextItem();
+
+  size_t size() const { return buffer.size(); }
+};
 
 class IBucket : public FastQueue<DInst *> {
 private:
@@ -94,64 +137,7 @@ public:
   StaticCallbackMember0<IBucket, &IBucket::markFetched> markFetchedCB;
 };
 
-class PipeIBucketLess {
- public:
-  bool operator()(const IBucket *x, const IBucket *y) const;
-};
 
-class Pipeline {
-private:
-  const size_t PipeLength;
-  const size_t bucketPoolMaxSize;
-  const int32_t MaxIRequests;
-  int32_t nIRequests;
-  FastQueue<IBucket *> buffer;
-
-  typedef std::vector<IBucket *> IBucketCont;
-  IBucketCont bucketPool;
-  IBucketCont cleanBucketPool;
-
-  std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> received;
-
-  Time_t maxItemCntr;
-  Time_t minItemCntr;
-  
-protected:
-  void clearItems();
-public:
-  Pipeline(size_t s, size_t fetch, int32_t maxReqs);
-  virtual ~Pipeline();
- 
-  void cleanMark();
-
-  IBucket *newItem() {
-    if(nIRequests == 0 || bucketPool.empty())
-      return 0;
-    
-    nIRequests--;
-    
-    IBucket *b = bucketPool.back();
-    bucketPool.pop_back();
-    
-    b->setPipelineId(maxItemCntr);
-    maxItemCntr++;
-    
-    IS(b->fetched = false);
-    
-    I(b->empty());
-    return b;
-  }
-
-  bool hasOutstandingItems() const {
-    // bucketPool.size() has lineal time O(n)
-    return !buffer.empty() || !received.empty() || nIRequests < MaxIRequests;
-  } 
-  void readyItem(IBucket *b);
-  void doneItem(IBucket *b);
-  IBucket *nextItem();
-
-  size_t size() const { return buffer.size(); }
-};
 
 class PipeQueue {
 public:

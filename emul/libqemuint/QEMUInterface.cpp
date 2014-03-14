@@ -76,9 +76,9 @@ extern "C" uint64_t QEMUReader_get_time()
   return qsamplerlist[0]->getTime();
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, char op, uint64_t icount, void *env) 
+extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void *env) 
 {
-  qsamplerlist[fid]->queue(insn,pc,addr,data,fid,op,icount,env);
+  qsamplerlist[fid]->queue(insn,pc,addr,fid,op,icount,env);
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)

@@ -95,7 +95,7 @@ QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint
 #endif
   qemu_thread = -1;
   started = false;
-    }
+}
 /* }}} */
 
 void QEMUReader::start() 
@@ -148,7 +148,7 @@ QEMUReader::~QEMUReader() {
 }
 /* }}} */
 
-void QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, DataType data, char thumb, FlowID fid, void * env, bool keepStats)
+void QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void * env, bool keepStats)
 /* queue instruction (called by QEMU) {{{1 */
 {
   uint64_t conta=0;
@@ -180,10 +180,7 @@ void QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, Dat
   I(rinst);
   I(insn);
 
-  float L1clkRatio = EmuSampler::getTurboRatio();
-  float L3clkRatio = 1.0;
-
-  rinst->set(insn,pc,addr,data,L1clkRatio,L3clkRatio,keepStats);
+  rinst->set(insn,pc,addr,keepStats);
 #ifdef ESESC_QEMU_ISA_ARMEL
   if (thumb){
     crackInst[fid] = &crackInstThumb[fid];
@@ -231,7 +228,7 @@ void QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, Dat
 #if 0
   for(size_t j=0;j<rinst->getNumInst();j++) {
     const Instruction *inst = rinst->getInstRef(j);
-    MSG("*x%d* pc=0x%llx addr=0x%llx data=0x%x (%d:%d)", j, rinst->getPC(), rinst->getAddr(), rinst->getData(), inst->isStore(), inst->isLoad() );
+    MSG("*x%d* pc=0x%llx addr=0x%llx (%d:%d)", j, rinst->getPC(), rinst->getAddr(), inst->isStore(), inst->isLoad() );
   }
 #endif
 
@@ -241,7 +238,7 @@ if ((rinst->getPC() == 0xdeaddead) || (rinst->getPC() == 0xdeaddeb1)){
   for(size_t j=0;j<rinst->getNumInst();j++) {
     const Instruction *inst = rinst->getInstRef(j);
     inst->dump("dead ");
-    MSG("*x%d* pc=0x%llx addr=0x%llx data=0x%x (%d:%d)", j, rinst->getPC(), rinst->getAddr(), rinst->getData(), inst->isStore(), inst->isLoad() );
+    MSG("*x%d* pc=0x%llx addr=0x%llx (%d:%d)", j, rinst->getPC(), rinst->getAddr(), inst->isStore(), inst->isLoad() );
   }
 }
 #endif
@@ -292,7 +289,7 @@ void QEMUReader::syscall(uint32_t num, Time_t time, FlowID fid)
 #endif
   RAWDInst *rinst = tsfifo[fid].getTailRef();
 
-  rinst->set(0,0xdeaddead,num,static_cast<DataType>(time));
+  rinst->set(0,0xdeaddead,true);
 
   rinst->clearInst();
   Instruction *inst = rinst->getNewInst();
@@ -351,7 +348,7 @@ DInst *QEMUReader::executeHead(FlowID fid)
 
       RAWDInst  *rinst = tsfifo[fid].getHeadRef();
 
-      I(rinst->getNumInst()!=0);
+      I(rinst->getNumInst()!=0); // race??
 
 #if 0
       static uint64_t crackinst = 0;
@@ -387,6 +384,7 @@ DInst *QEMUReader::executeHead(FlowID fid)
             // either the same or 3 more because of the ITT block from ARM
             //I(rinst->getNumInst() == rinst2->getNumInst() || (rinst2->getNumInst()+3) == rinst->getNumInst());
             tsfifo[fid].pop();
+            i++; // fetch another inst
 
             //printf("pc=0x%llx addr=0x%llx : addr2=0x%llx\n",rinst->getPC(), rinst->getAddr(), rinst2->getAddr());
             I(rinst->getNumInst() == rinst2->getNumInst());
@@ -438,6 +436,7 @@ DInst *QEMUReader::executeHead(FlowID fid)
         printf("----------------\n");
 #endif
       tsfifo[fid].pop();
+      i++;
     }
   }
 

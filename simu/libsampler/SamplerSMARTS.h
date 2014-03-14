@@ -45,20 +45,6 @@ class SamplerSMARTS : public SamplerBase {
 private:
 protected:
 
-  uint64_t nInstRabbit;
-  uint64_t nInstWarmup;
-  uint64_t nInstDetail;
-  uint64_t nInstTiming;
-  uint64_t nInstForcedDetail;
-
-  uint64_t nextSwitch;
-
-  EmuMode  next2EmuTiming;
-
-  //std::vector<MemObj *> DL1;
-  MemObj *DL1;
-
-  FlowID winnerFid;
 
   bool allDone();
   void markThisDone(FlowID fid);
@@ -66,7 +52,7 @@ public:
   SamplerSMARTS(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerSMARTS();
 
-  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, uint64_t icount, void *env);
+  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
 
   void updateCPI(uint32_t fid);
   void syncStats(){

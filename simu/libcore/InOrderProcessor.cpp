@@ -63,9 +63,10 @@ InOrderProcessor::~InOrderProcessor() {
 }
 
 void InOrderProcessor::fetch(FlowID fid) {
+  // TODO: Move this to GProcessor (same as in OoOProcessor)
   I(eint);
   if(!active){
-    TaskHandler::removeFromRunning(cpu_id);
+    //TaskHandler::removeFromRunning(cpu_id);
     return;
   }
 
@@ -157,6 +158,7 @@ StallCause InOrderProcessor::addInst(DInst *dinst) {
   if (sc != NoStall)
     return sc;
 
+  // FIXME: rafactor the rest of the function that it is the same as in OoOProcessor (share same function in GPRocessor)
 
   // BEGIN INSERTION (note that cluster already inserted in the window)
   // dinst->dump("");
@@ -165,16 +167,28 @@ StallCause InOrderProcessor::addInst(DInst *dinst) {
 
   ROB.push(dinst);
 
-  I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
+  if( !dinst->isSrc2Ready() ) {
+    // It already has a src2 dep. It means that it is solved at
+    // retirement (Memory consistency. coherence issues)
+    if( RAT[inst->getSrc1()] )
+      RAT[inst->getSrc1()]->addSrc1(dinst);
+  }else{
+    if( RAT[inst->getSrc1()] )
+      RAT[inst->getSrc1()]->addSrc1(dinst);
 
-  // No src check for in-order
+    if( RAT[inst->getSrc2()] )
+      RAT[inst->getSrc2()]->addSrc2(dinst);
+  }
+
   dinst->setRAT1Entry(&RAT[inst->getDst1()]);
   dinst->setRAT2Entry(&RAT[inst->getDst2()]);
+
+  dinst->getCluster()->addInst(dinst);
+
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
 
   I(dinst->getCluster());
-  dinst->getCluster()->addInst(dinst);
 
   return NoStall;
 }

@@ -436,7 +436,6 @@ void TaskHandler::boot()
       EventScheduler::advanceClock();
     }
   }
-  syncStats();
 }
 /* }}} */
 
@@ -529,17 +528,6 @@ void TaskHandler::unplug()
     delete emulas[i];
   }
 #endif
-}
-/* }}} */
-
-void TaskHandler::syncStats()
-  /* call all the emuSampler to sync stats {{{1 */
-{
-  if (terminate_all)
-    return;
-  for(AllMapsType::iterator it=allmaps.begin();it!=allmaps.end();it++) {
-    (*it).emul->getSampler()->syncStats();
-  }
 }
 /* }}} */
 

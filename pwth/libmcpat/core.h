@@ -70,6 +70,8 @@ class BranchPredictor :public Component {
 	ArrayST * L2_localBPT;
 	ArrayST * chooser;
 	ArrayST * RAS;
+	
+	bool exist;
 
 	BranchPredictor(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
     void computeEnergy(bool is_tdp=true);
@@ -97,6 +99,8 @@ class InstFetchU :public Component {
 	void buildInstCache();
 	void buildInstBuffer();
 	void buildBranchPredictor();
+	
+	bool exist;
 
 	InstFetchU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
     void computeEnergy(bool is_tdp=true);
@@ -125,6 +129,8 @@ class SchedulerU :public Component {
 	void buildFPInstWindow();
 	void buildROB();
 	void buildSelectionU();
+	
+	bool exist;
 
     SchedulerU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
     void computeEnergy(bool is_tdp=true);
@@ -157,6 +163,8 @@ class RENAMINGU :public Component {
 	void buildFRRAT();
 	void buildIFreeL();
 	void buildFFreeL();
+	
+	bool exist;
 
 	RENAMINGU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_, const CoreDynParam & dyn_p_);
     void computeEnergy(bool is_tdp=true);
@@ -196,6 +204,8 @@ class LoadStoreU :public Component {
 	void buildLoadQ();
 	void buildStoreSets();
 	
+	bool exist;
+	
 
 	LoadStoreU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
     void computeEnergy(bool is_tdp=true);
@@ -217,6 +227,8 @@ class MemManU :public Component {
  
 	void buildITLB();
 	void buildDTLB();
+	
+	bool exist;
 
 
 
@@ -242,6 +254,8 @@ class RegFU :public Component {
 
 	void buildIRF();
 	void buildFRF();
+	
+	bool exist;
 
 
 	RegFU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
@@ -270,6 +284,8 @@ class EXECU :public Component {
 	interconnect * fpTagBypass;
 
 	Component  bypass;
+	
+	bool exist;
 
 	EXECU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_, double lsq_height_,const CoreDynParam & dyn_p_);
     void computeEnergy(bool is_tdp=true);
@@ -294,6 +310,8 @@ class Core :public Component {
 	RENAMINGU  * rnu;
 	PipelinePower   * corepipe;
 
+	
+	bool exist;
 
 	UndiffCore * undiffCore;
 	CoreDynParam  coredynp;

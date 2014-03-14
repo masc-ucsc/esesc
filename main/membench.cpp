@@ -43,8 +43,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "ARMCrack.h"
 #include "ThumbCrack.h"
 #include "MemStruct.h"
-#include "memparse2.h"
-
 
 static int rd_pending = 0;
 static int wr_pending = 0;
@@ -54,24 +52,19 @@ DInst *st;
 ARMCrack crackInstARM;
 
 RAWDInst rinst;
-void rdDone(MemRequest *mreq) {
-  I(mreq);
+void rdDone(DInst *dinst) {
+
+  printf("rddone @%lld\n",(long long)globalClock);
 
 	rd_pending--;
- 	mreq->rawdump_calledge(2,10);
-  I(mreq->getDInst());
-  mreq->getDInst()->recycle();
-
+  dinst->recycle();
 }
 
-void wrDone(MemRequest *mreq) {
-  I(mreq);
+void wrDone(DInst *dinst) {
 
+  printf("wrdone @%lld\n",(long long)globalClock);
 	wr_pending--;
- 	mreq->rawdump_calledge(2,10);
-  I(mreq->getDInst());
-  mreq->getDInst()->recycle();
-
+  dinst->recycle();
 }
 
 static void waitAllMemOpsDone() {
@@ -79,27 +72,24 @@ static void waitAllMemOpsDone() {
     EventScheduler::advanceClock();
 }
 
-typedef CallbackFunction1<MemRequest *, &rdDone> rdDoneCB;
-typedef CallbackFunction1<MemRequest *, &wrDone> wrDoneCB;
+typedef CallbackFunction1<DInst *, &rdDone> rdDoneCB;
+typedef CallbackFunction1<DInst *, &wrDone> wrDoneCB;
 
 long long num_operations =0;
- 
+
 static void doread(MemObj *cache, AddrType addr)
 {
   num_operations++;
   DInst *ldClone = ld->clone();
   ldClone->setAddr(addr);
 
-  while(!cache->canAcceptRead(ldClone))
+  while(cache->isBusy(addr))
     EventScheduler::advanceClock();
 
-  rdDoneCB *cb = rdDoneCB::create(0);
-  MemRequest *mreq = MemRequest::createRead(cache, ldClone, addr, cb);
-  cb->setParam1(mreq);
+  rdDoneCB *cb = rdDoneCB::create(ldClone);
+  printf("rd %x @%lld\n", (unsigned int)addr,(long long)globalClock);
+  MemRequest::sendReqRead(cache, ldClone, addr, cb);
   rd_pending++;
-  cache->read(mreq);
-
-  printf("Read Addr: %x (mreq=%p)\n", (unsigned int)addr, mreq);
 }
 
 static void dowrite(MemObj *cache, AddrType addr)
@@ -108,15 +98,13 @@ static void dowrite(MemObj *cache, AddrType addr)
   DInst *stClone = st->clone();
   stClone->setAddr(addr);
 
-	while(!cache->canAcceptWrite(stClone))
+	while(cache->isBusy(addr))
 		EventScheduler::advanceClock();
 
-  wrDoneCB *cb = wrDoneCB::create(0);
-	MemRequest *mreq = MemRequest::createWrite(cache, stClone, cb);
-  cb->setParam1(mreq);
+  wrDoneCB *cb = wrDoneCB::create(stClone);
+  printf("wr %x @%lld\n", (unsigned int)addr,(long long)globalClock);
+	MemRequest::sendReqWrite(cache, stClone, addr, cb);
 	wr_pending++;
-	cache->write(mreq);
-  printf("Write Addr: %x (mreq=0x%p)\n", (unsigned int)addr, mreq);
 }
 
 void single() {
@@ -159,7 +147,7 @@ void single() {
 
 void multi()
 {
-  if (TaskHandler::getMaxFlows()<2) {
+  if (TaskHandler::getNumCPUS()<2) {
     MSG("The esesc.conf should have 2 or more CPUs to run this test\n");
     exit(-2);
   }
@@ -198,34 +186,54 @@ void multi()
   waitAllMemOpsDone();
 }
 
-//Test 1 - Test that the cache line size affects load/st hits on subsequent addresses
-void test1()
+void memcpy()
 {
-  MemVerify *m = new MemVerify();
-
-  GProcessor *gproc = TaskHandler::getSimu(0); 
-  I(gproc);
-
-  MemObj *cache1 = gproc->getMemorySystem()->getDL1();
-  I(cache1);
-
-  printf("Test 1\n");
-  AddrType addr1 = 0;
-  for(int i = 0; i < 132; i += 4) // 132/4 = 33 address accesses
-  {
-    addr1 += 1;
-    doread(cache1, 0x400+i);
-
-    waitAllMemOpsDone();
-
-    CacheDebugAccess *cda = CacheDebugAccess::getInstance();
-    m->test1_verify(cda);
-
+  if (TaskHandler::getNumCPUS()<2) {
+    MSG("The esesc.conf should have 2 or more CPUs to run this test\n");
+    exit(-2);
   }
-  m->check_read_order2(); 
 
+	GProcessor *gproc0 = TaskHandler::getSimu(0); 
+	I(gproc0);
+
+	MemObj *P0DL1 = gproc0->getMemorySystem()->getDL1();
+	I(P0DL1);
+
+	GProcessor *gproc1 = TaskHandler::getSimu(1); 
+	I(gproc1);
+
+	MemObj *P1DL1 = gproc1->getMemorySystem()->getDL1();
+	I(P1DL1);
+
+  printf("Multicore trivial test\n");
+  int rd_addr = 0x00100000;
+  int wr_addr = 0xFF000000;
+  int cp_size  = 1024;
+
+  Time_t start = globalClock;
+#if 0
+  printf("starting memcpy waiting for each iteration...\n");
+  for(int i=0;i<cp_size;i+=4) {
+    doread(P0DL1, rd_addr);
+    dowrite(P0DL1, wr_addr);
+    rd_addr += 4;
+    wr_addr += 4;
+    waitAllMemOpsDone();
+  }
+  printf("Waiting memcpy took %lld cycles (%fB/s)\n",(long long)(globalClock-start),((double)cp_size)/(globalClock-start));
+#endif
+  start = globalClock;
+  printf("starting memcpy saturating...\n");
+  for(int i=0;i<cp_size;i+=4) {
+    doread(P0DL1, rd_addr);
+    dowrite(P0DL1, wr_addr);
+    rd_addr += 4;
+    wr_addr += 4;
+    EventScheduler::advanceClock();
+  }
+  waitAllMemOpsDone();
+  printf("Saturating memcpy took %lld cycles (%fB/s)\n",(long long)(globalClock-start),((double)cp_size)/(globalClock-start));
 }
-
 
 //Test 2 - Test that when Core 0 loads an address and then Core 1 accesses the same address,
 //the data will come from L2 cache and not from Memory
@@ -315,7 +323,7 @@ void test3()
   I(P3DL1);
 
   // rinst->set(insn,pc,addr,data,L1clkRatio,L3clkRatio,keepStats);
-  rinst.set(0xe5832000,0x400,0x400,130,1,1,true);
+  rinst.set(0xe5832000,0x400,0x400,true);
   crackInstARM.expand(&rinst);
   st = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
 
@@ -451,7 +459,7 @@ void test5()
   I(P3DL1);
 
   // rinst->set(insn,pc,addr,data,L1clkRatio,L3clkRatio,keepStats);
-  rinst.set(0xe5832000,0x400,0x400,130,1,1,true);
+  rinst.set(0xe5832000,0x400,0x400,1,1,true);
   crackInstARM.expand(&rinst);
   st = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
 
@@ -642,26 +650,20 @@ int main(int argc, const char **argv) {
   BootLoader::plug(argc, argv);
 
   // Create a LD (e5d33000) with PC = 0xfeeffeef and address 1203
-  rinst.set(0xe5d33000,0xfeeffeef,1203,130,1,1,true);
+  rinst.set(0xe5d33000,0xfeeffeef,1203,true);
   crackInstARM.expand(&rinst);
   ld = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
 
   // Create a ST (e5832000) with PC = 0x410 and address 0x400
-  rinst.set(0xe5832000,0x410,0x400,130,1,1,true);
+  rinst.set(0xe5832000,0x410,0x400,true);
   crackInstARM.expand(&rinst);
   st = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
 
   printf("SINGLE CORE TEST\n");
   //single();
-  //test1();
  	
   multi();
-  //test2();
-  //test3();
-  //test4();
-  //test5();
-  //test6();
-	//test7();
+  memcpy();
   
   printf("test Done!/n");
   //TaskHandler::terminate(); // put CPUs to sleep while running fast-forward

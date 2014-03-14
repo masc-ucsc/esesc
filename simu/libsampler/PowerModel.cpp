@@ -40,6 +40,11 @@
 #include "Report.h"
 #include "GMemorySystem.h"
 #include "GProcessor.h"
+#include "PowerStats.h"
+#include "Wrapper.h"
+#include "SescThermWrapper.h"
+#include "Bundle.h"
+#include "MemObj.h"
 
 #ifdef ENABLE_PEQ
 #include "PeqParser.h"
@@ -750,11 +755,11 @@ void PowerModel::updatePowerGStats() {
         powerDynCntr[i]->sample(1000*energyBundle->cntrs[i].getDyn());  
         powerLkgCntr[i]->sample(1000*energyBundle->cntrs[i].getScaledLkg());  
         energyCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*energyBundle->cntrs[i].getCyc()/1e3);  
-        engDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow(energyBundle->cntrs[i].getCyc(),2)/1e6);  
+        engDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6);  
         if (currentWin){
           currentEngDelayCntr[i]->reset();
         }
-        currentEngDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow(energyBundle->cntrs[i].getCyc(),2)/1e6);  
+        currentEngDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6);  
     }
   }
 
@@ -903,7 +908,7 @@ void PowerModel::readPowerConfig(const char *section) {
       std::cout<<"Power Prediction enabled with History size "<<PowerHistSize<<"\n";
     }
       samplerType = Adaptive;
-  }  else if (strcasecmp(sampler_type,"Periodic") == 0){
+  }  else if (strcasecmp(sampler_type,"time") == 0){
     doPowPred  = SescConf->getBool(sampler_sec, "doPowPrediction"); 
     if (doPowPred){ 
       usePrediction = doPowPred;
@@ -916,18 +921,10 @@ void PowerModel::readPowerConfig(const char *section) {
       std::cout<<"Power Prediction enabled with History size "<<PowerHistSize<<"\n";
     }
     samplerType = Periodic;
-  } else if (strcasecmp(sampler_type,"SMARTS") == 0 ){
+  } else if (strcasecmp(sampler_type,"inst") == 0 ){
     doPowPred  = false; 
     usePrediction = doPowPred;
     samplerType = SMARTS;
-  } else if (strcasecmp(sampler_type,"SkipSim") == 0 ){
-    doPowPred  = false; 
-    usePrediction = doPowPred;
-    samplerType = SkipSim;
-  } else if (strcasecmp(sampler_type,"SPoint") == 0 ){
-    doPowPred  = false; 
-    usePrediction = doPowPred;
-    samplerType = SPoint;
   }else{
     samplerType = Others;
   }
@@ -1227,4 +1224,46 @@ void PowerModel::stackingValidator(){
   }
       printf("%f\n", dpower);
 
+}
+
+void PowerModel::addTurboCoupledMemory(MemObj *mobj) {
+
+	coupledObjects.push_back(mobj);
+}
+
+
+float PowerModel::getDyn(uint32_t i)
+{ 
+	return energyBundle->cntrs[i].getDyn();       
+}
+
+float PowerModel::getLkg(uint32_t i)       
+{ 
+	return energyBundle->cntrs[i].getLkg();       
+}
+
+float PowerModel::getScaledLkg(uint32_t i) 
+{ 
+	return energyBundle->cntrs[i].getScaledLkg(); 
+}
+
+uint32_t PowerModel::getCyc(uint32_t i)    
+{ 
+	return energyBundle->cntrs[i].getCyc();       
+}
+
+void PowerModel::setTurboRatio(float freqCoef)  { 
+	
+	EmuSampler::setTurboRatio(freqCoef);
+
+	for(CoupledObjectsType::iterator it=coupledObjects.begin();
+			it != coupledObjects.end();
+			it++) {
+		MemObj *mobj = *it;
+		mobj->setTurboRatio(freqCoef);
+	}
+}
+
+void PowerModel::updateSescTherm(int64_t ti) {
+  sescThermWrapper->sesctherm.updateMetrics(ti);  
 }

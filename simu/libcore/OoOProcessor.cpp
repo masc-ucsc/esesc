@@ -149,10 +149,10 @@ bool OoOProcessor::execute()
   clockTicks.inc(getStatsFlag);
   setWallClock(getStatsFlag);
 
-  if (unlikely(throtting)) { 
+  if (unlikely(throttingRatio>1)) { 
     throtting_cntr++;
 
-    uint32_t skip = ceil(throtting/getTurboRatio()); 
+    uint32_t skip = ceil(throttingRatio/getTurboRatio()); 
 
     if (throtting_cntr < skip) {
       return true;
@@ -362,7 +362,6 @@ void OoOProcessor::retire_lock_check()
 {
   RetireState state;
   if (active) {
-    eint->getSampler()->syncStats();
     state.committed = nCommitted.getDouble();
   }else{
     state.committed = 0;

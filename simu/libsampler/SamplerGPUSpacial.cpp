@@ -51,7 +51,7 @@ extern uint32_t roundDown(uint32_t numToRound, uint32_t multiple);
 
 SamplerGPUSpacial::SamplerGPUSpacial(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : SamplerBase(iname, section, emu, fid)
-  /* SamplerGPUSpacial constructor {{{1 */
+  /* SamplerGPUSpacial constructor  */
 {
 
     max_exec_threads = SescConf->getInt(section, "nMaxThreads", 0);
@@ -85,16 +85,16 @@ SamplerGPUSpacial::SamplerGPUSpacial(const char *iname, const char *section, Emu
     //If, for a given kernel iteration,  max_exec_threads is more than num_threads, then it will be logged and it will be as good as full 
     //timing for that iteration
 }
-/* }}} */
+/*  */
 
 SamplerGPUSpacial::~SamplerGPUSpacial() 
-  /* DestructorRabbit {{{1 */
+  /* DestructorRabbit  */
 {
 }
-/* }}} */
+/*  */
 
-void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_t data, FlowID fid, char op, uint64_t icount, void *env)
-  /* main qemu/gpu/tracer/... entry point {{{1 */
+void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+  /* main qemu/gpu/tracer/... entry point  */
 {
 
   if(likely(!execute(fid, icount)))
@@ -116,7 +116,7 @@ void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_
   }
 
   if (mode == EmuDetail || mode == EmuTiming) {
-    emul->queueInstruction(insn,pc,addr,data, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
+    emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
     lastMode = mode;
     return;
   }
@@ -133,7 +133,7 @@ void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint64_
 
 
 }
-/* }}} */
+/*  */
 
 
 
@@ -161,8 +161,6 @@ void SamplerGPUSpacial::doPWTH() {
     I(mytime > lastTime);
 
     uint64_t ti = static_cast<uint64_t> (mytime - lastTime);
-
-    TaskHandler::syncStats();
 
     
     BootLoader::getPowerModelPtr()->setKernelId(emul->getKernelId());

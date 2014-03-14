@@ -90,7 +90,9 @@ Processor::Processor(ParseXML *XML_interface)
   for (i = 0;i < numCore; i++)
     {
       cores.push_back(new Core(XML,i, &interface_ip));
+
       cores[i]->computeEnergy();
+
       cores[i]->computeEnergy(false);
       if (procdynp.homoCore){
         for(int j=1; j<procdynp.numCore;j++)
@@ -355,11 +357,18 @@ void Processor::Processor2(ParseXML *XML_interface)
   int i;
   double pppm_t[4]    = {1,1,1,1};
   XML = XML_interface; //eka, to copy the input XML info to the local XML
-  set_proc_param();
+
+  static bool first_time = true;
+  if(first_time){
+	set_proc_param();
+	first_time = false;
+  }
+
   //if (procdynp.homoCore)
   //  numCore = procdynp.numCore==0? 0:1;
   //else
   numCore = procdynp.numCore;
+
 
   //if (procdynp.homoL2)
   //  numL2 = procdynp.numL2==0? 0:1;
@@ -393,6 +402,7 @@ void Processor::Processor2(ParseXML *XML_interface)
   rt_power.reset();
 
   core.rt_power.reset();
+
   //
   for (i = 0;i < numCore; i++)
     {
@@ -400,12 +410,21 @@ void Processor::Processor2(ParseXML *XML_interface)
       //cores[i]->rt_power.reset();
       //eka, update runtime parameters
       //cores.push_back(new Core(XML,i, &interface_ip));
+      
       cores[i]->update_rtparam(XML,i, &interface_ip, cores[i]);
+
       cores[i]->computeEnergy(false);
+
+
       set_pppm(pppm_t,1/cores[i]->executionTime, 1, 1, 1);
+
       core.rt_power = core.rt_power + cores[i]->rt_power*pppm_t;
+
       dumpCoreDyn(i);
+
     }
+    
+    
   rt_power = rt_power  + core.rt_power;
 
   if (procdynp.numGPU > 0) {
@@ -863,7 +882,6 @@ Processor::~Processor(){
 
 void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 
-
   energyBundle = eBundle; // set the processor pointer
 
   char  name[244];
@@ -947,32 +965,35 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 
 #else
 
+    if (cores[i]->coredynp.core_ty==OOO)
+    {
 
-    sprintf(name, "P(%d)_RNU",ii); 
-    sprintf(conn, "P(%d)_fetch",ii); 
-    area =  2e-12*(2*pipeline +
-        cores[i]->rnu->iFRAT->area.get_area()  + 
-        cores[i]->rnu->iRRAT->area.get_area()  + 
-        cores[i]->rnu->ifreeL->area.get_area() +
-        cores[i]->rnu->fFRAT->area.get_area()  +
-        cores[i]->rnu->fRRAT->area.get_area()  +
-        cores[i]->rnu->ffreeL->area.get_area());          
-    tdp = (cores[i]->rnu->iFRAT->power.readOp.dynamic  + 
-        cores[i]->rnu->iRRAT->power.readOp.dynamic  + 
-        cores[i]->rnu->ifreeL->power.readOp.dynamic +
-        cores[i]->rnu->fFRAT->power.readOp.dynamic  +
-        cores[i]->rnu->fRRAT->power.readOp.dynamic  +
-        cores[i]->rnu->ffreeL->power.readOp.dynamic);          
-    lkg = cores[i]->rnu->iFRAT->rt_power.readOp.get_leak()  + 
-      cores[i]->rnu->iRRAT->rt_power.readOp.get_leak()  + 
-      cores[i]->rnu->ifreeL->rt_power.readOp.get_leak() +
-      cores[i]->rnu->fFRAT->rt_power.readOp.get_leak()  +
-      cores[i]->rnu->fRRAT->rt_power.readOp.get_leak()  +
-      cores[i]->rnu->ffreeL->rt_power.readOp.get_leak();          
-    type = 0;
-    //FIXME: decide on the deviceType
-    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
-    // Visibility of the Container
+	  sprintf(name, "P(%d)_RNU",ii); 
+	  sprintf(conn, "P(%d)_fetch",ii); 
+	  area =  2e-12*(2*pipeline +
+	      cores[i]->rnu->iFRAT->area.get_area()  + 
+	      cores[i]->rnu->iRRAT->area.get_area()  + 
+	      cores[i]->rnu->ifreeL->area.get_area() +
+	      cores[i]->rnu->fFRAT->area.get_area()  +
+	      cores[i]->rnu->fRRAT->area.get_area()  +
+	      cores[i]->rnu->ffreeL->area.get_area());          
+	  tdp = (cores[i]->rnu->iFRAT->power.readOp.dynamic  + 
+	      cores[i]->rnu->iRRAT->power.readOp.dynamic  + 
+	      cores[i]->rnu->ifreeL->power.readOp.dynamic +
+	      cores[i]->rnu->fFRAT->power.readOp.dynamic  +
+	      cores[i]->rnu->fRRAT->power.readOp.dynamic  +
+	      cores[i]->rnu->ffreeL->power.readOp.dynamic);          
+	  lkg = cores[i]->rnu->iFRAT->rt_power.readOp.get_leak()  + 
+	    cores[i]->rnu->iRRAT->rt_power.readOp.get_leak()  + 
+	    cores[i]->rnu->ifreeL->rt_power.readOp.get_leak() +
+	    cores[i]->rnu->fFRAT->rt_power.readOp.get_leak()  +
+	    cores[i]->rnu->fRRAT->rt_power.readOp.get_leak()  +
+	    cores[i]->rnu->ffreeL->rt_power.readOp.get_leak();          
+	  type = 0;
+	  //FIXME: decide on the deviceType
+	  energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
+	  // Visibility of the Container
+    }
     
 #endif
 
@@ -1025,31 +1046,54 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, areaIB, tdpIB, 0.0, lkgIB));
 
 #else
-    //Instruction Fetch Unit
-    sprintf(name, "P(%d)_fetch",ii); 
-    sprintf(conn, "P(%d)_icache P(%d)_RNU", ii, ii); 
-    area = 1.25e-12*(pipeline +
-        cores[i]->ifu->BPT->globalBPT->area.get_area()   +
-        cores[i]->ifu->BPT->L1_localBPT->area.get_area() +
-        cores[i]->ifu->BPT->chooser->area.get_area()     +
-        cores[i]->ifu->BPT->RAS->area.get_area()         +
-        cores[i]->ifu->BTB->area.get_area()              +
-        cores[i]->ifu->IB->area.get_area());  
-    tdp = cores[i]->ifu->BPT->globalBPT->power.readOp.dynamic   +
-        cores[i]->ifu->BPT->L1_localBPT->power.readOp.dynamic +
-        cores[i]->ifu->BPT->chooser->power.readOp.dynamic     +
-        cores[i]->ifu->BPT->RAS->power.readOp.dynamic         +
-        cores[i]->ifu->BTB->power.readOp.dynamic              +
-        cores[i]->ifu->IB->power.readOp.dynamic;  
-    lkg = cores[i]->ifu->BPT->globalBPT->rt_power.readOp.get_leak()   +
-        cores[i]->ifu->BPT->L1_localBPT->rt_power.readOp.get_leak() +
-        cores[i]->ifu->BPT->chooser->rt_power.readOp.get_leak()     +
-        cores[i]->ifu->BPT->RAS->rt_power.readOp.get_leak()         +
-        cores[i]->ifu->BTB->rt_power.readOp.get_leak()              +
-        cores[i]->ifu->IB->rt_power.readOp.get_leak();  
-    type = 0;
-    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
-    area = tdp = lkg = 0;
+    
+	  //Instruction Fetch Unit
+	  sprintf(name, "P(%d)_fetch",ii); 
+	  
+	  
+	  area = 1.25e-12*(pipeline + cores[i]->ifu->IB->area.get_area());  
+	  tdp = cores[i]->ifu->IB->power.readOp.dynamic;  
+	  lkg = cores[i]->ifu->IB->rt_power.readOp.get_leak();  
+	      
+	  if (cores[i]->coredynp.predictionW>0){
+	    if(cores[i]->coredynp.core_ty==OOO)
+	    { 
+	      sprintf(conn, "P(%d)_icache P(%d)_RNU", ii, ii); 
+	      
+	    }
+	    else{
+	      sprintf(conn, "P(%d)_icache", ii);
+	    }
+	      
+	    area += 1.25e-12*(
+	      cores[i]->ifu->BPT->globalBPT->area.get_area()   +
+	      cores[i]->ifu->BPT->L1_localBPT->area.get_area() +
+	      cores[i]->ifu->BPT->chooser->area.get_area()     +
+	      cores[i]->ifu->BPT->RAS->area.get_area() +
+	      cores[i]->ifu->BTB->area.get_area() );
+	    
+	    tdp += cores[i]->ifu->BPT->globalBPT->power.readOp.dynamic   +
+	      cores[i]->ifu->BPT->L1_localBPT->power.readOp.dynamic +
+	      cores[i]->ifu->BPT->chooser->power.readOp.dynamic     +
+	      cores[i]->ifu->BPT->RAS->power.readOp.dynamic +
+	      cores[i]->ifu->BTB->power.readOp.dynamic; 
+	      	  
+	    lkg += cores[i]->ifu->BPT->globalBPT->rt_power.readOp.get_leak()   +
+	      cores[i]->ifu->BPT->L1_localBPT->rt_power.readOp.get_leak() +
+	      cores[i]->ifu->BPT->chooser->rt_power.readOp.get_leak()     +
+	      cores[i]->ifu->BPT->RAS->rt_power.readOp.get_leak()  +
+	      cores[i]->ifu->BTB->rt_power.readOp.get_leak();  
+	      
+	  }
+	  else{
+	      sprintf(conn, "P(%d)_icache", ii); 
+	  }
+	  
+
+	  type = 0;
+	  energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
+	  area = tdp = lkg = 0;
+    //}
 #endif
 
 
@@ -1068,6 +1112,7 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 
     type              = 0;
 
+    
     sprintf(name, "P(%d)_itlb",ii); 
     sprintf(conn, "L2(%d) P(%d)_icache",int (ii/corePerL2), ii); 
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, areaitlb, tdpitlb, 0.0, lkgitlb));
@@ -1080,6 +1125,7 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     sprintf(conn, "L2(%d) P(%d)_itlb",int (ii/corePerL2), ii); 
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, areaicachecc, tdpicachecc, 0.0, lkgicachecc));
 #else
+    
     sprintf(name, "P(%d)_icache",ii); 
     sprintf(conn, "L2(%d) P(%d)_fetch",int (ii/corePerL2), ii); 
     area = 1.25e-12*(pipeline +
@@ -1113,6 +1159,7 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 
     type              = 0;
 
+
     sprintf(name, "P(%d)_dtlb",ii); 
     sprintf(conn, "L2(%d) P(%d)_dcache",int (ii/corePerL2), ii); 
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, areadtlb, tdpdtlb, 0.0, lkgdtlb));
@@ -1125,6 +1172,9 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     sprintf(conn, "L2(%d) P(%d)_dtlb",int (ii/corePerL2), ii); 
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, areadcachecc, tdpdcachecc, 0.0, lkgdcachecc));
 #else
+    
+
+	
     sprintf(name, "P(%d)_dcache",ii); 
     sprintf(conn, "L2(%d) P(%d)_LSU",int (ii/corePerL2), ii); 
     area = 1.25e-12*(pipeline +
@@ -1206,6 +1256,7 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
       }
     }
 #else
+
     sprintf(name, "P(%d)_LSU",ii); 
     sprintf(conn, "P(%d)_dcache",ii); 
     if (XML->sys.core[i].scoore) {
@@ -1290,28 +1341,46 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     sprintf(conn, "P(%d)_FRF",ii); 
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, areafp_inst_window, tdpfp_inst_window, 0.0, lkgfp_inst_window));
 #else
-    sprintf(name, "P(%d)_EXE",ii); 
-    sprintf(conn, "P(%d)_RF",ii); 
-    area = 1.5e-12*(pipeline + cores[i]->exu->exeu->area.get_area() +    
-        pipeline + cores[i]->exu->fp_u->area.get_area()           +      
-        pipeline + cores[i]->exu->scheu->int_inst_window->area.get_area() +
-        pipeline + cores[i]->exu->scheu->fp_inst_window->area.get_area()); 
-    tdp = cores[i]->exu->exeu->power.readOp.dynamic + 
-      cores[i]->exu->fp_u->power.readOp.dynamic +       
-      cores[i]->exu->scheu->int_inst_window->power.readOp.dynamic +
-      cores[i]->exu->scheu->fp_inst_window->power.readOp.dynamic; 
-    lkg = cores[i]->exu->exeu->rt_power.readOp.get_leak()+    
-      cores[i]->exu->fp_u->rt_power.readOp.get_leak()+       
-      cores[i]->exu->scheu->int_inst_window->rt_power.readOp.get_leak()+
-      cores[i]->exu->scheu->fp_inst_window->rt_power.readOp.get_leak(); 
-    type = 0;
-    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
-    area = tdp = lkg = 0;
+
+	  sprintf(name, "P(%d)_EXE",ii); 
+	  sprintf(conn, "P(%d)_RF",ii); 
+	  area = 1.5e-12*(pipeline + cores[i]->exu->exeu->area.get_area() +    
+	      pipeline + cores[i]->exu->fp_u->area.get_area());
+	  
+	  tdp = cores[i]->exu->exeu->power.readOp.dynamic + 
+	    cores[i]->exu->fp_u->power.readOp.dynamic;
+	    
+	  lkg = cores[i]->exu->exeu->rt_power.readOp.get_leak()+    
+	    cores[i]->exu->fp_u->rt_power.readOp.get_leak();
+	  
+	  if(cores[i]->coredynp.core_ty==OOO)  
+	  {
+	      area += 1.5e-12*(pipeline + cores[i]->exu->scheu->fp_inst_window->area.get_area()); 
+	      tdp += cores[i]->exu->scheu->fp_inst_window->power.readOp.dynamic; 
+	      lkg += cores[i]->exu->scheu->fp_inst_window->rt_power.readOp.get_leak();
+	  }
+	  
+	  if(cores[i]->coredynp.multithreaded)  
+	  {
+	      area += 1.5e-12*(pipeline + cores[i]->exu->scheu->int_inst_window->area.get_area()); 
+	      tdp += cores[i]->exu->scheu->int_inst_window->power.readOp.dynamic; 
+	      lkg += cores[i]->exu->scheu->int_inst_window->rt_power.readOp.get_leak();
+	  }
+
+	    
+	  type = 0;
+	  energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
+	  area = tdp = lkg = 0;
+    
 #endif
 
 
     idx_iRF.push_back(energyBundle->cntrs.size());
+    
+    
 #ifdef FINE_GRAINED
+    
+    
     float areaIRF = 1.5e-12*(pipeline + cores[i]->exu->rfu->IRF->area.get_area());
     float areaFRF = 1.5e-12*(pipeline + cores[i]->exu->rfu->FRF->area.get_area());
 
@@ -1350,21 +1419,28 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 #else
     sprintf(conn, "P(%d)_LSU P(%d)_EXE", ii, ii); 
 #endif
-    sprintf(name, "P(%d)_ROB",ii); 
-    area = 1.25e-12*(pipeline + cores[i]->exu->scheu->ROB->area.get_area());
-    tdp  = (cores[i]->exu->scheu->ROB->power.readOp.dynamic);
-    lkg  =  cores[i]->exu->scheu->ROB->rt_power.readOp.get_leak();
-    type = 0;
-    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
-    area = tdp = lkg = 0;
+    
+    if ((cores[i]->coredynp.core_ty==OOO)){
+	sprintf(name, "P(%d)_ROB",ii); 
+	area = 1.25e-12*(pipeline + cores[i]->exu->scheu->ROB->area.get_area());
+	tdp  = (cores[i]->exu->scheu->ROB->power.readOp.dynamic);
+	lkg  =  cores[i]->exu->scheu->ROB->rt_power.readOp.get_leak();
+	type = 0;
+	energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg));
+	area = tdp = lkg = 0;
+    }
 
 
 #ifdef FINE_GRAINED 
       sprintf(conn, "L2(%d) P(%d)_dtlb",int (ii/corePerL2), ii); 
 #else
-      sprintf(conn, "L2(%d) P(%d)_LSU",int (ii/corePerL2), ii); 
+      if ((cores[i]->coredynp.core_ty==OOO)){
+	  sprintf(conn, "L2(%d) P(%d)_LSU",int (ii/corePerL2), ii); 
+      }
+
 #endif
 
+      
     if (XML->sys.core[0].scoore){ //FIXME: this only works for one core
       sprintf(name, "FL2(%d)", ii);
       area = 1.5e-12*cores[i]->lsu->VPCfilter.area.get_area();
@@ -1564,17 +1640,19 @@ void Processor::dumpCoreDyn(int i) {
   energyBundle->setDynCycByName(name, dyn, cyc);
 #else
   //Renaming Unit
-  dyn = 
-    (((cores[i]->corepipe->power*pppm_t) +
-      cores[i]->rnu->iFRAT->rt_power + 
-      cores[i]->rnu->iRRAT->rt_power +  
-      cores[i]->rnu->ifreeL->rt_power)*cccm_t).readOp.get_dyn() +
-    (((cores[i]->corepipe->power*pppm_t) +
-      cores[i]->rnu->fFRAT->rt_power  +
-      cores[i]->rnu->fRRAT->rt_power  +
-      cores[i]->rnu->ffreeL->rt_power)*cccm_t).readOp.get_dyn();          
-  sprintf(name, "P(%d)_RNU",i); 
-  energyBundle->setDynCycByName(name, dyn, cyc);
+  if(cores[i]->coredynp.core_ty==OOO){
+      dyn = 
+	(((cores[i]->corepipe->power*pppm_t) +
+	  cores[i]->rnu->iFRAT->rt_power + 
+	  cores[i]->rnu->iRRAT->rt_power +  
+	  cores[i]->rnu->ifreeL->rt_power)*cccm_t).readOp.get_dyn() +
+	(((cores[i]->corepipe->power*pppm_t) +
+	  cores[i]->rnu->fFRAT->rt_power  +
+	  cores[i]->rnu->fRRAT->rt_power  +
+	  cores[i]->rnu->ffreeL->rt_power)*cccm_t).readOp.get_dyn();          
+      sprintf(name, "P(%d)_RNU",i); 
+      energyBundle->setDynCycByName(name, dyn, cyc);
+  }
 #endif
 
 
@@ -1598,6 +1676,8 @@ void Processor::dumpCoreDyn(int i) {
   sprintf(name, "P(%d)_IB",i); 
   energyBundle->setDynCycByName(name, dyn, cyc);
 #else
+  
+
   //Instruction Fetch Unit
   dyn = // 3
     (((cores[i]->corepipe->power*pppm_t) +
@@ -1622,6 +1702,8 @@ void Processor::dumpCoreDyn(int i) {
   sprintf(name, "P(%d)_icachecc",i); 
   energyBundle->setDynCycByName(name, dyn, cyc);
 #else
+  
+
   // icache + itlb
   dyn = // 4
     (((cores[i]->corepipe->power*pppm_t) +
@@ -1732,16 +1814,28 @@ void Processor::dumpCoreDyn(int i) {
   sprintf(name, "P(%d)_fp_inst_window",i); 
   energyBundle->setDynCycByName(name, dyn, cyc);
 #else
+
+ 
   //Execution Unit I
   dyn = 
     (((cores[i]->corepipe->power*pppm_t) +
       cores[i]->exu->exeu->rt_power)*cccm_t).readOp.get_dyn() +
     (((cores[i]->corepipe->power*pppm_t) +
-      cores[i]->exu->fp_u->rt_power)*cccm_t).readOp.get_dyn() +     
-    (((cores[i]->corepipe->power*pppm_t) +
-      cores[i]->exu->scheu->int_inst_window->rt_power)*cccm_t).readOp.get_dyn() +
-    (((cores[i]->corepipe->power*pppm_t) +
-      cores[i]->exu->scheu->fp_inst_window->rt_power)*cccm_t).readOp.get_dyn(); 
+      cores[i]->exu->fp_u->rt_power)*cccm_t).readOp.get_dyn();
+      
+   if(cores[i]->coredynp.multithreaded)  
+   {
+	dyn += (((cores[i]->corepipe->power*pppm_t) +
+      cores[i]->exu->scheu->int_inst_window->rt_power)*cccm_t).readOp.get_dyn();
+     
+  }
+
+      
+    if(cores[i]->coredynp.core_ty==OOO)
+    {
+	dyn += (((cores[i]->corepipe->power*pppm_t) +
+	  cores[i]->exu->scheu->fp_inst_window->rt_power)*cccm_t).readOp.get_dyn(); 
+    }
   sprintf(name, "P(%d)_EXE",i); 
   energyBundle->setDynCycByName(name, dyn, cyc);
 #endif
@@ -1754,6 +1848,7 @@ void Processor::dumpCoreDyn(int i) {
   sprintf(name, "P(%d)_FRF",i); 
   energyBundle->setDynCycByName(name, dyn, cyc);
 #else
+  
   //Register File Unit I
   dyn = 
     (((cores[i]->corepipe->power*pppm_t)  +
@@ -1764,11 +1859,13 @@ void Processor::dumpCoreDyn(int i) {
   energyBundle->setDynCycByName(name, dyn, cyc);
 #endif
 
-  dyn = 
-    (((cores[i]->corepipe->power*pppm_t) +
-      cores[i]->exu->scheu->ROB->rt_power)*cccm_t).readOp.get_dyn();   
-  sprintf(name, "P(%d)_ROB",i); 
-  energyBundle->setDynCycByName(name, dyn, cyc);
+  if(cores[i]->coredynp.core_ty==OOO){
+      dyn = 
+	(((cores[i]->corepipe->power*pppm_t) +
+	  cores[i]->exu->scheu->ROB->rt_power)*cccm_t).readOp.get_dyn();   
+      sprintf(name, "P(%d)_ROB",i); 
+      energyBundle->setDynCycByName(name, dyn, cyc);
+  }
 
   //Result Broadcast Bus
   //dyn = cores[i]->exu->bypass.rt_power.readOp.get_dyn(); 
