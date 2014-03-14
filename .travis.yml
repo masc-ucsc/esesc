@@ -4,6 +4,22 @@ compiler:
   - clang
 
 env:
+
+  global:
+    # The next declration is the encrypted COVERITY_SCAN_TOKEN, created
+    #   via the "travis encrypt" command using the project repo's public key
+    - secure: "cRYdqctL7ai/4kF0wqgj5g6eQwWDf0ccwul/BzMwCd5iZqvnWiqkr6DIZM6lR68jcByn7lDra4KBtqCoFOK+QNmrvb8Py4SP/wc2JGCVJGwWPVK01jxXd6BoHP8gd/nPGRjxgoceyV19gmHS8spr0GJvn6Ic9Yl0BmzJIY1eIQ0="
+
+  addons:
+    coverity_scan:
+      project:
+        name: "masc-ucsc/esesc"
+      description: "ESESC: A Fast Multicore Simulator"
+    notification_email: gsouther@soe.ucsc.edu
+    build_command_prepend:
+      build_command:
+        branch_pattern: coverity_scan
+
   matrix:
     - BUILD_TYPE=Release
     - BUILD_TYPE=Debug
