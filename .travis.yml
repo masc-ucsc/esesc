@@ -19,12 +19,4 @@ env:
     build_command: make
     branch_pattern: coverity_scan
 
-  matrix:
-    - BUILD_TYPE=Debug
-
-before_install:
-  - sudo apt-get install libboost-dev                                                                                                                                                    
-  - sudo apt-get install bison flex                                                                                                                                                      
-  - sudo apt-get install libglib2.0-dev                                                                                                                                                  
-  - sudo apt-get install libncurses5-dev  
 
