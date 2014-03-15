@@ -1,6 +1,5 @@
 language: cpp
 compiler:
-  - gcc
   - clang
 
 env:
@@ -17,11 +16,15 @@ env:
       description: "ESESC: A Fast Multicore Simulator"
     notification_email: gsouther@soe.ucsc.edu
     build_command_prepend:
-      build_command:
-        branch_pattern: coverity_scan
+      - cd ..
+      - mkdir build
+      - cd build
+      - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    build_command: make
+    branch_pattern: coverity_scan
 
   matrix:
-    - BUILD_TYPE=Release
     - BUILD_TYPE=Debug
 
 before_install:
@@ -29,19 +32,4 @@ before_install:
   - sudo apt-get install bison flex                                                                                                                                                      
   - sudo apt-get install libglib2.0-dev                                                                                                                                                  
   - sudo apt-get install libncurses5-dev  
-
-before_script:
-  - cd ..
-  - mkdir build
-  - cd build
-  - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
-
-script: make
-
-after_script:
-  - mkdir run
-  - cd run
-  - cp ../../esesc/conf/* .
-  - cp ../../esesc/bins/* .
-  - ../main/esesc
 
