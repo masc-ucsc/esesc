@@ -14,13 +14,8 @@ env:
       project:
         name: "masc-ucsc/esesc"
       description: "ESESC: A Fast Multicore Simulator"
-    notification_email: gsouther@soe.ucsc.edu
-    build_command_prepend:
-      - cd ..
-      - mkdir build
-      - cd build
-      - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
-
+    notification_email: southerngs@gmail.com
+    build_command_prepend: cd ..; cmake -DCMAKE_BUILD_TYPE=Debug esesc
     build_command: make
     branch_pattern: coverity_scan
 
