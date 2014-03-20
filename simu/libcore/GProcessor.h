@@ -119,8 +119,8 @@ class GProcessor {
     static GStatsCntr   *wallClock;
 
     // END Statistics
-    float        throttingRatio;
-    uint32_t     throtting_cntr;
+    float        throttlingRatio;
+    uint32_t     throttling_cntr;
 
     uint64_t     lastReplay;
 

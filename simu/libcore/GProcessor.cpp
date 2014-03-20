@@ -73,8 +73,8 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
   if (wallClock ==0)
     wallClock = new GStatsCntr("OS:wallClock");
 
-  throttingRatio = SescConf->getDouble("cpusimu", "throttingRatio" , i);
-  throtting_cntr = 0;
+  throttlingRatio = SescConf->getDouble("cpusimu", "throttlingRatio" , i);
+  throttling_cntr = 0;
   bool scooremem = false;
   if (SescConf->checkBool("cpusimu"    , "scooreMemory" , gm->getId()))
     scooremem = SescConf->getBool("cpusimu", "scooreMemory",gm->getId());

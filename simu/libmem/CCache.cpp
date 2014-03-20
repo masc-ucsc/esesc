@@ -70,6 +70,7 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 	 ,capInvalidateMiss  ("%s_capInvalidateMiss",  name)
 	 ,invalidateHit   ("%s_invalidateHit",   name)
 	 ,invalidateMiss  ("%s_invalidateMiss",  name)
+	 ,writeExclusive  ("%s:writeExclusive",  name)
 {
   SescConf->isInt(section, "hitDelay");
   SescConf->isInt(section, "missDelay");

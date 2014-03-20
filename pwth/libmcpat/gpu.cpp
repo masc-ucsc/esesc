@@ -577,7 +577,7 @@ void MemManUG::computeEnergy(bool is_tdp)
   interface_ip.num_wr_ports    = 0;
   interface_ip.num_se_rd_ports = 0;
   interface_ip.num_search_ports = 1;
-  icache.prefetchb = new ArrayST(&interface_ip, " SM icache prefetchBuffer");
+  icache.prefetchb = new ArrayST(&interface_ip, "SM icache prefetchBuffer");
   icache.area.set_area(icache.area.get_area()+ icache.prefetchb->local_result.area);
   area.set_area(area.get_area()+ icache.prefetchb->local_result.area);
   //output_data_csv(icache.prefetchb.local_result);
@@ -781,11 +781,12 @@ void MemManUG::computeEnergy(bool is_tdp)
   interface_ip.obj_func_dyn_power  = 0;
   interface_ip.obj_func_leak_power = 0;
   interface_ip.obj_func_cycle_t    = 1;
-  interface_ip.num_rw_ports    = 1;
-  interface_ip.num_rd_ports    = 0;//XML->sys.gpu.homoSM.homolane.LSQ_ports;
-  interface_ip.num_wr_ports    = 0;//XML->sys.gpu.homoSM.homolane.LSQ_ports;
-  interface_ip.num_se_rd_ports = 0;
-  interface_ip.num_search_ports = 1;//XML->sys.gpu.homoSM.homolane.LSQ_ports;
+  interface_ip.num_rw_ports        = 1;
+  interface_ip.num_rd_ports        = 0;//XML->sys.gpu.homoSM.homolane.LSQ_ports;
+  interface_ip.num_wr_ports        = 0;//XML->sys.gpu.homoSM.homolane.LSQ_ports;
+  interface_ip.num_se_rd_ports     = 0;
+  interface_ip.num_search_ports    = 1;//XML->sys.gpu.homoSM.homolane.LSQ_ports;
+
   dcache.xbar = new ArrayST(&interface_ip, "SM dcache xbar");
   dcache.xbar->area.set_area(dcache.xbar->area.get_area()+ dcache.xbar->local_result.area);
   area.set_area(area.get_area()+ dcache.xbar->local_result.area);
@@ -1034,8 +1035,7 @@ void Lane::computeEnergy(bool is_tdp)
       power = power + dfilter.power;
     }
 
-  }
-  else{
+  } else {
     //eka
     rt_power.reset();
     //ifu->computeEnergy(is_tdp);
@@ -1091,6 +1091,7 @@ void SM::computeEnergy(bool is_tdp)
     icache.prefetchb->stats_t.readAc.access  = icache.prefetchb->stats_t.readAc.hit=0;//icache.prefetchb->l_ip.num_search_ports;
     icache.prefetchb->stats_t.writeAc.access = icache.prefetchb->stats_t.writeAc.hit=0;//icache.ifb->l_ip.num_search_ports;
     icache.prefetchb->tdp_stats = icache.prefetchb->stats_t;
+    
     dcache.caches->stats_t.readAc.access  = 0.67*dcache.caches->l_ip.num_rw_ports;
     dcache.caches->stats_t.readAc.miss    = 0;
     dcache.caches->stats_t.readAc.hit     = dcache.caches->stats_t.readAc.access - dcache.caches->stats_t.readAc.miss;
@@ -1382,10 +1383,8 @@ void GPUU::update_rtparam(ParseXML *XML_interface,
     InputParameter* interface_ip)
 {
   XML          = XML_interface;
-
   // ithCore     = ithCore_;
   // interface_ip = interface_ip_
-
 }
 
 MemManUG ::~MemManUG(){

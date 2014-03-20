@@ -50,6 +50,19 @@ protected:
   GStatsCntr  readHit;
   GStatsCntr  pushDownHit;
   GStatsCntr  writeHit;
+
+
+  // The following statistics don't make any sense for a niceCache, but are instantiated 
+  // for compatibility, and to supress bogus warnings from the PowerModel about missing
+  // statistics for the NICECache. 
+  
+  GStatsCntr readMiss;
+  GStatsCntr readHalfMiss; 
+  GStatsCntr writeMiss; 
+  GStatsCntr writeHalfMiss; 
+  GStatsCntr writeExclusive;
+  GStatsCntr writeBack;
+
 public:
   NICECache(MemorySystem *gms, const char *section, const char *name = NULL);
 

@@ -46,9 +46,16 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   ,readHit         ("%s:readHit",         sName)
   ,pushDownHit     ("%s:pushDownHit",     sName)
   ,writeHit        ("%s:writeHit",        sName)
+  ,readMiss        ("%s:readMiss",        sName)
+  ,readHalfMiss    ("%s:readHalfMiss",    sName)
+  ,writeMiss       ("%s:writeMiss",       sName)
+  ,writeHalfMiss   ("%s:writeHalfMiss",   sName)
+  ,writeExclusive  ("%s:writeExclusive",  sName)
+  ,writeBack       ("%s:writeBack",       sName)
 {
 
 	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
+
 }
 /* }}} */
 

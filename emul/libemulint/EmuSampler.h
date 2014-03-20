@@ -121,7 +121,7 @@ protected:
   static float turboRatio;
 #ifdef ENABLE_CUDA
   static float turboRatioGPU;
-  static uint32_t throtting;
+//  static uint32_t throtting;
 #endif
 public:
   uint64_t totalnInst; // total # instructions

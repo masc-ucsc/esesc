@@ -119,7 +119,6 @@ Processor::Processor(ParseXML *XML_interface)
     }
 #if 1
   if (procdynp.numGPU > 0) {
-
     gpu = new GPUU(XML,&interface_ip);
     gpu->computeEnergy();
     gpu->computeEnergy(false);

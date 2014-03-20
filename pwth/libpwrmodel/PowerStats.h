@@ -44,7 +44,7 @@
 /* }}} */
 
 class PowerStats {
-  /* PowerStats class definition {{{1 */
+  /* PowerStats class definition  */
   private:
 	  const char *name; 
 	  uint64_t    last_value;
@@ -73,6 +73,6 @@ class PowerStats {
 		  return name;
 	  }
 };
-/* }}} */
+/*  */
 
 #endif // POWERSTATS_H

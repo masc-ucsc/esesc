@@ -327,7 +327,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-            
+
             }
             if (strcmp(xNode4.getAttribute("name"),"dtlb")==0)
             {//find system.core0.dtlb
@@ -336,7 +336,7 @@ void ParseXML::parse(char* filepath)
               { //get all items of param in system.core0.dtlb--dtlb
                 if (strcmp(xNode4.getChildNode("param",k).getAttribute("name"),"number_entries")==0) sys.core[i].dtlb.number_entries=atoi(xNode4.getChildNode("param",k).getAttribute("value"));
               }
-            
+
             }
             if (strcmp(xNode4.getAttribute("name"),"VPCfilter")==0)
             {//find system.core0.vpc_buffer
@@ -387,7 +387,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-           
+
             }
             if (strcmp(xNode4.getAttribute("name"),"vpc_buffer")==0)
             {//find system.core0.vpc_buffer
@@ -489,7 +489,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-          
+
             }
 
             if (strcmp(xNode4.getAttribute("name"),"dcache")==0)
@@ -541,7 +541,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-        
+
             }
             if (strcmp(xNode4.getAttribute("name"),"BTB")==0)
             {//find system.core0.BTB
@@ -570,7 +570,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-      
+
             }
           }
         }
@@ -580,7 +580,7 @@ void ParseXML::parse(char* filepath)
         }
       }
     }  
-  
+
     //___________________________get all system.gpu0________________________________________________
     OrderofComponents_3layer++;
     {
@@ -725,7 +725,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-            
+
             }
             if (strcmp(xNode4.getAttribute("name"),"dtlb")==0)
             {//find system.gpu0.dtlb
@@ -734,7 +734,7 @@ void ParseXML::parse(char* filepath)
               { //get all items of param in system.gpu0.dtlb--dtlb
                 if (strcmp(xNode4.getChildNode("param",k).getAttribute("name"),"number_entries")==0) sys.gpu.homoSM.dtlb.number_entries=atoi(xNode4.getChildNode("param",k).getAttribute("value"));
               }
-            
+
             }
 
             if (strcmp(xNode4.getAttribute("name"),"dcache")==0)
@@ -814,7 +814,7 @@ void ParseXML::parse(char* filepath)
                   continue;
                 }
               }
-        
+
             }
             if (strstr(xNode4.getAttribute("name"),"L2")!=NULL)
             {
@@ -994,13 +994,13 @@ void ParseXML::parse(char* filepath)
               continue;
             }
             if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"device_type")==0) {
-                     sys.L1Directory[i].device_type=atoi(xNode3.getChildNode("param",k).getAttribute("value"));
-                     continue;
-                  }
+              sys.L1Directory[i].device_type=atoi(xNode3.getChildNode("param",k).getAttribute("value"));
+              continue;
+            }
             if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"Directory_type")==0) {sys.L1Directory[i].Directory_type=atoi(xNode3.getChildNode("param",k).getAttribute("value"));continue;}
             if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"3D_stack")==0) {strcpy(sys.L1Directory[i].threeD_stack,xNode3.getChildNode("param",k).getAttribute("value"));continue;}
           }
-    
+
           w=w+1;
         }
         else {
@@ -1203,7 +1203,7 @@ void ParseXML::parse(char* filepath)
                 continue;
               }
             }
-          
+
           }
           w=w+1;
         }
@@ -1283,7 +1283,7 @@ void ParseXML::parse(char* filepath)
               if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"device_type")==0) {sys.STLB[i].device_type=atoi(xNode3.getChildNode("param",k).getAttribute("value"));continue;}
               if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"threeD_stack")==0) {strcpy(sys.STLB[i].threeD_stack,(xNode3.getChildNode("param",k).getAttribute("value")));continue;}
             }
-        
+
           }
           w=w+1;
         }
@@ -1385,7 +1385,7 @@ void ParseXML::parse(char* filepath)
                 continue;
               }
             }
-      
+
           }
           w=w+1;
         }
@@ -1492,9 +1492,9 @@ void ParseXML::parse(char* filepath)
                     chtmp1[0]='\0';
                   }
                 }
-                  }
-            }
               }
+            }
+          }
           w=w+1;
         }
       }
@@ -1524,7 +1524,7 @@ void ParseXML::parse(char* filepath)
         if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"burstlength_of_DRAM_chip")==0) {sys.mem.burstlength_of_DRAM_chip=atoi(xNode3.getChildNode("param",k).getAttribute("value"));continue;}
         if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"internal_prefetch_of_DRAM_chip")==0) {sys.mem.internal_prefetch_of_DRAM_chip=atoi(xNode3.getChildNode("param",k).getAttribute("value"));continue;}
       }
-    
+
     }
     else{
       printf("some value(s) of number_of_cores/number_of_L2s/number_of_STLBs/number_of_L3s/number_of_NoCs is/are not correct!");
@@ -1551,7 +1551,7 @@ void ParseXML::parse(char* filepath)
         if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"databus_width")==0) {sys.mc.databus_width=atoi(xNode3.getChildNode("param",k).getAttribute("value"));continue;}
         if (strcmp(xNode3.getChildNode("param",k).getAttribute("name"),"addressbus_width")==0) {sys.mc.addressbus_width=atoi(xNode3.getChildNode("param",k).getAttribute("value"));continue;}
       }
-  
+
     }
     else{
       printf("some value(s) of number_of_cores/number_of_L2s/number_of_STLBs/number_of_L3s/number_of_NoCs is/are not correct!");
@@ -1935,33 +1935,33 @@ void ParseXML::initialize(vector<uint32_t> *stats_vector, map<string,int> mcpat_
 
 
 int ParseXML::cntr_pos_value(string cntr_name){
-   
-   //find position of the cntr
+
+  //find position of the cntr
   it1 = str2pos_map.find(cntr_name);
-   if(it1 == str2pos_map.end()) {
-      cout << "Did not find counter "<< cntr_name << endl; 
-      exit(-1);
-   }
-   
-   return stats_vec->at(it1->second);
+  if(it1 == str2pos_map.end()) {
+    cout << "Did not find counter "<< cntr_name << endl; 
+    exit(-1);
+  }
+
+  return stats_vec->at(it1->second);
 }
 
 bool ParseXML::check_cntr(string cntr_name){
-   
-   //find position of the cntr
-   it1 = str2pos_map.find(cntr_name );
-   if(it1 == str2pos_map.end()) {
-     return false;
-   }
-   
-   return true;
+
+  //find position of the cntr
+  it1 = str2pos_map.find(cntr_name );
+  if(it1 == str2pos_map.end()) {
+    return false;
+  }
+
+  return true;
 }
 
 
 void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> mcpat_map)
 {
   char  str [250]; 
-//  sys->executionTime = double (timeinterval/1e9);
+  //  sys->executionTime = double (timeinterval/1e9);
   for (uint32_t ii = 0; ii < sys.number_of_cores; ii++){
     uint32_t i = (*coreIndex)[ii];
     sprintf(str,"P(%u)_core_total_instructions",i);
@@ -2002,13 +2002,13 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     sprintf(str,"P(%u)_core_function_calls",i);
     if ( check_cntr(str) )  sys.core[i].function_calls=cntr_pos_value(str);
     sprintf(str,"P(%u)_core_bypassbus_access",i);
-    
+
     if ( check_cntr(str) ) sys.core[i].bypassbus_access= cntr_pos_value(str);
     if (sys.core[i].scoore) {
-  sprintf(str,"P(%u)_core_vpc_buffer_hit",i);
-  if ( check_cntr(str) ) sys.core[i].vpc_buffer.read_hits= cntr_pos_value(str);
-  sprintf(str,"P(%u)_core_vpc_buffer_miss",i);
-  if ( check_cntr(str) ) sys.core[i].vpc_buffer.read_misses= cntr_pos_value(str);
+      sprintf(str,"P(%u)_core_vpc_buffer_hit",i);
+      if ( check_cntr(str) ) sys.core[i].vpc_buffer.read_hits= cntr_pos_value(str);
+      sprintf(str,"P(%u)_core_vpc_buffer_miss",i);
+      if ( check_cntr(str) ) sys.core[i].vpc_buffer.read_misses= cntr_pos_value(str);
     }
     sprintf(str,"IL1(%u)_read_accesses",i);
     if ( check_cntr(str) ) sys.core[i].icache.read_accesses=cntr_pos_value(str);
@@ -2037,15 +2037,15 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     //   sys.core[i].vpc_buffer.read_misses = sys.core[i].dcache.read_misses;
     //   sys.core[i].vpc_buffer.write_misses = sys.core[i].dcache.write_misses;
     // } else {
-      sprintf(str,"DL1(%u)_read_accesses",i);
-      if ( check_cntr(str) ) sys.core[i].dcache.read_accesses = cntr_pos_value(str);
-      sprintf(str,"DL1(%u)_write_accesses",i);
-      if ( check_cntr(str) ) sys.core[i].dcache.write_accesses = cntr_pos_value(str);
-      sprintf(str,"DL1(%u)_read_misses",i);
-      if ( check_cntr(str) ) sys.core[i].dcache.read_misses= cntr_pos_value(str);
-      sprintf(str,"DL1(%u)_write_misses",i);
-      if ( check_cntr(str) ) sys.core[i].dcache.write_misses= cntr_pos_value(str);
-                        //=    }
+    sprintf(str,"DL1(%u)_read_accesses",i);
+    if ( check_cntr(str) ) sys.core[i].dcache.read_accesses = cntr_pos_value(str);
+    sprintf(str,"DL1(%u)_write_accesses",i);
+    if ( check_cntr(str) ) sys.core[i].dcache.write_accesses = cntr_pos_value(str);
+    sprintf(str,"DL1(%u)_read_misses",i);
+    if ( check_cntr(str) ) sys.core[i].dcache.read_misses= cntr_pos_value(str);
+    sprintf(str,"DL1(%u)_write_misses",i);
+    if ( check_cntr(str) ) sys.core[i].dcache.write_misses= cntr_pos_value(str);
+    //=    }
 #if 1
     int tmp;
     sprintf(str,"PTLB(%u)_read_hits",i);
@@ -2096,6 +2096,8 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     int nl= sys.gpu.homoSM.number_of_lanes;
     for (int ii = 0; ii < sys.gpu.number_of_SMs; ii++){
       int i = (*gpuIndex)[ii];
+
+      //Counters per lane (lane === PE)
       for (int j = 0; j < sys.gpu.homoSM.number_of_lanes; j++){
         sprintf(str,"P(%u)_core_total_instructions",i);
         if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].total_instructions= cntr_pos_value(str)/nl;
@@ -2119,6 +2121,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
         if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].LSQ.read_accesses = cntr_pos_value(str)/nl;
         sprintf(str,"P(%u)_core_storq_write_accesses",i);
         if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].LSQ.write_accesses = cntr_pos_value(str)/nl;
+
         //dfilter
         sprintf(str,"cache(%u)_read_accesses",ii*nl + j);
         if (check_cntr(str)) {
@@ -2134,16 +2137,19 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
           sys.gpu.homoSM.homolane.dfilter.dcache_config[0] = 0;
         }
       }
+
+      //Instruction Cache counters
       sprintf(str,"IL1G(%u)_read_accesses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].icache.read_accesses=cntr_pos_value(str);
       sprintf(str,"IL1G(%u)_read_misses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].icache.read_misses=cntr_pos_value(str);
-
       sprintf(str,"IL1G(%u)_read_accesses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].itlb.total_accesses=sys.gpu.SMS[ii].icache.read_accesses;
       sprintf(str,"IL1G(%u)_read_misses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].itlb.total_misses=0.05*sys.gpu.SMS[ii].icache.read_misses;
 
+
+      //DL1G Cache counters
       sprintf(str,"DL1G(%u)_read_accesses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].dcache.read_accesses = cntr_pos_value(str);
       sprintf(str,"DL1G(%u)_write_accesses",i);
@@ -2153,15 +2159,26 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
       sprintf(str,"DL1G(%u)_write_misses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].dcache.write_misses= cntr_pos_value(str);
 
+      //Data TLBs
       sys.gpu.SMS[ii].dtlb.total_accesses=sys.gpu.SMS[ii].dcache.read_accesses + 
-                                          sys.gpu.SMS[ii].dcache.write_accesses;
+        sys.gpu.SMS[ii].dcache.write_accesses;
       sys.gpu.SMS[ii].dtlb.total_misses=0.05*(sys.gpu.SMS[ii].dcache.read_misses +
-                                              sys.gpu.SMS[ii].dcache.write_misses);
+          sys.gpu.SMS[ii].dcache.write_misses);
+      
+      //ScratchPad
       sprintf(str,"scratch(%u)_read_accesses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].scratchpad.read_accesses = cntr_pos_value(str);
       sprintf(str,"scratch(%u)_write_accesses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].scratchpad.write_accesses = cntr_pos_value(str);
+
+      //Coalescing units
+      
+      //Register Files
+      
+      //Instruction Decode
+
     }
+
 #if 1
     // GPU L2
     int i = 0; //FIXME: find how we declare L2 for GPU
@@ -2174,6 +2191,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     sprintf(str,"L2G(%u)_write_misses",i);
     if ( check_cntr(str) ) sys.gpu.L2.write_misses=cntr_pos_value(str);
 #endif
+
   }
 
   for (uint32_t  i = 0; i < sys.number_of_L2s; i++){
@@ -2185,6 +2203,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     if ( check_cntr(str) ) sys.L2[i].read_misses=cntr_pos_value(str);
     sprintf(str,"L2(%u)_write_misses",i);
     if ( check_cntr(str) ) sys.L2[i].write_misses=cntr_pos_value(str);
+
     if (sys.core[0].scoore) //FIXME: only homo cores
     {
       if(sys.core[i].VPCfilter.dcache_config[0]>0){
@@ -2248,15 +2267,12 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
 }
 
 void ParseXML::parseEsescConf(const char *section_){
-
-
   getGeneralParams();
   getCoreParams();
   getMemParams();
 }
 
 void ParseXML::getGeneralParams() {
-
   const char *section = SescConf->getCharPtr("","technology");
   sys.core_tech_node         = SescConf->getInt(section, "tech");
   sys.target_core_clockrate  = SescConf->getDouble(section, "frequency")/1000000; //Mhz
@@ -2269,14 +2285,119 @@ void ParseXML::getGeneralParams() {
   const char *therm_section = SescConf->getCharPtr("","thermal");
   const char *model_section = SescConf->getCharPtr(therm_section,"model");
   sys.temperature = floor((SescConf->getDouble(model_section,"ambientTemp")/10))*10; //CACTI accepts temperature in steps of 10  
+}
 
-  
+void ParseXML::getGPUParams() {
+  if (gpuIndex->size()>0) { 
+    sys.number_of_GPU = 1; //maximum number of GPUs currently supported my esesc.
+    sys.gpu.number_of_SMs                                  = gpuIndex->size();
+    sys.gpu.homoSM.number_of_lanes                         = SescConf->getInt("", "SP_PER_SM");;
+    sys.gpu.homoSM.homolane.clock_rate                     = 2000; //FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.machine_bits                   = 32;   //FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.virtual_address_width          = sys.virtual_address_width;
+    
+    /* address width determins the tag_width in Cache, LSQ and buffers in cache controller 
+       default value is machine_bits, if not set 
+       */
+    sys.gpu.homoSM.homolane.physical_address_width         = sys.physical_address_width;
+   
+    sys.gpu.homoSM.homolane.instruction_length             = 32;   //FIXME: Hardcoded, read from esesc.conf? 
+    sys.gpu.homoSM.homolane.opcode_width                   = 11;   //FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.internal_datapath_width        = 0;    // Does not exist in OOO.xml.
+    
+    /*number_of_hardware_threads defines how many blocks run on the same SM */
+    const char *section = SescConf->getCharPtr("","cpuemul",(*gpuIndex)[0]);
+    sys.gpu.homoSM.homolane.number_hardware_threads        = SescConf->getInt(section, "max_blocks_sm"); 
+    
+    sys.gpu.homoSM.homolane.number_instruction_fetch_ports = 2;   // After discussion with professor Renau
+
+    
+    //sys.gpu.homoSM.homolane.pipelines_per_core       = 1,1;    // integer_pipeline and floating_pipelines, if the floating_pipelines is 0, then the pipeline is shared
+    sys.gpu.homoSM.homolane.pipelines_per_core[0] = 1;
+    sys.gpu.homoSM.homolane.pipelines_per_core[1] = 1;
+
+    //sys.gpu.homoSM.homolane.pipeline_depth           = 13,13;  // pipeline depth of int and fp, if pipeline is shared, the second number is the average cycles of fp ops
+    sys.gpu.homoSM.homolane.pipeline_depth[0] = 13;
+    sys.gpu.homoSM.homolane.pipeline_depth[1] = 13;
+    
+    sys.gpu.homoSM.homolane.instruction_buffer_size  = 16; //<!-- buffer between IF and ID stage -->
+    sys.gpu.homoSM.homolane.archi_Regs_IRF_size      = 32;
+    sys.gpu.homoSM.homolane.phy_Regs_IRF_size        = 1024;
+    sys.gpu.homoSM.homolane.store_buffer_size        = 32;
+    sys.gpu.homoSM.homolane.memory_ports             = 2; //<!-- number of ports refer to sustainable concurrent memory accesses --> 
+    sys.gpu.homoSM.homolane.LSQ_ports                = 0;
+
+    sys.gpu.homoSM.itlb.number_entries               = 128;
+
+    sys.gpu.homoSM.icache.icache_config[0] = 32768; // Capacity
+    sys.gpu.homoSM.icache.icache_config[1] = 32;    // BlockWidth
+    sys.gpu.homoSM.icache.icache_config[2] = 2;     // associativity
+    sys.gpu.homoSM.icache.icache_config[3] = 1;     // bank
+    sys.gpu.homoSM.icache.icache_config[4] = 2;     // throughput w.r.t core clock
+    sys.gpu.homoSM.icache.icache_config[5] = 3;     // latency w.r.t core clock
+   
+    // icache does not support MSHR and fillBuffer
+    sys.gpu.homoSM.icache.buffer_sizes[0]  = 0;     // miss buffer size (MSHR)
+    sys.gpu.homoSM.icache.buffer_sizes[1]  = 0;     // fill buffer size
+    sys.gpu.homoSM.icache.buffer_sizes[2]  = 16;    // prefetch buffer size
+    sys.gpu.homoSM.icache.buffer_sizes[3]  = 0;     // wb_buffer size
+
+    sys.gpu.homoSM.dtlb.number_entries               = 128;
+    sys.gpu.homoSM.dcache.dcache_config[0] = 16786; // Capacity
+    sys.gpu.homoSM.dcache.dcache_config[1] = 32;    // BlockWidth
+    sys.gpu.homoSM.dcache.dcache_config[2] = 2;     // associativity
+    sys.gpu.homoSM.dcache.dcache_config[3] = 8;     // bank
+    sys.gpu.homoSM.dcache.dcache_config[4] = 1;     // throughput w.r.t core clock
+    sys.gpu.homoSM.dcache.dcache_config[5] = 3;     // latency w.r.t core clock
+
+    sys.gpu.homoSM.dcache.buffer_sizes[0]  = 16;    // miss buffer size (MSHR)
+    sys.gpu.homoSM.dcache.buffer_sizes[1]  = 4;     // fill buffer size
+    sys.gpu.homoSM.dcache.buffer_sizes[2]  = 16;    // prefetch buffer size
+    sys.gpu.homoSM.dcache.buffer_sizes[3]  = 16;    // wb_buffer size
+
+    sys.gpu.homoSM.scratchpad.number_entries = 24567;
+
+    sys.gpu.homoSM.homolane.dfilter.dcache_config[0] = 512;   // Capacity
+    sys.gpu.homoSM.homolane.dfilter.dcache_config[1] = 32;    // BlockWidth
+    sys.gpu.homoSM.homolane.dfilter.dcache_config[2] = 1;     // associativity
+    sys.gpu.homoSM.homolane.dfilter.dcache_config[3] = 1;     // bank
+    sys.gpu.homoSM.homolane.dfilter.dcache_config[4] = 1;     // throughput w.r.t core clock
+    sys.gpu.homoSM.homolane.dfilter.dcache_config[5] = 3;     // latency w.r.t core clock
+    // dfilter does not have any buffers (MSHR, etc)
+   
+    sys.gpu.L2.L2_config[0] = 262144;     // Capacity
+    sys.gpu.L2.L2_config[1] = 64;         // BlockWidth
+    sys.gpu.L2.L2_config[2] = 16;         // associativity
+    sys.gpu.L2.L2_config[3] = 1;          // bank
+    sys.gpu.L2.L2_config[4] = 3;          // throughput w.r.t core clock
+    sys.gpu.L2.L2_config[5] = 50;         // latency w.r.t core clock
+    
+    sys.gpu.L2.buffer_sizes[0]  = 8;      // miss buffer size (MSHR)
+    sys.gpu.L2.buffer_sizes[1]  = 8;      // fill buffer size
+    sys.gpu.L2.buffer_sizes[2]  = 8;      // prefetch buffer size
+    sys.gpu.L2.buffer_sizes[3]  = 8;      // wb_buffer size
+    
+    sys.gpu.L2.clockrate        = 2000;
+    
+    sys.gpu.L2.ports[0]         = 1;      // # Read ports
+    sys.gpu.L2.ports[1]         = 1;      // # Write ports
+    sys.gpu.L2.ports[2]         = 1;      // # Read-Write ports
+    
+    sys.gpu.L2.device_type      = 2;      // ???
+   
+    /*
+    sys.gpu.L2.threeD_stack     = 0;      // ??? Not defined in the original OOO.xml, what was this flag?
+    */
+  }
 }
 
 void ParseXML::getCoreParams() {
 
   FlowID nsimu = SescConf->getRecordSize("","cpusimu");
-  sys.number_of_cores = nsimu;
+  //sys.number_of_cores = nsimu;
+  sys.number_of_cores = (*coreIndex).size();
+
+  getGPUParams();
 
   const char *first_section = SescConf->getCharPtr("","cpusimu",0);
   sys.homogeneous_cores = 1;
@@ -2287,8 +2408,8 @@ void ParseXML::getCoreParams() {
       sys.homogeneous_cores = 0;
 
 
-    FlowID throtting                   = SescConf -> getInt(section, "throtting");
-    sys.core[i].clock_rate             = sys.target_core_clockrate/throtting;
+    uint64_t throttlingRatio           = SescConf->getDouble(section, "throttlingRatio");
+    sys.core[i].clock_rate             = sys.target_core_clockrate/throttlingRatio;
     sys.core[i].machine_bits           = sys.machine_bits;
     sys.core[i].virtual_address_width  = sys.virtual_address_width;
     sys.core[i].physical_address_width = sys.physical_address_width;
@@ -2361,7 +2482,7 @@ void ParseXML::getCoreParams() {
     if (!sys.core[i].RAS_size) {
       sys.core[i].RAS_size = 128;
     }
-    
+
     int bpd = SescConf->getInt(section, "bpredDelay");
     sys.core[i].predictor.prediction_width     =  sys.core[i].fetch_width/bpd;
     sys.core[i].prediction_width     =  sys.core[i].predictor.prediction_width;
@@ -2387,14 +2508,19 @@ void ParseXML::getMemParams () {
   for (FlowID i=0; i<nsimu; i++) {
     const char *def_block = SescConf->getCharPtr("","cpusimu",i);
 
-    getMemoryObj(def_block, "IL1", i);
-
-    if(SescConf->checkCharPtr("cpusimu", "VPC", i)) {
-      getMemoryObj(def_block, "VPC", i);
-      getMemoryObj(def_block, "DL1", i);
-    }else{
-      getMemoryObj(def_block, "DL1", i);
+    if (strcmp(def_block, "gpuCORE") != 0 ){
+      //fprintf(stderr, "\n Initializing CPU Memory objects");
+      getMemoryObj(def_block, "IL1", i);
+      if(SescConf->checkCharPtr("cpusimu", "VPC", i)) {
+        getMemoryObj(def_block, "VPC", i);
+        getMemoryObj(def_block, "DL1", i);
+      }else{
+        getMemoryObj(def_block, "DL1", i);
+      }
+    } else {
+      //fprintf(stderr, "\n  Skipping initializing GPU Memory objects");
     }
+
   }
 }
 
@@ -2437,10 +2563,15 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
 
   SescConf->isCharPtr(device_descr_section, "lowerlevel");
   std::vector<char *> nvPars = SescConf->getSplitCharPtr(vPars[0], "lowerlevel");
-  if(strcmp(nvPars[0], "voidDevice"))
+  if(strcmp(nvPars[0], "voidDevice")){
+    //fprintf(stderr,"\n....*****..... %s",nvPars[0]);
     getConfMemObj(nvPars, Id);
+  } 
+  
+  //fprintf(stderr,"\n....*****..... Configuring %s",vPars[0]);
+  //fprintf(stderr,"\n");
 
- 
+
   SescConf->isCharPtr(device_descr_section, "deviceType");
   const char *device_type = SescConf->getCharPtr(device_descr_section, "deviceType");
   SescConf->isCharPtr(device_descr_section, "blockName");
@@ -2452,7 +2583,7 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       strcmp(device_type, "dcache") == 0 ||
       strcmp(device_type, "tlb") == 0 ) {
 
-    
+
     FlowID size = SescConf->getInt(device_descr_section, "size");
     FlowID bsize = SescConf->getInt(device_descr_section, "bsize");
     FlowID assoc = SescConf->getInt(device_descr_section, "assoc");
@@ -2460,9 +2591,19 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
     FlowID nBanks = SescConf->getInt(device_descr_section, "nBanks");
     //FlowID rport = SescConf->getInt(device_descr_section, "maxReads");
     //FlowID wport = SescConf->getInt(device_descr_section, "maxWrites");
-    FlowID throttle = SescConf->getInt(device_descr_section, "throttle");
-    FlowID clockRate   = sys.target_core_clockrate/throttle;
 
+    //FlowID throttle = SescConf->getInt(device_descr_section, "throttle");
+    //FIXME: We need a throttling ratio for the cache structures. 
+    FlowID throttle = 1; 
+    if (SescConf->checkBool(device_descr_section, "coreCoupledFreq")) {
+      if (SescConf->getBool(device_descr_section, "coreCoupledFreq") == false){
+        throttle = 2;
+      }
+    } else {
+      SescConf->notCorrect();
+    }
+
+    FlowID clockRate   = sys.target_core_clockrate/throttle;
     FlowID mshrSize = 0;
     FlowID fillBuffSize = 0;
     FlowID pfetchBuffSize = 0;
@@ -2598,12 +2739,20 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       }
     }
   } else if (strcmp(device_type, "memcontroller") == 0 || 
-             strcmp(device_type, "bus") == 0) {
+      strcmp(device_type, "bus") == 0) {
     FlowID busWidth = SescConf->getInt(device_descr_section, "busWidth");
     FlowID numPorts = SescConf->getInt(device_descr_section, "numPorts");
     FlowID portOccp = SescConf->getInt(device_descr_section, "portOccp");
     FlowID dramPageSize = SescConf->getInt(device_descr_section, "dramPageSize");
-    FlowID throttle = SescConf->getInt(device_descr_section, "throttle");
+    //FlowID throttle = SescConf->getInt(device_descr_section, "throttle");
+    FlowID throttle = 1; 
+    if (SescConf->checkBool(device_descr_section, "coreCoupledFreq")) {
+      if (SescConf->getBool(device_descr_section, "coreCoupledFreq") == false){
+        throttle = 2;
+      }
+    } else {
+      SescConf->notCorrect();
+    }
 
     sys.mc.mc_clock                    = sys.target_core_clockrate/throttle;
     sys.mc.memory_channels_per_mc      = numPorts;
@@ -2614,7 +2763,7 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
 
     sys.mem.peak_transfer_rate         = sys.mc.mc_clock * busWidth / portOccp;
     sys.virtual_memory_page_size       = dramPageSize;
-        }
+  }
 
 
 }

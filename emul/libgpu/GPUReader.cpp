@@ -554,7 +554,7 @@ void GPUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char
 
   if (tsfifo[fid].full()) {
     istsfifoBlocked = true;
-    gsampler->decCount->add(gsampler->dec_icount);
+    //gsampler->decCount->add(gsampler->dec_icount);
     gsampler->AtomicDecrPhasenInst(1);
     gsampler->AtomicDecrTotalnInst(1);
     return;

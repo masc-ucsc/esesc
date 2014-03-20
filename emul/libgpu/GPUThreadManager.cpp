@@ -581,7 +581,11 @@ void GPUThreadManager::reOrganize() {
 
   if (maxSamplingThreads != 0) {
     uint64_t total_timing_threads  = maxSamplingThreads;
-    if ((int64_t) total_timing_threads == -1) {
+    if ((int64_t) total_timing_threads < 0 ) {
+      IS(cout <<"maxSamplingThreads defined as "<< maxSamplingThreads <<", sampling all the threads" <<endl);
+      total_timing_threads = numThreads;
+    } else if ((int64_t) total_timing_threads > numThreads) {
+      IS(cout <<"maxSamplingThreads defined as "<< maxSamplingThreads <<",which is more than the number of threads in the application ( " << numThreads <<" ), sampling all the threads... " <<endl);
       total_timing_threads = numThreads;
     }
     uint32_t smid = 0;

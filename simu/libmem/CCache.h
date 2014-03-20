@@ -204,6 +204,10 @@ protected:
 	GStatsCntr  *s_reqAck[ma_MAX];
 	GStatsCntr  *s_reqSetState[ma_MAX];
 
+  // Statistics currently not used.
+  // Only defined here to prevent bogus warnings from the powermodel.
+  GStatsCntr  writeExclusive;
+
   // END Statistics
 
   int32_t getLineSize() const          { return lineSize;   }

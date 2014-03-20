@@ -149,15 +149,15 @@ bool OoOProcessor::execute()
   clockTicks.inc(getStatsFlag);
   setWallClock(getStatsFlag);
 
-  if (unlikely(throttingRatio>1)) { 
-    throtting_cntr++;
+  if (unlikely(throttlingRatio>1)) { 
+    throttling_cntr++;
 
-    uint32_t skip = ceil(throttingRatio/getTurboRatio()); 
+    uint32_t skip = ceil(throttlingRatio/getTurboRatio()); 
 
-    if (throtting_cntr < skip) {
+    if (throttling_cntr < skip) {
       return true;
     }
-    throtting_cntr = 1;
+    throttling_cntr = 1;
   }
 
   // ID Stage (insert to instQueue)

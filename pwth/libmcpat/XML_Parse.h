@@ -707,6 +707,7 @@ public:
 
    void getGeneralParams();
    void getCoreParams();
+   void getGPUParams();
    void getMemParams();
    void getMemoryObj(const char *block, const char *field, FlowID Id);
    void getConfMemObj(std::vector<char *> vPars, FlowID Id);
