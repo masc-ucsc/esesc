@@ -15,7 +15,7 @@ addons:
        name: "masc-ucsc/esesc"
      description: "ESESC: A Fast Multicore Simulator"
      notification_email: southerngs@gmail.com
-     build_command_prepend: "sudo apt-get install libboost-dev bison flex libglib2.0-dev libncurses5-dev; cd ..; cmake -DCMAKE_BUILD_TYPE=Debug esesc"
+     build_command_prepend: "sudo apt-get install libboost-dev; mkdir build; cd build; cmake -DCMAKE_BUILD_TYPE=Debug .."
      build_command: "make"
      branch_pattern: coverity_scan
 
