@@ -1,22 +1,25 @@
 language: cpp
 compiler:
-  - clang
+  - g++
 
 env:
 
   global:
     # The next declration is the encrypted COVERITY_SCAN_TOKEN, created
     #   via the "travis encrypt" command using the project repo's public key
-    - secure: "cRYdqctL7ai/4kF0wqgj5g6eQwWDf0ccwul/BzMwCd5iZqvnWiqkr6DIZM6lR68jcByn7lDra4KBtqCoFOK+QNmrvb8Py4SP/wc2JGCVJGwWPVK01jxXd6BoHP8gd/nPGRjxgoceyV19gmHS8spr0GJvn6Ic9Yl0BmzJIY1eIQ0="
+    - secure: "PCMie0mk8pknLR0rS6Y6VGSnvJOJsKH13/lmlrU0o+45f4PCmGJL60N/3j7ufAr+5qRDRsJdGhz5Hgo1RkRLDCzctcidygrTLHOHVhMeRqmaVAXguRquK4BP4Vp4hTsNJSfWGIIc86RabtnqfYS18OwdAbj12v9sx1nNz7Y179I="
 
-  addons:
-    coverity_scan:
-      project:
-        name: "masc-ucsc/esesc"
-      description: "ESESC: A Fast Multicore Simulator"
-    notification_email: southerngs@gmail.com
-    build_command_prepend: "cd ..; cmake -DCMAKE_BUILD_TYPE=Debug esesc"
-    build_command: "make"
-    branch_pattern: coverity_scan
+addons:
+  coverity_scan:
+     project:
+       name: "masc-ucsc/esesc"
+     description: "ESESC: A Fast Multicore Simulator"
+     notification_email: southerngs@gmail.com
+     build_command_prepend: "cd ..; cmake -DCMAKE_BUILD_TYPE=Debug esesc"
+     build_command: "make"
+     branch_pattern: coverity_scan
+
+script:
+  - echo "Done"
 
 
