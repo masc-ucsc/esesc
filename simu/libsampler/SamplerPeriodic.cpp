@@ -408,3 +408,4 @@ void SamplerPeriodic::dumpThreadProgressedTime(FlowID fid) {
     threadProgressedTime->sample(getTime());
   }
 }
+

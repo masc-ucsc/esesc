@@ -438,7 +438,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-           
+
             }
             if (strcmp(xNode4.getAttribute("name"),"VPC")==0)
             {//find system.core0.vpc

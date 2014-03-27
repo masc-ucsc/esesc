@@ -139,12 +139,12 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   I(getLineSize() < 4096); // To avoid bank selection conflict (insane CCache line)
   I(gms);
 
-	numBanks   = SescConf->getInt(section, "nBanks");
-	numBanks   = SescConf->isBetween(section, "nBanks", 1, 1024);  // More than 1024???? (more likely a bug in the conf)
-  SescConf->isPower2(section,"nBanks");
-  int32_t log2nBanks = log2i(numBanks);
+	numBanks   = SescConf->getInt(section, "numBanks");
+	numBanks   = SescConf->isBetween(section, "numBanks", 1, 1024);  // More than 1024???? (more likely a bug in the conf)
+  SescConf->isPower2(section,"numBanks");
+  int32_t log2numBanks = log2i(numBanks);
   if (numBanks>1)
-    numBanksMask = (1<<log2nBanks)-1;
+    numBanksMask = (1<<log2numBanks)-1;
   else
     numBanksMask = 0;
   
@@ -657,6 +657,9 @@ bool CCache::isBusy(AddrType addr) const
     return true;
 
   if (!mshr->canAccept(addr))
+    return true;
+
+  if (router->isBusyPos(0,addr))
     return true;
 
   return false;
