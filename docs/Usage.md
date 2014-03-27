@@ -8,9 +8,12 @@ ESESC is currently tested with Arch Linux and with Ubunut 12.04 LTS.  The follow
 
     pacman -S boost
     pacman -S bison flex
-    pacman -S g++
+    pacman -S gcc
     pacman -S python2
     pacman -S texinfo
+    pacman -S cmake
+    pacman -S make
+    pacman -S pkgconfig
 
 ## Ubuntu 12.04 LTS
     sudo apt-get install build-essential
