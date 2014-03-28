@@ -10,10 +10,10 @@ For this demo you will run the single-threaded benchmark crafty
 
 ###Steps:
 
-#. Modify `esesc.conf` file in the run directory to select the sampler mode.
-    #. Open `esesc.conf` in a text editor.  
+1. Modify `esesc.conf` file in the run directory to select the sampler mode.
+    1. Open `esesc.conf` in a text editor.  
 
-    #. Switch back to a single core configuration for the demo. \
+    2. Switch back to a single core configuration for the demo. \
         Locate the  lines that say:
 
         `cpuemul[0:3]  = 'QEMUSectionCPU'`\
@@ -24,11 +24,11 @@ For this demo you will run the single-threaded benchmark crafty
         `cpuemul[0]  = 'QEMUSectionCPU'`\
         `cpusimu[0]  = "$(coreType)"`
 
-    #. Choose the right benchmark for this demo.
+    3. Choose the right benchmark for this demo.
 
         `benchName = "launcher -- stdin crafty.input -- crafty"`
 
-    #. Locate the line that says:
+    4. Locate the line that says:
 
         `enablePower = false`
 
@@ -36,17 +36,17 @@ For this demo you will run the single-threaded benchmark crafty
 
         `enablePower = true`
 
-    #. Save `esesc.conf` and exit
+    5. Save `esesc.conf` and exit
 
-#. Run ESESC
-    #. From the run directory execute the command: 
+2. Run ESESC
+    1. From the run directory execute the command: 
 
         `../main/esesc`
 
-    #. View results with report.pl
+    2. View results with report.pl
 
-    #. From the run directory execute the command: 
+    3. From the run directory execute the command: 
 
-        `~/projs/esesc/conf/scripts/report.pl –last`
+        `~/projs/esesc/conf/scripts/report.pl -last`
 
-#. Look at the power numbers tabulated per sub-block and memory structure and the total chip power.
+3. Look at the power numbers tabulated per sub-block and memory structure and the total chip power.
