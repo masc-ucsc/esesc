@@ -2047,7 +2047,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     if ( check_cntr(str) ) sys.core[i].dcache.write_misses= cntr_pos_value(str);
     //=    }
 #if 1
-    int tmp;
+    int tmp = 0;
     sprintf(str,"PTLB(%u)_read_hits",i);
     if ( check_cntr(str) ) tmp = cntr_pos_value(str);
     sprintf(str,"PTLB(%u)_read_misses",i);
@@ -2221,7 +2221,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
 
 
   for (uint32_t  i = 0; i < sys.number_of_STLBs; i++){
-    int tmp;
+    int tmp = 0;
     sprintf(str,"STLB(%u)_read_hits",i);
     if ( check_cntr(str) ) tmp = cntr_pos_value(str);
     sprintf(str,"STLB(%u)_read_misses",i);
@@ -2248,7 +2248,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
   }
 
   for (uint32_t  i = 0; i < sys.number_of_NoCs; i++){
-    uint32_t reads, writes;
+    uint32_t reads = 0, writes = 0;
     sprintf(str,"xbar(%u)_read_accesses",i);
     if ( check_cntr(str) ) reads=cntr_pos_value(str);
     sprintf(str,"xbar(%u)_write_accesses",i);
