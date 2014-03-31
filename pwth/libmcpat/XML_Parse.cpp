@@ -2495,7 +2495,7 @@ void ParseXML::getCoreParams() {
     sys.core[i].BTB.BTB_config[0]   = SescConf->getInt(sec, "btbSize"); 
     sys.core[i].BTB.BTB_config[1]   = sys.physical_address_width; 
     sys.core[i].BTB.BTB_config[2]   = SescConf->getInt(sec, "btbAssoc"); 
-    sys.core[i].BTB.BTB_config[3]   = SescConf->getInt(sec, "nBanks"); 
+    sys.core[i].BTB.BTB_config[3]   = SescConf->getInt(sec, "numBanks"); 
     sys.core[i].BTB.BTB_config[4]   = 1; 
     sys.core[i].BTB.BTB_config[5]   = SescConf->getInt(section, "bpredDelay"); 
 
@@ -2588,7 +2588,7 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
     FlowID bsize = SescConf->getInt(device_descr_section, "bsize");
     FlowID assoc = SescConf->getInt(device_descr_section, "assoc");
     FlowID delay = SescConf->getInt(device_descr_section, "hitDelay");
-    FlowID nBanks = SescConf->getInt(device_descr_section, "nBanks");
+    FlowID nBanks = SescConf->getInt(device_descr_section, "numBanks");
     //FlowID rport = SescConf->getInt(device_descr_section, "maxReads");
     //FlowID wport = SescConf->getInt(device_descr_section, "maxWrites");
 

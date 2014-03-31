@@ -1111,7 +1111,8 @@ void PowerModel::updateTurboState() {
      break;
 #endif
     default:
-     printf("\nWarning! Unknown Turbo state.\n");
+     I(0);
+     LOG("WARNING: Invalid turbo state: %d\n", turboMode);
 #if ENABLE_CUDA
      setTurboRatioGPU(1.0);
 #endif
