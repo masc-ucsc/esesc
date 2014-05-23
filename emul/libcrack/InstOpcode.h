@@ -538,7 +538,7 @@ enum RegType {
 };
 
 //enum ClusterType { AUnit = 0, BUnit, CUnit, LUnit, SUnit };
-enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32};
+enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32, MIPS};
 
 // Common alias
 #define LREG_ZERO  LREG_R0
