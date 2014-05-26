@@ -54,9 +54,28 @@ void MIPSCrack::expand(RAWDInst *rinst)
 
   rinst->clearInst();
 
+  // signal for different types
   uint32_t insn             = rinst->getInsn();
+  uint8_t opcode            = (insn >> 26) & 0x3F;
+  uint8_t sign              = insn & 0x1F;
+  uint8_t sbranch           = (insn >> 16) & 0x1F;
+  
+  // immediate
+  uint32_t IMM16             = insn & 0xFF;
+  uint32_t TARGET28          = insn & 0x3FFFFFF;
 
-
+  // list of common opcode for MIPS
+  uint8_t SPECIAL = 0;
+  uint8_t ADDIU = 9;
+  uint8_t ADDI = 8;
+  uint8_t BNE = 5;
+  uint8_t BEQ = 4;
+  uint8_t JAL = 3;
+  uint8_t J = 2;
+  uint8_t BLTZ = 1;
+  uint8_t LW = 0x23;
+  uint8_t LB = 0x20;
+  
 
 }
 
