@@ -1,4 +1,5 @@
-// Contributed by Jose Renau
+// Contributed by Jia Xu
+//                Te-Kang Chao
 //
 // The ESESC/BSD License
 //
@@ -65,16 +66,11 @@ void MIPSCrack::expand(RAWDInst *rinst)
   uint32_t TARGET28          = insn & 0x3FFFFFF;
 
   // list of common opcode for MIPS
-  uint8_t SPECIAL = 0;
-  uint8_t ADDIU = 9;
-  uint8_t ADDI = 8;
-  uint8_t BNE = 5;
-  uint8_t BEQ = 4;
-  uint8_t JAL = 3;
-  uint8_t J = 2;
-  uint8_t BLTZ = 1;
-  uint8_t LW = 0x23;
-  uint8_t LB = 0x20;
+  uint8_t MIPS_OP_LW = 0x23;
+  uint8_t MIPS_OP_LB = 0x20; 
+
+
+ 
   
 
 }
