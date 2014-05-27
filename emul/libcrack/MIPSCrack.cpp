@@ -55,26 +55,71 @@ void MIPSCrack::expand(RAWDInst *rinst)
 
   rinst->clearInst();
 
-  // signal for different types
+  // decodes 32 bit instructions to each field
   uint32_t insn             = rinst->getInsn();
   uint8_t opcode            = (insn >> 26) & 0x3F;
-  uint8_t sign              = insn & 0x1F;
-  uint8_t sbranch           = (insn >> 16) & 0x1F;
-  
-  // immediate
+  uint8_t funct             = insn & 0x3F;
+  uint8_t rs                = (insn >> 21) & 0x1F;
+  uint8_t rt                = (insn >> 16) & 0x1F;
+  uint8_t rd                = (insn >> 11) & 0x1F;             
+  uint8_t shift             = (insn >> 6)  & 0x1F;  
+
+  // immediate or address
   uint32_t IMM16             = insn & 0xFF;
   uint32_t TARGET28          = insn & 0x3FFFFFF;
 
+  // some codes for funct field
+  const uint8_t ADD  = 0x20;
+  const uint8_t ADDU = 0x21;
+
+  //printf("insn is %x, opcode is %x, funct is %x, rs is %x, rt is %x, rd is %x, shift is %x\n", insn, opcode, funct, rs, rt, rd, shift);
   // list of common opcode for MIPS
-  uint8_t MIPS_OP_LW = 0x23;
-  uint8_t MIPS_OP_LB = 0x20; 
+  const  uint8_t MIPS_OP_LW = 0x23;
+  const  uint8_t MIPS_OP_LB = 0x20; 
 
-
+  switch(opcode){
+    case MIPS_OP_SPECIAL:
+     
+      if( !shift && funct == ADD){
+	CrackInst::setup(rinst, iAALU, OP_S32_ADD, rs, rt, 0, rd, 0, 0, 0);
+      }else if( !shift && funct == ADDU){
+	CrackInst::setup(rinst, iAALU, OP_U32_ADD, rs, rt, 0, rd, 0, 0, 0);
+      } 
+      break;
+    case MIPS_OP_REGIMM:
+      break;
+    case MIPS_OP_J:
+      break;
+    case MIPS_OP_JAL:
+      break;
+    case MIPS_OP_BEQ:
+      break;
+    case MIPS_OP_BNE:
+      break;
+    case MIPS_OP_BLEZ:
+      break;
+    case MIPS_OP_BGTZ:
+      break;
+    case MIPS_OP_ADDI:
+      CrackInst::setup(rinst, iAALU, OP_S32_ADD, rs, 0, IMM16, rt, 0, 0, 0); 
+      break;
+    case MIPS_OP_ADDIU:
+      CrackInst::setup(rinst, iAALU, OP_U32_ADD, rs, 0, IMM16, rt, 0, 0, 0); 
+      break;
+    case MIPS_OP_SLTI:
+      break;
+    case MIPS_OP_SLTIU:
+      break;
+    case MIPS_OP_LW:
+      break; 
+    case MIPS_OP_LB:
+      break;
+  }
  
   
 
 }
 
 void MIPSCrack::advPC(){
-  pc += 4;
+   pc += 4;
 }

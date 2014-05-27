@@ -400,22 +400,6 @@ enum Scopcode {
   ,OP_iRALU_move
 };
 
-enum MipsOpCode{
-  MIPS_OP_SPECIAL = 0,
-  MIPS_OP_REGIMM,
-  MIPS_OP_J,
-  MIPS_OP_JAL,
-  MIPS_OP_BEQ,
-  MIPS_OP_BNE,
-  MIPS_OP_BLEZ,
-  MIPS_OP_BGTZ,
-  MIPS_OP_ADDI,
-  MIPS_OP_ADDIU,
-  MIPS_OP_SLTI,
-  MIPS_OP_SLTIU,
-  
-};
-
 //enum RegType:short {
 enum RegType {
   LREG_R0=0, // No dependence

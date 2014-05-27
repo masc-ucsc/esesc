@@ -1,5 +1,5 @@
-// Contributed by Jia Xu
-//                
+// Contributed by Jose Renau
+//                Luis Ceze
 //
 // The ESESC/BSD License
 //
@@ -33,24 +33,28 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef MIPSCRACK_H
-#define MIPSCRACK_H
+#ifndef MIPSOPCODE_H
+#define MIPSOPCODE_H
+#include <sys/types.h>
+#include <stdint.h>
 
-#include <string.h>
 
-#include "RAWDInst.h"
-#include "Instruction.h"
-#include "crackinst.h"
-#include "InstOpcode.h"
-#include "CrackBase.h"
-#include "MIPSOpcode.h"
-
-class MIPSCrack : public CrackBase{
-private:
-protected:
-public:
-  void expand(RAWDInst *rinst);
-  void advPC();
+enum MipsOpCode{
+  MIPS_OP_SPECIAL = 0,
+  MIPS_OP_REGIMM,
+  MIPS_OP_J,
+  MIPS_OP_JAL,
+  MIPS_OP_BEQ,
+  MIPS_OP_BNE,
+  MIPS_OP_BLEZ,
+  MIPS_OP_BGTZ,
+  MIPS_OP_ADDI,
+  MIPS_OP_ADDIU,
+  MIPS_OP_SLTI,
+  MIPS_OP_SLTIU,
+  
 };
+
+
 
 #endif
