@@ -3,10 +3,20 @@ INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
 SET(CMAKE_MODULE_PATH "${esesc_SOURCE_DIR}/cmake-modules/conf")
 cmake_minimum_required(VERSION 2.7)
 
+###############################################
+# Unit Test settings
+
 ################################################
 # QEMU System/User and ISA configuration options
 
+SET(ENABLE_UNITTEST 1 CACHE STRING "default to 1" FORCE)
 MESSAGE("cmake configuration options:")
+IF(ENABLE_UNITTEST)
+    MESSAGE("  -DENABLE_UNITTEST=1          Runs unit test suite")
+ELSE(ENABLE_UNITTEST)
+    MESSAGE("  -DENABLE_UNITTEST=0          Prevent unit test suite from running")
+ENDIF(ENABLE_UNITTEST)
+
 IF(ENABLE_QEMU_SYSTEM)
   MESSAGE(" -DENABLE_QEMU_SYSTEM=1         Full System QEMU (qemu must be compiled first)")
 ENDIF(ENABLE_QEMU_SYSTEM)
@@ -218,5 +228,9 @@ ADD_SUBDIRECTORY(simu/libsampler)
 ADD_SUBDIRECTORY(simu/libmem)
 #################################
 ADD_SUBDIRECTORY(main)
+################################
+IF(ENABLE_UNITTEST)
+    ADD_SUBDIRECTORY(t)
+ENDIF(ENABLE_UNITTEST)
 
 
