@@ -9,8 +9,9 @@ cmake_minimum_required(VERSION 2.7)
 ################################################
 # QEMU System/User and ISA configuration options
 
-SET(ENABLE_UNITTEST 1 CACHE STRING "default to 1" FORCE)
 MESSAGE("cmake configuration options:")
+
+SET(ENABLE_UNITTEST 1 CACHE STRING "default to 1")
 IF(ENABLE_UNITTEST)
     MESSAGE("  -DENABLE_UNITTEST=1          Runs unit test suite")
 ELSE(ENABLE_UNITTEST)
@@ -228,6 +229,7 @@ ADD_SUBDIRECTORY(simu/libsampler)
 ADD_SUBDIRECTORY(simu/libmem)
 #################################
 ADD_SUBDIRECTORY(main)
+
 ################################
 IF(ENABLE_UNITTEST)
     ADD_SUBDIRECTORY(t)

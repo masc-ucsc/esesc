@@ -1,8 +1,12 @@
 #include <iostream>
+#include <stdlib.h>
+#include <stdint.h>
 
-#include "gtest/gtest.h"
+#include "OoOProcessor_unittest.h"
 
-TEST(sample_test_case, sample_test)
+
+TEST_F(OoOProcessorTest, InitializesOkay)
 {
-    EXPECT_EQ(1, 1);
+    ASSERT_TRUE( proc0_ != NULL );
+        //EXPECT_EQ(0, 0);
 }
