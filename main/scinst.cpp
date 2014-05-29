@@ -4,6 +4,7 @@
 
    Contributed by Jose Renau
                   Ehsan K.Ardestani
+                  Jia Xu
 
 This file is part of SESC.
 
@@ -22,6 +23,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "ARMCrack.h"
 #include "ThumbCrack.h"
+#include "MIPSCrack.h"
 
 int main(int argc, char **argv)
 {
@@ -30,6 +32,7 @@ int main(int argc, char **argv)
     exit(0);
   }
 
+  CrackBase *crackMIPS = new MIPSCrack;
   CrackBase *crackARM   = new ARMCrack;
   ThumbCrack *crackThumb = new ThumbCrack;
 
@@ -64,6 +67,7 @@ int main(int argc, char **argv)
     printf("\n");
   }
 
+
 #ifdef SCOORE
   rinst->set(insn, 0xdeaddead);
 #else
@@ -71,12 +75,28 @@ int main(int argc, char **argv)
 #endif
   crackThumb->thumb32expand(rinst);
 
-  printf("THUMB32 %x to %d\n", insn, rinst->getNumInst());
+
+printf("THUMB32 %x to %d\n", insn, rinst->getNumInst());
   for(size_t j=0;j<rinst->getNumInst();j++) {
     const Scuop *inst = rinst->getInstRef(j);
     inst->dump("");
     printf("\n");
   }
+
+#ifdef SCOORE
+  rinst->set(insn, 0xdeaddead);
+#else
+  rinst->set(insn, 0xdeaddead,0 , 0);
+#endif
+  crackMIPS->expand(rinst);
+
+  printf("MIPS %x to %d\n", insn, rinst->getNumInst());
+  for(size_t j=0;j<rinst->getNumInst();j++) {
+    const Scuop *inst = rinst->getInstRef(j);
+    inst->dump("");
+    printf("\n");
+  }
+
 
   return 0;
 }
