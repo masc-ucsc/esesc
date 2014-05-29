@@ -154,8 +154,8 @@ protected:
   void dump_calledge(TimeDelta_t lat) { }
   void upce() { };
 #endif
-  static MemRequest *create(MemObj *m, AddrType addr, bool doStats, CallbackBase *cb);
  public:
+  static MemRequest *create(MemObj *m, AddrType addr, bool doStats, CallbackBase *cb);
   StaticCallbackMember0<MemRequest, &MemRequest::doReq>          doReqCB;
   StaticCallbackMember0<MemRequest, &MemRequest::doReqAck>       doReqAckCB;
   StaticCallbackMember0<MemRequest, &MemRequest::doSetState>     doSetStateCB;

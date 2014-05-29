@@ -1,4 +1,3 @@
-#if 0
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //
@@ -41,7 +40,8 @@
 #include "Port.h"
 #include "MemRequest.h"
 #include "MemObj.h"
-#include "DDR2.h"
+#include "MSHR.h"
+
 
 #include <queue>
 #include <vector>
@@ -53,162 +53,162 @@
 #include "CacheCore.h"
 
 
+
+
+//Some of this can be removed
 class BState : public StateGeneric<AddrType> {
-  public:
-    BState(int32_t lineSize) {
-    }
+public:
+BState(int32_t lineSize) {
+}
 };
 
 class PfState : public StateGeneric <AddrType> {
-  public:
-    PfState(int32_t lineSize) {
-    }
+public:
+PfState(int32_t lineSize) {
+}
 
-    uint32_t stride;
-    bool goingUp;
+uint32_t stride;
+bool goingUp;
 
-    AddrType nextAddr(CacheGeneric<PfState,AddrType> *c) {
-      AddrType preaddr = c->calcAddr4Tag(getTag());
-      return (goingUp ? (preaddr + stride) : (preaddr - stride));
-    }
+AddrType nextAddr(CacheGeneric<PfState,AddrType> *c) {
+AddrType preaddr = c->calcAddr4Tag(getTag());
+return (goingUp ? (preaddr + stride) : (preaddr - stride));
+}
 };
 
 
 class StridePrefetcher: public MemObj {
 
 private:
-  typedef CacheGeneric<BState,AddrType> BuffType;
-  typedef CacheGeneric<BState,AddrType>::CacheLine bLine;
+typedef CacheGeneric<BState,AddrType> BuffType;
+typedef CacheGeneric<BState,AddrType>::CacheLine bLine;
 
-  typedef CacheGeneric<PfState,AddrType> PfTable;
-  typedef CacheGeneric<PfState,AddrType>::CacheLine pEntry;
+typedef CacheGeneric<PfState,AddrType> PfTable;
+typedef CacheGeneric<PfState,AddrType>::CacheLine pEntry;
 
 
-  struct hash_long_long {
-    size_t operator()(const AddrType in)  const {
-      //uint32_t ret = (in >> 32L) ^ (in & 0xFFFFFFFF);
-      //return (uint32_t) ret;
-      return (uint32_t) in;
-    }
-  };
+struct hash_long_long {
+size_t operator()(const AddrType in) const {
+//uint32_t ret = (in >> 32L) ^ (in & 0xFFFFFFFF);
+//return (uint32_t) ret;
+return (uint32_t) in;
+}
+};
 
-  class AddrTypeHashFunc {
-    public:
-      size_t operator()(const AddrType p) const {
-        return((int) p);
-      }
-  };
+class AddrTypeHashFunc {
+public:
+size_t operator()(const AddrType p) const {
+return((int) p);
+}
+};
 
-  class AddrTypeEqual {
-    public:
-      bool operator()(const AddrType &x, const AddrType &y) const{
-        return (memcmp((const void*)x, (const void*)y, sizeof(AddrType)) == 0);
-      }
-  };
-  
-  typedef HASH_MAP<AddrType, std::queue<MemRequest *>, AddrTypeHashFunc> penReqMapper;
-  typedef HASH_SET<AddrType, AddrTypeHashFunc> penFetchSet;
+class AddrTypeEqual {
+public:
+bool operator()(const AddrType &x, const AddrType &y) const{
+return (memcmp((const void*)x, (const void*)y, sizeof(AddrType)) == 0);
+}
+};
+typedef HASH_MAP<AddrType, std::queue<MemRequest *>, AddrTypeHashFunc> penReqMapper;
+typedef HASH_SET<AddrType, AddrTypeHashFunc> penFetchSet;
 
-  penReqMapper pendingRequests;
-  penFetchSet pendingFetches;
 
-  BuffType *buff;
-  PfTable  *table;
+uint32_t pendingRequests;
+uint32_t pendingFetches;
 
-  std::deque<AddrType> lastMissesQ;
 
-  PortGeneric *buffPort;
-  PortGeneric *tablePort;
+BuffType *buff;
+PfTable *table;
 
-  int32_t numStreams;
-  int32_t streamAssoc;
-  int32_t depth;
-  int32_t numBuffPorts;
-  int32_t buffPortOccp;
-  int32_t numTablePorts;
-  int32_t tablePortOccp;
-  int32_t hitDelay;
-  int32_t missDelay;
-  int32_t learnHitDelay;
-  int32_t learnMissDelay;
-  uint32_t missWindow;
-  uint32_t maxStride;
-  uint32_t MaxPendingRequests;
-  static const int32_t pEntrySize = 8; // size of an entry in the prefetching table
-  
-  //int32_t defaultMask;
-  AddrType defaultMask;
+std::deque<AddrType> lastMissesQ;
 
-  GStatsCntr halfMiss;
-  GStatsCntr miss;
-  GStatsCntr hit;
-  GStatsCntr predictions;
-  GStatsCntr accesses;
-  GStatsCntr unitStrideStreams;
-  GStatsCntr nonUnitStrideStreams;
-  GStatsCntr ignoredStreams;
+PortGeneric *buffPort;
+PortGeneric *tablePort;
+
+int32_t numStreams;
+int32_t streamAssoc;
+int32_t depth;
+int32_t numBuffPorts;
+int32_t buffPortOccp;
+int32_t numTablePorts;
+int32_t tablePortOccp;
+int32_t hitDelay;
+int32_t missDelay;
+int32_t learnHitDelay;
+int32_t learnMissDelay;
+uint32_t missWindow;
+uint32_t maxStride;
+uint32_t MaxPendingRequests;
+MSHR *mshr;
+int32_t lineSize;
+static const int32_t pEntrySize = 8; // size of an entry in the prefetching table
+//int32_t defaultMask;
+AddrType defaultMask;
+
+GStatsCntr halfMiss;
+GStatsCntr miss;
+GStatsCntr hit;
+GStatsCntr predictions;
+GStatsCntr accesses;
+GStatsCntr unitStrideStreams;
+GStatsCntr nonUnitStrideStreams;
+GStatsCntr ignoredStreams;
 
 protected:
-  TimeDelta_t delay;
-//  PortGeneric *dataPort;
-//  PortGeneric *cmdPort;
+TimeDelta_t delay;
+ PortGeneric *dataPort;
+ PortGeneric *cmdPort;
 
-  bool isMemoryBus;
-//  DDR2 **DRAM;
-//  int numChannels;
+bool isMemoryBus;
+// DDR2 **DRAM;
+// int numChannels;
+
+
+//End some of this can be removed
+
 
 public:
   StridePrefetcher(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
   ~StridePrefetcher() {}
 
-  Time_t nextReadSlot(       const MemRequest *mreq);
-  Time_t nextWriteSlot(      const MemRequest *mreq);
-  Time_t nextBusReadSlot(    const MemRequest *mreq);
-  Time_t nextPushDownSlot(   const MemRequest *mreq);
-  Time_t nextPushUpSlot(     const MemRequest *mreq);
-  Time_t nextInvalidateSlot( const MemRequest *mreq);
+  	// Entry points to schedule that may schedule a do?? if needed
+	void req(MemRequest *req)         { doReq(req); };
+	void reqAck(MemRequest *req)      { doReqAck(req); };
+	void setState(MemRequest *req)    { doSetState(req); };
+	void setStateAck(MemRequest *req) { doSetStateAck(req); };
+	void disp(MemRequest *req)        { doDisp(req); }
 
-  // processor direct requests
-  void read(MemRequest  *req);
-  void write(MemRequest *req);
-  void writeAddress(MemRequest *req);
+	// This do the real work
+	void doReq(MemRequest *r);
+	void doReqAck(MemRequest *req);
+	void doSetState(MemRequest *req);
+	void doSetStateAck(MemRequest *req);
+	void doDisp(MemRequest *req);
 
-  // DOWN
-  void busRead(MemRequest *req);
-  void pushDown(MemRequest *req);
-  
-  // UP
-  void pushUp(MemRequest *req);
-  void invalidate(MemRequest *req);
+	void invalidate(MemRequest *mreq);
+	void ifHit(MemRequest *mreq);
+	void ifMiss(MemRequest *mreq);
+	void learnMiss(AddrType addr);
 
-  // Status/state
-  uint16_t getLineSize() const;
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
 
-  bool canAcceptRead(DInst *dinst) const;
-  bool canAcceptWrite(DInst *dinst) const;
+	bool isBusy(AddrType addr) const;
 
-  TimeDelta_t ffread(AddrType addr, DataType data);
-  TimeDelta_t ffwrite(AddrType addr, DataType data);
-  void        ffinvalidate(AddrType addr, int32_t lineSize);
 
-  //Added from the old prefetcher
-  void learnHit(AddrType addr,MemRequest* orig_mreq);
-  void learnMiss(AddrType addr, MemRequest* orig_mreq);
-  void prefetch(pEntry *pe, Time_t lat, MemRequest* orig_mreq);
-  void processAck(AddrType addr);
 
-  typedef CallbackMember1<StridePrefetcher, AddrType, &StridePrefetcher::processAck> processAckCB;
 
+//typedef CallbackMember1<StridePrefetcher, AddrType, &StridePrefetcher::processAck> processAckCB;
   Time_t nextBuffSlot() {
-    return buffPort->nextSlot();
+    return buffPort->nextSlot(true);
   }
 
   Time_t nextTableSlot() {
-    return tablePort->nextSlot();
+    return tablePort->nextSlot(true);
   }
 
+typedef CallbackMember1<StridePrefetcher, MemRequest*, &StridePrefetcher::doSetState> busReadAckCB;
 };
 
-#endif
+
 
 #endif
