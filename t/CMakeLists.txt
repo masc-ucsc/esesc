@@ -47,7 +47,7 @@ SET(EXELIST "OoOProcessor_unittest" ) # "BPred_unittest" )
 
 # OoOProcessor_unittest libraries
 # Order is IMPORTANT. Won't link if this is wrong
-SET("OoOProcessor_unittest_LIBS" gtest gtest_main main mem sampler core pwrmodel mcpat sesctherm peq)
+SET("OoOProcessor_unittest_LIBS" gtest gtest_main main sampler mem core pwrmodel mcpat sesctherm peq)
 IF(ENABLE_CUDA)
     LIST(APPEND "OoOProcessor_unittest_LIBS"  gpuint)
 ENDIF(ENABLE_CUDA)
@@ -108,27 +108,29 @@ macro(copy_files GLOBPAT DESTINATION)
   file(GLOB COPY_FILES
     RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     ${GLOBPAT})
-  math(EXPR COPY_COUNTER "${COPY_COUNTER}+1")
+  math(EXPR COPY_COUNTER "${COPY_COUNTER}+1") # increment counter for unique target
 
   add_custom_target("copy${COPY_COUNTER}" ALL
-    COMMENT "Copying files: ${GLOBPAT}") # to ${DESTINATION}, ${COPY_FILES}")
+    COMMENT "Copying files: ${GLOBPAT}")
 
   foreach(FILENAME ${COPY_FILES})
-    set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
-    get_filename_component(FILENAME_BASE ${FILENAME} NAME) 
-    set(DST "${DESTINATION}/${FILENAME_BASE}")
-    #MESSAGE("SRC=${SRC} , DST=${DST}")
+    if(FILENAME MATCHES "[^\\.].*") # if filename does not start with a dot
+        set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
+        get_filename_component(FILENAME_BASE ${FILENAME} NAME) 
+        set(DST "${DESTINATION}/${FILENAME_BASE}")
+        MESSAGE("SRC=${SRC} , DST=${DST}")
 
-    add_custom_command(
-      TARGET "copy${COPY_COUNTER}"
-      COMMAND ${CMAKE_COMMAND} -E copy ${SRC} ${DST}
-      )
+        add_custom_command(
+          TARGET "copy${COPY_COUNTER}"
+          COMMAND ${CMAKE_COMMAND} -E copy ${SRC} ${DST}
+          )
+    endif(FILENAME MATCHES "[^\\.].*") # if filename does not start with a dot
   endforeach(FILENAME)
 endmacro(copy_files)
 
 # Copy config and bin files over to test directory
 copy_files( "../bins/*" ${CMAKE_CURRENT_BINARY_DIR} )
-copy_files( "../conf/*" ${CMAKE_CURRENT_BINARY_DIR} )
+copy_files( "../conf/*.conf" ${CMAKE_CURRENT_BINARY_DIR} )
 
 
 MESSAGE("-- Initialized unit test framework.")

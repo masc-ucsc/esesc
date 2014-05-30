@@ -28,12 +28,16 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include <sys/types.h>
 #include <signal.h>
+#include <iostream>
+#include <fstream>
 
 #include "nanassert.h"
 
 #include "BootLoader.h"
 
 int main(int argc, const char **argv) { 
+
+    std::cout << "Argc=" << argc << "\n";
 
   BootLoader::plug(argc, argv);
   BootLoader::boot();
