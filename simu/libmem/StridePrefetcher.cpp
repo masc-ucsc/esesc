@@ -1,4 +1,3 @@
-#if 1
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //                Luis Ceze
@@ -39,6 +38,7 @@
 #include "MemorySystem.h"
 #include "StridePrefetcher.h"
 #include "MSHR.h"
+#include <iostream>
 
 /* }}} */
 
@@ -279,8 +279,7 @@ void StridePrefetcher::learnMiss(AddrType addr) {
   if (l==0) {
     MemRequest *mreq = MemRequest::create(this, nextAddr, false, 0);
     router->scheduleReqAckAbs(mreq, missDelay); 
+    MSG("John Ash John Ash John Ash");
   }
 }
 
-
-#endif

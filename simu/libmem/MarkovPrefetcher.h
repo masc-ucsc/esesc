@@ -1,4 +1,4 @@
-#if 0
+#if 1
 // Contributed by Jose Renau
 //
 // The ESESC/BSD License
@@ -40,9 +40,11 @@
 
 #include "Port.h"
 #include "MemRequest.h"
-#include "CacheCore.h"
+//#include "CacheCore.h"
 #include "MemObj.h"
+/* }}} */
 
+/*
 class MarkovPfState : public StateGeneric<AddrType> {
  public:
   AddrType predAddr1;
@@ -53,7 +55,7 @@ class MarkovPfState : public StateGeneric<AddrType> {
 
 class MarkovQState : public StateGeneric<AddrType> {
 };
-
+*/
 /*
 class MarkovTState : public StateGeneric<AddrType> {
  public:
@@ -66,8 +68,11 @@ class MarkovTState : public StateGeneric<AddrType> {
 
 class MarkovPrefetcher : public MemObj {
 protected:
+  TimeDelta_t delay;
   GMemorySystem *gms;
   PortGeneric *cachePort;
+  PortGeneric *dataPort;
+  PortGeneric *cmdPort;
 
   typedef CacheGeneric<MarkovPfState,AddrType> MarkovTable;
   MarkovTable::CacheLine *tEntry;
@@ -118,23 +123,27 @@ public:
   MarkovPrefetcher(MemorySystem* current, const char *device_descr_section,
       const char *device_name = NULL);
   ~MarkovPrefetcher() {}
-  void access(MemRequest *mreq);
-  void returnAccess(MemRequest *mreq);
-  bool canAcceptStore(AddrType addr);
-  virtual void invalidate(AddrType addr,uint16_t size,MemObj *oc);
-  Time_t getNextFreeCycle() const;
-  void prefetch(AddrType addr, Time_t lat);
-  void insertTable(AddrType paddr);
-  void TESTinsertTable(AddrType paddr);
-  void processAck(AddrType paddr);
-  typedef CallbackMember1<MarkovPrefetcher, AddrType, &MarkovPrefetcher::processAck> processAckCB;
+  void doReq(MemRequest *mreq);
+  void doDisp(MemRequest *mreq);
+  void doReqAck(MemRequest *mreq);
+
+  void doSetState(MemRequest *mreq);
+  void doSetStateAck(MemRequest *mreq);
+  bool isBusy(AddrType addr) const;
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
+  void prefetch(AddrType prefAddr, Time_t lat);
+  void insertTable(AddrType addr);
+  void TESTinsertTable(AddrType addr);
+
+  typedef CallbackMember1<MarkovPrefetcher, MemRequest*, &MarkovPrefetcher::doSetState> processAckCB;
 
   Time_t nextBuffSlot() {
-    return buffPort->nextSlot();
+    return buffPort->nextSlot(true);
   }
 
   Time_t nextTableSlot() {
-    return tablePort->nextSlot();
+    return tablePort->nextSlot(true);
   }
 
 };

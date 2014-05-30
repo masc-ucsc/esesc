@@ -1,4 +1,4 @@
-#if 0
+#if 1
 // Contributed by Jose Renau
 //
 // The ESESC/BSD License
@@ -52,7 +52,7 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
   ,predictions("%s:predictions", name)
   ,accesses("%s:accesses", name)
 {
-  MemObj *lower_level = NULL;
+  //MemObj *lower_level = NULL;
 
 
   SescConf->isInt(section, "depth");
@@ -106,62 +106,101 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
   lastAddr = 0;
 
   I(current);
+/*
   lower_level = current->declareMemoryObj(section, k_lowerLevel);
   if (lower_level != NULL)
     addLowerLevel(lower_level);
-
+*/
 }
 
-void MarkovPrefetcher::access(MemRequest *mreq)
+
+
+
+
+
+void MarkovPrefetcher::doReq(MemRequest *mreq)
+  /* forward bus read {{{1 */
+{
+   uint32_t paddr = mreq->getAddr() & defaultMask;
+//  if (mreq->getMemOperation() == MemRead
+//      || mreq->getMemOperation() == MemReadW) 
+   insertTable(paddr); //NOTE miss
+
+  TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleReq(mreq, when);  /* schedule req down {{{1 */
+}
+/* }}} */
+
+void MarkovPrefetcher::doDisp(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
   uint32_t paddr = mreq->getAddr() & defaultMask;
+//  if (mreq->getMemOperation() == MemRead
+//      || mreq->getMemOperation() == MemReadW) 
+  insertTable(paddr); //NOTE miss
 
-  if (mreq->getMemOperation() == MemRead
-      || mreq->getMemOperation() == MemReadW) {
-    read(mreq);
-    insertTable(paddr);
-  }else{
-      bLine *l = buff->readLine(paddr);
-      if(l)
-  l->invalidate();
-    mreq->goDown(0, lowerLevel[0]);
-  }
-  accesses.inc();
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleDisp(mreq, when);  /* schedule Displace (down) {{{1 */
 }
+/* }}} */
 
-void MarkovPrefetcher::read(MemRequest *mreq)
+
+
+
+
+
+void MarkovPrefetcher::doReqAck(MemRequest *mreq)
+  /* data is coming back {{{1 */
 {
-  uint32_t paddr = mreq->getAddr() & defaultMask;
-  bLine *l = buff->readLine(paddr);
-
-  if(l) { //hit
-    hit.inc();
-    mreq->goUpAbs(nextBuffSlot());
-    return;
-  }
-
-  penFetchSet::iterator it = pendingFetches.find(paddr);
-  if(it != pendingFetches.end()) { // half-miss
-    //LOG("GHBP: half-miss on %08lx", paddr);
-    halfMiss.inc();
-    penReqMapper::iterator itR = pendingRequests.find(paddr);
-
-    if (itR == pendingRequests.end()) {
-      pendingRequests[paddr] = activeMemReqPool.out();
-      itR = pendingRequests.find(paddr);
-    }
-
-    I(itR != pendingRequests.end());
-
-    (*itR).second->push(mreq);
-    return;
-  }
-
-  //LOG("GHBP: miss on [%08lx]", paddr);
-  miss.inc();
-  mreq->goDown(0, lowerLevel[0]);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleReqAck(mreq, when);   /* schedule reqAck up {{{1 */
 }
+/* }}} */
 
+
+void MarkovPrefetcher::doSetState(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
+{
+//  ifHit(mreq);
+  router->sendSetStateAll(mreq, mreq->getAction(), delay);  /* send setState to others, return how many {{{1 */
+}
+/* }}} */
+
+void MarkovPrefetcher::doSetStateAck(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
+{
+  router->scheduleSetStateAck(mreq, delay);  /* schedule setStateAck down {{{1 */
+}
+/* }}} */
+
+bool MarkovPrefetcher::isBusy(AddrType addr) const
+/* always can accept writes {{{1 */
+{
+  return false;
+}
+/* }}} */
+
+TimeDelta_t MarkovPrefetcher::ffread(AddrType addr)
+  /* fast forward reads {{{1 */
+{ 
+  return delay;
+}
+/* }}} */
+
+TimeDelta_t MarkovPrefetcher::ffwrite(AddrType addr)
+  /* fast forward writes {{{1 */
+{ 
+  return delay;
+}
+/* }}} */
+
+
+
+
+// Not associtated with BUS.CPP
+
+
+//WHERE WE ACTUALLY PREFETCH!
 void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
 {
   uint32_t paddr = prefAddr & defaultMask;
@@ -169,71 +208,17 @@ void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
   if(!buff->readLine(paddr)) { // it is not in the buff
     penFetchSet::iterator it = pendingFetches.find(paddr);
     if(it == pendingFetches.end()) {
-      CBMemRequest *r;
 
-      r = CBMemRequest::create(lat, lowerLevel[0], MemRead, paddr,
-             processAckCB::create(this, paddr));
-      if(lat != 0) { // if lat=0, the req might not exist anymore at this point
-  r->markPrefetch();
-      }
+      MemRequest *mreq = MemRequest::create(this, paddr, false, 0);
+      router->scheduleReqAckAbs(mreq, missDelay); //Send out the prefetch!
 
       predictions.inc();
       pendingFetches.insert(paddr);
-    }
+    } 
   }
 }
 
 
-void MarkovPrefetcher::returnAccess(MemRequest *mreq)
-{
-  mreq->goUp(0);
-}
-
-bool MarkovPrefetcher::canAcceptStore(AddrType addr)
-{
-  return true;
-}
-
-void MarkovPrefetcher::invalidate(AddrType addr,uint16_t size,MemObj *oc)
-{
-  uint32_t paddr = addr & defaultMask;
-   nextBuffSlot();
-
-   bLine *l = buff->readLine(paddr);
-   if(l)
-     l->invalidate();
-}
-
-Time_t MarkovPrefetcher::getNextFreeCycle() const
-{
-  return cachePort->nextSlot(); 
-}
-
-void MarkovPrefetcher::processAck(AddrType addr)
-{
-  uint32_t paddr = addr & defaultMask;
-
-  penFetchSet::iterator itF = pendingFetches.find(paddr);
-  if(itF == pendingFetches.end())
-    return;
-
-  buff->fillLine(paddr);
-
-  penReqMapper::iterator it = pendingRequests.find(paddr);
-
-  if(it != pendingRequests.end()) {
-    //LOG("GHBP: returnAccess [%08lx]", paddr);
-    std::queue<MemRequest *> *tmpReqQueue;
-    tmpReqQueue = (*it).second;
-    while (tmpReqQueue->size()) {
-      tmpReqQueue->front()->goUpAbs(nextBuffSlot());
-      tmpReqQueue->pop();
-    }
-    pendingRequests.erase(paddr);
-    activeMemReqPool.in(tmpReqQueue);
-  }
-  pendingFetches.erase(paddr);
-}
 
 void MarkovPrefetcher::insertTable(AddrType addr){
   uint32_t tag = table->calcTag(addr);

@@ -131,7 +131,7 @@ MemObj *GMemorySystem::buildMemoryObj(const char *type, const char *section, con
         || strcasecmp(type, "scache")  == 0
 /* prefetcher */
         || strcasecmp(type, "stridePrefetcher")  == 0
-#if 0        
+#if 1        
         //To Be implemented
         || strcasecmp(type, "markovPrefetcher")  == 0
         || strcasecmp(type, "taggedPrefetcher")  == 0
