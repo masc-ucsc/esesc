@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+/*
+ * Code for SetUp is modeled after simu/libsampler/BootLoader.cpp
+ */
+
 #include "OoOProcessor_unittest.h"
 
 
