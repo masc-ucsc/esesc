@@ -52,7 +52,9 @@ enum MipsOpCode{
   MIPS_OP_ADDIU,
   MIPS_OP_SLTI,
   MIPS_OP_SLTIU,
-  
+  MIPS_OP_ANDI,
+  MIPS_OP_ORI,
+  MIPS_OP_XORI
 };
 
 
