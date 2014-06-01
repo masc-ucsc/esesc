@@ -1,5 +1,6 @@
 // Contributed by Jose Renau
 //                Luis Ceze
+//                Jia Xu
 //
 // The ESESC/BSD License
 //
@@ -566,6 +567,12 @@ enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32, MIPS};
 #define LREG_LINK        LREG_R15 
 #define LREG_SP          LREG_R14
 #define LREG_IP          LREG_R13
+
+// MIPS Mappings
+#define LREG_AT          LREG_R1
+#define LREG_GP          LREG_R28
+#define LREG_SP_MIPS     LREG_R29
+#define LREG_RA          LREG_R31
 
 
 #endif

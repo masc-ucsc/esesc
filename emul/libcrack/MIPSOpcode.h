@@ -1,5 +1,5 @@
-// Contributed by Jose Renau
-//                Luis Ceze
+// Contributed by Jia Xu
+//                
 //
 // The ESESC/BSD License
 //
@@ -54,7 +54,8 @@ enum MipsOpCode{
   MIPS_OP_SLTIU,
   MIPS_OP_ANDI,
   MIPS_OP_ORI,
-  MIPS_OP_XORI
+  MIPS_OP_XORI,
+  MIPS_OP_LUI
 };
 
 
