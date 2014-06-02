@@ -40,8 +40,11 @@
 
 #include "Port.h"
 #include "MemRequest.h"
-#include "CacheCore.h"
 #include "MemObj.h"
+
+#include "callback.h"
+#include "estl.h"
+#include "CacheCore.h"
 /* }}} */
 
 
@@ -172,6 +175,16 @@ bool isMemoryBus;
 public:
   MarkovPrefetcher(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
   ~MarkovPrefetcher() {}
+
+  	// Entry points to schedule that may schedule a do?? if needed
+	void req(MemRequest *req)         { doReq(req); };
+	void reqAck(MemRequest *req)      { doReqAck(req); };
+	void setState(MemRequest *req)    { doSetState(req); };
+	void setStateAck(MemRequest *req) { doSetStateAck(req); };
+	void disp(MemRequest *req)        { doDisp(req); }
+
+
+
   void doReq(MemRequest *mreq);
   void doDisp(MemRequest *mreq);
   void doReqAck(MemRequest *mreq);

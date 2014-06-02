@@ -105,7 +105,7 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,con
 
   I(current);
 
-  lower_level = current->declareMemoryObj(section, k_lowerLevel);
+  lower_level = current->declareMemoryObj(section, "lowerLevel");
   if (lower_level != NULL)
     addLowerLevel(lower_level);
 

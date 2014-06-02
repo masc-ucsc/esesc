@@ -35,13 +35,13 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "TLB.h"
 #include "Bus.h"
 #include "StridePrefetcher.h"
-#include "MarkovPrefetcher.h"
 #include "GlobalHistoryBuffer.h"
 #include "Splitter.h"
 #include "MemXBar.h"
 #include "UnMemXBar.h"
 #include "MemorySystem.h"
 #include "MemController.h"
+#include "MarkovPrefetcher.h"
 
 
 #include "DrawArch.h"
