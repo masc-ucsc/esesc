@@ -1,43 +1,57 @@
-#ifndef OoO_Processor_H
-#define OoO_Processor_H
+#ifndef OoOProcessorTest_H
+#define OoOProcessorTest_H
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
+#include <typeinfo>
 
 #include "gtest/gtest.h"
 
+#include "BootLoader.h"
 #include "GProcessor.h"
 #include "OoOProcessor.h"
-#include "SMTProcessor.h"
-#include "InOrderProcessor.h"
-#include "GPUSMProcessor.h"
 #include "MemObj.h"
 #include "GMemorySystem.h"
 #include "MemorySystem.h"
+#include "BPred.h"
 
 #include "SescConf.h"
 #include "GStats.h"
-#include "PowerModel.h"
 
-#include "BootLoader.h"
+
+
+#define MAX_PROCESSORS 16
 
 class OoOProcessorTest : public ::testing::Test {
  protected:
+ /** 
+  * Sets up test fixture for each test. Uses BootLoader to read session config and instantiate
+  * entire system. Currently, this can't be called more than once without breaking.
+  * @note Asserts that OoOProcessors are instantiated.
+  */
   virtual void SetUp() {
+      std::cout << "Building test fixture for OoOProcessorTest.\n";
     FlowID pId = 1;
 
-    // Build Sesc config, power model
-    std::ifstream in("crafty.input");
-    std::streambuf *cinbuf = std::cin.rdbuf(); //save old buf
-    std::cin.rdbuf(in.rdbuf()); //redirect std::cin to in.txt!
-
-    int argc  = 1;
+      int argc  = 1;
     const char *argv[1] = {"esesc"};
 
+// Build Sesc config, power model
     BootLoader::plug(argc, argv);
-    BootLoader::boot();
+    maxProcessorId_ = TaskHandler::getNumCPUS();
+    if (maxProcessorId_ < 1) {
+        FAIL() << "No processors were initialized.";
+    }
 
+    std::cout << "Found " << maxProcessorId_ << " cpus.\n";
+
+    for(FlowID i = 0; i < maxProcessorId_ && i < MAX_PROCESSORS; i++) {
+        processorId_[i] = i;
+        processor_[i] = TaskHandler::getSimu(i);
+        std::cout << "Processor " << i << " is of type " << typeid(processor_[i]).name() << "\n";
+        ASSERT_TRUE( dynamic_cast<OoOProcessor*>(processor_[i]) != NULL );
+    }
 
 /*
     std::string word;
@@ -200,18 +214,17 @@ class OoOProcessorTest : public ::testing::Test {
   }
 
   virtual void TearDown() {
+      std::cout << "Tearing down test fixture for OoOProcessorTest.\n";
       BootLoader::report("done");
       BootLoader::unboot();
       BootLoader::unplug();
   }
 
-    GProcessor *proc0_;
-    GProcessor *proc1_;
-    GProcessor *proc2_;
+  GProcessor *processor_[MAX_PROCESSORS];
+  FlowID processorId_[MAX_PROCESSORS];
+  FlowID maxProcessorId_;
 
-    CPU_t cpu0Id_;
-    CPU_t cpu1Id_;
-    CPU_t cpu2Id_;
 };
 
 #endif
+// OoOProcessorTest_H
