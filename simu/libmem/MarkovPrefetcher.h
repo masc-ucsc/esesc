@@ -40,23 +40,24 @@
 
 #include "Port.h"
 #include "MemRequest.h"
-//#include "CacheCore.h"
+#include "CacheCore.h"
 #include "MemObj.h"
 /* }}} */
 
-/*
+
 class MarkovPfState : public StateGeneric<AddrType> {
  public:
   AddrType predAddr1;
   AddrType predAddr2;
   AddrType predAddr3;
   AddrType predAddr4;
+  MarkovPfState(int32_t linesize){
+  }
 };
 
-class MarkovQState : public StateGeneric<AddrType> {
-};
-*/
-/*
+//class MarkovQState : public StateGeneric<AddrType> {
+//};
+
 class MarkovTState : public StateGeneric<AddrType> {
  public:
   AddrType missAddr;
@@ -64,7 +65,9 @@ class MarkovTState : public StateGeneric<AddrType> {
   AddrType predAddr2;
   AddrType predAddr3;
   int32_t tag;
-  };*/
+  MarkovTState(int32_t linesize){
+  }
+  };
 
 class MarkovPrefetcher : public MemObj {
 protected:
@@ -73,13 +76,13 @@ protected:
   PortGeneric *cachePort;
   PortGeneric *dataPort;
   PortGeneric *cmdPort;
-
+private:
   typedef CacheGeneric<MarkovPfState,AddrType> MarkovTable;
   MarkovTable::CacheLine *tEntry;
   AddrType lastAddr;
 
-  typedef CacheGeneric<MarkovQState,AddrType> BuffType;
-  typedef CacheGeneric<MarkovQState,AddrType>::CacheLine bLine;
+  typedef CacheGeneric<MarkovTState,AddrType> BuffType;
+  //typedef CacheGeneric<MarkovTState,AddrType>::CacheLine bLine;
 
   typedef HASH_MAP<AddrType, std::queue<MemRequest *> *> penReqMapper;
   typedef HASH_SET<AddrType> penFetchSet;

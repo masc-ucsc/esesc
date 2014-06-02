@@ -65,7 +65,7 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
   if (Section) {
     lineSize = SescConf->getInt(Section, "bsize");
   }
-
+/*
   const char *buffSection = SescConf->getCharPtr(section, "buffCache");
   if (buffSection) {
     buff = BuffType::create(buffSection, "", name);
@@ -76,6 +76,7 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
     SescConf->isInt(buffSection, "portOccp");
     buffPortOccp = SescConf->getInt(buffSection, "portOccp");
   }
+*/
 
   const char *streamSection = SescConf->getCharPtr(section, "streamCache");
   if (streamSection) {
@@ -207,12 +208,12 @@ void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
 
   if(!buff->readLine(paddr)) { // it is not in the buff
     penFetchSet::iterator it = pendingFetches.find(paddr);
-    if(it == pendingFetches.end()) {
+     if(it == pendingFetches.end()) {
 
       MemRequest *mreq = MemRequest::create(this, paddr, false, 0);
       router->scheduleReqAckAbs(mreq, missDelay); //Send out the prefetch!
 
-      predictions.inc();
+      predictions.inc(); //used for statistics
       pendingFetches.insert(paddr);
     } 
   }
@@ -226,10 +227,11 @@ void MarkovPrefetcher::insertTable(AddrType addr){
 
   if(tag){
 
-    tEntry = table->readLine(addr);
+    tEntry = table->readLine(addr); //index of the table for this missed address
 
     if(tEntry){
-      lat = nextTableSlot() - globalClock;
+      //if this table entry has been seen before we can start prefetching the addresses we have seen before
+      lat = nextTableSlot() - globalClock; //JASH: uncertain about the lat caluculations
       prefetch(tEntry->predAddr1,lat);
 
       lat = nextTableSlot() - globalClock;
@@ -241,13 +243,10 @@ void MarkovPrefetcher::insertTable(AddrType addr){
       lat = nextTableSlot() - globalClock;
       prefetch(tEntry->predAddr4,lat);
 
-
-      //LOG("Prefetch %d", tEntry->predAddr1);
-      //LOG("Prefetch %d", tEntry->predAddr2);
-    }else{
+    }else{ //if we have not seen this address before than we need to create an entry in the table for this miss.
       tEntry = table->fillLine(addr);
     }
-
+//Now let us update the previous addresses information and what it will prefetch
     LOG("last Addr %d", lastAddr);
     tEntry = table->readLine(lastAddr);
 
