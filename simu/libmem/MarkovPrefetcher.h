@@ -55,8 +55,6 @@ class MarkovPfState : public StateGeneric<AddrType> {
   }
 };
 
-//class MarkovQState : public StateGeneric<AddrType> {
-//};
 
 class MarkovTState : public StateGeneric<AddrType> {
  public:
@@ -69,36 +67,42 @@ class MarkovTState : public StateGeneric<AddrType> {
   }
   };
 
+
+
+
 class MarkovPrefetcher : public MemObj {
-protected:
-  TimeDelta_t delay;
-  GMemorySystem *gms;
-  PortGeneric *cachePort;
-  PortGeneric *dataPort;
-  PortGeneric *cmdPort;
+
 private:
   typedef CacheGeneric<MarkovPfState,AddrType> MarkovTable;
   MarkovTable::CacheLine *tEntry;
   AddrType lastAddr;
 
   typedef CacheGeneric<MarkovTState,AddrType> BuffType;
-  //typedef CacheGeneric<MarkovTState,AddrType>::CacheLine bLine;
+  typedef CacheGeneric<MarkovTState,AddrType>::CacheLine bLine;
 
   typedef HASH_MAP<AddrType, std::queue<MemRequest *> *> penReqMapper;
   typedef HASH_SET<AddrType> penFetchSet;
 
-  penReqMapper pendingRequests;
+#if 0
+public:
+/*
+  TimeDelta_t delay;
+  GMemorySystem *gms;
+  PortGeneric *cachePort;
+  PortGeneric *dataPort;
+  PortGeneric *cmdPort;
+*/
 
-  penFetchSet pendingFetches;
+  uint32_t pendingRequests;
+  uint32_t pendingFetches;
 
-  void read(MemRequest *mreq);
+  //void read(MemRequest *mreq);
 
   int32_t defaultMask;
   
   int32_t lineSize;
 
-  BuffType *buff;
-  MarkovTable *table;
+
 
   PortGeneric *buffPort;
   PortGeneric *tablePort;
@@ -110,9 +114,46 @@ private:
   int32_t hitDelay;
   int32_t missDelay;
   int32_t depth;
-  int32_t width;
-  int32_t ptr;
+  
   int32_t age;
+
+
+  static const int32_t tEntrySize = 8; // size of an entry in the prefetching table
+
+#endif
+
+penReqMapper pendingRequests;
+penFetchSet pendingFetches;
+
+
+  BuffType *buff;
+  MarkovTable *table;
+
+std::deque<AddrType> lastMissesQ;
+
+PortGeneric *buffPort;
+PortGeneric *tablePort;
+
+int32_t numStreams;
+int32_t streamAssoc;
+int32_t depth;
+int32_t numBuffPorts;
+int32_t buffPortOccp;
+int32_t numTablePorts;
+int32_t tablePortOccp;
+int32_t hitDelay;
+int32_t missDelay;
+int32_t learnHitDelay;
+int32_t learnMissDelay;
+uint32_t missWindow;
+uint32_t maxStride;
+uint32_t MaxPendingRequests;
+int32_t lineSize;
+int32_t width;
+int32_t ptr;
+static const int32_t tEntrySize = 8; // size of an entry in the prefetching table
+
+AddrType defaultMask;
 
   GStatsCntr halfMiss;
   GStatsCntr miss;
@@ -120,7 +161,13 @@ private:
   GStatsCntr predictions;
   GStatsCntr accesses;
 
-  static const int32_t tEntrySize = 8; // size of an entry in the prefetching table
+protected:
+TimeDelta_t delay;
+ PortGeneric *dataPort;
+ PortGeneric *cmdPort;
+
+bool isMemoryBus;
+
 
 public:
   MarkovPrefetcher(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
@@ -138,7 +185,6 @@ public:
   void insertTable(AddrType addr);
   void TESTinsertTable(AddrType addr);
 
-  typedef CallbackMember1<MarkovPrefetcher, MemRequest*, &MarkovPrefetcher::doSetState> processAckCB;
 
   Time_t nextBuffSlot() {
     return buffPort->nextSlot(true);
@@ -148,6 +194,7 @@ public:
     return tablePort->nextSlot(true);
   }
 
+  typedef CallbackMember1<MarkovPrefetcher, MemRequest*, &MarkovPrefetcher::doSetState> processAckCB;
 };
 
 #endif // MARKOVPREFETCHER_H

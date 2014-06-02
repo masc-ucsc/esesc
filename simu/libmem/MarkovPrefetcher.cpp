@@ -42,15 +42,14 @@ static AddrType TESTdata[11];
 
 
 MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,const char *name)
-  : MemObj(section, name)
-  ,gms(current)
+  :MemObj(section, name)
   ,halfMiss("%s:halfMiss", name)
   ,miss("%s:miss", name)
   ,hit("%s:hits", name)
   ,predictions("%s:predictions", name)
   ,accesses("%s:accesses", name)
 {
-  //MemObj *lower_level = NULL;
+  MemObj *lower_level = NULL;
 
 
   SescConf->isInt(section, "depth");
@@ -105,11 +104,11 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,con
   lastAddr = 0;
 
   I(current);
-/*
+
   lower_level = current->declareMemoryObj(section, k_lowerLevel);
   if (lower_level != NULL)
     addLowerLevel(lower_level);
-*/
+
 }
 
 
