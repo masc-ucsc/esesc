@@ -41,9 +41,7 @@ static pool < std::queue<MemRequest *> > activeMemReqPool(128,"MarkovPrefetchere
 static AddrType TESTdata[11];
 
 
-MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
-             ,const char *section
-             ,const char *name)
+MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,const char *name)
   : MemObj(section, name)
   ,gms(current)
   ,halfMiss("%s:halfMiss", name)

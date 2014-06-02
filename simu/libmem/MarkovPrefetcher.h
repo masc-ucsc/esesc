@@ -123,8 +123,7 @@ private:
   static const int32_t tEntrySize = 8; // size of an entry in the prefetching table
 
 public:
-  MarkovPrefetcher(MemorySystem* current, const char *device_descr_section,
-      const char *device_name = NULL);
+  MarkovPrefetcher(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
   ~MarkovPrefetcher() {}
   void doReq(MemRequest *mreq);
   void doDisp(MemRequest *mreq);

@@ -35,6 +35,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "TLB.h"
 #include "Bus.h"
 #include "StridePrefetcher.h"
+#include "MarkovPrefetcher.h"
 #include "GlobalHistoryBuffer.h"
 #include "Splitter.h"
 #include "MemXBar.h"
@@ -85,20 +86,17 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     //mdev = new GHB(this, dev_section, dev_name);
 		I(0);
     devtype = 4;
-#if 1
+
   } else if (!strcasecmp(device_type, "stridePrefetcher")) {
     mdev = new StridePrefetcher(this, dev_section, dev_name);
     devtype = 5;
-    MSG("John Ash John Ash John Ash");
-#endif
-#if 0
   } else if (!strcasecmp(device_type, "markovPrefetcher")) {
     mdev = new MarkovPrefetcher(this, dev_section, dev_name);
     devtype = 6;
   } else if (!strcasecmp(device_type, "taggedPrefetcher")) {
     mdev = new TaggedPrefetcher(this, dev_section, dev_name);
     devtype = 7;
-#endif
+
   }  else if (!strcasecmp(device_type, "bus")) {
     mdev = new Bus(this, dev_section, dev_name);
     devtype = 8;
