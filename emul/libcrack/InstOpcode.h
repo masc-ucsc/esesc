@@ -573,6 +573,7 @@ enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32, MIPS};
 #define LREG_GP          LREG_R28
 #define LREG_SP_MIPS     LREG_R29
 #define LREG_RA          LREG_R31
-
+#define LREG_LO          LREG_TMP7  //LO special registers for MIPS
+#define LREG_HI          LREG_TMP8  //HI special registers for MIPS
 
 #endif

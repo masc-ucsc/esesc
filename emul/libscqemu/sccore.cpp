@@ -4167,7 +4167,7 @@ void Sccore::execute(const Scuop *inst)
       atomHash.insert(state.getFid(), temp1);
       break;
 
-    case OP_U64_ST_COND:
+    case OP_U64_ST_CND:
       temp1 = state.getReg(inst->uop.src1);
       if (atomHash.setSC(state.getFid(), temp1)){
         tempAU64 = state.getReg(inst->uop.src2);

@@ -62,8 +62,9 @@ void MIPSCrack::expand(RAWDInst *rinst)
   uint8_t rt                = (insn >> 16) & 0x1F;
   uint8_t rd                = (insn >> 11) & 0x1F;             
   uint8_t shift             = (insn >> 6)  & 0x1F;
+  uint16_t shift_mult_div   = (insn >> 6)  & 0x3FF;
   uint16_t shift_j          = (insn >> 11) & 0x3FF;
-
+ 
   // immediate or address
   uint32_t IMM16             = insn & 0xFF;
   uint32_t TARGET28          = (insn & 0x3FFFFFF) << 2;
@@ -76,8 +77,12 @@ void MIPSCrack::expand(RAWDInst *rinst)
   const uint8_t SRLV  = 0x06;
   const uint8_t SRAV  = 0x07;
   const uint8_t JR    = 0x08;
-  //  const uint8_t MULT  = 0x18;
-  //const uint8_t DIV   = 0x1a;
+  const uint8_t MFHI  = 0x10;
+  const uint8_t MFLO  = 0x12;
+  const uint8_t MULT  = 0x18;
+  const uint8_t MULTU = 0x19;   
+  const uint8_t DIV   = 0x1a;
+  const uint8_t DIVU  = 0x1b;
   const uint8_t ADD   = 0x20;
   const uint8_t ADDU  = 0x21;
   const uint8_t SUB   = 0x22;
@@ -91,7 +96,7 @@ void MIPSCrack::expand(RAWDInst *rinst)
 
   const uint64_t PC = rinst->getPC();
   
-  //printf("insn is %x, opcode is %x, funct is %x, rs is %x, rt is %x, rd is %x, shift is %x\n", insn, opcode, funct, rs, rt, rd, shift);
+  //printf("insn is %x, opcode is %x, funct is %x, rs is %x, rt is %x, rd is %x, shift is %x and PC is %d\n", insn, opcode, funct, rs, rt, rd, shift, PC);
 
   // list of common opcode for MIPS
   const  uint8_t MIPS_OP_LB  = 0x20; 
@@ -103,12 +108,41 @@ void MIPSCrack::expand(RAWDInst *rinst)
   const  uint8_t MIPS_OP_SH  = 0x29;
   const  uint8_t MIPS_OP_SW  = 0x2b;
   
-  switch(opcode){
+  if(!insn){ // NOP
+    printf ( "It is a NOP operation for MIPS.\n");
+  }else{ 
+  
+    switch(opcode){
     case MIPS_OP_SPECIAL:
       if( !shift_j){
 	switch(funct){
 	case JR:
 	  CrackInst::setup(rinst, iBALU_RJUMP, OP_U64_JMP_REG, rs, 0, 0, 0, 0, 0, 0);
+	  break;
+	}
+      }else if (! shift_mult_div){
+	switch(funct){
+	case MULT:
+	  CrackInst::setup(rinst, iCALU_MULT, OP_C_SMUL, rs, rt, 0, LREG_TMP1, 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S64_AND, LREG_TMP1, 0, 0xffffffff, LREG_LO, 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S32_SRA, LREG_TMP1, 0, 32, LREG_HI , 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S64_AND, LREG_HI, 0, 0xffffffff, LREG_HI, 0, 0, 0);
+	  break;
+	case MULTU:
+	  CrackInst::setup(rinst, iCALU_MULT, OP_C_UMUL, rs, rt, 0, LREG_TMP1, 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S64_AND, LREG_TMP1, 0, 0xffffffff, LREG_LO, 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S32_SRA, LREG_TMP1, 0, 32, LREG_HI , 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S64_AND, LREG_HI, 0, 0xffffffff, LREG_HI, 0, 0, 0);
+	  break;
+	case DIV:
+	  CrackInst::setup(rinst, iCALU_DIV, OP_C_SDIV, rs, rt, 0, LREG_LO, 0, 0, 0);
+	  CrackInst::setup(rinst, iCALU_MULT, OP_C_SMUL, LREG_LO, rt, 0, LREG_TMP1, 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_S32_SUB, rs, LREG_TMP1, 0, LREG_HI  , 0, 0, 0);
+	  break;
+	case DIVU:
+	  CrackInst::setup(rinst, iCALU_DIV, OP_C_UDIV, rs, rt, 0, LREG_LO, 0, 0, 0);
+	  CrackInst::setup(rinst, iCALU_MULT, OP_C_UMUL, LREG_LO, rt, 0, LREG_TMP1, 0, 0, 0);
+	  CrackInst::setup(rinst, iAALU, OP_U32_SUB, rs, LREG_TMP1, 0, LREG_HI  , 0, 0, 0);
 	  break;
 	}
       }else if( !shift ){
@@ -130,6 +164,12 @@ void MIPSCrack::expand(RAWDInst *rinst)
 	  break;
 	case OR:
 	  CrackInst::setup(rinst, iAALU, OP_S64_OR, rs, rt, 0, rd, 0, 0, 0);
+	  break;
+	case MFHI:
+	  CrackInst::setup(rinst, iAALU, OP_S64_AND, LREG_HI, 0, 0xFFFFFFFF, rd, 0, 0, 0);
+	  break;
+	case MFLO:
+	  CrackInst::setup(rinst, iAALU, OP_S64_AND, LREG_LO, 0, 0xFFFFFFFF, rd, 0, 0, 0);
 	  break;
 	case XOR:
 	  CrackInst::setup(rinst, iAALU, OP_S64_XOR, rs, rt, 0,rd, 0, 0, 0);
@@ -185,7 +225,7 @@ void MIPSCrack::expand(RAWDInst *rinst)
       }else if(rt == 17){  
 	if(!rs){
 	  // BAL unconditional branch and link
-	  CrackInst::setup(rinst, iAALU, OP_U32_ADD, PC, 0, 8 , LREG_RA, 0,0,0);
+	  CrackInst::setup(rinst, iAALU, OP_S64_COPYPCL, 0, 0, PC+8 , LREG_RA, 0,0,0);
 	  CrackInst::setup(rinst, iBALU_LJUMP, OP_U64_JMP_IMM, 0, 0 , TARGET28, 0, 0, 0, 0);
 	}else{ // BGEZAL
 	  CrackInst::setup(rinst, iAALU, OP_S32_SUB, rs, LREG_ZERO, 0, LREG_TMP1, 0, 0, 0);
@@ -199,7 +239,7 @@ void MIPSCrack::expand(RAWDInst *rinst)
       CrackInst::setup(rinst, iBALU_LJUMP, OP_U64_JMP_IMM, 0, 0, TARGET28, 0, 0, 0, 0);
       break;
     case MIPS_OP_JAL:
-      CrackInst::setup(rinst, iAALU, OP_U32_ADD, PC, 0, 8 , LREG_RA, 0,0,0);
+      CrackInst::setup(rinst, iAALU, OP_S64_COPYPCL, 0, 0, PC+8 , LREG_RA, 0,0,0);
       CrackInst::setup(rinst, iBALU_LJUMP, OP_U64_JMP_IMM, 0, 0 , TARGET28, 0, 0, 0, 0);
       break;
     case MIPS_OP_BEQ:
@@ -232,15 +272,15 @@ void MIPSCrack::expand(RAWDInst *rinst)
       break;
     case MIPS_OP_SLTI:
       CrackInst::setup(rinst, iAALU, OP_S32_SUB, rs, 0, IMM16, LREG_TMP1, 0, 0, 0);
-      CrackInst::setup(rinst, iAALU, OP_S64_GETICC, LREG_TMP1, 0, 0, rd, 0, 0, 0);
-      CrackInst::setup(rinst, iAALU, OP_S64_AND, rd, 0, 8, rd, 0, 0, 0);
-      CrackInst::setup(rinst, iAALU, OP_S32_SRL, rd, 0, 3, rd, 0, 0, 0);
+      CrackInst::setup(rinst, iAALU, OP_S64_GETICC, LREG_TMP1, 0, 0, rt, 0, 0, 0);
+      CrackInst::setup(rinst, iAALU, OP_S64_AND, rt, 0, 8, rt, 0, 0, 0);
+      CrackInst::setup(rinst, iAALU, OP_S32_SRL, rt, 0, 3, rt, 0, 0, 0);
       break;
     case MIPS_OP_SLTIU:
       CrackInst::setup(rinst, iAALU, OP_U32_SUB, rs, 0, IMM16, LREG_TMP1, 0, 0, 0);
-      CrackInst::setup(rinst, iAALU, OP_S64_GETICC, LREG_TMP1, 0, 0, rd, 0, 0, 0);
-      CrackInst::setup(rinst, iAALU, OP_S64_AND, rd, 0, 8, rd, 0, 0, 0);
-      CrackInst::setup(rinst, iAALU, OP_S32_SRL, rd, 0, 3, rd, 0, 0, 0);
+      CrackInst::setup(rinst, iAALU, OP_S64_GETICC, LREG_TMP1, 0, 0, rt, 0, 0, 0);
+      CrackInst::setup(rinst, iAALU, OP_S64_AND, rt, 0, 8, rt, 0, 0, 0);
+      CrackInst::setup(rinst, iAALU, OP_S32_SRL, rt, 0, 3, rt, 0, 0, 0);
       break;
     case MIPS_OP_LW:  //OP_S32_LD_L is not implemented
       CrackInst::setup(rinst, iAALU, OP_U32_ADD, rs, 0, IMM16, rs, 0, 0, 0);
@@ -288,6 +328,7 @@ void MIPSCrack::expand(RAWDInst *rinst)
 	CrackInst::setup(rinst, iAALU, OP_S64_COPYPCL, 0, 0, IMM16<<16, rt, 0, 0, 0);
       }
       break;
+    }
   }
 }
 
