@@ -96,12 +96,17 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
 
   NumUnits_t  num = SescConf->getInt(section, "numPorts");
   TimeDelta_t occ = SescConf->getInt(section, "portOccp");
-
+/*
   char cadena[100];
   sprintf(cadena,"Data%s", name);
   dataPort = PortGeneric::create(cadena, num, occ);
   sprintf(cadena,"Cmd%s", name);
   cmdPort  = PortGeneric::create(cadena, num, 1);
+*/
+  char portName[128];
+  sprintf(portName, "%s_buff", name);
+  dataPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
+  cmdPort = PortGeneric::create(portName, numBuffPorts, 1);
 
   I(current);
   lower_level = current->declareMemoryObj(section, "lowerLevel");
