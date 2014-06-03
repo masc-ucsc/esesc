@@ -35,12 +35,13 @@ ENDIF(ENABLE_CUDA)
 ADD_SUBDIRECTORY (gtest-1.7.0)
 enable_testing()
 include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
+include_directories(${unittest_SOURCE_DIR})
 
 ################################
 # Unit Tests
 ################################
 # Executable list of tests
-SET(EXELIST "OoOProcessor_unittest" ) # "BPred_unittest" )
+SET(EXELIST "OoOProcessor_unittest" "BPred_unittest" )
 
 ###############################
 # Lists of libs for each test
@@ -58,15 +59,25 @@ ELSE(ENABLE_NOEMU)
     LIST(APPEND "OoOProcessor_unittest_LIBS" ${CMAKE_QEMU_LIBS})
 ENDIF(ENABLE_NOEMU)
 
-MESSAGE("Here: ${OoOProcessor_unittest_LIBS}")
-
 # BPred_unittest libraries
+# Order is IMPORTANT. Won't link if this is wrong
+SET("BPred_unittest_LIBS" gtest gtest_main main sampler mem core pwrmodel mcpat sesctherm peq)
+IF(ENABLE_CUDA)
+    LIST(APPEND "BPred_unittest_LIBS"  gpuint)
+ENDIF(ENABLE_CUDA)
+IF(ENABLE_NOEMU)
+    LIST(APPEND "BPred_unittest_LIBS" emulint crack suc ${CMAKE_THREAD_LIBS_INIT} -lrt)
+ELSE(ENABLE_NOEMU)
+    LIST(APPEND "BPred_unittest_LIBS" qemuint emulint crack suc)
+    LIST(APPEND "BPred_unittest_LIBS" ${CMAKE_QEMU_LIBS})
+ENDIF(ENABLE_NOEMU)
+
 
 ###################################
 # Add source files and create exes
 FOREACH(EXE ${EXELIST})
     #MESSAGE("Building ${EXE} qemu")
-	FILE(GLOB exec_SOURCE "${EXE}.cpp")
+	FILE(GLOB exec_SOURCE "${EXE}.cpp" "TestCommon.cpp")
     ADD_EXECUTABLE( ${EXE} ${exec_SOURCE} ) # OoOProcessor_unittest OoOProcessor_unittest.cpp )
     #ADD_DEPENDENCIES(${EXE} suc crack mem core emulint qemuint sampler)
     # Remove from source files to prevent duplicates
@@ -85,20 +96,20 @@ ENDFOREACH(EXE)
 ##################################
 # Add all the unit tests and set to execute post-build
 
-# Custom target for running unit tests
+# Custom target for running unit tests with `make test`
 add_custom_target(test)
 macro(RUN_TEST test_target)
   add_custom_target(${test_target}_runtest
       COMMAND ${test_target} #cmake 2.6 required
       DEPENDS ${test_target}
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
   add_dependencies(test ${test_target}_runtest)
 endmacro()
 
 # Adding and running
 FOREACH(EXE ${EXELIST})
     ADD_TEST( ${EXE} ${EXE})
-    RUN_TEST(${EXE}) # can we remove this?
+    RUN_TEST(${EXE})
 ENDFOREACH(EXE)
 
 set(COPY_COUNTER 0)
@@ -118,7 +129,7 @@ macro(copy_files GLOBPAT DESTINATION)
         set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
         get_filename_component(FILENAME_BASE ${FILENAME} NAME) 
         set(DST "${DESTINATION}/${FILENAME_BASE}")
-        MESSAGE("SRC=${SRC} , DST=${DST}")
+        #MESSAGE("SRC=${SRC} , DST=${DST}")
 
         add_custom_command(
           TARGET "copy${COPY_COUNTER}"
