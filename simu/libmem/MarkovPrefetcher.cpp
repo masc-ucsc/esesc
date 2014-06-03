@@ -119,23 +119,20 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,con
 void MarkovPrefetcher::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-   uint32_t paddr = mreq->getAddr() & defaultMask;
-//  if (mreq->getMemOperation() == MemRead
-//      || mreq->getMemOperation() == MemReadW) 
-   insertTable(paddr); //NOTE miss
+   //uint32_t paddr = mreq->getAddr() & defaultMask;
+   //insertTable(paddr); //NOTE miss
 
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleReq(mreq, when);  /* schedule req down {{{1 */
+  printf("BLAH BLAH BLAH -JASH");
 }
 /* }}} */
 
 void MarkovPrefetcher::doDisp(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-  uint32_t paddr = mreq->getAddr() & defaultMask;
-//  if (mreq->getMemOperation() == MemRead
-//      || mreq->getMemOperation() == MemReadW) 
-  insertTable(paddr); //NOTE miss
+  //uint32_t paddr = mreq->getAddr() & defaultMask;
+  //insertTable(paddr); //NOTE miss
 
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleDisp(mreq, when);  /* schedule Displace (down) {{{1 */

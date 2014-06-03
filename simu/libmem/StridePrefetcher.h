@@ -40,7 +40,7 @@
 #include "Port.h"
 #include "MemRequest.h"
 #include "MemObj.h"
-#include "MSHR.h"
+//#include "MSHR.h"
 
 
 #include <queue>
@@ -138,7 +138,7 @@ int32_t learnMissDelay;
 uint32_t missWindow;
 uint32_t maxStride;
 uint32_t MaxPendingRequests;
-MSHR *mshr;
+//MSHR *mshr;
 int32_t lineSize;
 static const int32_t pEntrySize = 8; // size of an entry in the prefetching table
 //int32_t defaultMask;

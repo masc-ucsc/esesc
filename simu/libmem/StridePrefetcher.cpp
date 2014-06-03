@@ -82,13 +82,13 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
   SescConf->isInt(section, "learnMissDelay");
   learnMissDelay = SescConf->getInt(section, "learnMissDelay");
 
-
+/*
   char tmpName[512];
   sprintf(tmpName, "%s", name);
   const char* mshrSection = SescConf->getCharPtr(section,"MSHR");
   lineSize = buff->getLineSize();
   mshr = MSHR::create(tmpName, mshrSection, lineSize);
-
+*/
   char portName[128];
   sprintf(portName, "%s_buff", name);
   buffPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
@@ -119,17 +119,18 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
 void StridePrefetcher::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-   ifMiss(mreq); //NOTE miss
+   //ifMiss(mreq); //NOTE miss
 
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleReq(mreq, when);  /* schedule req down {{{1 */
+  printf("BLAH BLAH BLAH -JASH");
 }
 /* }}} */
 
 void StridePrefetcher::doDisp(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-  ifMiss(mreq); //NOTE miss
+  //ifMiss(mreq); //NOTE miss
 
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleDisp(mreq, when);  /* schedule Displace (down) {{{1 */
@@ -148,7 +149,7 @@ void StridePrefetcher::doReqAck(MemRequest *mreq)
 void StridePrefetcher::doSetState(MemRequest *mreq)
   /* forward set state to all the upper nodes {{{1 */
 {
-  ifHit(mreq);
+  //ifHit(mreq); //NOTE: IF HIT
   router->sendSetStateAll(mreq, mreq->getAction(), delay);  /* send setState to others, return how many {{{1 */
 }
 /* }}} */
@@ -193,12 +194,13 @@ void StridePrefetcher::ifHit(MemRequest *mreq)
     router->scheduleReqAckAbs(mreq, hitDelay);
     return;
   }
-
+/*
   if (!mshr->canAccept(paddr)) {
     CallbackBase *cb  = busReadAckCB::create(this, mreq);
     mshr->addEntry(paddr, cb);
     return;
   }
+*/
 }
 
 /* }}} */
