@@ -100,7 +100,6 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
 */
   }  else if (!strcasecmp(device_type, "bus")) {
     mdev = new Bus(this, dev_section, dev_name);
-    mdev = new StridePrefetcher(this, dev_section, dev_name);
     devtype = 8;
   } else if (!strcasecmp(device_type, "tlb")) {
 		I(0);

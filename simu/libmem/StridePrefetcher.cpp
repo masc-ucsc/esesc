@@ -79,23 +79,27 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
   SescConf->isInt(section, "learnMissDelay");
   learnMissDelay = SescConf->getInt(section, "learnMissDelay");
 
-/*
-  char tmpName[512];
-  sprintf(tmpName, "%s", name);
-  const char* mshrSection = SescConf->getCharPtr(section,"MSHR");
-  lineSize = buff->getLineSize();
-  mshr = MSHR::create(tmpName, mshrSection, lineSize);
-*/
-/*  char portName[128];
-  sprintf(portName, "%s_buff", name);
-  buffPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
-  sprintf(portName, "%s_table", name);
-  tablePort = PortGeneric::create(portName, numTablePorts, tablePortOccp);
-*/
-  defaultMask  = ~(buff->getLineSize()-1);
 
-  NumUnits_t  num = SescConf->getInt(section, "numPorts");
-  TimeDelta_t occ = SescConf->getInt(section, "portOccp");
+
+  const char *buffSection = SescConf->getCharPtr(section, "buffCache");
+  if (buffSection) {
+   buff = BuffType::create(buffSection, "", name);
+   lineSize  = buff->getLineSize();
+
+    SescConf->isInt(buffSection, "bkNumPorts");
+    numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
+
+    SescConf->isInt(buffSection, "bkPortOccp");
+    buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
+
+    //SescConf->isInt(buffSection, "bsize");
+    //lineSize = SescConf->getInt(buffSection,"bsize");
+  }
+
+  //defaultMask  = ~(lineSize-1);
+
+  numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
+  buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
 /*
   char cadena[100];
   sprintf(cadena,"Data%s", name);
@@ -289,6 +293,7 @@ void StridePrefetcher::learnMiss(AddrType addr) {
   bLine *l = buff->readLine(paddr);
   if (l==0) {
        pendingFetches.insert(paddr);
+	printf("TEST");
   }
 }
 
