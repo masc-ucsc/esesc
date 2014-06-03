@@ -37,7 +37,7 @@
 #include "SescConf.h"
 #include "MemorySystem.h"
 #include "StridePrefetcher.h"
-#include "MSHR.h"
+//#include "MSHR.h"
 #include <iostream>
 
 /* }}} */
@@ -50,9 +50,6 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
   ,hit("%s:hits", name)
   ,predictions("%s:predictions", name)
   ,accesses("%s:accesses", name)
-  ,unitStrideStreams("%s:unitStrideStreams", name)
-  ,nonUnitStrideStreams("%s:nonUnitStrideStreams", name)
-  ,ignoredStreams("%s:ignoredStreams", name)
 {
   MemObj *lower_level = NULL;
 
@@ -89,12 +86,12 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
   lineSize = buff->getLineSize();
   mshr = MSHR::create(tmpName, mshrSection, lineSize);
 */
-  char portName[128];
+/*  char portName[128];
   sprintf(portName, "%s_buff", name);
   buffPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
   sprintf(portName, "%s_table", name);
   tablePort = PortGeneric::create(portName, numTablePorts, tablePortOccp);
-
+*/
   defaultMask  = ~(buff->getLineSize()-1);
 
   NumUnits_t  num = SescConf->getInt(section, "numPorts");
@@ -108,7 +105,7 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
 
   I(current);
   lower_level = current->declareMemoryObj(section, "lowerLevel");
-  if (lower_level)
+  if (lower_level != NULL)
     addLowerLevel(lower_level);
 }
 /* }}} */
@@ -119,18 +116,26 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
 void StridePrefetcher::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-   //ifMiss(mreq); //NOTE miss
-
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleReq(mreq, when);  /* schedule req down {{{1 */
-  printf("BLAH BLAH BLAH -JASH");
 }
 /* }}} */
+
+
 
 void StridePrefetcher::doDisp(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
   //ifMiss(mreq); //NOTE miss
+
+  uint32_t paddr = mreq->getAddr();
+  bLine *l = buff->readLine(paddr);
+
+  if(l) { //hit
+      hit.inc(mreq->getStatsFlag()); //increment counter
+      doReqAck(mreq); //send back an Ack
+  }
+
 
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleDisp(mreq, when);  /* schedule Displace (down) {{{1 */
@@ -256,15 +261,14 @@ void StridePrefetcher::learnMiss(AddrType addr) {
     lastMissesQ.pop_front();
 
   if(foundUnitStride) {
-    unitStrideStreams.inc();
+    //unitStrideStreams.inc();
     newStride = buff->getLineSize();
   } else {
-    nonUnitStrideStreams.inc();
+    //nonUnitStrideStreams.inc();
     newStride = minDelta;
   }
 
   if(newStride == 0 || newStride == (uint32_t) -1 || newStride > maxStride) {
-    ignoredStreams.inc();
     return;
   }
 
@@ -279,9 +283,7 @@ void StridePrefetcher::learnMiss(AddrType addr) {
   paddr = nextAddr & defaultMask;
   bLine *l = buff->readLine(paddr);
   if (l==0) {
-    MemRequest *mreq = MemRequest::create(this, nextAddr, false, 0);
-    router->scheduleReqAckAbs(mreq, missDelay); 
-    MSG("John Ash John Ash John Ash");
+       pendingFetches.insert(paddr);
   }
 }
 

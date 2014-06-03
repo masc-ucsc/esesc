@@ -88,7 +88,6 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     devtype = 4;
 
   } else if (!strcasecmp(device_type, "stridePrefetcher")) {
-    printf("/n/n/n/nTEST for stride!!!!!!!!!!!!!!!!!!!!!!!!!!!!!/n/n/n/n");
     mdev = new StridePrefetcher(this, dev_section, dev_name);
     devtype = 5;
   } else if (!strcasecmp(device_type, "markovPrefetcher")) {
@@ -102,7 +101,6 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
   }  else if (!strcasecmp(device_type, "bus")) {
     mdev = new Bus(this, dev_section, dev_name);
     mdev = new StridePrefetcher(this, dev_section, dev_name);
-    printf("/n/n/n/n/nTEST for bus!!!!!!!!!!!!/n/n/n/n/n");
     devtype = 8;
   } else if (!strcasecmp(device_type, "tlb")) {
 		I(0);

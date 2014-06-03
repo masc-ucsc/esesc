@@ -112,8 +112,9 @@ typedef HASH_MAP<AddrType, std::queue<MemRequest *>, AddrTypeHashFunc> penReqMap
 typedef HASH_SET<AddrType, AddrTypeHashFunc> penFetchSet;
 
 
-uint32_t pendingRequests;
-uint32_t pendingFetches;
+ penReqMapper pendingRequests;
+
+  penFetchSet pendingFetches;
 
 
 BuffType *buff;
@@ -149,9 +150,6 @@ GStatsCntr miss;
 GStatsCntr hit;
 GStatsCntr predictions;
 GStatsCntr accesses;
-GStatsCntr unitStrideStreams;
-GStatsCntr nonUnitStrideStreams;
-GStatsCntr ignoredStreams;
 
 protected:
 TimeDelta_t delay;
