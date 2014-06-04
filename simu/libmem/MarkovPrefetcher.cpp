@@ -33,6 +33,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <iostream>
 #include "SescConf.h"
 #include "MemorySystem.h"
 #include "MarkovPrefetcher.h"
@@ -50,8 +51,8 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,con
   ,accesses("%s:accesses", name)
 {
   MemObj *lower_level = NULL;
-
-
+  lower_level = current->declareMemoryObj(section, "lowerLevel");
+/*
   SescConf->isInt(section, "depth");
   depth = SescConf->getInt(section, "depth");
 
@@ -59,43 +60,33 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,con
   width = SescConf->getInt(section, "width");
 
   const char *Section = SescConf->getCharPtr(section, "nextLevel");
-  if (Section) {
-    lineSize = SescConf->getInt(Section, "bsize");
-  }
-/*
-  const char *buffSection = SescConf->getCharPtr(section, "buffCache");
-  if (buffSection) {
-    buff = BuffType::create(buffSection, "", name);
-
-    SescConf->isInt(buffSection, "numPorts");
-    numBuffPorts = SescConf->getInt(buffSection, "numPorts");
-
-    SescConf->isInt(buffSection, "portOccp");
-    buffPortOccp = SescConf->getInt(buffSection, "portOccp");
-  }
 */
+const char *buffSection = SescConf->getCharPtr(section, "buffCache");
+  if (buffSection) {
+   buff = BuffType::create(buffSection, "", name);
+   lineSize  = buff->getLineSize();
 
-  const char *streamSection = SescConf->getCharPtr(section, "streamCache");
-  if (streamSection) {
-    char tableName[128];
-    sprintf(tableName, "%sPrefTable", name);
-    table = MarkovTable::create(streamSection, "", tableName);
+    SescConf->isInt(buffSection, "bkNumPorts");
+    numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
 
-    GMSG(tEntrySize != SescConf->getInt(streamSection, "BSize"),
-   "The prefetch buffer streamBSize field in the configuration file should be %d.", tEntrySize);
+    SescConf->isInt(buffSection, "bkPortOccp");
+    buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
 
-    SescConf->isInt(streamSection, "numPorts");
-    numTablePorts = SescConf->getInt(streamSection, "numPorts");
-
-    SescConf->isInt(streamSection, "portOccp");
-    tablePortOccp = SescConf->getInt(streamSection, "portOccp");
+    //SescConf->isInt(buffSection, "bsize");
+    //lineSize = SescConf->getInt(buffSection,"bsize");
   }
 
-  defaultMask  = ~(buff->getLineSize()-1);
+  //defaultMask  = ~(lineSize-1);
+
+  numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
+  buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
+
+  //defaultMask  = ~(buff->getLineSize()-1);
 
   char portName[128];
   sprintf(portName, "%s_buff", name);
-  buffPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
+  dataPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
+  cmdPort = PortGeneric::create(portName, numBuffPorts, 1);
 
   sprintf(portName, "%s_table", name);
   tablePort = PortGeneric::create(portName, numTablePorts, tablePortOccp);
@@ -105,9 +96,9 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,con
 
   I(current);
 
-  lower_level = current->declareMemoryObj(section, "lowerLevel");
+
   if (lower_level != NULL)
-    addLowerLevel(lower_level);
+  addLowerLevel(lower_level);
 
 }
 
@@ -124,7 +115,7 @@ void MarkovPrefetcher::doReq(MemRequest *mreq)
 
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleReq(mreq, when);  /* schedule req down {{{1 */
-  printf("BLAH BLAH BLAH -JASH");
+  //printf("BLAH BLAH BLAH -JASH");
 }
 /* }}} */
 

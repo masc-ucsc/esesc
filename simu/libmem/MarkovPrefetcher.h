@@ -83,47 +83,33 @@ private:
   typedef CacheGeneric<MarkovTState,AddrType> BuffType;
   typedef CacheGeneric<MarkovTState,AddrType>::CacheLine bLine;
 
-  typedef HASH_MAP<AddrType, std::queue<MemRequest *> *> penReqMapper;
-  typedef HASH_SET<AddrType> penFetchSet;
+ // typedef HASH_MAP<AddrType, std::queue<MemRequest *> *> penReqMapper;
+ // typedef HASH_SET<AddrType> penFetchSet;
 
-#if 0
+struct hash_long_long {
+size_t operator()(const AddrType in) const {
+//uint32_t ret = (in >> 32L) ^ (in & 0xFFFFFFFF);
+//return (uint32_t) ret;
+return (uint32_t) in;
+}
+};
+
+class AddrTypeHashFunc {
 public:
-/*
-  TimeDelta_t delay;
-  GMemorySystem *gms;
-  PortGeneric *cachePort;
-  PortGeneric *dataPort;
-  PortGeneric *cmdPort;
-*/
+size_t operator()(const AddrType p) const {
+return((int) p);
+}
+};
 
-  uint32_t pendingRequests;
-  uint32_t pendingFetches;
+class AddrTypeEqual {
+public:
+bool operator()(const AddrType &x, const AddrType &y) const{
+return (memcmp((const void*)x, (const void*)y, sizeof(AddrType)) == 0);
+}
+};
+typedef HASH_MAP<AddrType, std::queue<MemRequest *>, AddrTypeHashFunc> penReqMapper;
+typedef HASH_SET<AddrType, AddrTypeHashFunc> penFetchSet;
 
-  //void read(MemRequest *mreq);
-
-  int32_t defaultMask;
-  
-  int32_t lineSize;
-
-
-
-  PortGeneric *buffPort;
-  PortGeneric *tablePort;
-
-  int32_t numBuffPorts;
-  int32_t numTablePorts;
-  int32_t buffPortOccp;
-  int32_t tablePortOccp;
-  int32_t hitDelay;
-  int32_t missDelay;
-  int32_t depth;
-  
-  int32_t age;
-
-
-  static const int32_t tEntrySize = 8; // size of an entry in the prefetching table
-
-#endif
 
 penReqMapper pendingRequests;
 penFetchSet pendingFetches;
