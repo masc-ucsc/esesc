@@ -37,6 +37,7 @@
 #include "SescConf.h"
 #include "MemorySystem.h"
 #include "MarkovPrefetcher.h"
+#include "CacheCore.h"
 
 static pool < std::queue<MemRequest *> > activeMemReqPool(128,"MarkovPrefetcherer");
 static AddrType TESTdata[11];
@@ -110,8 +111,9 @@ const char *buffSection = SescConf->getCharPtr(section, "buffCache");
 void MarkovPrefetcher::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-   //uint32_t paddr = mreq->getAddr() & defaultMask;
-   //insertTable(paddr); //NOTE miss
+
+   uint32_t paddr = mreq->getAddr() & defaultMask;
+   insertTable(paddr); //NOTE miss
 
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleReq(mreq, when);  /* schedule req down {{{1 */
@@ -122,8 +124,8 @@ void MarkovPrefetcher::doReq(MemRequest *mreq)
 void MarkovPrefetcher::doDisp(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
-  //uint32_t paddr = mreq->getAddr() & defaultMask;
-  //insertTable(paddr); //NOTE miss
+  uint32_t paddr = mreq->getAddr() & defaultMask;
+  insertTable(paddr); //NOTE miss
 
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
   router->scheduleDisp(mreq, when);  /* schedule Displace (down) {{{1 */
@@ -194,12 +196,12 @@ void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
   if(!buff->readLine(paddr)) { // it is not in the buff
     penFetchSet::iterator it = pendingFetches.find(paddr);
      if(it == pendingFetches.end()) {
-
       MemRequest *mreq = MemRequest::create(this, paddr, false, 0);
       router->scheduleReqAckAbs(mreq, missDelay); //Send out the prefetch!
 
       predictions.inc(); //used for statistics
       pendingFetches.insert(paddr);
+printf("HELLO");
     } 
   }
 }
@@ -207,43 +209,62 @@ void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
 
 
 void MarkovPrefetcher::insertTable(AddrType addr){
-  uint32_t tag = table->calcTag(addr);
-  Time_t lat = 0;
 
-  if(tag){
-
-    tEntry = table->readLine(addr); //index of the table for this missed address
-
-    if(tEntry){
-      //if this table entry has been seen before we can start prefetching the addresses we have seen before
-      lat = nextTableSlot() - globalClock; //JASH: uncertain about the lat caluculations
-      prefetch(tEntry->predAddr1,lat);
-
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr2,lat);
-
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr3,lat);
-
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr4,lat);
-
-    }else{ //if we have not seen this address before than we need to create an entry in the table for this miss.
-      tEntry = table->fillLine(addr);
-    }
-//Now let us update the previous addresses information and what it will prefetch
-    LOG("last Addr %d", lastAddr);
-    tEntry = table->readLine(lastAddr);
-
-    //update last entry
-    tEntry->predAddr4 = tEntry->predAddr3;
-    tEntry->predAddr3 = tEntry->predAddr2;
-    tEntry->predAddr2 = tEntry->predAddr1;
-    tEntry->predAddr1 = addr;
-
-    lastAddr = addr;
+  //Note: This is a bad way to do this, but Cache.cpp wasn't working so this is my other option.
+  //FIX ME:
+static int flag_first = false;
+int i, j;
+if (flag_first == false){
+for(i = 0; i < num_rows; i++){
+  for(j=0;j <num_columns; j++){
+    Markov_Table[i][0] = 0;
   }
 }
+flag_first = true;
+}
+
+
+
+static int prev_row = 0;
+  int row = -1;
+ 
+Time_t lat = 0;
+  //check if current address is in the table.
+  for(i = 0; i < num_rows; i++){
+    if(Markov_Table[i][0] == addr){
+      row = i;
+      break;
+    }else if(Markov_Table[i][0] == 0){ //found a blank spot in the table
+      Markov_Table[i][0] = addr;
+printf("HELLO");
+      break;
+    }
+  }
+
+  if(row != -1){ //if we hit the table
+    lat = nextTableSlot() - globalClock;
+    if(Markov_Table[row][1] != 0)
+       prefetch(Markov_Table[row][1],lat);
+    if(Markov_Table[row][2] != 0)
+       prefetch(Markov_Table[row][2],lat);
+  }else{
+    printf("FIX ME: Not enough table space");
+  }
+
+  if(Markov_Table[prev_row][1] == 0){
+     Markov_Table[prev_row][1] = addr;
+  }else if(Markov_Table[prev_row][2] == 0){
+     Markov_Table[prev_row][2] = addr;
+  }else{
+     Markov_Table[prev_row][1] = Markov_Table[prev_row][2];
+     Markov_Table[prev_row][2] = addr;
+  }
+
+  prev_row = row;
+}
+
+
+
 
 void MarkovPrefetcher::TESTinsertTable(AddrType addr){
 

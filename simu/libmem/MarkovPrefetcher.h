@@ -140,6 +140,9 @@ uint32_t MaxPendingRequests;
 int32_t lineSize;
 int32_t width;
 int32_t ptr;
+  #define num_columns 3
+  #define num_rows 8
+AddrType Markov_Table[num_rows][num_columns];
 static const int32_t tEntrySize = 8; // size of an entry in the prefetching table
 
 AddrType defaultMask;
