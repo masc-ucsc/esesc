@@ -136,6 +136,7 @@ class GProcessor {
     virtual void retire();
     virtual StallCause addInst(DInst *dinst) = 0;
 
+    virtual void fetch(FlowID fid) = 0;
   public:
 
     virtual ~GProcessor();
@@ -161,8 +162,7 @@ class GProcessor {
 
     // Different types of cores extend this function. See SMTProcessor and
     // Processor.
-    virtual void fetch(FlowID fid) = 0;
-    virtual bool execute() = 0;
+    virtual bool advance_clock(FlowID fid) = 0;
 
     void setEmulInterface(EmulInterface *e) {
       eint = e;

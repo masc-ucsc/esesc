@@ -120,13 +120,7 @@ extern "C" void QEMUReader_setFlowCmd(bool* flowStatus) {
 }
 #endif
 
-extern "C" int QEMUReader_is_sampler_done(FlowID fid) {
-  return qsamplerlist[fid]->isSamplerDone();
-}
-
 extern "C" int32_t QEMUReader_setnoStats(FlowID fid){
-  qsamplerlist[fid]->dumpThreadProgressedTime(fid);
-  qsamplerlist[fid]->setnoStats(fid);
   return 0;
 }
 

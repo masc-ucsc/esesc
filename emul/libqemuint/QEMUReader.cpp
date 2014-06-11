@@ -86,15 +86,13 @@ QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint
     numAllFlows++;
   }
 
-  MSG ("CPU NumFlows = %d",numFlows);
-
 #ifdef ESESC_QEMU_ISA_ARMEL
   crackInstARM = new ARMCrack[numAllFlows];
   crackInstThumb = new ThumbCrack[numAllFlows];
   crackInst.resize(numAllFlows);
 #endif
   qemu_thread = -1;
-  started = false;
+  //started = false;
 }
 /* }}} */
 

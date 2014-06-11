@@ -62,6 +62,9 @@ private:
   EmulInterface    *eint;
 
 public:
+	static void setStarted() {
+		started = true;
+	}
   QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint);
   virtual ~QEMUReader();
 

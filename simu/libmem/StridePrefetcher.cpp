@@ -1,4 +1,3 @@
-#if 0
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //                Luis Ceze
@@ -38,9 +37,10 @@
 #include "SescConf.h"
 #include "MemorySystem.h"
 #include "StridePrefetcher.h"
-/* }}} */
+//#include "MSHR.h"
+#include <iostream>
 
-static pool < std::queue<MemRequest *> > activeMemReqPool(32, "StridePrefetcher");
+/* }}} */
 
 StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,const char *name)
   /* constructor {{{1 */
@@ -50,9 +50,6 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
   ,hit("%s:hits", name)
   ,predictions("%s:predictions", name)
   ,accesses("%s:accesses", name)
-  ,unitStrideStreams("%s:unitStrideStreams", name)
-  ,nonUnitStrideStreams("%s:nonUnitStrideStreams", name)
-  ,ignoredStreams("%s:ignoredStreams", name)
 {
   MemObj *lower_level = NULL;
 
@@ -82,262 +79,146 @@ StridePrefetcher::StridePrefetcher(MemorySystem* current ,const char *section ,c
   SescConf->isInt(section, "learnMissDelay");
   learnMissDelay = SescConf->getInt(section, "learnMissDelay");
 
-  I(depth > 0);
+
 
   const char *buffSection = SescConf->getCharPtr(section, "buffCache");
   if (buffSection) {
-    buff = BuffType::create(buffSection, "", name);
+   buff = BuffType::create(buffSection, "", name);
+   lineSize  = buff->getLineSize();
 
-    SescConf->isInt(buffSection, "bknumPorts");
-    numBuffPorts = SescConf->getInt(buffSection, "bknumPorts");
+    SescConf->isInt(buffSection, "bkNumPorts");
+    numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
 
-    SescConf->isInt(buffSection, "bkportOccp");
-    buffPortOccp = SescConf->getInt(buffSection, "bkportOccp");
+    SescConf->isInt(buffSection, "bkPortOccp");
+    buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
+
+    //SescConf->isInt(buffSection, "bsize");
+    //lineSize = SescConf->getInt(buffSection,"bsize");
   }
 
-  const char *streamSection = SescConf->getCharPtr(section, "streamCache");
-  if (streamSection) {
-    char tableName[128];
-    sprintf(tableName, "%sPrefTable", name);
-    table = PfTable::create(streamSection, "", tableName);
+  //defaultMask  = ~(lineSize-1);
 
-    GMSG(pEntrySize != SescConf->getInt(streamSection, "BSize"),
-   "The prefetch buffer streamBSize field in the configuration file should be %d.", pEntrySize);
-
-    SescConf->isInt(streamSection, "bknumPorts");
-    numTablePorts = SescConf->getInt(streamSection, "bknumPorts");
-
-    SescConf->isInt(streamSection, "bkportOccp");
-    tablePortOccp = SescConf->getInt(streamSection, "bkportOccp");
-  }
-
+  numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
+  buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
+/*
+  char cadena[100];
+  sprintf(cadena,"Data%s", name);
+  dataPort = PortGeneric::create(cadena, num, occ);
+  sprintf(cadena,"Cmd%s", name);
+  cmdPort  = PortGeneric::create(cadena, num, 1);
+*/
   char portName[128];
   sprintf(portName, "%s_buff", name);
-  buffPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
-  sprintf(portName, "%s_table", name);
-  tablePort = PortGeneric::create(portName, numTablePorts, tablePortOccp);
-
-  defaultMask  = ~(buff->getLineSize()-1);
+  dataPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
+  cmdPort = PortGeneric::create(portName, numBuffPorts, 1);
 
   I(current);
   lower_level = current->declareMemoryObj(section, "lowerLevel");
   if (lower_level != NULL)
     addLowerLevel(lower_level);
-
-
-  //Is this the memory  
-  isMemoryBus = false; 
 }
 /* }}} */
 
-Time_t StridePrefetcher::nextReadSlot(       const MemRequest *mreq)
-  /* calculate next free time {{{1 */
+void StridePrefetcher::doReq(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
-  //I(0);
-  return globalClock;
-}
-/* }}} */
-Time_t StridePrefetcher::nextWriteSlot(      const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  //I(0);
-  return globalClock;
-}
-/* }}} */
-Time_t StridePrefetcher::nextBusReadSlot(    const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-  if (nextBuffSlot() > nextTableSlot()) 
-    return nextBuffSlot();
-  
-  return nextTableSlot();
-}
-/* }}} */
-Time_t StridePrefetcher::nextPushDownSlot(   const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  if (nextBuffSlot() > nextTableSlot()) 
-    return nextBuffSlot();
-  
-  return nextTableSlot();
-}
-/* }}} */
-Time_t StridePrefetcher::nextPushUpSlot(     const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  if (nextBuffSlot() > nextTableSlot()) 
-    return nextBuffSlot();
-  
-  return nextTableSlot();
+  TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
 
-}
-/* }}} */
-Time_t StridePrefetcher::nextInvalidateSlot( const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  if (nextBuffSlot() > nextTableSlot()) 
-    return nextBuffSlot();
-  
-  return nextTableSlot();
-}
-/* }}} */
-
-void StridePrefetcher::read(MemRequest *mreq)
-  /* no read in StridePrefetcher {{{1 */
-{
-  I(0); // StridePrefetcher should not be a first level object
-}
-/* }}} */
-void StridePrefetcher::write(MemRequest *mreq)
-  /* no write in StridePrefetcher {{{1 */
-{
-  I(0); // StridePrefetcher should not be a first level object
-}
-/* }}} */
-void StridePrefetcher::writeAddress(MemRequest *mreq)
-  /* no writeAddress in StridePrefetcher {{{1 */
-{
-  I(0); // StridePrefetcher should not be a first level object
-}
-/* }}} */
-
-void StridePrefetcher::busReadAck(MemRequest *mreq)
-{
-  pendingRequests--;
-  AddrType paddr = mreq->getAddr() & defaultMask;
-  mshr->retire(paddr);
-  router->fwdPushUp(mreq);
-}
-
-void StridePrefetcher::busRead(MemRequest *mreq)
-  /* forward StridePrefetcher read {{{1 */
-{
-  AddrType paddr = mreq->getAddr() & defaultMask;
+  uint32_t paddr = mreq->getAddr();
   bLine *l = buff->readLine(paddr);
 
-  /****** HIT *******/
-  if(l) { 
-    hit.inc(mreq->getStatsFlag());
-    router->fwdPushUp(mreq, hitDelay);
+  if(l) { //hit
+    hit.inc(mreq->getStatsFlag()); //increment counter
+    mreq->convert2ReqAck(ma_setExclusive);
+    router->scheduleReqAck(mreq, when);   /* schedule reqAck up {{{1 */
     return;
   }
+  I(0); // FIXME: still not calling to learn the prefetch tables
 
-  if (!mshr->canAccept(paddr)) {
-    CallbackBase *cb  = busReadAckCB::create(this, mreq);
-
-    pendingRequests++;
-    mshr->addEntry(paddr, cb);
-    return;
-  }
-
-  pendingRequests++;
-  mshr->addEntry(paddr);
-  router->fwdBusRead(mreq);
+  router->scheduleReq(mreq, when);  
 }
-
 /* }}} */
-void StridePrefetcher::pushDown(MemRequest *mreq)
-  /* push down {{{1 */
+
+void StridePrefetcher::doDisp(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
-  Line *l = buff->writeLine(mreq->getAddr()); // Also for energy
-
-  if (mreq->isInvalidate()) {
-    if (l)
-      l->invalidate();
-
-    I(!isMemoryBus);
-        mreq->decPending();
-    if (!mreq->hasPending()) {
-      MemRequest *parent = mreq->getParent();
-      router->fwdPushDown(parent);
-    }
-
-    mreq->destroy();
-    return;
-  }
-
-  I(mreq->isWriteback());
-
-  router->fwdPushDown(mreq);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleDisp(mreq, when);
 }
 /* }}} */
 
-void StridePrefetcher::pushUp(MemRequest *mreq)
-  /* push up {{{1 */
+void StridePrefetcher::doReqAck(MemRequest *mreq)
+  /* data is coming back {{{1 */
 {
-
-  if(mreq->isHomeNode()) {
-    buff->fillLine(mreq->getAddr());
-
-    mreq->destroy();
-    return;
-  }
-
-  learnMiss(paddr);
-
-  busReadAck(mreq);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleReqAck(mreq, when);
 }
 /* }}} */
 
-void StridePrefetcher::invalidate(MemRequest *mreq)
-  /* forward invalidate to the higher levels {{{1 */
+void StridePrefetcher::doSetState(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
 {
-  uint32_t paddr = mreq->getAddr() & defaultMask; // FIXME: Maybe delete the defaultMask
-
-  nextBuffSlot();
-
-  bLine *l = buff->readLine(paddr);
-  if(l)
-    l->invalidate();
-
-  // broadcast the invalidate through the upper nodes
-  router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(),hitDelay /*delay*/);
+  router->sendSetStateAll(mreq, mreq->getAction(), delay);  /* send setState to others, return how many {{{1 */
 }
 /* }}} */
 
-bool StridePrefetcher::canAcceptRead(DInst *dinst) const
+void StridePrefetcher::doSetStateAck(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
+{
+  bLine *b = buff->readLine(mreq->getAddr());
+  if (b)
+    b->invalidate();
+
+  router->scheduleSetStateAck(mreq, delay);
+}
+/* }}} */
+
+bool StridePrefetcher::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  return true;
+  return false;
 }
 /* }}} */
 
-bool StridePrefetcher::canAcceptWrite(DInst *disnt) const
-/* always can accept reads {{{1 */
-{
-  return true;
-}
-/* }}} */
-
-TimeDelta_t StridePrefetcher::ffread(AddrType addr, DataType data)
+TimeDelta_t StridePrefetcher::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
-  I(0);
-  return router->ffread(addr,data) /*+ delay*/;
+  return delay;
 }
 /* }}} */
 
-TimeDelta_t StridePrefetcher::ffwrite(AddrType addr, DataType data)
+TimeDelta_t StridePrefetcher::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
-  I(0);
-  return router->ffwrite(addr,data) /*+ delay*/ ;
+  return delay;
 }
 /* }}} */
 
-void StridePrefetcher::ffinvalidate(AddrType addr, int32_t ilineSize)
-  /* fast forward invalidate {{{1 */
-{ 
-  I(0);
-  // FIXME: router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
+void StridePrefetcher::ifHit(MemRequest *mreq)
+  /* forward StridePrefetcher read {{{1 */
+{
+  bLine *l = buff->readLine(mreq->getAddr());
+
+  if(l) { 
+    hit.inc(mreq->getStatsFlag());
+    router->scheduleReqAckAbs(mreq, hitDelay);
+    return;
+  }
+}
+/* }}} */
+
+
+void StridePrefetcher::ifMiss(MemRequest *mreq)
+  /* push up {{{1 */
+{
+  AddrType paddr = mreq->getAddr() & defaultMask;
+  learnMiss(paddr); //NOTE LEARN MISS
 }
 /* }}} */
 
 void StridePrefetcher::learnMiss(AddrType addr) {
 
   AddrType paddr = addr & defaultMask;
-  Time_t lat = nextTableSlot() - globalClock;
 
   bool foundUnitStride = false;
   uint32_t newStride = 0;
@@ -377,15 +258,14 @@ void StridePrefetcher::learnMiss(AddrType addr) {
     lastMissesQ.pop_front();
 
   if(foundUnitStride) {
-    unitStrideStreams.inc();
+    //unitStrideStreams.inc();
     newStride = buff->getLineSize();
   } else {
-    nonUnitStrideStreams.inc();
+    //nonUnitStrideStreams.inc();
     newStride = minDelta;
   }
 
   if(newStride == 0 || newStride == (uint32_t) -1 || newStride > maxStride) {
-    ignoredStreams.inc();
     return;
   }
 
@@ -397,18 +277,10 @@ void StridePrefetcher::learnMiss(AddrType addr) {
     pe->goingUp = goingUp;
   }
 
-  if (pendingRequests> MaxPendingRequests) {
-    // FIXME: fetch the depth following addresses
-
-    AddrType paddr = nextAddr & defaultMask;
-    bLine *l = buff->readLine(paddr);
-    if (l==0) {
-      MemRequest *mreq = MemRequest::createRead(this, nextAddr, 0);
-      router->fwdBusRead(mreq, missDelay); 
-    }
+  paddr = nextAddr & defaultMask;
+  bLine *l = buff->readLine(paddr);
+  if (l==0) {
+    pendingFetches.insert(paddr);
   }
-
 }
 
-
-#endif

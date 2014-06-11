@@ -102,6 +102,7 @@ class TaskHandler {
       return emulas.size();
     }
     static FlowID getNumCPUS() {
+			I(cpus.size()>0);
       return cpus.size();
     }
 

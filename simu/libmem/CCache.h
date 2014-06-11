@@ -41,12 +41,12 @@
 #include "estl.h"
 #include "CacheCore.h"
 #include "GStats.h"
-#include "Port.h"
 #include "MemObj.h"
 #include "MemorySystem.h"
 #include "MSHR.h"
 #include "Snippets.h"
 
+class PortManager;
 class MemRequest;
 /* }}} */
 
@@ -134,6 +134,7 @@ protected:
 		int16_t getSharingCount() const {
 			return nSharers; // Directory
 		}
+    void removeSharing(int16_t id);
 		void addSharing(int16_t id) {
       I(id != -1);
 			if (nSharers>=8)
@@ -148,6 +149,9 @@ protected:
       I(pos<nSharers);
       return share[pos];
     }
+    void clearSharing() {
+      nSharers = 0;
+    }
   };
 
   typedef CacheGeneric<CState,AddrType> CacheType;
@@ -159,20 +163,12 @@ protected:
   TimeDelta_t dyn_hitDelay; // DVFS adjusted
   TimeDelta_t dyn_missDelay;
 
-  // CCache has 4 ports, read, write, bank, and lower level request (bus/Ln+1)
-  PortGeneric **bkPort;
-  PortGeneric *ackPort;
+  PortManager *port;
   CacheType   *cacheBank;
   MSHR        *mshr;
 
-	uint32_t    numBanks;
-
-  int32_t     maxRequests;
-  int32_t     curRequests;
-
   int32_t     lineSize;
   int32_t     lineSizeBits;
-  int32_t     numBanksMask;
 
   bool        coreCoupledFreq;
   bool        inclusive;
@@ -212,15 +208,6 @@ protected:
 
   int32_t getLineSize() const          { return lineSize;   }
 
-  Time_t nextBankSlot(AddrType addr, bool en) { 
-    if (numBanksMask == 0)
-      return bkPort[0]->nextSlot(en); 
-
-    int32_t bank = (addr>>lineSizeBits) & numBanksMask;
-
-    return bkPort[bank]->nextSlot(en); 
-  }
-
 	void displaceLine(AddrType addr, MemRequest *mreq, Line *l);
   Line *allocateLine(AddrType addr, MemRequest *mreq);
   void mustForwardReqDown(MemRequest *mreq);
@@ -256,6 +243,50 @@ public:
 
 	void setNeedsCoherence();
 	void clearNeedsCoherence();
+
+ 	bool Modified(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if (cl !=0)
+      return cl->isModified();
+
+    return false;
+	}
+
+	bool Exclusive(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if(cl!=0)
+      return cl->isExclusive();
+
+    return false;
+	}
+
+	bool Shared(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if(cl!=0)
+      return cl->isShared();
+    return false;
+	}
+
+	bool Invalid(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if (cl==0)
+      return true;
+    return cl->isInvalid();
+  }
+
+	bool Owner(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if(cl!=0)
+      return cl->isOwner();
+    
+    return false;
+	}
+
+#ifdef DEBUG
+  void trackAddress(MemRequest *mreq);
+#else
+  void trackAddress(MemRequest *mreq) { }
+#endif
 };
 
 #endif

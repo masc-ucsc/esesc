@@ -223,7 +223,7 @@ void PowerModel::printStatus()
 }
 /* }}} */
 
-int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
+void PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
 /* calcStats {{{1 */
 {
   // This is called through sampler. So the power/thermal
@@ -232,8 +232,6 @@ int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
   //
   //need to sync stats first
 
-  int return_signal = 0; // check for 90s simulated time to finish
- 
   energyBundle->setFreq(getFreq());
 
   if (!keepPower) {     // Calculate new Power 
@@ -266,7 +264,7 @@ int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
   uint32_t throttleLength = 0;
   if (doTherm) {
     if (energyBundle->cntrs.size()>0){
-      return_signal = sescThermWrapper->calcTemp(energyBundle, temperatures, timeInterval, throttleLength);
+      sescThermWrapper->calcTemp(energyBundle, temperatures, timeInterval, throttleLength);
     }
   }
 
@@ -289,7 +287,6 @@ int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
     if (logprf)
       dumpPerf(false);
   }
-  return(return_signal);
 }
 /* }}} */
 

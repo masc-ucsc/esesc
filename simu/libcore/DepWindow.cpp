@@ -103,7 +103,6 @@ void DepWindow::wakeUpDeps(DInst *dinst) {
   // Even if it does not wakeup instructions the port is used
   Time_t wakeUpTime= wakeUpPort->nextSlot(dinst->getStatsFlag());
   //dinst->dump("Clearing:");
-  dinst->clearRATEntry(); // Not much impact for OoO, mostly for InOrder
 
   if (!dinst->hasPending())
     return;
@@ -139,7 +138,7 @@ void DepWindow::preSelect(DInst *dinst) {
   IS(dinst->setWakeUpTime(0));
   dinst->markIssued();
   I(dinst->getCluster());
-  dinst->clearRATEntry(); 
+  //dinst->clearRATEntry(); 
 
   Resource::selectCB::scheduleAbs(wakeUpTime, dinst->getClusterResource(), dinst);
 }
@@ -161,7 +160,6 @@ void DepWindow::executed(DInst *dinst) {
   I(!dinst->hasDeps());
 
   //dinst->dump("Clearing2:");
-  dinst->clearRATEntry();
 
   if (!dinst->hasPending())
     return;

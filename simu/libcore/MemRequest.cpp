@@ -51,11 +51,17 @@ pool<MemRequest>  MemRequest::actPool(256, "MemRequest");
 
 MemRequest::MemRequest()
   /* constructor  */
-  :doReqCB(this)
-  ,doReqAckCB(this)
-  ,doSetStateCB(this)
-  ,doSetStateAckCB(this)
-  ,doDispCB(this)
+  :redoReqCB(this)
+  ,redoReqAckCB(this)
+  ,redoSetStateCB(this)
+  ,redoSetStateAckCB(this)
+  ,redoDispCB(this)
+
+  ,startReqCB(this)
+  ,startReqAckCB(this)
+  ,startSetStateCB(this)
+  ,startSetStateAckCB(this)
+  ,startDispCB(this)
 {
 }
 /*  */
@@ -67,48 +73,53 @@ MemRequest::~MemRequest()
 }
 // 
 
+void MemRequest::redoReq()         { upce(); currMemObj->doReq(this);         }
+void MemRequest::redoReqAck()      { upce(); currMemObj->doReqAck(this);      }
+void MemRequest::redoSetState()    { upce(); currMemObj->doSetState(this);    }
+void MemRequest::redoSetStateAck() { upce(); currMemObj->doSetStateAck(this); }
+void MemRequest::redoDisp()        { upce(); currMemObj->doDisp(this);        }
 
-void MemRequest::doReq()         { upce(); currMemObj->doReq(this);         }
-void MemRequest::doReqAck()      { upce(); currMemObj->doReqAck(this);      }
-void MemRequest::doSetState()    { upce(); currMemObj->doSetState(this);    }
-void MemRequest::doSetStateAck() { upce(); currMemObj->doSetStateAck(this); }
-void MemRequest::doDisp()        { upce(); currMemObj->doDisp(this);        }
+void MemRequest::startReq()         { I(mt == mt_req);         currMemObj->req(this);         }
+void MemRequest::startReqAck()      { I(mt == mt_reqAck);      currMemObj->reqAck(this);      }
+void MemRequest::startSetState()    { I(mt == mt_setState);    currMemObj->setState(this);    }
+void MemRequest::startSetStateAck() { I(mt == mt_setStateAck); currMemObj->setStateAck(this); }
+void MemRequest::startDisp()        { I(mt == mt_disp);        currMemObj->disp(this);        }
 
 void MemRequest::addPendingSetStateAck(MemRequest *mreq) 
 {
   I(mreq->id < id);
-  I(mreq->mt == mt_setState || mreq->mt == mt_req);
+  I(mreq->mt == mt_setState || mreq->mt == mt_req || mreq->mt == mt_reqAck);
   I(mt == mt_setState);
   mreq->pendingSetStateAck++;
   I(setStateAckOrig == 0);
   setStateAckOrig = mreq;
 }
 
-void MemRequest::setStateAckDone()
+void MemRequest::setStateAckDone(TimeDelta_t lat)
 {  
   MemRequest *orig = setStateAckOrig;
+  if(orig==0)
+		return;
   setStateAckOrig = 0;
-  I(orig);
   I(orig->pendingSetStateAck>0);
   orig->pendingSetStateAck--;
   if (orig->pendingSetStateAck<=0) {
     if(orig->mt == mt_req) {
-      orig->doReq();
+      orig->redoReqCB.schedule(lat);
+    }else if (orig->mt == mt_reqAck) {
+      orig->redoReqAckCB.schedule(lat);
     }else if (orig->mt == mt_setState) {
-      I(orig->setStateAckOrig==0);
-      orig->ack();
+      //I(orig->setStateAckOrig==0);
+      //orig->ack();
+      orig->convert2SetStateAck(orig->ma);
+			I(orig->currMemObj == orig->creatorObj);
+			orig->startSetStateAck();
       //orig->setStateAckDone(); No recursive/dep chains for the moment
     }else{
       I(0);
     }
   }
 }
-
-void MemRequest::req()         { I(mt == mt_req);         currMemObj->req(this);         }
-void MemRequest::reqAck()      { I(mt == mt_reqAck);      currMemObj->reqAck(this);      }
-void MemRequest::setState()    { I(mt == mt_setState);    currMemObj->setState(this);    }
-void MemRequest::setStateAck() { I(mt == mt_setStateAck); currMemObj->setStateAck(this); }
-void MemRequest::disp()        { I(mt == mt_disp);        currMemObj->disp(this);        }
 
 MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, CallbackBase *cb) 
 {
@@ -140,9 +151,21 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
 }
 
 #ifdef DEBUG_CALLPATH
+void MemRequest::dump_all() {
+
+	MemRequest *mreq = actPool.firstInUse();
+	while(mreq) {
+		mreq->dump_calledge(0,true);
+		mreq = actPool.nextInUse(mreq);
+	}
+}
+
 void MemRequest::dump_calledge(TimeDelta_t lat, bool interesting)
 {
-  return; // FIXME
+#if 1
+  if(!interesting)
+    return;
+#endif
 
   Time_t total = 0;
   for(size_t i = 0;i<calledge.size();i++) {
@@ -153,8 +176,6 @@ void MemRequest::dump_calledge(TimeDelta_t lat, bool interesting)
       break;
     }
   }
-//  if(!interesting && total <200)
-//    return;
 
   rawdump_calledge(lat, total);
 }
@@ -256,6 +277,7 @@ void MemRequest::upce()
 
 void MemRequest::setNextHop(MemObj *newMemObj) 
 {
+	I(currMemObj != newMemObj);
 #ifdef DEBUG_CALLPATH
   prevMemObj = currMemObj;
 #endif

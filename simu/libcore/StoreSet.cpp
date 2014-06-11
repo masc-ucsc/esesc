@@ -121,6 +121,9 @@ void StoreSet::clearStoreSetsTimer()
   //MSG("------------- CLEAR -----------------");
   clear_SSIT();
   clear_LFST();
+  Time_t when = clear_interval+globalClock;
+  if (when >= (globalClock*2))
+      when = globalClock*2 - 1; // To avoid assertion about possible bug. Long enough anyway
   clearStoreSetsTimerCB.scheduleAbs(clear_interval+globalClock);
 }
 /* }}} */

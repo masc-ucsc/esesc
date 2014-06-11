@@ -94,7 +94,7 @@ class GMemorySystem {
   MemObj   *vpc; // Speculative virtual predictor cache
 
  protected:
-  const uint32_t Id;
+  const uint32_t coreId;
 
   char *buildUniqueName(const char *device_type);
 
@@ -125,7 +125,7 @@ class GMemorySystem {
   void addMemObjName(const char *name) { MemObjNames.push_back(name); }
   std::string getMemObjName(uint32_t i) { return MemObjNames[i]; }
 
-  uint32_t getId() const  { return Id;  };
+  uint32_t getCoreId() const  { return coreId;  };
   MemObj *getDL1() const { return DL1; };
   MemObj *getIL1() const { return IL1; };
   MemObj *getvpc() const { return vpc; };
@@ -135,7 +135,7 @@ class DummyMemorySystem : public GMemorySystem {
  private:
  protected:
  public:
-  DummyMemorySystem(int32_t id);
+  DummyMemorySystem(int32_t coreId);
   ~DummyMemorySystem();
 };
 

@@ -38,7 +38,6 @@
 
 #include "MemObj.h"
 #include "MRouter.h"
-#include "DInst.h"
 
 #include "nanassert.h"
 
@@ -49,7 +48,14 @@
 #endif
 
 class MemRequest {
- private:
+private:
+  void setNextHop(MemObj *m);
+  void startReq();
+  void startReqAck();
+  void startSetState();
+  void startSetStateAck();
+  void startDisp();
+
 #ifdef DEBUG
   uint64_t     id;
 #endif
@@ -100,8 +106,6 @@ class MemRequest {
   Time_t        lastCallTime;
 #endif
 
-  uint16_t      lineSize; // Request size, originally same as MemObj unless overruled
-
   CallbackBase *cb;
 
   int16_t       pendingSetStateAck;
@@ -114,8 +118,6 @@ class MemRequest {
 #endif
   bool          doStats;
   bool          retrying;
-
-  DInst        *dinst;
   /* }}} */
 
   MemRequest();
@@ -130,21 +132,30 @@ class MemRequest {
   void memDisp();  // E.g: L1 -> L2
 
 	friend class MRouter; // only mrouter can call the req directly
-  void scheduleReq(TimeDelta_t       lat)  { doReqCB.schedule(lat); }
-  void scheduleReqAck(TimeDelta_t    lat)  { doReqAckCB.schedule(lat); }
-  void scheduleSetState(TimeDelta_t  lat)  { doSetStateCB.schedule(lat);          }
-  void scheduleSetStateAck(TimeDelta_t   lat)  { doSetStateAckCB.schedule(lat);          }
-  void scheduleDisp(TimeDelta_t   lat)  { doDispCB.schedule(lat); }
+  void redoReq(TimeDelta_t       lat)  { redoReqCB.schedule(lat); }
+  void redoReqAck(TimeDelta_t    lat)  { redoReqAckCB.schedule(lat); }
+  void redoSetState(TimeDelta_t  lat)  { redoSetStateCB.schedule(lat);          }
+  void redoSetStateAck(TimeDelta_t   lat)  { redoSetStateAckCB.schedule(lat);          }
+  void redoDisp(TimeDelta_t   lat)  { redoDispCB.schedule(lat); }
 
-  void doReq();
-  void doReqAck();
-  void doSetState();
-  void doSetStateAck();
-  void doDisp();
-  void setStateAckDone();
+  void startReq(MemObj *m, TimeDelta_t       lat)    { setNextHop(m); startReqCB.schedule(lat); }
+  void startReqAck(MemObj *m, TimeDelta_t    lat)    { setNextHop(m); startReqAckCB.schedule(lat); }
+  void startSetState(MemObj *m, TimeDelta_t  lat)    { setNextHop(m); startSetStateCB.schedule(lat);          }
+  void startSetStateAck(MemObj *m, TimeDelta_t   lat){ setNextHop(m); startSetStateAckCB.schedule(lat);          }
+  void startDisp(MemObj *m, TimeDelta_t   lat)       { setNextHop(m); startDispCB.schedule(lat); }
+
+  void redoReq();
+  void redoReqAck();
+  void redoSetState();
+  void redoSetStateAck();
+  void redoDisp();
+
+
+  void setStateAckDone(TimeDelta_t lat);
 
 #ifdef DEBUG_CALLPATH
 public:
+	static void dump_all();
   void rawdump_calledge(TimeDelta_t lat=0, Time_t total=0);
 protected:
   void dump_calledge(TimeDelta_t lat, bool interesting=false);
@@ -156,60 +167,62 @@ protected:
 #endif
   static MemRequest *create(MemObj *m, AddrType addr, bool doStats, CallbackBase *cb);
  public:
-  StaticCallbackMember0<MemRequest, &MemRequest::doReq>          doReqCB;
-  StaticCallbackMember0<MemRequest, &MemRequest::doReqAck>       doReqAckCB;
-  StaticCallbackMember0<MemRequest, &MemRequest::doSetState>     doSetStateCB;
-  StaticCallbackMember0<MemRequest, &MemRequest::doSetStateAck>  doSetStateAckCB;
-  StaticCallbackMember0<MemRequest, &MemRequest::doDisp>         doDispCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::redoReq>          redoReqCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::redoReqAck>       redoReqAckCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::redoSetState>     redoSetStateCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::redoSetStateAck>  redoSetStateAckCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::redoDisp>         redoDispCB;
 
-  void req();
-  void scheduleReqAbs(Time_t       when)   { doReqCB.scheduleAbs(when); }
+  StaticCallbackMember0<MemRequest, &MemRequest::startReq>          startReqCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::startReqAck>       startReqAckCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::startSetState>     startSetStateCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::startSetStateAck>  startSetStateAckCB;
+  StaticCallbackMember0<MemRequest, &MemRequest::startDisp>         startDispCB;
 
-  void reqAck();
-  void scheduleReqAckAbs(Time_t     when)  { doReqAckCB.scheduleAbs(when); }
+  void redoReqAbs(Time_t       when)  { redoReqCB.scheduleAbs(when); }
+  void startReqAbs(MemObj *m, Time_t       when) { setNextHop(m); startReqCB.scheduleAbs(when); }
 
-  void setState();
-  void scheduleSetStateAbs(Time_t   when)  { doSetStateCB.scheduleAbs(when);          }
+  void redoReqAckAbs(Time_t     when) { redoReqAckCB.scheduleAbs(when); }
+  void startReqAckAbs(MemObj *m, Time_t     when)      { setNextHop(m); startReqAckCB.scheduleAbs(when); }
 
-  void setStateAck();
-  void scheduleSetStateAckAbs(Time_t    when)  { doSetStateAckCB.scheduleAbs(when);          }
+  void redoSetStateAbs(Time_t   when) { redoSetStateCB.scheduleAbs(when);          }
+  void startSetStateAbs(MemObj *m, Time_t   when)      { setNextHop(m); startSetStateCB.scheduleAbs(when);          }
 
-  void disp();
-  void scheduleDispAbs(Time_t    when)  { doDispCB.scheduleAbs(when); }
+  void redoSetStateAckAbs(Time_t    when) { redoSetStateAckCB.scheduleAbs(when);          }
+  void startSetStateAckAbs(MemObj *m, Time_t    when)      { setNextHop(m); startSetStateAckCB.scheduleAbs(when);          }
 
-  static void sendReqMMU(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) { 
-    MemRequest *mreq = create(m,addr,doStats, cb);
-    mreq->mt         = mt_req;
-    mreq->ma         = ma_MMU; 
-    mreq->dinst      = 0;
-		mreq->req();
-  }
+  void redoDispAbs(Time_t    when) { redoDispCB.scheduleAbs(when); }
+  void startDispAbs(MemObj *m, Time_t    when)      { setNextHop(m); startDispCB.scheduleAbs(when); }
+
   static void sendReqVPCWriteUpdate(MemObj *m, bool doStats, AddrType addr) { 
     MemRequest *mreq = create(m,addr,doStats, 0);
     mreq->mt         = mt_req;
     mreq->ma         = ma_VPCWU; 
-		mreq->req();
+		m->req(mreq);
   }
-  static void sendReqRead(MemObj *m, DInst *dinst, AddrType addr, CallbackBase *cb=0) { 
-    MemRequest *mreq = create(m,addr,dinst->getStatsFlag(), cb);
+  static MemRequest *createReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) { 
+    MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
-    mreq->dinst      = dinst;
-		mreq->req();
+    return mreq;
   }
-  static void sendReqWrite(MemObj *m, DInst *dinst, AddrType addr, CallbackBase *cb=0) { 
-    MemRequest *mreq = create(m,addr,dinst->getStatsFlag(), cb);
+  static void sendReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) { 
+    MemRequest *mreq = create(m,addr, doStats, cb);
+    mreq->mt         = mt_req;
+    mreq->ma         = ma_setValid; // For reads, MOES are valid states
+		m->req(mreq);
+  }
+  static void sendReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) { 
+    MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; // For writes, only MO are valid states
-    mreq->dinst      = dinst;
-		mreq->req();
+		m->req(mreq);
   }
-  static void sendReqWritePrefetch(MemObj *m, DInst *dinst, AddrType addr, CallbackBase *cb=0) { 
-    MemRequest *mreq = create(m,addr,dinst->getStatsFlag(), cb);
+  static void sendReqWritePrefetch(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) { 
+    MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; 
-    mreq->dinst      = dinst;
-		mreq->req();
+		m->req(mreq);
   }
 
   void convert2ReqAck(MsgAction _ma) {
@@ -217,26 +230,26 @@ protected:
 		ma = _ma;
 		mt = mt_reqAck;
   }
-  void convert2SetStateAck(MemObj *obj) {
+  void convert2SetStateAck(MsgAction _ma) {
 		I(mt == mt_setState);
 		mt = mt_setStateAck;
-    creatorObj = obj;
+		ma = _ma;
+    creatorObj = currMemObj;
   }
 
-  static void sendDisp(MemObj *m, AddrType addr, bool doStats) {
+  static void sendDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats) {
     MemRequest *mreq = create(m,addr,doStats, 0);
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setDirty;
-    mreq->dinst      = 0;
-		mreq->disp();
+    I(creator);
+    mreq->creatorObj = creator;
+		m->disp(mreq);
   }
 
-  static MemRequest *createSetState(MemObj *m, MemObj *creator, MsgAction ma, AddrType naddr, uint16_t size, bool doStats) {
+  static MemRequest *createSetState(MemObj *m, MemObj *creator, MsgAction ma, AddrType naddr, bool doStats) {
     MemRequest *mreq = create(m,naddr,doStats, 0);
     mreq->mt         = mt_setState;
     mreq->ma         = ma;
-    mreq->lineSize   = size;
-    mreq->dinst      = 0;
     I(creator);
     mreq->creatorObj = creator;
     return mreq;
@@ -251,12 +264,11 @@ protected:
 #ifdef DEBUG
   uint64_t getid() { return id;}
 #endif
-  void setNextHop(MemObj *newMemObj);
-
   void destroy();
 
   MemObj *getHomeNode() const  { return homeMemObj; }
   MemObj *getCreator() const   { return creatorObj; }
+  MemObj *getCurrMem() const   { return currMemObj; }
   bool isHomeNode()     const  { return homeMemObj == currMemObj; }
 	MsgAction getAction() const  { return ma; }
 
@@ -267,18 +279,19 @@ protected:
     if(cb)
       cb->call();
     if(mt == mt_setStateAck)
-      setStateAckDone();
+      setStateAckDone(0);
           
     dump_calledge(0);
     destroy();
   }
   void ack(TimeDelta_t lat) {
     I(lat);
-
-    if(cb) // Not all the request require a completion notification
+    if(cb) { // Not all the request require a completion notification
       cb->schedule(lat);
+    }
+
     if(mt == mt_setStateAck)
-      setStateAckDone();
+      setStateAckDone(lat);
 
     dump_calledge(lat);
     destroy();
@@ -287,11 +300,15 @@ protected:
     I(when);
     if(cb)
       cb->scheduleAbs(when);
+    if(mt == mt_setStateAck)
+      setStateAckDone(when-globalClock);
+
     dump_calledge(when-globalClock);
     destroy();
   }
 
   Time_t  getTimeDelay()  const { return globalClock-startClock; }
+  Time_t  getTimeDelay(Time_t when)  const { return when-startClock; }
 
   AddrType getAddr() const { return addr; }
   DataType getData() const { return data; }
@@ -299,20 +316,13 @@ protected:
   AddrType getPC()   const { return pc; }
 #endif
 
-  uint16_t getLineSize() const { return lineSize; };
-
-  DInst *getDInst() const       { return dinst; }
-
 #ifdef ENABLE_CUDA
+  bool sharedAddress;
   bool isSharedAddress() const { 
-    if (dinst == 0x0) {
-      if ((addr >> 61) == 6){
-        return true;
-      } 
-      return false;
-    }
-    return dinst->isSharedAddress(); 
+    return sharedAddress;
   } 
+  void setSharedAddress(bool s=true) { sharedAddress = s; }
+  void clearSharedAddress() { sharedAddress = false; }
 #endif
 
   bool getStatsFlag() const { return doStats; }

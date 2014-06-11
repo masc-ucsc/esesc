@@ -58,6 +58,8 @@ Description:    This is a graphics subsystem to output svg files with either a
 #include "DataLibrary.h"
 #include "ThermGraphics.h"
 
+#include "Report.h"
+
 #include "nanassert.h"
 
 ThermGraphics_Color::ThermGraphics_Color (int r, int g, int b, int steps)
@@ -1024,7 +1026,9 @@ void ThermGraphics::create_open_graphics_file (int data_type, int unit_type,
       exit (1);
   }
 
-  filename += ".svg";
+  //filename += ".svg";
+  std::string reportFileName = Report::getNameID(); 
+  filename = filename + reportFileName.erase(0,5) + ".svg";
 #ifdef _ESESCTHERM_DEBUG
   std::cerr << "Attempting to Create Graphics Output File:" << filename << " ... ";
 #endif

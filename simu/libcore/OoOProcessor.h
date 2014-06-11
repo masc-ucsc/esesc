@@ -69,7 +69,7 @@ private:
     }
   };
   
-  const bool NoMemoryReplay;
+  const bool MemoryReplay;
   
   FetchEngine IFID;
   PipeQueue   pipeQ;
@@ -101,14 +101,14 @@ private:
   bool scooreMemory;
   StaticCallbackMember0<OoOProcessor, &OoOProcessor::retire_lock_check> retire_lock_checkCB;
 
+  void fetch(FlowID fid);
 protected:
   ClusterManager clusterManager;
 
   GStatsAvg avgFetchWidth;
 
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
-  void fetch(FlowID fid);
-  bool execute();
+  bool advance_clock(FlowID fid);
   StallCause addInst(DInst *dinst);
   void retire();
 

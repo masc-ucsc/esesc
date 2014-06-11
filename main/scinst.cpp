@@ -34,7 +34,7 @@ int main(int argc, char **argv)
   ThumbCrack *crackThumb = new ThumbCrack;
 
   RAWDInst *rinst  = new RAWDInst;
-  RAWInstType insn = strtol(argv[1],0,16);
+  RAWInstType insn = strtoll(argv[1],0,16);
 
 #ifdef SCOORE
   rinst->set(insn, 0xdeaddead);
@@ -79,5 +79,6 @@ int main(int argc, char **argv)
   }
 
   return 0;
+  
 }
 

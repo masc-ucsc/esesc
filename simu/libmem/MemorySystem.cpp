@@ -41,6 +41,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "UnMemXBar.h"
 #include "MemorySystem.h"
 #include "MemController.h"
+#include "MarkovPrefetcher.h"
 
 
 #include "DrawArch.h"
@@ -85,23 +86,23 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     //mdev = new GHB(this, dev_section, dev_name);
 		I(0);
     devtype = 4;
-#if 0
+
   } else if (!strcasecmp(device_type, "stridePrefetcher")) {
     mdev = new StridePrefetcher(this, dev_section, dev_name);
     devtype = 5;
   } else if (!strcasecmp(device_type, "markovPrefetcher")) {
     mdev = new MarkovPrefetcher(this, dev_section, dev_name);
     devtype = 6;
+/*
   } else if (!strcasecmp(device_type, "taggedPrefetcher")) {
     mdev = new TaggedPrefetcher(this, dev_section, dev_name);
     devtype = 7;
-#endif
+*/
   }  else if (!strcasecmp(device_type, "bus")) {
     mdev = new Bus(this, dev_section, dev_name);
     devtype = 8;
   } else if (!strcasecmp(device_type, "tlb")) {
-		I(0);
-    //mdev = new TLB(this, dev_section, dev_name);
+    mdev = new TLB(this, dev_section, dev_name);
     devtype = 9;
   } else if (!strcasecmp(device_type, "splitter")) {
     //mdev = new Splitter(this, dev_section, dev_name);

@@ -50,8 +50,15 @@
 #include "GProcessor.h"
 #include "TaskHandler.h"
 #include "MemRequest.h"
+#include "PortManager.h"
 #include "../libsampler/BootLoader.h"
 /* }}} */
+
+#ifdef DEBUG
+void CCache::trackAddress(MemRequest *mreq) {
+  //I(mreq->getAddr() != 0x1a2bc);
+}
+#endif
 
 CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   // Constructor {{{1
@@ -120,10 +127,15 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   dyn_hitDelay    = hitDelay;   // DVFS managed
   dyn_missDelay   = missDelay;
 
-  coreCoupledFreq = SescConf->getBool(section,"coreCoupledFreq");
-  if (coreCoupledFreq) {
-    BootLoader::getPowerModelPtr()->addTurboCoupledMemory(this);
-  }
+  // TODO: add support for coreCoupledFreq as part of mreq
+  //if(SescConf->checkBool(section,"coreCoupledFreq")) {
+    //MSG("WARNING: coreCoupledFreq does not work yet");
+  //}
+
+  coreCoupledFreq = false;
+  //if (coreCoupledFreq) {
+  //  BootLoader::getPowerModelPtr()->addTurboCoupledMemory(this);
+  //}
 
   const char* mshrSection = SescConf->getCharPtr(section,"MSHR");
 
@@ -138,15 +150,6 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 
   I(getLineSize() < 4096); // To avoid bank selection conflict (insane CCache line)
   I(gms);
-
-	numBanks   = SescConf->getInt(section, "numBanks");
-	numBanks   = SescConf->isBetween(section, "numBanks", 1, 1024);  // More than 1024???? (more likely a bug in the conf)
-  SescConf->isPower2(section,"numBanks");
-  int32_t log2numBanks = log2i(numBanks);
-  if (numBanks>1)
-    numBanksMask = (1<<log2numBanks)-1;
-  else
-    numBanksMask = 0;
   
   SescConf->checkBool(section, "inclusive");
   SescConf->checkBool(section, "directory");
@@ -158,27 +161,12 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 		MSG("ERROR: %s CCache can not have a 'directory' without being 'inclusive'",section);
 		SescConf->notCorrect();
 	}
-  
-  int numPorts = SescConf->getInt(section, "bkNumPorts");
-  int portOccp = SescConf->getInt(section, "bkPortOccp");
-
-  bkPort = new PortGeneric* [numBanks]; 
-  for (uint32_t i = 0; i < numBanks; i++){
-    sprintf(tmpName, "%s_bk(%d)", name,i);
-    bkPort[i] = PortGeneric::create(tmpName, numPorts, portOccp);
-  }
-  sprintf(tmpName, "%s_ack", name);
-  ackPort = PortGeneric::create(tmpName,numPorts,portOccp);
-
-  maxRequests = SescConf->getInt(section, "maxRequests");
-  if(maxRequests == 0)
-    maxRequests = 32768;
-
-  curRequests = 0;
 
   MemObj *lower_level = gms->declareMemoryObj(section, "lowerLevel");
   if(lower_level)
     addLowerLevel(lower_level);
+
+  port = PortManager::create(section, this);
 }
 // }}}
 
@@ -206,7 +194,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 			}else if (l->getSharingCount() == 1) {
 				invOne.inc(doStats);
 
-				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, getLineSize(), doStats);
+				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
 				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), inv_req, ma_setInvalid, dyn_hitDelay); 
         if (i==0)
           inv_req->ack();
@@ -214,7 +202,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
         // TODO: if l->getSharingCount() small, better than a broadcast
 				invAll.inc(doStats);
 
-				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, getLineSize(), doStats);
+				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
 				int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, dyn_hitDelay);
         if (i==0)
           inv_req->ack();
@@ -222,7 +210,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 		}else{
 			invAll.inc(doStats);
 
-			MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, getLineSize(), doStats);
+			MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
       int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, dyn_hitDelay);
       if (i==0)
         inv_req->ack();
@@ -235,6 +223,8 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
     router->sendDisp(naddr, mreq->getStatsFlag(),1);
 		writeBack.inc();
   }
+
+  l->clearSharing();
 }
 // }}}
 
@@ -249,8 +239,11 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
 
   I(l); // Ignore lock guarantees to find line
 
-  if(l->isValid())
+  if(l->isValid()) {
+		// TODO: add a port for evictions. Schedule the displaceLine accordingly
     displaceLine(rpl_addr, mreq, l);
+  }
+  I(l->getSharingCount()==0);
 
   return l;
 }
@@ -272,7 +265,8 @@ bool CCache::CState::shouldNotifyLowerLevels(MsgAction ma) const
   switch(ma) {
     case ma_setValid:     return state == I;
     case ma_setInvalid:   return true; 
-    case ma_setDirty:     return state != O && state != M && state != E;
+    case ma_MMU: // ARM does not cache MMU translations???
+    case ma_setDirty:     return state != M && state != E;
     case ma_setShared:    return state != O && state != S && state != E;
     case ma_setExclusive: return state != E;
     default:          I(0);
@@ -282,21 +276,25 @@ bool CCache::CState::shouldNotifyLowerLevels(MsgAction ma) const
 }
 // }}}
 
-bool CCache::CState::shouldNotifyHigherLevels(MemRequest *mreq, int16_t port) const
+bool CCache::CState::shouldNotifyHigherLevels(MemRequest *mreq, int16_t portid) const
 // {{{1
 {
-  if (nSharers == 1 && share[0] == port)
+  if (nSharers == 0)
+    return false;
+
+  if (nSharers == 1 && share[0] == portid)
     return false; // Nobody but requester 
 
   switch(mreq->getAction()) {
-    case ma_setValid:     return state != S && state != O;
-    case ma_setInvalid:   return state != I;
-    case ma_setDirty:     return state != M;
+    case ma_setValid:     
     case ma_setShared:    return state != S && state != O;
-    case ma_setExclusive: return state != E;
-    default: I(0);
+    case ma_setDirty:     
+    case ma_setExclusive: 
+    case ma_setInvalid:   return true; 
+    default:          I(0);
   }
-  return false;
+  I(0);
+  return true;
 }
 // }}}
 
@@ -336,7 +334,7 @@ CCache::CState::StateType CCache::CState::calcAdjustState(MemRequest *mreq) cons
 }
 // }}}
 
-void CCache::CState::adjustState(MemRequest *mreq, int16_t port, bool redundant) 
+void CCache::CState::adjustState(MemRequest *mreq, int16_t portid, bool redundant) 
   // {{{1
 {
   StateType ostate = state;
@@ -352,32 +350,32 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t port, bool redundant)
   }
 
   I(state != I);
-  if (port<0) {
+  if (portid<0) {
     return;
   }
 
-  I(port>=0); // port<0 means no port found
+  I(portid>=0); // portid<0 means no portid found
   if (nSharers==0) {
-    share[0] = port;
+    share[0] = portid;
     nSharers++;
     return;
   }
 
   for(int i=0;i<nSharers;i++) {
-    if(share[i] == port) {
+    if(share[i] == portid) {
       return;
     }
   }
 
-  addSharing(port);
+  I(state!=E && state!=M); // ME states require single share
+
+  addSharing(portid);
 }
 // }}}
 
 bool CCache::notifyLowerLevels(Line *l, MemRequest *mreq)
   // {{{1
 {
-  I(mreq->isReq());
-
   if (!needsCoherence)
     return false;
 
@@ -400,19 +398,25 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
   I(l);
   I(!notifyLowerLevels(l,mreq));
 
-  if (router->isTopLevel())
+  if (mreq->isHomeNode())
     return false;
+  I(!router->isTopLevel());
 
-  int16_t port = router->getCreatorPort(mreq);
-  if (l->shouldNotifyHigherLevels(mreq, port)) {
+  int16_t portid = router->getCreatorPort(mreq);
+  if (l->shouldNotifyHigherLevels(mreq, portid)) {
     MsgAction ma = l->othersNeed(mreq->getAction());
+
+    // TODO: check that it is the correct DL1 IL1 request source
 
     if (!directory || l->isBroadcastNeeded()) {
       router->sendSetStateOthers(mreq,ma,dyn_missDelay);
       //I(num); // Otherwise, the need coherent would be set
     }else{
       for(int16_t i=0;i<l->getSharingCount();i++) {
-        int32_t j = router->sendSetStateOthersPos(l->getSharingPos(i),mreq,ma,dyn_missDelay);
+#ifdef DEBUG
+        int32_t j = 
+#endif
+          router->sendSetStateOthersPos(l->getSharingPos(i),mreq,ma,dyn_missDelay);
         I(j);
       }
     }
@@ -425,20 +429,40 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
 }
 // }}}
 
+void CCache::CState::removeSharing(int16_t id)
+// {{{1
+{
+  if (nSharers>=8)
+    return; // not possible to remove if in broadcast mode
+
+  for(int16_t i=0;i<nSharers;i++) {
+    if (share[i] == id) {
+      for(int16_t j = i;j<(nSharers-1);j++) {
+        share[j] = share[j+1];
+      }
+      nSharers--;
+      return;
+    }
+  }
+}
+// }}}
+
 void CCache::doReq(MemRequest *mreq)
 /* processor/upper level issued read/write/busread {{{1 */
 {
+  trackAddress(mreq);
+
   AddrType addr = mreq->getAddr();
   bool retrying = mreq->isRetrying();
 
   if (retrying) { // reissued operation
 		mreq->clearRetrying();
   }else{
-    curRequests++;
+    //curRequests++;
     if(!mshr->canIssue(addr)) {
       s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
 
-      mshr->addEntry(addr, &mreq->doReqCB);
+      mshr->addEntry(addr, &mreq->redoReqCB);
       mreq->setRetrying();
       return;
     }
@@ -466,6 +490,10 @@ void CCache::doReq(MemRequest *mreq)
 	I(l);
 	I(l->isValid());
 
+  int16_t portid = router->getCreatorPort(mreq);
+  GI(portid<0,mreq->isHomeNode());
+	l->adjustState(mreq, portid);
+
   if (retrying)
     s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
   else
@@ -473,37 +501,33 @@ void CCache::doReq(MemRequest *mreq)
 
   avgMemLat.sample(mreq->getTimeDelay()+dyn_hitDelay);
 
-	Time_t when = ackPort->nextSlot(mreq->getStatsFlag())+dyn_hitDelay;
+  Time_t when = port->reqDone(mreq)+dyn_hitDelay;
 	I(when>=globalClock);
   if(mreq->isHomeNode()) {
 		mreq->ackAbs(when);
 	}else{
-    int16_t port = router->getCreatorPort(mreq);
-    l->adjustState(mreq, port, true);
+    int16_t portid = router->getCreatorPort(mreq);
+    l->adjustState(mreq, portid);
 		mreq->convert2ReqAck(l->reqAckNeeds());
 		router->scheduleReqAckAbs(mreq, when);
 	}
 
-  curRequests--;
-  I(curRequests>=0);
   mshr->retire(addr);
-
 }
 // }}}
 
 void CCache::doDisp(MemRequest *mreq)
 /* CCache displaced from higher levels {{{1 */
 {
+  trackAddress(mreq);
+
   AddrType addr = mreq->getAddr();
 
-  cacheBank->findLineDebug(addr);
-  // I(l); // inclusion. We miss some due to timing. Can someone fix the bug?
-#if 0
-  // FIXME: some data race is happenning (may be the nesting)
+  Line *l=cacheBank->readLine(addr);
   if (l) {
-    I(!l->shouldNotifyLowerLevels(mreq->getAction()));
+    int16_t portid = router->getCreatorPort(mreq);
+    l->removeSharing(portid);
   }
-#endif
 
   mreq->ack();
 }
@@ -512,29 +536,37 @@ void CCache::doDisp(MemRequest *mreq)
 void CCache::doReqAck(MemRequest *mreq)
 /* CCache reqAck {{{1 */
 {
+  trackAddress(mreq);
+
   AddrType addr = mreq->getAddr();
   Line *l = cacheBank->readLine(addr);
+  // It could be l!=0 if we requested a check in the lower levels to change state.
   if (l == 0) {
     l = allocateLine(addr, mreq);
+  }else{
+    if (notifyHigherLevels(l,mreq)) {
+      // FIXME I(0);
+      I(mreq->hasPendingSetStateAck());
+      return;
+    }
   }
 
   s_reqSetState[mreq->getAction()]->inc(mreq->getStatsFlag());
 
-  int16_t port = router->getCreatorPort(mreq);
-  GI(port<0,mreq->isHomeNode());
-	l->adjustState(mreq, port);
+  int16_t portid = router->getCreatorPort(mreq);
+  GI(portid<0,mreq->isHomeNode());
+	l->adjustState(mreq, portid);
 
-  curRequests--;
-  I(curRequests>=0);
+  Time_t when = port->reqDone(mreq)+dyn_hitDelay;
   mshr->retire(addr);
 
-  avgMissLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-  avgMemLat.sample(mreq->getTimeDelay()+1);
+  avgMissLat.sample(mreq->getTimeDelay(when), mreq->getStatsFlag());
+  avgMemLat.sample(mreq->getTimeDelay(when));
 
   if(mreq->isHomeNode()) {
-		mreq->ackAbs(ackPort->nextSlot(mreq->getStatsFlag())+dyn_hitDelay);
+		mreq->ackAbs(when);
   }else {
-    router->scheduleReqAck(mreq); 
+    router->scheduleReqAckAbs(mreq,when); 
   }
 }
 // }}}
@@ -542,41 +574,32 @@ void CCache::doReqAck(MemRequest *mreq)
 void CCache::doSetState(MemRequest *mreq)
 /* CCache invalidate request {{{1 */
 {
+  trackAddress(mreq);
   I(!mreq->isHomeNode());
-  if (true || !inclusive || !needsCoherence) { // FIXME: remove true
+  if (!inclusive || !needsCoherence) {
 		// If not inclusive, do whatever we want
-		mreq->convert2SetStateAck(this);
+    I(mreq->getCurrMem() == this);
+		mreq->convert2SetStateAck(ma_setInvalid);
     router->scheduleSetStateAck(mreq, 1); // invalidate ack with nothing else if not inclusive
     return;
   }
 
-  AddrType addr    = mreq->getAddr();
-  int32_t ls       = getLineSize();
-  int32_t maxLines = mreq->getLineSize()/(ls+1)+1;
-  bool allInvalid  = true;
-
-  for(int32_t i =0 ; i < maxLines ; i++) {
-    Line *l = cacheBank->readLine(addr+i*ls);
-    if (l) {
-      allInvalid = false;
-      int16_t port = router->getCreatorPort(mreq);
-			l->adjustState(mreq,port);
-    }
-  }
-  if (allInvalid) {
+  Line *l = cacheBank->readLine(mreq->getAddr());
+  if (l==0) {
 		// Done!
-		mreq->convert2SetStateAck(this);
+		mreq->convert2SetStateAck(ma_setInvalid);
     router->scheduleSetStateAck(mreq, 1);
     return;
   }
 
+  int16_t portid = router->getCreatorPort(mreq);
+  l->adjustState(mreq,portid);
+
 	// Propagate setState to all the upper levels
   if(router->sendSetStateAll(mreq, mreq->getAction(), 1)) {
-		// TODO: We should wait until the messages come to propagate the ack
-		//mreq->convert2SetStateAck(this);
-    //router->scheduleSetStateAck(mreq, 1); 
+    // When finished, it will ack() 
   }else{
-		mreq->convert2SetStateAck(this);
+		mreq->convert2SetStateAck(ma_setShared);
     router->scheduleSetStateAck(mreq, 1); 
   }
 }
@@ -585,13 +608,20 @@ void CCache::doSetState(MemRequest *mreq)
 void CCache::doSetStateAck(MemRequest *mreq)
 /* CCache invalidate request Ack {{{1 */
 {
+  trackAddress(mreq);
   if(mreq->isHomeNode()) {
-    int16_t port = router->getCreatorPort(mreq);
+    int16_t portid = router->getCreatorPort(mreq);
     Line *l = cacheBank->readLine(mreq->getAddr());
+
     if (l) {
-      l->adjustState(mreq, port, true);
+      if(mreq->getAction() == ma_setInvalid) {
+        l->removeSharing(portid);
+      }else{
+        I(mreq->getAction() == ma_setShared);
+        l->adjustState(mreq,portid);
+      }
     }
-		mreq->ack();
+		mreq->ack(1); // to give time for the same cycle disp
 	}else{
 		router->scheduleSetStateAck(mreq, dyn_hitDelay);
 	}
@@ -601,36 +631,33 @@ void CCache::doSetStateAck(MemRequest *mreq)
 void CCache::req(MemRequest *mreq)
 /* main processor read entry point {{{1 */
 {
-  // predicated ARM instructions canbe with zero address
+  // predicated ARM instructions can be with zero address
   if(mreq->getAddr() == 0) {
     mreq->ack(dyn_hitDelay);
     return;
   }
-
 	I(!mreq->isRetrying());
-	mreq->scheduleReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  port->req(mreq);
 }
 // }}}
 
 void CCache::reqAck(MemRequest *mreq)
 /* request Ack {{{1 */
 {
-  if (mreq->getStatsFlag())
-	  s_reqAck[mreq->getAction()]->inc(true);
+  s_reqAck[mreq->getAction()]->inc(mreq->getStatsFlag());
 
 	I(!mreq->isRetrying());
-	mreq->scheduleReqAckAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  port->reqAck(mreq);
 }
 // }}}
 
 void CCache::setState(MemRequest *mreq)
 /* set state {{{1 */
 {
-  if (mreq->getStatsFlag())
-	  s_reqAck[mreq->getAction()]->inc(true);
+  s_reqSetState[mreq->getAction()]->inc(mreq->getStatsFlag());
 
 	I(!mreq->isRetrying());
-	mreq->scheduleSetStateAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  port->setState(mreq);
 }
 // }}}
 
@@ -638,7 +665,7 @@ void CCache::setStateAck(MemRequest *mreq)
 /* set state ack {{{1 */
 {
 	I(!mreq->isRetrying());
-	mreq->scheduleSetStateAckAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  port->setStateAck(mreq);
 }
 // }}}
 
@@ -646,21 +673,23 @@ void CCache::disp(MemRequest *mreq)
 /* displace a CCache line {{{1 */
 {
 	I(!mreq->isRetrying());
-	mreq->scheduleDispAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  port->disp(mreq);
 }
 // }}}
 
 bool CCache::isBusy(AddrType addr) const
 /* check if CCache can accept more writes {{{1 */
 {
-  if(curRequests >= maxRequests)
+  if(port->isBusy(addr))
     return true;
 
   if (!mshr->canAccept(addr))
     return true;
 
-  if (router->isBusyPos(0,addr))
+#if 0
+  if (router->isBusyPos(0,addr)) // go down, not needed with PortManager
     return true;
+#endif
 
   return false;
 }
@@ -677,6 +706,8 @@ void CCache::dump() const
 TimeDelta_t CCache::ffread(AddrType addr)
 /* can accept reads? {{{1 */
 { 
+  return 0;
+
   AddrType addr_r=0;
 
   if (cacheBank->readLine(addr))
@@ -692,13 +723,18 @@ TimeDelta_t CCache::ffread(AddrType addr)
 TimeDelta_t CCache::ffwrite(AddrType addr)
 /* can accept writes? {{{1 */
 { 
+  return 0;
+
   AddrType addr_r=0;
 
-  if (cacheBank->writeLine(addr))
+  Line *l = cacheBank->writeLine(addr);
+  if (l) {
+    l->setModified(); // WARNING, can create random inconsistencies (no inv others)
     return hitDelay;   // done!
+  }
 
-  Line *l = cacheBank->fillLine(addr, addr_r);
-  l->setExclusive(); // WARNING, can create random inconsistencies (no inv others)
+  l = cacheBank->fillLine(addr, addr_r);
+  l->setModified(); // WARNING, can create random inconsistencies (no inv others)
 
   return router->ffwrite(addr) + dyn_missDelay;
 }

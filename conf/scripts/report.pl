@@ -242,19 +242,17 @@ sub newtradMemStats {
 
   }
 
-  my @mycaches = `grep -e ".*_MSHR" ${file} | sed -e "s/_MSHR.*//g" | sort -u | sort -t\\( -k1 -n`;
+  my @mycaches = `grep ":readHit" ${file} | cut -d: -f1 | sort -u | sort -t\\( -k1 -n`;
   my @myIcaches = grep(/I/, @mycaches);
   for my $cache (@myIcaches) {
     newMemStat($cache);
   }
-
-  printf "--------------------------------------------------------------------------------------------------\n";
+   printf "--------------------------------------------------------------------------------------------------\n";
   my @myDcaches = grep(/D/, @mycaches);
   for my $cache (@myDcaches) {
     newMemStat($cache);
   }
   printf "--------------------------------------------------------------------------------------------------\n";
-
   my @restcaches = grep(!/I|D/, @mycaches);
   for my $cache (@restcaches) {
     newMemStat($cache);
@@ -266,7 +264,7 @@ sub newMemStat {
   my $cache = shift;
   $cache =~ s/\r?\n$//;
 
-  if ($cf->getResultField("${cache}","readMiss") or $cf->getResultField("${cache}","busReadMiss")){
+  if ($cf->getResultField("${cache}","readHit")>0) {
     printf ("%-15s ",$cache);
     printf "%-4.1f ",$cf->getResultField("${cache}_occ","v");
 
@@ -495,66 +493,21 @@ sub showStatReport {
     my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
     next unless( $clockTicks > 1 );
 
-    printf "#table17 Benchmark:              nFetched:  nCommitted:   FPMULT:    FPADD:  L3MissLat: L3Miss: L3Hit: L2MissLat: L2Miss: L2Hit: L1MissLat: L1Miss:     L1Hit: OGEHLMiss: OGEHLHit: BTBMiss:   BTBHit: RASHit: BPredMiss: nBranches: filename:\n";
+    printf "#table17 Benchmark:             L2Miss:  L1Miss:   L1Hit:            filename:\n";
     printf "table17 %22s ", $name;
 
-    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
-    my $fetched   = ($cf->getResultField("P(${i})_FetchEngine", "nFetched"));
 
-    my $fpmult    = ($cf->getResultField("CUNIT_FPMULT(${i})_occ", "n")); 
-    my $fpadd     = ($cf->getResultField("CUNIT_FPALU(${i})_occ", "n")); 
 
-    my $l3_lat    = ($cf->getResultField("L3_avgMissLat", "v"));
-    my $l3_miss   = ($cf->getResultField("L3", "readMiss")) + ($cf->getResultField("L3", "readHalfMiss")) + ($cf->getResultField("L3", "writeMiss")) + ($cf->getResultField("L3", "writeHalfMiss")); 
-    my $l3_hit    = ($cf->getResultField("L3", "readHit")) +  ($cf->getResultField("L3", "writeHit"));
+    my $l2_miss   = ($cf->getResultField("L2", "readMiss")) + ($cf->getResultField("L2", "readHalfMiss")) + ($cf->getResultField("L2", "writeMiss")) + ($cf->getResultField("L2", "writeHalfMiss")); 
 
-    my $l2_lat    = ($cf->getResultField("L2(${i})_avgMissLat", "v"));
-    my $l2_miss   = ($cf->getResultField("L2(${i})", "readMiss")) + ($cf->getResultField("L2(${i})", "readHalfMiss")) + ($cf->getResultField("L2(${i})", "writeMiss")) + ($cf->getResultField("L2(${i})", "writeHalfMiss")); 
-    my $l2_hit    = ($cf->getResultField("L2(${i})", "readHit")) +  ($cf->getResultField("L2(${i})", "writeHit"));
-
-    my $l1_lat    = ($cf->getResultField("DL1(${i})_avgMissLat", "v"));
     my $l1_miss   = ($cf->getResultField("DL1(${i})", "readMiss")) + ($cf->getResultField("DL1(${i})", "readHalfMiss")) + ($cf->getResultField("DL1(${i})", "writeMiss")) + ($cf->getResultField("DL1(${i})", "writeHalfMiss")); 
     my $l1_hit    = ($cf->getResultField("DL1(${i})", "readHit")) +  ($cf->getResultField("DL1(${i})", "writeHit"));
 
-    my $ogehl_miss = ($cf->getResultField("P(${i})_BPRED_ogehl", "nMiss"));
-    my $ogehl_hit  = ($cf->getResultField("P(${i})_BPRED_ogehl", "nHit"));
-
-    my $btb_miss = ($cf->getResultField("P(${i})_BPRED_BTB", "nMiss"));
-    my $btb_hit  = ($cf->getResultField("P(${i})_BPRED_BTB", "nHit"));
-
-    my $ras_hit    = ($cf->getResultField("P(${i})_BPRED_RAS", "nHit"));
-    my $bpred_miss = ($cf->getResultField("P(${i})_BPred", "nMiss"));
-    my $nbranches  = ($cf->getResultField("P(${i})_BPred", "nBranches"));
-
-    printf "  %d ", $fetched;
-    printf "   %d ", $committed;
-
-    printf " %d ", $fpmult;
-    printf " %d ", $fpadd;
-
-    printf "  %9.2f ", $l3_lat;
-    printf "  %d ", $l3_miss;
-    printf "    %d ", $l3_hit;
-
-    printf " %9.2f ", $l2_lat;
     printf "   %d ", $l2_miss;
-    printf "  %d ", $l2_hit;
-
-    printf " %9.2f ", $l1_lat;
     printf "   %d ", $l1_miss;
     printf " %d ", $l1_hit;
 
-    printf "       %d ", $ogehl_miss;
-    printf " %d ", $ogehl_hit;
-
-    printf "      %d ", $btb_miss;
-    printf " %d ", $btb_hit;
-
-    printf "    %d ", $ras_hit;
-    printf "       %d ", $bpred_miss;
-    printf "  %d ", $nbranches;
-
-    printf "           %-20s\n ", $file;          
+    printf " %-20s\n ", $file;          
     print "\n";
   }
 
@@ -1382,17 +1335,7 @@ sub simStats {
       }
       printf "%5.0f\t",($inst_t/($usec_t/1000));
 
-      my $name = $file;
-      $name =~ /.*sesc\_([^ ]*)......./;
-      $name = $1;
-      my $sescThermTime  = ($cf->getResultField("sescThermTime","max"));
-
-      print "\n";
-      if ($sescThermTime == 0){
-        printf "  Time  ";
-      }else{
-        printf " %-7s\t%4.1f\tTime  ",$name, $sescThermTime;
-      }
+      
       foreach my $mode ("Rabbit", "Warmup", "Detail", "Timing") {
         my $usec = $cf->getResultField("S(${s})","${mode}Time");
 
@@ -1426,14 +1369,13 @@ sub simStats {
       printf "  Inst  ";
 
       foreach my $mode ("Rabbit", "Warmup", "Detail", "Timing") {
-        my $inst = $cf->getResultField("S(${s})","${mode}Inst");
-        printf " %4.1f%%\t",(100*$inst/($inst_t+1));
-
-        if ($mode eq "Timing") {
-          printf "        : Approx Total Time %6.3f ms Sim",(1e-3/$freq)*$clockTicks;
-          print " (${freq}MHz)";
-        }
+        my $tmp= $cf->getResultField("S(${s})","${mode}Inst");
+        printf " %4.1f%%\t",(100*$tmp/($inst_t+1));
       }
+
+      my $progressedTime = $cf->getResultField("progressedTime", "max"); # ns metric
+      printf "        : Approx Total Time %6.3f ms Sim",$progressedTime/1e6;
+      print " (${freq}MHz)";
 
       print "\n********************************************************************************************************\n";
     }
@@ -1448,7 +1390,7 @@ sub instStats {
   print "Proc :  rawInst  :   nCommit   :   nInst   :  AALU   :  BALU   :  CALU   :  LALU   :  SALU   :  LD Fwd :    Replay    : Worst Unit  (clk)\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    next unless( $cf->getResultField("P(${i})","clockTicks") );
+    next unless( $cf->getResultField("P(${i})","clockTicks")>0 );
     printf " %3d :",$i;
 
     my $iAALU = $cf->getResultField("P(${i})_ExeEngine_iRALU","n")
@@ -1545,7 +1487,7 @@ sub branchStats {
   print "\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    next unless( $cf->getResultField("P(${i})","clockTicks") );
+    next unless( $cf->getResultField("P(${i})","clockTicks")>0 );
 
     my $cpuType    = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
 

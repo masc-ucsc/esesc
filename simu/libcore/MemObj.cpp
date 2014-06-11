@@ -60,6 +60,7 @@ MemObj::MemObj(const char *sSection, const char *sName)
   ,name(sName)
   ,id(id_counter++)
 {
+	coreid = -1; // No first Level cache by default
   // Create router (different objects may override the default router)
   router = new MRouter(this);
 
@@ -92,11 +93,11 @@ void MemObj::addLowerLevel(MemObj *obj) {
 	router->addDownNode(obj);
 	I( obj );
 	obj->addUpperLevel(this);
-	printf("%s with lower level %s\n",getName(),obj->getName());
+	//printf("%s with lower level %s\n",getName(),obj->getName());
 }
 
 void MemObj::addUpperLevel(MemObj *obj) { 
-	printf("%s upper level is %s\n",getName(),obj->getName());
+	//printf("%s upper level is %s\n",getName(),obj->getName());
 	router->addUpNode(obj);
 }
 

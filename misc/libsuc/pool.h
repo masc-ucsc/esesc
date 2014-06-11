@@ -411,6 +411,22 @@ public:
 #endif // POOL_TIMEOUT
   }
 
+#ifdef DEBUG
+	Ttype *nextInUse(Ttype *current) {
+    Holder *tmp = static_cast<Holder *>(current);
+		tmp = tmp->allNext;
+		while( tmp ) {
+			if (!tmp->inPool)
+    		return static_cast<Ttype *>(tmp);
+			tmp = tmp->allNext;
+		}
+		return 0;
+	}
+	Ttype *firstInUse() {
+		return nextInUse(static_cast<Ttype *>(allFirst));
+	}
+#endif
+
   void in(Ttype *data) {
 #ifdef DEBUG
     if( thid == 0 )

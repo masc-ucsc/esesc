@@ -51,7 +51,7 @@
 OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   /* constructor {{{1 */
   :GOoOProcessor(gm, i)
-  ,NoMemoryReplay(SescConf->getBool("cpusimu", "NoMemoryReplay",i))
+  ,MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay",i))
   ,IFID(i, this, gm)
   ,pipeQ(i)
   ,lsq(i)
@@ -81,8 +81,8 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   last_serialized = 0;
   last_serializedST = 0;
   forwardProg_threshold = 200;
-  if (SescConf->checkBool("cpusimu", "scooreMemory" , gm->getId()))
-    scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gm->getId());
+  if (SescConf->checkBool("cpusimu", "scooreMemory" , gm->getCoreId()))
+    scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gm->getCoreId());
   else
     scooreMemory = false;
 }
@@ -99,12 +99,7 @@ void OoOProcessor::fetch(FlowID fid)
   /* fetch {{{1 */
 {
   I(fid == cpu_id);
-
-  if(!active){
-  //  TaskHandler::removeFromRunning(cpu_id);
-    return;
-  }
-
+  I(active);
   I(eint);
 
   if( IFID.isBlocked(0)) {
@@ -123,7 +118,7 @@ void OoOProcessor::fetch(FlowID fid)
 }
 /* }}} */
 
-bool OoOProcessor::execute()
+bool OoOProcessor::advance_clock(FlowID fid)
   /* Full execution: fetch|rename|retire {{{1 */
 {
 
@@ -133,13 +128,10 @@ bool OoOProcessor::execute()
     return false;
   }
 
-  if (!busy) {
-    if (!active) {
-      // time to remove from the running queue
-      //TaskHandler::removeFromRunning(cpu_id);
-    }
+  fetch(fid);
+
+  if (!busy)
     return false;
-  }
 
   bool getStatsFlag = false;
   if( !ROB.empty() ) {
@@ -152,7 +144,7 @@ bool OoOProcessor::execute()
   if (unlikely(throttlingRatio>1)) { 
     throttling_cntr++;
 
-    uint32_t skip = ceil(throttlingRatio/getTurboRatio()); 
+    uint32_t skip = (uint32_t)ceil(throttlingRatio/getTurboRatio()); 
 
     if (throttling_cntr < skip) {
       return true;
@@ -467,7 +459,7 @@ void OoOProcessor::replay(DInst *target)
   // Same load can be marked by several stores in a OoO core : I(replayID != target->getID());
   I(target->getInst()->isLoad());
 
-  if( NoMemoryReplay ) {
+  if( !MemoryReplay ) {
     return;
   }
   target->markReplay();

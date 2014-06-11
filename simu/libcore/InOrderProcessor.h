@@ -55,12 +55,12 @@ private:
 
   FastQueue<DInst *> rROB; // ready/retiring/executed ROB
 
+  void fetch(FlowID fid);
 protected:
   ClusterManager clusterManager;
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
 
-  void fetch(FlowID fid);
-  bool execute();
+  bool advance_clock(FlowID fid);
   void retire();
 
   StallCause addInst(DInst *dinst);

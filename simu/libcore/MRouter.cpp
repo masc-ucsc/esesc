@@ -67,7 +67,6 @@ int16_t MRouter::getCreatorPort(const MemRequest *mreq) const
 
   UPMapType::const_iterator it = up_map.find(mreq->getCreator());
   if (it == up_map.end()) {
-    I(mreq->isHomeNode());
     return -1; // This happens when a mreq is created by the middle node
   }
 
@@ -87,7 +86,7 @@ void MRouter::fillRouteTables()
 
   I(up_node.size()==0); // First level cache only
   I(up_map.size() == 0);
-  MSG("Fill router is %s",self_mobj->getName());
+  //MSG("Fill router is %s",self_mobj->getName());
 
   I(down_node.size()>=1);
   for (size_t i = 0; i < down_node.size(); i++){
@@ -104,7 +103,7 @@ void MRouter::fillRouteTables()
     else
       rb = rb->down_node[0]->getRouter();
   }
-  MSG("Bottom router is %s",bottom->getName());
+  //MSG("Bottom router is %s",bottom->getName());
   rb = bottom->getRouter();
   rb->self_mobj->clearNeedsCoherence();
   while(rb->up_node.size()==1) {
@@ -188,8 +187,7 @@ void MRouter::scheduleReqPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
   /* schedule req down {{{1 */
 {
   I(down_node.size()>pos);
-  mreq->setNextHop(down_node[pos]);
-  mreq->scheduleReq(lat);
+  mreq->startReq(down_node[pos],lat);
 }
 /* }}} */
 
@@ -197,8 +195,7 @@ void MRouter::scheduleReq(MemRequest *mreq, TimeDelta_t lat)
   /* schedule req down {{{1 */
 {
   I(down_node.size()==1);
-  mreq->setNextHop(down_node[0]);
-  mreq->scheduleReq(lat);
+  mreq->startReq(down_node[0], lat);
 }
 /* }}} */
 
@@ -212,8 +209,7 @@ void MRouter::scheduleReqAck(MemRequest *mreq, TimeDelta_t lat)
     I(it != up_map.end());
     obj = it->second;
   }
-  mreq->setNextHop(obj);
-  mreq->scheduleReqAck(lat);
+  mreq->startReqAck(obj, lat);
 }
 /* }}} */
 
@@ -227,8 +223,7 @@ void MRouter::scheduleReqAckAbs(MemRequest *mreq, Time_t w)
     I(it != up_map.end());
     obj = it->second;
   }
-  mreq->setNextHop(obj);
-  mreq->scheduleReqAckAbs(w);
+  mreq->startReqAckAbs(obj, w);
 }
 /* }}} */
 
@@ -238,8 +233,7 @@ void MRouter::scheduleReqAckPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
   I(!up_node.empty());
   I(pos<up_node.size());
 
-  mreq->setNextHop(up_node[pos]);
-  mreq->scheduleReqAck(lat);
+  mreq->startReqAck(up_node[pos],lat);
 }
 /* }}} */
 
@@ -249,8 +243,7 @@ void MRouter::scheduleSetStatePos(uint32_t pos, MemRequest *mreq, TimeDelta_t la
   I(!up_node.empty());
   I(pos<up_node.size());
 
-  mreq->setNextHop(up_node[pos]);
-  mreq->scheduleSetState(lat);
+  mreq->startSetState(up_node[pos], lat);
 }
 /* }}} */
 
@@ -259,8 +252,7 @@ void MRouter::scheduleSetStateAck(MemRequest *mreq, TimeDelta_t lat)
 {
 	I(down_node.size()==1);
 
-  mreq->setNextHop(down_node[0]);
-  mreq->scheduleSetStateAck(lat);
+  mreq->startSetStateAck(down_node[0], lat);
 }
 /* }}} */
 
@@ -269,8 +261,7 @@ void MRouter::scheduleSetStateAckPos(uint32_t pos, MemRequest *mreq, TimeDelta_t
 {
 	I(down_node.size()>pos);
 
-  mreq->setNextHop(down_node[pos]);
-  mreq->scheduleSetStateAck(lat);
+  mreq->startSetStateAck(down_node[pos], lat);
 }
 /* }}} */
 
@@ -278,8 +269,7 @@ void MRouter::scheduleDispPos(uint32_t pos, MemRequest *mreq, TimeDelta_t lat)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()>pos);
-  mreq->setNextHop(down_node[pos]);
-  mreq->scheduleDisp(lat);
+  mreq->startDisp(down_node[pos], lat);
 }
 /* }}} */
 
@@ -287,8 +277,7 @@ void MRouter::scheduleDisp(MemRequest *mreq, TimeDelta_t lat)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()==1);
-  mreq->setNextHop(down_node[0]);
-  mreq->scheduleDisp(lat);
+  mreq->startDisp(down_node[0], lat);
 }
 /* }}} */
 
@@ -296,7 +285,7 @@ void MRouter::sendDisp(AddrType addr, bool doStats, TimeDelta_t lat)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()==1);
-  MemRequest::sendDisp(down_node[0], addr, doStats);
+  MemRequest::sendDisp(down_node[0], self_mobj, addr, doStats);
 }
 /* }}} */
 
@@ -306,7 +295,6 @@ int32_t MRouter::sendSetStateOthers(MemRequest *mreq, MsgAction ma, TimeDelta_t 
   if (up_node.size() <= 1)
     return 0; // if single node, for sure it does not get one
 
-  int32_t lsize = mreq->getLineSize();
   bool doStats  = mreq->getStatsFlag();
   AddrType addr = mreq->getAddr();
 
@@ -316,16 +304,15 @@ int32_t MRouter::sendSetStateOthers(MemRequest *mreq, MsgAction ma, TimeDelta_t 
   skip_mobj                    = it->second;
 
   int32_t conta = 0;
-  I(mreq->isReq());
+  I(mreq->isReq() || mreq->isReqAck());
   for(size_t i=0;i<up_node.size();i++) {
     if (up_node[i] == skip_mobj) 
       continue;
 
-    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, lsize, doStats);
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
     breq->addPendingSetStateAck(mreq);
 
-    breq->setNextHop(up_node[i]);
-    breq->scheduleSetState(lat);
+    breq->startSetState(up_node[i], lat);
     conta++;
   }
 
@@ -339,15 +326,13 @@ int32_t MRouter::sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction
   if (up_node.size() <= 1)
     return 0; // if single node, for sure it does not get one
 
-  int32_t lsize = mreq->getLineSize();
   bool doStats  = mreq->getStatsFlag();
   AddrType addr = mreq->getAddr();
 
-  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, lsize, doStats);
+  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
   breq->addPendingSetStateAck(mreq);
 
-  breq->setNextHop(up_node[pos]);
-  breq->scheduleSetState(lat);
+  breq->startSetState(up_node[pos], lat);
 
   return 1;
 }
@@ -359,18 +344,16 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
   if(up_node.empty())
     return 0; // top node?
 
-  int32_t lsize = mreq->getLineSize();
   bool doStats  = mreq->getStatsFlag();
   AddrType addr = mreq->getAddr();
 
   I(mreq->isSetState());
   int32_t conta = 0;
   for(size_t i=0;i<up_node.size();i++) {
-    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, lsize, doStats);
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
     breq->addPendingSetStateAck(mreq);
 
-    breq->setNextHop(up_node[i]);
-    breq->scheduleSetState(lat);
+    breq->startSetState(up_node[i], lat);
     conta++;
   }
 

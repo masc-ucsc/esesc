@@ -74,10 +74,7 @@ GPUSMProcessor::~GPUSMProcessor() {
 void GPUSMProcessor::fetch(FlowID fid) {
   I(eint);
 
-  if(!active){
-    TaskHandler::removeFromRunning(cpu_id);
-    return;
-  }
+  I(active);
 
   // Do not block fetch for a branch miss
   if( IFID.isBlocked(0)) {
@@ -93,7 +90,7 @@ void GPUSMProcessor::fetch(FlowID fid) {
   }
 }
 
-bool GPUSMProcessor::execute() {
+bool GPUSMProcessor::advance_clock(FlodID fid) {
 
   if (!active) {
     // time to remove from the running queue
@@ -101,9 +98,10 @@ bool GPUSMProcessor::execute() {
     return false;
   }
 
-  if (!busy) {
+  fetch(fid);
+
+  if (!busy)
     return false;
-  }
 
   clockTicks.inc();
   setWallClock();
@@ -136,6 +134,7 @@ bool GPUSMProcessor::execute() {
 
   // RENAME Stage
   if ( !pipeQ.instQueue.empty() ) {
+    // FIXME: Clear the per PE counter
     spaceInInstQueue += issue(pipeQ);
   }else if (ROB.empty() && rROB.empty()) {
     //I(0);
@@ -152,6 +151,8 @@ bool GPUSMProcessor::execute() {
 StallCause GPUSMProcessor::addInst(DInst *dinst) {
 
   const Instruction *inst = dinst->getInst();
+
+  // FIXME: if nInstPECounter is >0 for this cycle, do a DivertStall
 
 #if 0
   if(RAT[inst->getSrc(0)+dinst->getPE()*LREG_MAX] != 0 ||
@@ -217,7 +218,7 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
   // BEGIN INSERTION (note that cluster already inserted in the window)
   //dinst->dump("");
 
-  nInst[inst->getOpcode()]->inc(); // FIXME: move to cluster
+  nInst[inst->getOpcode()]->inc(); 
 
   ROB.push(dinst);
   I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
@@ -287,12 +288,7 @@ void GPUSMProcessor::retire() {
 
 void GPUSMProcessor::replay(DInst *dinst) {
 
-  MSG("GPU_SM cores(which are essentially inorder) do not support replays. Set NoMemoryReplay = true at the confguration");
+  MSG("GPU_SM cores(which are essentially inorder) do not support replays. Set MemoryReplay = false at the confguration");
 
-  // FIXME: foo should be equal to the number of in-flight instructions (check OoOProcessor)
-  size_t foo= 1;
-  nReplayInst.sample(foo);
-
-  // FIXME: How do we manage a replay in this processor??
 }
 #endif

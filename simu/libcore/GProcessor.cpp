@@ -76,8 +76,8 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
   throttlingRatio = SescConf->getDouble("cpusimu", "throttlingRatio" , i);
   throttling_cntr = 0;
   bool scooremem = false;
-  if (SescConf->checkBool("cpusimu"    , "scooreMemory" , gm->getId()))
-    scooremem = SescConf->getBool("cpusimu", "scooreMemory",gm->getId());
+  if (SescConf->checkBool("cpusimu"    , "scooreMemory" , gm->getCoreId()))
+    scooremem = SescConf->getBool("cpusimu", "scooreMemory",gm->getCoreId());
 
   if(scooremem) {
     if((!SescConf->checkCharPtr("cpusimu", "SL0", i))&&(!SescConf->checkCharPtr("cpusimu", "VPC", i))){
@@ -149,7 +149,7 @@ int32_t GProcessor::issue(PipeQueue &pipeQ) {
       I(!bucket->empty());
 
       DInst *dinst = bucket->top();
-      //  GMSG(getId()==1,"push to pipe %p", bucket);
+      //  GMSG(getCoreId()==1,"push to pipe %p", bucket);
 
       StallCause c = addInst(dinst);
       if (c != NoStall) {

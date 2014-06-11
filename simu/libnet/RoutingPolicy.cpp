@@ -7,7 +7,8 @@
 *******************************/
 
 RoutingPolicy::RoutingPolicy(const char *section, size_t ports) 
-  : nRouters(SescConf->getRecordSize("","cpucore"))
+  : nRouters(SescConf->getInt(section, "nRouters"))
+//  : nRouters(SescConf->getRecordSize("","cpucore"))
   ,nPorts(ports)
   ,crossLat(SescConf->getInt(section, "crossLat"))
   ,wireLat(SescConf->getInt(section,"wireLat"))
@@ -23,7 +24,7 @@ void RoutingPolicy::make(const char* section)
     adjacent[i].resize(nRouters);
     for(size_t j = 0; j < nRouters;j++){
       adjacent[i][j].resize(1);
-      adjacent[i][j][0].dist = INT_MAX;
+      adjacent[i][j][0].dist = SHRT_MAX;
     }
   }  
 
@@ -126,7 +127,6 @@ void RoutingPolicy::shortestPaths(RouterID_t dest)
 
 void RoutingPolicy::dump() const
 {
-  LOG("%d routers, %d ports/router", nRouters, nPorts);
   for(size_t i = 0; i < nRouters; i++) {
     char chain[256];
 
@@ -306,7 +306,6 @@ void HypercubeRoutingPolicy::create()
       size_t mask = 1 << j;
       size_t bit = i & mask;
       size_t nbor;
-      MSG("rstats = %ud %ud %d %d\n",i,j,mask,bit);
       if(bit != 0){
         nbor = (size_t)(i - mask);
       }else{

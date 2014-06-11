@@ -53,7 +53,7 @@ SamplerSMARTS::SamplerSMARTS(const char *iname, const char *section, EmulInterfa
 
   nInstForcedDetail = nInstDetail==0? nInstTiming/2:nInstDetail;
 
-  nextSwitch = nInstSkip;
+  setNextSwitch(nInstSkip);
   if (nInstSkip)
     startRabbit(fid);
 
@@ -89,7 +89,7 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid,
   I(insn);
 
   // process the current sample mode
-  if (nextSwitch>totalnInst) {
+  if (getNextSwitch()>totalnInst) {
 
     if (mode == EmuRabbit || mode == EmuInit)
       return;
@@ -105,45 +105,36 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid,
   }
 
 
-  // We did enough
-  if (totalnInst >= nInstMax || endSimSiged) {
-    markThisDone(fid);
-    
-    if (allDone())
-      markDone();
-    else {
-      keepStats = false;
-    }
-    return;
-  }
-
   // Look for the new mode
-  I(nextSwitch <= totalnInst);
-
+  I(getNextSwitch() <= totalnInst);
 
  // I(mode != next_mode);
   pthread_mutex_lock (&mode_lock);
   //
 
-  if (nextSwitch > totalnInst){//another thread just changed the mode
+  if (getNextSwitch() > totalnInst){//another thread just changed the mode
     pthread_mutex_unlock (&mode_lock);
     return;
   }
 
   lastMode = mode;
   nextMode(ROTATE, fid);
-  if (doPower) {
-    if (lastMode == EmuTiming) { // timing is going to be over
+  if (lastMode == EmuTiming) { // timing is going to be over
+    if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
+      markDone();
+      pthread_mutex_unlock (&mode_lock);
+      return;
+    }
+    if (doPower) {
       uint64_t mytime = getTime();
       int64_t ti = mytime - lastTime;
       I(ti > 0);
-      ti = freq*ti/1e9;
+      ti = (static_cast<int64_t>(freq)*ti)/1e9;
 
       BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
-      int32_t simt = BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
+      BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
       lastTime = mytime;
       updateCPI(fid); 
-      endSimSiged = (simt==90)?1:0;
       if (doTherm) {
         BootLoader::getPowerModelPtr()->updateSescTherm(ti);  
       }
@@ -177,24 +168,9 @@ void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
     if (next_mode == EmuRabbit){
       setModeNativeRabbit();
     }
-    nextSwitch       = nextSwitch + sequence_size[sequence_pos];
+    setNextSwitch(getNextSwitch() + sequence_size[sequence_pos]);
   }else{
     I(0);
   }
 }
-  
 
-bool SamplerSMARTS::allDone() {
-  for (size_t i=0; i< emul->getNumFlows(); i++) {
-    if (!finished[i])
-      return false;
-  }
-  return true;
-}
-
-void SamplerSMARTS::markThisDone(FlowID fid) {
-  if (!finished[fid]) {
-    finished[fid] = true;
-    printf("fid %d finished, waiting for the rest...\n", fid);
-  }
-}

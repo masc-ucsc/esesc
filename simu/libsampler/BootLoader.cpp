@@ -53,7 +53,6 @@
 
 #include "GProcessor.h"
 #include "OoOProcessor.h"
-#include "SMTProcessor.h"
 #include "InOrderProcessor.h"
 #include "GPUSMProcessor.h"
 #include "GMemorySystem.h"
@@ -249,7 +248,6 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
   const char *sampler_sec  = SescConf->getCharPtr(section,keyword);
   const char *sampler_type = SescConf->getCharPtr(sampler_sec,"type");
 
-  cout<<keyword<<" " <<section<<sampler_sec<<" "<<sampler_type<<"___________________________"<<endl<<endl;
   EmuSampler *sampler = 0;
   if(strcasecmp(sampler_type,"inst") == 0 ) {
     sampler = new SamplerSMARTS("TASS",sampler_sec,eint, fid);
@@ -315,13 +313,8 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   CPU_t cpuid = static_cast<CPU_t>(i);
 
   GProcessor  *gproc = 0;
-  if(SescConf->checkInt(section,"smtContexts")) {
-    if( SescConf->getInt(section,"smtContexts") > 1 )
-      gproc = new SMTProcessor(gms, cpuid);
-    else{
-      MSG("Invalid smtContexts.. Exiting...");
-      SescConf->notCorrect();
-    }
+  if(SescConf->getBool("cpusimu","inorder",cpuid)) {
+    gproc =new InOrderProcessor(gms, cpuid);
 #ifdef ENABLE_CUDA
   } else if(SescConf->checkInt(section,"sp_per_sm")) {
     if( SescConf->getInt(section,"sp_per_sm") >= 1 ){
@@ -332,8 +325,6 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
       SescConf->notCorrect();
     }
 #endif
-  } else if(SescConf->getBool("cpusimu","inorder",cpuid)) {
-    gproc =new InOrderProcessor(gms, cpuid);
   } else {
     gproc =new OoOProcessor(gms, cpuid);
   }

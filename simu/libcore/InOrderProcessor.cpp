@@ -65,10 +65,7 @@ InOrderProcessor::~InOrderProcessor() {
 void InOrderProcessor::fetch(FlowID fid) {
   // TODO: Move this to GProcessor (same as in OoOProcessor)
   I(eint);
-  if(!active){
-    //TaskHandler::removeFromRunning(cpu_id);
-    return;
-  }
+  I(active);
 
   if( IFID.isBlocked(0)) {
     busy = true;
@@ -83,18 +80,18 @@ void InOrderProcessor::fetch(FlowID fid) {
   }
 }
 
-bool InOrderProcessor::execute() {
+bool InOrderProcessor::advance_clock(FlowID fid) {
 
   if (!active) {
     // time to remove from the running queue
-    TaskHandler::removeFromRunning(cpu_id);
+    //TaskHandler::removeFromRunning(cpu_id);
     return false;
   }
  
+  fetch(fid);
 
-  if (!busy) {
+  if (!busy)
     return false;
-  }
 
   bool getStatsFlag = false;
   if( !ROB.empty() ) {
@@ -247,7 +244,7 @@ void InOrderProcessor::retire() {
 
 void InOrderProcessor::replay(DInst *dinst) {
 
-  MSG("Inorder cores do not support replays. Set NoMemoryReplay = true at the confguration");
+  MSG("Inorder cores do not support replays. Set MemoryReplay = false in the confguration");
 
   // FIXME: foo should be equal to the number of in-flight instructions (check OoOProcessor)
   size_t foo= 1;

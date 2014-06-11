@@ -49,6 +49,10 @@
 class MemObj;
 
 class SamplerBase : public EmuSampler {
+
+private:
+  uint64_t nextSwitch;
+   
 protected:
 
 	MemObj  *DL1; // For warmup
@@ -63,17 +67,16 @@ protected:
   uint64_t nInstSkip;
   uint64_t nInstMax;
 
-  uint64_t nextSwitch;
 
   EmuMode  next2EmuTiming;
   EmuMode lastMode;
 
   uint64_t pwr_updateInterval;
-  bool     endSimSiged;
   std::vector<EmuMode>  sequence_mode;
   std::vector<uint64_t> sequence_size;
   size_t   sequence_pos;
 
+  static GStatsMax  *progressedTime;
   uint64_t lastGlobalClock; // FIXME: Might need to define this as static for multicore
   static uint64_t pastGlobalTicks;
   static uint64_t gpuEstimatedCycles;
@@ -100,10 +103,15 @@ protected:
   uint64_t SamplInterval;     // can be removed?
   uint64_t rabbitPwrSkip;
 
-  void     allDone();
+  bool     allDone();
+  void     markThisDone(FlowID fid);
+
   FILE *genReportFileNameAndOpen(const char *str);
   void fetchNextMode();
 	void doWarmupOpAddr(char op, uint64_t addr);
+
+  void setNextSwitch(uint64_t instNum);
+  uint64_t getNextSwitch() const { return nextSwitch; }
 
 public:
   SamplerBase(const char *name, const char *section, EmulInterface *emul, FlowID fid = 0);
@@ -131,10 +139,8 @@ public:
   FlowID resumeThread(FlowID uid);
   FlowID getFid(FlowID last_fid);
   void terminate();
-  int isSamplerDone();
   void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
-  void syncnSamples(FlowID fid);
-  double getFreq(){ return freq*getTurboRatio(); }
+  double getFreq() const { return freq*getTurboRatio(); }
   double getNominatedFreq(){ return freq; }
 
   virtual float getSamplingRatio() = 0;

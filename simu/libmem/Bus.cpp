@@ -38,6 +38,9 @@
 #include "MemorySystem.h"
 #include "Bus.h"
 /* }}} */
+#ifdef ENABLE_NBSD
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, void *mreq); 
+#endif
 
 Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   /* constructor {{{1 */
@@ -70,6 +73,7 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
 void Bus::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
+  //MSG("@%lld bus %s 0x%lx %d",globalClock, mreq->getCurrMem()->getName(), mreq->getAddr(), mreq->getAction());
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
 	router->scheduleReq(mreq, when);
 }
@@ -87,6 +91,12 @@ void Bus::doReqAck(MemRequest *mreq)
   /* data is coming back {{{1 */
 {
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+
+  if (mreq->isHomeNode()) {
+    mreq->ack(when);
+    return;
+  }
+
   router->scheduleReqAck(mreq, when);
 }
 /* }}} */
@@ -94,6 +104,15 @@ void Bus::doReqAck(MemRequest *mreq)
 void Bus::doSetState(MemRequest *mreq)
   /* forward set state to all the upper nodes {{{1 */
 {
+  if (router->isTopLevel()) {
+#if ENABLE_NBSD
+    meminterface_start_snoop_req(mreq->getAddr(), mreq->getAction() == ma_setInvalid, getCoreID(), mreq);
+#else
+    mreq->convert2SetStateAck(ma_setInvalid); // same as a miss (not sharing here)
+    router->scheduleSetStateAck(mreq,1);
+#endif
+    return;
+  }
   router->sendSetStateAll(mreq, mreq->getAction(), delay);
 }
 /* }}} */

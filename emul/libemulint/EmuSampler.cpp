@@ -40,11 +40,8 @@
 #include "SescConf.h"
 
 bool cuda_go_ahead = false;
-std        :: vector<bool> EmuSampler :: done;
-int32_t   EmuSampler::inTiming[];
-uint64_t  EmuSampler::nSamples[];
-uint64_t  EmuSampler::totalnSamples                = 0;
-bool      EmuSampler::justUpdatedtotalnSamples     = false;
+std::vector<bool> EmuSampler::done;
+bool EmuSampler::terminated = false;
 uint64_t *EmuSampler::instPrev;
 uint64_t *EmuSampler::clockPrev;
 uint64_t *EmuSampler::fticksPrev;
@@ -130,15 +127,6 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   numFlow = SescConf->getRecordSize("","cpuemul");
   if (done.size() != numFlow)
     done.resize(numFlow);
-  for(size_t i=1; i< done.size();i++) {
-    //done[i] = true;
-    clearInTiming(i);
-  }
-
-  keepStats = true;
-  //keepStats = false;
-
-  nSamples[fid] = totalnSamples; // Local sample counter get the value of global counter in the beginning
 
   instPrev = new uint64_t[emul->getNumEmuls()]; 
   clockPrev = new uint64_t[emul->getNumEmuls()]; 
@@ -211,6 +199,9 @@ void EmuSampler::beginTiming(EmuMode mod)
 void EmuSampler::stop()
   /* stop a given mode, and assign statistics  */
 { 
+  if (terminated)
+    return;
+
   if (totalnInst >= cuda_inst_skip)
     cuda_go_ahead = true;
 
@@ -308,7 +299,6 @@ void EmuSampler::startTiming(FlowID fid)
   I(stopJustCalled);
   globalClock_Timing_prev = globalClock; 
 
-  setInTiming(fid);
   //if (mode!=EmuTiming)
   emul->startTiming(fid);
 
@@ -366,7 +356,7 @@ void EmuSampler::markDone()
 /* indicate the sampler that a flow is done for good  */
 {
   uint32_t endfid = emul->getNumEmuls() - 1;
-  stop();
+  //stop();
   I(!stopJustCalled || endfid==0); 
 
   I(done.size() > endfid);
@@ -377,6 +367,7 @@ void EmuSampler::markDone()
   phasenInst = 0;
 //  mode       = EmuInit;
   terminate();
+  terminated = true;
 }
 /*  */
 
@@ -484,24 +475,4 @@ void EmuSampler::calcCPI()
   meauCPI = 1.0/newuipc;
 }
 /*  */
-
-void EmuSampler::updatenSamples() {
-  if (justUpdatedtotalnSamples)
-    return;
-
-  totalnSamples++;
-  I(totalnSamples == nSamples[sFid]);
-  justUpdatedtotalnSamples = true;
-  //MSG(" %lu ", totalnSamples);
-}
-
-void EmuSampler::clearInTiming(FlowID fid){ 
-  inTiming[fid] = 0; 
-}
-
-void EmuSampler::setInTiming(FlowID fid)  { 
-  inTiming[fid] = 1; 
-  justUpdatedtotalnSamples = false;
-  nSamples[fid]++;
-}
 

@@ -45,9 +45,6 @@ class SamplerSMARTS : public SamplerBase {
 private:
 protected:
 
-
-  bool allDone();
-  void markThisDone(FlowID fid);
 public:
   SamplerSMARTS(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerSMARTS();

@@ -38,6 +38,7 @@
 #include <strings.h>
 #include <math.h>
 #include <alloca.h>
+#include <stdint.h>
 
 #include "Report.h"
 #include "BPred.h"

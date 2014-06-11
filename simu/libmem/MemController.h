@@ -79,7 +79,8 @@ protected:
   ACTIVATING,
   PRECHARGE,
   ACTIVE,
-  ACCESSING
+  ACCESSING,
+  INIT  // Added LNB 5/31/2014
 };
   PortGeneric *cmdPort;
   
@@ -137,6 +138,7 @@ public:
   void manageRam(void);
 
   typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;
+ // typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;  // Added by LNB 5/27/2014
 
   TimeDelta_t ffread(AddrType addr, DataType data);
   TimeDelta_t ffwrite(AddrType addr, DataType data);

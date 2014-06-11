@@ -99,7 +99,7 @@ void TaskHandler::addEmul(EmulInterface *eint, FlowID fid) {
 
 
   // By default, all the threads are active. If there are no
-  // instructions, blui.poweroff would be called when execute is
+  // instructions, blui.poweroff would be called when advance_clock is
   // called the first time
   int num_flows = eint->getNumFlows();
 
@@ -147,7 +147,7 @@ void TaskHandler::addEmulShared(EmulInterface *eint) {
 
 
   // By default, all the threads are active. If there are no
-  // instructions, blui.poweroff would be called when execute is
+  // instructions, blui.poweroff would be called when advance_clock is
   // called the first time
   int num_flows = eint->getNumFlows();
 
@@ -415,13 +415,7 @@ void TaskHandler::boot()
   /* main simulation loop {{{1 */
 {
   while(!terminate_all) {
-    for(size_t i =0;i<running_size;i++) {
-      FlowID fid = running[i];
-      GProcessor *simu = allmaps[fid].simu;
-      simu->fetch(fid);
-      simu->execute();
-    }
-    if (running_size == 0) {
+    if (unlikely(running_size == 0)) {
       bool needIncreaseClock = false;
       for(AllMapsType::iterator it=allmaps.begin();it!=allmaps.end();it++) {
         EmuSampler::EmuMode m = (*it).emul->getSampler()->getMode();
@@ -433,6 +427,10 @@ void TaskHandler::boot()
       if (needIncreaseClock)
         EventScheduler::advanceClock();
     }else{
+      for(size_t i =0;i<running_size;i++) {
+        FlowID fid = running[i];
+        allmaps[fid].simu->advance_clock(fid);
+      }
       EventScheduler::advanceClock();
     }
   }
@@ -468,8 +466,8 @@ void TaskHandler::plugEnd()
     MSG("ERROR: There are more emul (%zu) than cpu flows (%zu) available. Increase the number of cores or emulas can starve", emulas.size(), nCPUThreads);
     SescConf->notCorrect();
   }else if(emulas.size() < nCPUThreads) {
-    MSG("Warning: There are more cores than threads (%zu vs %zu). Powering down unusable cores", emulas.size(), nCPUThreads);
-    //FIXME: Where are they actually powered down?
+    if(emulas.size() !=0)
+      MSG("Warning: There are more cores than threads (%zu vs %zu). Powering down unusable cores", emulas.size(), nCPUThreads);
   }
 
   allmaps.resize(emulas.size());

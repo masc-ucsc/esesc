@@ -31,11 +31,11 @@ void Message::forwardMsgAbs(Time_t time , Router *r) {
 void Message::dump()
 {
   MSG("MESSAGE #%d: src[%d:%d] dst[%d:%d] size[%d] latency[%lld]"
-      ,msgID
+      ,(int)msgID
       ,srcRouterID,srcPortID
       ,dstRouterID,dstPortID
-      ,nSize
-      ,globalClock - launchTime
+      ,(int)nSize
+      ,(long long)(globalClock - launchTime)
       );
 }
 

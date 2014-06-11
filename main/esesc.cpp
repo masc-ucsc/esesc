@@ -32,6 +32,16 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "nanassert.h"
 
 #include "BootLoader.h"
+#ifdef ENABLE_NBSD
+#include "MemRequest.h"
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, void *_mreq) {
+  MemRequest *mreq = (MemRequest *)_mreq;
+
+  //MSG("@%lld snoop %s 0x%lx %d %s",globalClock, mreq->getCurrMem()->getName(), addr, mreq->getAction(), inv?"inv":"wb");
+  mreq->convert2SetStateAck();
+  mreq->getCurrMem()->doSetStateAck(mreq);
+}
+#endif
 
 int main(int argc, const char **argv) { 
 

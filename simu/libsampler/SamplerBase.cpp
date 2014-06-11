@@ -52,10 +52,15 @@ uint64_t SamplerBase::gpuEstimatedCycles = 0;
 
 uint64_t cuda_inst_skip;
 
+GStatsMax *SamplerBase::progressedTime = 0;
+
 SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : EmuSampler(iname, emu, fid)
   /* SamplerBase constructor {{{1 */
 {
+  if (progressedTime==0)
+      progressedTime = new GStatsMax("progressedTime");
+
   nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkip"));
 
   nInstRabbit = static_cast<uint64_t>(SescConf->getDouble(section,"nInstRabbit"));
@@ -68,6 +73,8 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
     cuda_inst_skip = nInstSkip;
   }
   nInstMax    = static_cast<uint64_t>(SescConf->getDouble(section,"nInstMax"));
+  maxnsTime   = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTime"));
+  SescConf->isBetween(section,"maxnsTime",1,1e12);
 
   if (nInstWarmup>0) {
     sequence_mode.push_back(EmuWarmup);
@@ -120,7 +127,6 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
   for (unsigned int i=0; i<cpiHistSize;i++)
     cpiHist.push_back(1.0);
 
-  endSimSiged = false;
   pthread_mutex_init(&mode_lock, NULL);
   lastGlobalClock = 0;
 
@@ -130,7 +136,9 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
 
   double ninst_d = SescConf->getDouble(section,"nInstDetail");
   double ninst_t = SescConf->getDouble(section,"nInstTiming");
-  dt_ratio       = ninst_t/(ninst_t+ninst_d+1);
+  double ninst_r = SescConf->getDouble(section,"nInstRabbit");
+  double ninst_w = SescConf->getDouble(section,"nInstWarmup");
+  dt_ratio       = (ninst_t+ninst_d+ninst_w+ninst_r)/(ninst_t+1);
 
   lastMode = EmuInit;
 }
@@ -190,13 +198,15 @@ SamplerBase::~SamplerBase()
 uint64_t SamplerBase::getTime() 
 /* time in ns since the beginning {{{1 */
 {
-  double addtime = phasenInst;
+  // FIXME: currently it is per thread 
+  I(phasenInst==0);
 
-  addtime *= estCPI;
-  addtime += globalClock * dt_ratio;
-
+  // FIXME: try to use core stats nInst and clockTicks to get CPI
+  double cpi2 = globalClock_Timing->getDouble() / (1+iusage[EmuTiming]->getDouble());
+  double addtime = cpi2 * totalnInst;
   addtime = addtime * (1e9/getFreq());
 
+  //MSG("cpi=%g/%g = %g ; cpi*totalninst(%lld)/freq = %g",globalClock_Timing->getDouble(), iusage[EmuTiming]->getDouble(), cpi2, totalnInst, addtime);
   return static_cast<uint64_t>(addtime);
 }
 /* }}} */
@@ -214,7 +224,6 @@ FlowID SamplerBase::getFid(FlowID last_fid)
 FlowID SamplerBase::resumeThread(FlowID uid, FlowID last_fid)
 {
   FlowID fid = TaskHandler::resumeThread(uid, last_fid);
-  syncnSamples(fid);
   justResumed[fid] = true;
   finished[fid] = false;
   return fid;
@@ -227,25 +236,13 @@ FlowID SamplerBase::resumeThread(FlowID uid)
 
 void SamplerBase::terminate()
 {
+  progressedTime->sample(getTime());
   TaskHandler::terminate();
 }
 
 bool SamplerBase::isActive(FlowID fid)
 {
   return TaskHandler::isActive(fid);
-}
-
-int SamplerBase::isSamplerDone()
-{
-  if (nInstMax <= totalnInst)
-    return 1;
-  else
-    return 0;
-}
-
-
-void SamplerBase::syncnSamples(FlowID fid) { 
-  nSamples[fid] = totalnSamples;
 }
 
 void SamplerBase::getGPUCycles(FlowID fid, float ratio) {
@@ -263,6 +260,22 @@ void SamplerBase::getGPUCycles(FlowID fid, float ratio) {
 
     gpuSampledRatio = ratio;
 
+}
+
+bool SamplerBase::allDone() {
+  progressedTime->sample(getTime());
+  for (size_t i=0; i< emul->getNumFlows(); i++) {
+    if (!finished[i])
+      return false;
+  }
+  return true;
+}
+
+void SamplerBase::markThisDone(FlowID fid) {
+  if (!finished[fid]) {
+    finished[fid] = true;
+    printf("fid %d finished, waiting for the rest...\n", fid);
+  }
 }
 
 FILE *SamplerBase::genReportFileNameAndOpen(const char *str) {
@@ -286,3 +299,12 @@ void SamplerBase::fetchNextMode() {
     sequence_pos = 0;
   next_mode = sequence_mode[sequence_pos];
 }
+
+void SamplerBase::setNextSwitch(uint64_t instNum) {
+  if(instNum < nInstMax) {
+    nextSwitch = instNum;
+  } else {
+    nextSwitch = nInstMax;
+  }
+}
+

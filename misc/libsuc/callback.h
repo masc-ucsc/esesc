@@ -95,7 +95,9 @@ public:
   static void scheduleAbs(Time_t tim, EventScheduler *cb) {
     I(tim > globalClock); // Only for performance reasons
 #ifdef DEBUG
-    GI(globalClock>10000000, tim<(2*globalClock)); // may be fine, but be suspicious if it repeats!!
+    static bool once = true;
+    GI(globalClock>10000000 && !once, tim<(2*globalClock)); // may be fine, but be suspicious if it repeats!!
+    once = false;
     cb->fileName = __FILE__;
     cb->lineno   = __LINE__;
 #endif
@@ -105,10 +107,16 @@ public:
   static void advanceClock() {
     EventScheduler *cb;
 
+#ifdef DEBUG
+    while ((cb = cbQ.nextJob(globalClock)) ) {
+      I(0); // There should be no job in current cycle (executed before, and not possible to schedule events with 0 delay
+      cb->call();
+    }
+#endif
+    globalClock++;
     while ((cb = cbQ.nextJob(globalClock)) ) {
       cb->call();
     }
-    globalClock++;
   }
 
   static bool empty() {

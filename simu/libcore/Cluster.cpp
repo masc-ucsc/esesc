@@ -291,12 +291,14 @@ void Cluster::addInst(DInst *dinst) {
 void ExecutingCluster::executing(DInst *dinst) {
 
   window.wakeUpDeps(dinst);
+  dinst->clearRATEntry(); 
   delEntry();
 }
 
 void ExecutingCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
+  dinst->clearRATEntry(); 
 }
 
 bool ExecutingCluster::retire(DInst *dinst, bool reply) {
@@ -305,6 +307,8 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 
   if( !done )
     return false;
+
+  dinst->clearRATEntry(); 
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
 
@@ -327,6 +331,7 @@ void ExecutedCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
 
+  dinst->clearRATEntry(); 
   delEntry();
 }
 
@@ -335,6 +340,7 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
   bool done  = dinst->getClusterResource()->retire(dinst, reply);
   if( !done )
     return false;
+  dinst->clearRATEntry(); 
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
   if( hasDest )
@@ -362,6 +368,7 @@ bool RetiredCluster::retire(DInst *dinst, bool reply) {
   bool done = dinst->getClusterResource()->retire(dinst, reply);
   if( !done )
     return false;
+  dinst->clearRATEntry(); 
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
 

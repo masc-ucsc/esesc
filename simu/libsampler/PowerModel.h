@@ -188,7 +188,7 @@ public:
 
   void plug(const char *section);
   void unplug();
-  int  calcStats(uint64_t timeinterval, bool reusePower, FlowID fid); 
+  void calcStats(uint64_t timeinterval, bool reusePower, FlowID fid); 
   void updateActivity(uint64_t timeinterval, FlowID fid = 0);
   void printStatus();
   void testWrapper();

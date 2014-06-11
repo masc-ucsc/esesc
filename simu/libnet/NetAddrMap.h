@@ -2,7 +2,7 @@
 #define NETADDRMAP_H
 
 #include "SescConf.h"
-#include "ThreadContext.h"
+//#include "ThreadContext.h" Does not appear in esesc
 #include "PMessage.h"
 
 class NetAddrMap {
@@ -32,6 +32,7 @@ public:
     } else {
       // FIXME: procsPerNode removed from config file
       //int32_t nProcsPerNode = SescConf->getInt("","procsPerNode");
+      /* Commented out because procPerNode and NProcesperNode not in config file
       LOG("NetAddrMap: nProcsPerNode = %d", nProcsPerNode);
       numNodes = SescConf->getRecordSize("","cpucore");
       LOG("NetAddrMap: numNodes = %ld", numNodes);
@@ -40,6 +41,8 @@ public:
 	numNodes = 1;
 
       LOG("NetAddrMap: final numNodes = %ld", numNodes);
+     */
+     printf("Need procsPerNode and nProcsPerNode here\n");
     }
 
     uint32_t temp=1;
@@ -61,9 +64,6 @@ public:
 
   static NetDevice_t getMapping(AddrType paddr) {
     if(type == blocked) {
-      GLOG((paddr >> log2TileSize) > numNodes,
-        "Error: The mapping value (0x%x >> %ld) exceeds the number "\
-	"of nodes in the system. (%ld)", (uint) paddr, log2TileSize, numNodes);
       return paddr >> log2TileSize;
     } else {
 		uint32_t temp;

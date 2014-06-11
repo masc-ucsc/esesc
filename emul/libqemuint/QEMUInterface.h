@@ -59,7 +59,6 @@ extern "C" {
   void esesc_set_warmup(uint32_t fid);
   void esesc_set_timing(uint32_t fid);
   void loadSampler(uint32_t fid);
-  int QEMUReader_is_sampler_done(uint32_t fid);
 }
 
 #endif

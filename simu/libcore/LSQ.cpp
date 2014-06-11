@@ -213,5 +213,7 @@ void LSQVPC::remove(DInst *dinst)
       return;
     }
     instIt++;
+    if (instIt == instMap.end())
+      return;
   }
 }

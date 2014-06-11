@@ -4,7 +4,7 @@ ESESC runs on Linux.  It has been tested on x86-64 and ARM platforms. The x86-64
 # Requirements 
 ESESC is currently tested with Arch Linux and with Ubunut 12.04 LTS.  The following commands list the packages and configuration settings required for each tested OS.  Other Linux version should work as well, but the list of packages will need to be adapted.
 
-## Arch Linux:
+## Arch Linux: (64bit)
 
     pacman -S boost
     pacman -S bison flex
@@ -15,7 +15,7 @@ ESESC is currently tested with Arch Linux and with Ubunut 12.04 LTS.  The follow
     pacman -S make
     pacman -S pkgconfig
 
-## Ubuntu 12.04 LTS
+## Ubuntu 12.04 LTS (64bit)
     sudo apt-get install build-essential
     sudo apt-get install cmake
     sudo apt-get install libboost-dev
@@ -59,11 +59,15 @@ cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_HOST_ARCH=armel -DESESC_QEMU_ISA=armel ~/
 
 # Compile ESESC with DEBUG and clang compiler
 
-CC=clang cmake -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
+CC=clang CXX=clang++ cmake -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
+
+# Compile ESESC with DEBUG and emscripten compiler
+
+CC=emcc CXX=em++ cmake -D_CMAKE_TOOLCHAIN_PREFIX=em -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
 
 # Compile scmain (SCCORE) 
 
-cmake ~/projs/esesc/ -DENABLE_SCQEMU=1 -DCMAKE_HOST_ARCH=i386 -DESESC_QEMU_ISA=armel -DCMAKE_BUILD_TYPE=Debug
+cmake ~/projs/esesc/ -DENABLE_SCQEMU=1 -DESESC_QEMU_ISA=armel -DCMAKE_BUILD_TYPE=Debug
 
 --------------------------------------------------------
 # Compile scmain in an arm machine (arch linux chromebook)

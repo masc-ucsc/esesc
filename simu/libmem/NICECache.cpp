@@ -85,6 +85,7 @@ void NICECache::doReqAck(MemRequest *req)
 { 
   I(0);
 }
+// 1}}}
 
 void NICECache::doSetState(MemRequest *req)    
   /* change state request  (up) {{{1 */

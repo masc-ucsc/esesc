@@ -47,18 +47,12 @@
 #include <inttypes.h>
 
 int32_t SamplerPeriodic::PerfSampleLeftForTemp = 0;
-GStatsMax *SamplerPeriodic::progressedTime = 0;
 
 SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : SamplerBase(iname,section,  emu, fid)
   /* SamplerPeriodic constructor {{{1 */
 {
-  if (progressedTime==0)
-      progressedTime = new GStatsMax("progressedTime");
-
   dsync      = new GStatsCntr("S(%u):dsync", fid);
-
-  maxnsTime   = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTime"));
 
   TempToPerfRatio    =  static_cast<uint64_t>(SescConf->getDouble(section,"TempToPerfRatio"));
 
@@ -86,7 +80,7 @@ SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInt
     }
   }
 
-  nextSwitch = nInstSkip;
+  setNextSwitch(nInstSkip);
   if (nInstSkip)
     startInit(fid);
 
@@ -113,8 +107,10 @@ void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fi
 
   I(insn);
 
+  I(!done[fid]);
+
   // process the current sample mode
-  if (nextSwitch>totalnInst) {
+  if (getNextSwitch()>totalnInst) {
     if (mode == EmuRabbit || mode == EmuInit)
       return;
     if (mode == EmuDetail || mode == EmuTiming) {
@@ -126,12 +122,15 @@ void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fi
     return;
   }
 
+#if 0
   // We did enough
-  if (isItDone())
-    return;
+  if (mode == EmuTiming)
+    if (isItDone(fid))
+      return;
+#endif
 
   // We are not done yet though. Look for the new mode
-  I(nextSwitch <= totalnInst);
+  I(getNextSwitch() <= totalnInst);
   coordinateWithOthersAndNextMode(fid);
   I(mode == next_mode); //it was a detailed sync
 }
@@ -172,10 +171,16 @@ void SamplerPeriodic::computeEstCPI() {
   }
   estCPI /= d;
 
-  if (estCPI > 10) {
-    I(0);
-    estCPI = 10;
+  if (estCPI > 5 || estCPI < 0.2 ) {
+    // Strange, use the global CPI for a bit
+    double cpi2 = globalClock_Timing->getDouble() / (1+iusage[EmuTiming]->getDouble());
+    MSG("estCPI out of range %g, using %g",estCPI,cpi2);
+    estCPI = cpi2;
   }
+#if 0
+  double cpi2 = globalClock_Timing->getDouble() / (1+iusage[EmuTiming]->getDouble());
+  MSG("fid %d: estCPI=%g gcpi=%g",sFid,estCPI,cpi2);
+#endif
 }
 
 void SamplerPeriodic::insertNewCPI() {
@@ -202,38 +207,40 @@ void SamplerPeriodic::nextMode(bool rotate, FlowID fid, EmuMode mod) {
 
     winnerFid = fid;
 
-    nextSwitch       = nextSwitch + sequence_size[sequence_pos]*intervalRatio;
+    setNextSwitch(getNextSwitch() + static_cast<uint64_t>(sequence_size[sequence_pos]*intervalRatio));
 
     // a hack for stacking validation
-    if (nextSwitch < totalnInst)
-      nextSwitch = totalnInst + sequence_size[sequence_pos];
+    if (getNextSwitch() < totalnInst) {
+      setNextSwitch(totalnInst + sequence_size[sequence_pos]);
+    }
 
   }else{ //SET_MODE
+    I(0);
     setMode(mod, fid);
     I(mode == mod);
 
     switch (mod){
       case EmuRabbit:
         if (totalnInstForcedDetail <= nInstRabbit){
-          nextSwitch      += nInstRabbit*intervalRatio;
-          nextSwitch      -= (next2EmuTiming == EmuRabbit) ? totalnInstForcedDetail : 0;
+          setNextSwitch(getNextSwitch() + static_cast<uint64_t>(nInstRabbit*intervalRatio));
+          setNextSwitch(getNextSwitch() - (next2EmuTiming == EmuRabbit) ? totalnInstForcedDetail : 0);
         }
         sequence_pos = 3;
         break;
       case EmuWarmup:
         if (totalnInstForcedDetail <= nInstWarmup){
-          nextSwitch      += nInstWarmup*intervalRatio;
-          nextSwitch      -= (next2EmuTiming == EmuWarmup) ? totalnInstForcedDetail : 0;
+          setNextSwitch(getNextSwitch() + static_cast<uint64_t>(nInstWarmup*intervalRatio));
+          setNextSwitch(getNextSwitch() - (next2EmuTiming == EmuWarmup) ? totalnInstForcedDetail : 0);
         }
         sequence_pos = 0;
         break;
       case EmuDetail:
-        nextSwitch      += nInstForcedDetail;;
+        setNextSwitch(getNextSwitch()  + nInstForcedDetail);
         totalnInstForcedDetail += nInstForcedDetail;
         sequence_pos = 1;
         break;
       case EmuTiming:
-        nextSwitch      += nInstTiming*intervalRatio;
+        setNextSwitch(getNextSwitch() + static_cast<uint64_t>(nInstTiming*intervalRatio));
         sequence_pos = 2;
         //intervalRatio = 1 + static_cast<float>totalnInstForcedDetail/static_cast<float>nInstTiming;
         break;
@@ -242,7 +249,6 @@ void SamplerPeriodic::nextMode(bool rotate, FlowID fid, EmuMode mod) {
     }
   }
 }
-
 
 void SamplerPeriodic::doPWTH(FlowID fid) {
   uint64_t mytime = 0;
@@ -271,14 +277,13 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
   }
   if (PerfSampleLeftForTemp) PerfSampleLeftForTemp--;
 
-  endSimSiged = (mytime>=maxnsTime)?1:0;
 }
-
 
 void SamplerPeriodic::syncTimeAndTimingModes(FlowID fid) {
 
+  I(!done[fid]);
+
   if(mode == EmuTiming /*&& next_mode != EmuTiming*/) {
-    clearInTiming(fid);
     lastMode = mode;
     syncTimeAndWaitForOthers(fid);
     return;
@@ -312,11 +317,6 @@ void SamplerPeriodic::syncTimeAndSamples(FlowID fid) {
   if (next_mode == EmuRabbit){
     setModeNativeRabbit();
   }
-  if( mode == next2EmuTiming ){
-    clearInTiming(fid);
-    updatenSamples(); 
-  }
-
 }
 
 void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
@@ -326,8 +326,10 @@ void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
 	syncTimeAndSamples(fid);
 
 	if (lastMode == EmuTiming) { 
-		progressedTime->sample(getTime());
-		endSimSiged = (getTime()>=maxnsTime)?1:0;
+    if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
+      markDone();
+      return;
+    }
 		//std::cout<<"mode "<<lastMode<<" fid:"<<sFid<<" sID:"<<nSamples[sFid]<<" totalSamples:"<<totalnSamples<<" time:"<<getTime()<<"\n";  
 	}
 
@@ -338,38 +340,24 @@ void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
 	}
 }
 
-bool SamplerPeriodic::isItDone() {
-
-  if (getTime()>=maxnsTime) {
-    markDone();
-    return true;
-  }
-  return false;
-}
-
 void SamplerPeriodic::updateIntervalRatio() {
-#ifdef TBS
   intervalRatio = 1.0/estCPI;
-#else
-  intervalRatio = 1.0;
-#endif
 }
 
 void SamplerPeriodic::syncTimeAndWaitForOthers(FlowID fid) {
-      nextMode(SET_MODE, fid, EmuDetail);
-      updateCPI();
-      dsync->inc();
+  nextMode(SET_MODE, fid, EmuDetail);
+  updateCPI();
+  dsync->inc();
 }
 
 void SamplerPeriodic::syncTimeAndContinue(FlowID fid) {
-      nextMode(ROTATE, fid);
-      updateCPI();
+  nextMode(ROTATE, fid);
+  updateCPI();
 }
 
 void SamplerPeriodic::syncTimeAndFinishWaitingForOthers(FlowID fid) {
-      nextMode(SET_MODE, fid, next2EmuTiming);
+  nextMode(SET_MODE, fid, next2EmuTiming);
 }
-
 
 void SamplerPeriodic::dumpCPI() {
   static bool first = true;
@@ -403,7 +391,7 @@ void SamplerPeriodic::dumpTime() {
 
 
 void SamplerPeriodic::dumpThreadProgressedTime(FlowID fid) {
-  if (getKeepStatsFlag()) {
+  if (getStatsFlag()) {
     threadProgressedTime = new GStatsMax("P(%d)_progressedTime", fid);
     threadProgressedTime->sample(getTime());
   }

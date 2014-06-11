@@ -102,7 +102,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
   if (firstassign >= fidFreePool.size())
     firstassign = 0;
 
-  MSG("QEMUEmulInterface.cpp : nFlows = %d",nFlows);
+  //MSG("QEMUEmulInterface.cpp : nFlows = %d",nFlows);
   reader = new QEMUReader(qargs, section, this);
 }
 

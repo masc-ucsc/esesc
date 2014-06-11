@@ -1,6 +1,7 @@
 // Contributed by Jose Renau
 //                Max Dunne
 //                Shea Ellerson
+//				        Luke Buschmann
 //
 // The ESESC/BSD License
 //
@@ -95,7 +96,8 @@ MemController::MemController(MemorySystem* current ,const char *section ,const c
   bankState = new BankStatus[numBanks];
   for(uint32_t curBank=0; curBank<numBanks;curBank++){
     bankState[curBank].activeRow=0;
-    bankState[curBank].state=ACTIVE;
+	bankState[curBank].state=INIT;  // Changed from ACTIVE (LNB)
+    bankState[curBank].bankTime=0;  // added (LNB)
   }
   I(current);
   lower_level = current->declareMemoryObj(section, "lowerLevel");   
@@ -199,25 +201,27 @@ void MemController::manageRam(void)
            it++) {
 
         FCFSField *tempMem = *it;
-
+		
+		// If current memory request has completed, finish processing the request by sending the proper ACK
         if((curBank==tempMem->Bank)&&(bankState[curBank].activeRow==tempMem->Row)) {
 
           I(tempMem->mreq);
-          if(!tempMem->mreq->isDisp()) {
-						MemRequest *mreq = tempMem->mreq;
-						I(mreq->isReq());
+		  
+		      if(tempMem->mreq->isDisp()) tempMem->mreq->ack();  // Fixed doDisp Acknowledge -- LNB 5/28/2014
+          else {
+		      	MemRequest *mreq = tempMem->mreq;
+	      		I(mreq->isReq());
 
             if (mreq->getAction() == ma_setValid)
               mreq->convert2ReqAck(ma_setExclusive);
             else
               mreq->convert2ReqAck(ma_setDirty);
 
-						TimeDelta_t lat = globalClock-tempMem->TimeEntered;
+		      	Time_t delta = globalClock-tempMem->TimeEntered;
 
-            router->scheduleSetStateAck(mreq,lat);
-            avgMemLat.sample(lat,mreq->getStatsFlag());
+            router->scheduleReqAck(mreq,1);  //  Fixed doReq acknowledge -- LNB 5/28/2014
+            avgMemLat.sample(delta,mreq->getStatsFlag());
           }
-					tempMem->mreq->destroy();
           IS(tempMem->mreq = 0);
           
           curMemRequests.erase(it);
@@ -264,9 +268,9 @@ void MemController::scheduleNextAction(void)
       if ((bankState[curBank].state == ACTIVE) &&(bankState[curBank].activeRow==curRow)){
         bankState[curBank].cpend = true;
         oldestColumnFound=true;
-        if(bankState[oldestReadyColsBank].bankTime > bankState[curBank].bankTime){
+     //   if(bankState[oldestReadyColsBank].bankTime > bankState[curBank].bankTime){
           oldestReadyColsBank=curBank;
-        }        
+     //   }        
       }
     }
     if((bankState[curBank].state == ACTIVE) &&(bankState[curBank].activeRow!=curRow)){
@@ -276,12 +280,16 @@ void MemController::scheduleNextAction(void)
     if(!oldestRowFound){
       if(bankState[curBank].state == IDLE){
         oldestRowFound=true;
-        if(bankState[oldestReadyRowsBank].bankTime > bankState[curBank].bankTime){
+    //    if(bankState[oldestReadyRowsBank].bankTime > bankState[curBank].bankTime){
           oldestReadyRow=curMemRequests[curReference]->Row;
           oldestReadyRowsBank=curBank;
-        }
+    //    }
       }
     }
+	 if (bankState[curBank].state == INIT) {
+	   oldestBankFound = true;
+	   oldestbank = curBank;
+	 }
 
   }
   
@@ -339,3 +347,4 @@ uint32_t MemController::getColumn(MemRequest *mreq) const
   uint32_t column = (mreq->getAddr()&columnMask) >>columnOffset;
   return column;
 }
+

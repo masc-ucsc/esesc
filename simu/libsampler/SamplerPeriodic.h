@@ -56,12 +56,8 @@ protected:
 
   GStatsCntr  *dsync;
   GStatsMax  *threadProgressedTime;
-  static GStatsMax  *progressedTime;
 
   static int32_t PerfSampleLeftForTemp; 
-
-  bool isItDone();
-  void allDone();
 
   void coordinateWithOthersAndNextMode(FlowID fid);
   void syncTimeAndTimingModes(FlowID fid);

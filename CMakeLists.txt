@@ -216,7 +216,9 @@ ADD_SUBDIRECTORY(pwth/libpwrmodel)
 ADD_SUBDIRECTORY(simu/libcore)
 ADD_SUBDIRECTORY(simu/libsampler)
 ADD_SUBDIRECTORY(simu/libmem)
+ADD_SUBDIRECTORY(simu/libnet)
 #################################
 ADD_SUBDIRECTORY(main)
+ADD_SUBDIRECTORY(tests)
 
 

@@ -56,6 +56,7 @@ protected:
   const char *name;
   const uint16_t id;
   static uint16_t id_counter;
+  int16_t coreid;
 
   void addLowerLevel(MemObj *obj);
 	void addUpperLevel(MemObj *obj);
@@ -68,6 +69,9 @@ public:
   const char *getSection() const { return section; }
   const char *getName() const    { return name;    }
   uint16_t getID() const         { return id;      }
+  int16_t getCoreID() const      { return coreid;  }
+  void setCoreID(int16_t cid)    { coreid = cid;  }
+	bool isFirstLevel() const { return coreid != -1; };
 
   MRouter *getRouter()           { return router;  }
   
@@ -106,6 +110,7 @@ public:
 
 	virtual void setNeedsCoherence();
 	virtual void clearNeedsCoherence();
+
 };
 
 class DummyMemObj : public MemObj {

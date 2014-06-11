@@ -1,4 +1,3 @@
-#if 0
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //
@@ -42,7 +41,6 @@
 #include "MemRequest.h"
 #include "MemObj.h"
 #include "CacheCore.h"
-#include "MSHR.h"
 
 #include <queue>
 using namespace std;
@@ -119,102 +117,65 @@ class TLB: public MemObj {
   typedef CacheGeneric<TState,AddrType> CacheType;
   typedef CacheGeneric<TState,AddrType>::CacheLine Line;
 
-
 protected:
   TimeDelta_t delay;
   TimeDelta_t lowerTLBdelay;
 
-  GStatsCntr  nWrite;
-  GStatsCntr  nWriteAddress;
-  GStatsCntr  nRead;
-  GStatsCntr  nBusReadRead;
-  GStatsCntr  nBusReadWrite;
-
   GStatsCntr  tlbReadHit;
   GStatsCntr  tlbReadMiss;
-  GStatsCntr  tlbMSHRcant_issue;
   GStatsCntr  tlblowerReadHit;
   GStatsCntr  tlblowerReadMiss;
-  GStatsCntr  tlbInvalidate;
-
-  GStatsAvg   mmuavgMissLat;
-  GStatsAvg   mmuavgMemLat;
 
   GStatsAvg   avgMissLat;
   GStatsAvg   avgMemLat;
 
   PortGeneric *cmdPort;
 
-  bool localcall;
   CacheType   *tlbBank;
-  MSHR        *bmshr;
   MemObj      *lowerTLB;   //Points to the next TLB lower in the heirarchy, May be NULL
   MemObj      *lowerCache; //Points to the cache right below the TLB. (Used only for processor direct requests) 
+
+  typedef std::deque<MemRequest *> PendingQueue;
+  PendingQueue pending;
+
+  void wakeupNext();
 
 public:
   TLB(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
   ~TLB() {}
 
-  Time_t nextReadSlot(       const MemRequest *mreq);
-  Time_t nextWriteSlot(      const MemRequest *mreq);
-  Time_t nextBusReadSlot(    const MemRequest *mreq);
-  Time_t nextPushDownSlot(   const MemRequest *mreq);
-  Time_t nextPushUpSlot(     const MemRequest *mreq);
-  Time_t nextInvalidateSlot( const MemRequest *mreq);
+	// Entry points to schedule that may schedule a do?? if needed
+	void req(MemRequest *req);
+	void reqAck(MemRequest *req);
+	void setState(MemRequest *req);
+	void setStateAck(MemRequest *req);
+	void disp(MemRequest *req);
 
-  // processor direct requests
-  void read(MemRequest  *req);
-  void write(MemRequest *req);
-  void writeAddress(MemRequest *req);
+	// This do the real work
+	void doReq(MemRequest *r);
+	void doReqAck(MemRequest *req);
+	void doSetState(MemRequest *req);
+	void doSetStateAck(MemRequest *req);
+	void doDisp(MemRequest *req);
 
-  // DOWN
-  void busRead(MemRequest *req);
-  void pushDown(MemRequest *req);
-  void doRead(MemRequest *req, bool retrying);
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
 
-  // UP
-  void pushUp(MemRequest *req);
-  void invalidate(MemRequest *req);
-
-  // Status/state
-  uint16_t getLineSize() const;
-
-  bool canAcceptRead(DInst *dinst) const;
-  bool canAcceptWrite(DInst *dinst) const;
-
-  TimeDelta_t ffread(AddrType addr, DataType data);
-  TimeDelta_t ffwrite(AddrType addr, DataType data);
-  void        ffinvalidate(AddrType addr, int32_t lineSize);
+	bool isBusy(AddrType addr) const;
 
   //TLB specific
   void readPage1(MemRequest *mreq);
   void readPage2(MemRequest *mreq);
   void readPage3(MemRequest *mreq);
 
-
-  AddrType calcPage1Addr(AddrType addr){
-    return (pgd_base + pgd_index(addr));
-  }
-
-  AddrType calcPage2Addr(AddrType addr){
-    //returns pmd_base()+ pmd_pffset();
-    return (pmd_base + pmd_index(addr));
-  }
-
-  AddrType calcPage3Addr(AddrType addr){
-    //returns pte_base()+ pte_pffset();
-    return (pte_base + pte_index(addr));
-  }
+  AddrType calcPage1Addr(AddrType addr) const { return (pgd_base + pgd_index(addr)); }
+  AddrType calcPage2Addr(AddrType addr) const { return (pmd_base + pmd_index(addr)); }
+  AddrType calcPage3Addr(AddrType addr) const { return (pte_base + pte_index(addr)); }
 
   typedef CallbackMember1<TLB, MemRequest*, &TLB::readPage1> readPage1CB;
   typedef CallbackMember1<TLB, MemRequest*, &TLB::readPage2> readPage2CB;
   typedef CallbackMember1<TLB, MemRequest*, &TLB::readPage3> readPage3CB;
 
-  typedef CallbackMember1<TLB, MemRequest *, &TLB::busRead>  busReadCB;
-  typedef CallbackMember2<TLB, MemRequest *,bool, &TLB::doRead>   doReadCB;
-
   bool checkL2TLBHit(MemRequest *mreq);
-
 };
-#endif
 #endif

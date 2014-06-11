@@ -53,7 +53,7 @@
 #define LONG_REF 1       // 2^M - 2           | 1 | 6   | 14  |
 //-------------------------------------------------------------
 
-enum    ReplacementPolicy  {LRU, RANDOM, SHIP};  //SHIP is RRIP with SHIP (ISCA 2010)
+enum    ReplacementPolicy  {LRU, LRUp, RANDOM, SHIP};  //SHIP is RRIP with SHIP (ISCA 2010)
 
 template<class State, class Addr_t>
   class CacheGeneric {
@@ -70,7 +70,10 @@ template<class State, class Addr_t>
   const uint64_t  maskAssoc;
   const uint32_t  sets;
   const uint32_t  maskSets;
+  const uint32_t  log2Sets;
   const uint32_t  numLines;
+
+  const bool xorIndex;
 
   bool goodInterface;
 
@@ -97,7 +100,7 @@ template<class State, class Addr_t>
   virtual CacheLine *findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)=0;
   protected:
 
-  CacheGeneric(uint32_t s, uint32_t a, uint32_t b, uint32_t u)
+  CacheGeneric(uint32_t s, uint32_t a, uint32_t b, uint32_t u, bool xr)
   : size(s)
   ,lineSize(b)
   ,addrUnit(u)
@@ -107,7 +110,9 @@ template<class State, class Addr_t>
   ,maskAssoc(a-1)
   ,sets((s/b)/a)
   ,maskSets(sets-1)
+  ,log2Sets(log2i(sets))
   ,numLines(s/b)
+  ,xorIndex(xr)
   {
     // TODO : assoc and sets must be a power of 2
   }
@@ -118,7 +123,7 @@ template<class State, class Addr_t>
 
   public:
   // Do not use this interface, use other create
-  static CacheGeneric<State, Addr_t> *create(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool skew, uint32_t shct_size = 13); //13 is the optimal size specified in the paper
+  static CacheGeneric<State, Addr_t> *create(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool skew, bool xr, uint32_t shct_size = 13); //13 is the optimal size specified in the paper
   static CacheGeneric<State, Addr_t> *create(const char *section, const char *append, const char *format, ...);
   void destroy() {
     delete this;
@@ -214,12 +219,24 @@ template<class State, class Addr_t>
 
   Addr_t calcTag(Addr_t addr)          const { return (addr >> log2AddrLs);              }
 
-  Addr_t calcSet4Tag(Addr_t tag)     const { return (tag & maskSets);                  }
-  Addr_t calcSet4Addr(Addr_t addr)   const { return calcSet4Tag(calcTag(addr));        }
+  //Addr_t calcSet4Tag(Addr_t tag)     const { return (tag & maskSets);                  }
+  //Addr_t calcSet4Addr(Addr_t addr)   const { return calcSet4Tag(calcTag(addr));        }
 
-  Addr_t calcIndex4Set(Addr_t set) const { return (set << log2Assoc);                }
-  Addr_t calcIndex4Tag(Addr_t tag) const { return calcIndex4Set(calcSet4Tag(tag));   }
-  uint32_t calcIndex4Addr(Addr_t addr) const { return calcIndex4Set(calcSet4Addr(addr)); }
+  //Addr_t calcIndex4Set(Addr_t set) const { return (set << log2Assoc);                }
+  //Addr_t calcIndex4Tag(Addr_t tag) const { return calcIndex4Set(calcSet4Tag(tag));   }
+  //uint32_t calcIndex4Addr(Addr_t addr) const { return calcIndex4Set(calcSet4Addr(addr)); }
+  Addr_t calcIndex4Tag(Addr_t tag) const { 
+    Addr_t set;
+    if (xorIndex) {
+      tag        = tag ^ (tag>>log2Sets);
+      //Addr_t odd = (tag&1) | ((tag>>2) & 1) | ((tag>>4)&1) | ((tag>>6)&1) | ((tag>>8)&1) | ((tag>>10)&1) | ((tag>>12)&1) | ((tag>>14)&1) | ((tag>>16)&1) | ((tag>>18)&1) | ((tag>>20)&1); // over 20 bit index???
+      set   = tag & maskSets;
+    }else{
+      set   = tag & maskSets;
+    }
+    Addr_t index = set << log2Assoc;
+    return index;
+  }
 
   Addr_t calcAddr4Tag(Addr_t tag)      const { return (tag << log2AddrLs);               }
 };
@@ -243,7 +260,7 @@ protected:
   ReplacementPolicy policy;
 
   friend class CacheGeneric<State, Addr_t>;
-  CacheAssoc(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr);
+  CacheAssoc(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
   Line *findLinePrivate(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0 );
 public:
@@ -277,7 +294,7 @@ protected:
   Line **content;
 
   friend class CacheGeneric<State, Addr_t>;
-  CacheDM(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr);
+  CacheDM(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
   Line *findLinePrivate(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0 );
 public:
