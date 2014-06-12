@@ -73,6 +73,7 @@ protected:
   GStatsCntr nColumnAccess;
   GStatsCntr nRowAccess;
   GStatsAvg avgMemLat;
+  GStatsCntr readHit;
 
   enum STATE {
   IDLE = 0,

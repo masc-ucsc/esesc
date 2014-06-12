@@ -160,7 +160,7 @@ double GStatsAvg::getDouble() const
 
 void GStatsAvg::reportValue() const
 {
-  Report::field("%s:v=%f:n=%lld", name, getDouble(), nData);
+  Report::field("%s:n=%lld::v=%f", name, nData, getDouble()); // n first for power
 }
 
 int64_t GStatsAvg::getSamples() const 

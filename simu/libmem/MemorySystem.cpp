@@ -163,7 +163,9 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
 
   I(mdev);
   addMemObjName(mdev->getName());
+#ifdef DEBUG
   LOG("Added: %s", mdev->getName());
+#endif
 
   return mdev;
 }

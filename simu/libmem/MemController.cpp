@@ -55,7 +55,8 @@ MemController::MemController(MemorySystem* current ,const char *section ,const c
   ,nPrecharge("%s:nPrecharge", name)
   ,nColumnAccess("%s:nColumnAccess", name)
   ,nRowAccess("%s:nRowAccess", name)
-  ,avgMemLat("%s_avgMemlat", name)
+  ,avgMemLat("%s_avgMemLat", name)
+  ,readHit("%s:readHit", name)
   ,memRequestBufferSize(SescConf->getInt(section, "memRequestBufferSize"))
 {
   MemObj *lower_level = NULL;
@@ -109,6 +110,7 @@ MemController::MemController(MemorySystem* current ,const char *section ,const c
 void MemController::doReq(MemRequest *mreq)
   /* request reaches the memory controller {{{1 */
 {
+  readHit.inc(mreq->getStatsFlag());
   addMemRequest(mreq);
 }
 /* }}} */

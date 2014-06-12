@@ -184,7 +184,7 @@ FlowID EmuSampler::getNumFlows()
 void EmuSampler::beginTiming(EmuMode mod)
   /* Start sampling a new mode  */
 {
-  I(stopJustCalled);
+  //I(stopJustCalled);
   stopJustCalled = false;
   phasenInst         = 0;
   mode = mod;
@@ -265,7 +265,7 @@ void EmuSampler::startRabbit(FlowID fid)
   /* Start Rabbit Mode : No timing or warmup, go as fast as possible  */
 {
   //MSG("Sampler:STARTRABBIT");
-  I(stopJustCalled);
+  //I(stopJustCalled);
   if (mode!=EmuRabbit)
     emul->startRabbit(fid);
   beginTiming(EmuRabbit);
@@ -275,7 +275,7 @@ void EmuSampler::startRabbit(FlowID fid)
 void EmuSampler::startWarmup(FlowID fid)
   /* Start Rabbit Mode : No timing but it has cache/bpred warmup  */
 {
-  I(stopJustCalled);
+  //I(stopJustCalled);
   if (mode!=EmuWarmup)
     emul->startWarmup(fid);
   beginTiming(EmuWarmup);
@@ -285,7 +285,7 @@ void EmuSampler::startWarmup(FlowID fid)
 void EmuSampler::startDetail(FlowID fid)
   /* Start Rabbit Mode : Detailing modeling without no statistics gathering  */
 {
-  I(stopJustCalled);
+  //I(stopJustCalled);
   if (mode!=EmuDetail)
     emul->startDetail(fid);
   beginTiming(EmuDetail);
@@ -296,7 +296,7 @@ void EmuSampler::startTiming(FlowID fid)
   /* Start Timing Mode : full timing model  */
 {
   //MSG("Sampler:STARTTIMING");
-  I(stopJustCalled);
+  //I(stopJustCalled);
   globalClock_Timing_prev = globalClock; 
 
   //if (mode!=EmuTiming)

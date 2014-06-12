@@ -103,13 +103,22 @@ void MRouter::fillRouteTables()
     else
       rb = rb->down_node[0]->getRouter();
   }
-  //MSG("Bottom router is %s",bottom->getName());
+//  MSG("Bottom:clear router is %s",bottom->getName());
   rb = bottom->getRouter();
   rb->self_mobj->clearNeedsCoherence();
   while(rb->up_node.size()==1) {
     MemObj *uobj = rb->up_node[0];
+//    MSG("single:clear router is %s",uobj->getName());
     uobj->clearNeedsCoherence();
     rb = uobj->router;
+  }
+  if (!rb->up_node.empty()) {
+    for(size_t i=0;i<rb->up_node.size();i++) {
+      MemObj *uobj = rb->up_node[0];
+//      MSG("Use:set router is %s",uobj->getName());
+      uobj->setNeedsCoherence();
+    }
+
   }
 }
 // }}}
@@ -117,6 +126,7 @@ void MRouter::fillRouteTables()
 void MRouter::updateRouteTables(MemObj *upmobj, MemObj * const top_node)
   /* regenerate the routing tables {{{1 */
 {  
+//  MSG("Use:set router is %s",upmobj->getName());
   upmobj->setNeedsCoherence();
 
   up_map[top_node] = upmobj;

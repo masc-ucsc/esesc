@@ -2630,6 +2630,29 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
     //else
     //  ports = rport;
 
+    double  force_lkg_w   = 0.0;
+    double  force_rddyn_w = 0.0;
+    double  force_wrdyn_w = 0.0;
+    bool    force_lkg     = false;
+    bool    force_rddyn   = false;
+    bool    force_wrdyn   = false;
+
+
+    if(SescConf->checkDouble(device_descr_section, "forceLkg")) {
+      force_lkg_w = SescConf->getDouble(device_descr_section, "forceLkg");
+      force_lkg = true;
+    }
+    
+    if(SescConf->checkDouble(device_descr_section, "forceRdDyn")) {
+      force_rddyn_w = SescConf->getDouble(device_descr_section, "forceRdDyn");
+      force_rddyn = true;
+    }
+
+    if(SescConf->checkDouble(device_descr_section, "forceWrDyn")) {
+      force_wrdyn_w = SescConf->getDouble(device_descr_section, "forceWrDyn");
+      force_wrdyn = true;
+    }
+
 
     if (strstr(device_type, "tlb") != NULL) {
       if (strstr(blockName, "STLB") != NULL) {
@@ -2652,6 +2675,12 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
         sys.STLB[nId].STLB_config[3] = nBanks;
         sys.STLB[nId].STLB_config[4] = delay;
         sys.STLB[nId].STLB_config[5] = delay;
+//        sys.core[Id].STLB[nId].force_lkg_w       = force_lkg_w;
+//        sys.core[Id].STLB[nId].force_rddyn_w     = force_rddyn_w;
+//        sys.core[Id].STLB[nId].force_wrdyn_w     = force_wrdyn_w;
+//        sys.core[Id].STLB[nId].force_lkg         = force_lkg;
+//        sys.core[Id].STLB[nId].force_rddyn       = force_rddyn;
+//        sys.core[Id].STLB[nId].force_wrdyn       = force_wrdyn;
 
       } else {
         sys.core[Id].itlb.number_entries = sys.core[Id].dtlb.number_entries = entries;
@@ -2664,8 +2693,15 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       sys.core[Id].icache.icache_config[3] = nBanks;
       sys.core[Id].icache.icache_config[4] = 1.0;
       sys.core[Id].icache.icache_config[5] = delay;
-      sys.core[Id].icache.buffer_sizes[0] = mshrSize;
-      sys.core[Id].icache.buffer_sizes[2] = pfetchBuffSize;
+      sys.core[Id].icache.buffer_sizes[0]  = mshrSize;
+      sys.core[Id].icache.buffer_sizes[2]  = pfetchBuffSize;
+      sys.core[Id].icache.force_lkg_w      = force_lkg_w;
+      sys.core[Id].icache.force_rddyn_w    = force_rddyn_w;
+      sys.core[Id].icache.force_wrdyn_w    = force_wrdyn_w;
+      sys.core[Id].icache.force_lkg        = force_lkg;
+      sys.core[Id].icache.force_rddyn      = force_rddyn;
+      sys.core[Id].icache.force_wrdyn      = force_wrdyn;
+
     } else if (strstr(device_type, "VPC") != NULL) { 
       sys.core[Id].dcache.dcache_config[0] = size;
       sys.core[Id].dcache.dcache_config[1] = bsize;
@@ -2673,10 +2709,17 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       sys.core[Id].dcache.dcache_config[3] = nBanks;
       sys.core[Id].dcache.dcache_config[4] = 1.0;
       sys.core[Id].dcache.dcache_config[5] = delay;
-      sys.core[Id].dcache.buffer_sizes[0] = mshrSize;
-      sys.core[Id].dcache.buffer_sizes[1] = fillBuffSize;
-      sys.core[Id].dcache.buffer_sizes[2] = pfetchBuffSize;
-      sys.core[Id].dcache.buffer_sizes[3] = wbBuffSize;
+      sys.core[Id].dcache.buffer_sizes[0]  = mshrSize;
+      sys.core[Id].dcache.buffer_sizes[1]  = fillBuffSize;
+      sys.core[Id].dcache.buffer_sizes[2]  = pfetchBuffSize;
+      sys.core[Id].dcache.buffer_sizes[3]  = wbBuffSize;
+      sys.core[Id].dcache.force_lkg_w      = force_lkg_w;
+      sys.core[Id].dcache.force_rddyn_w    = force_rddyn_w;
+      sys.core[Id].dcache.force_wrdyn_w    = force_wrdyn_w;
+      sys.core[Id].dcache.force_lkg        = force_lkg;
+      sys.core[Id].dcache.force_rddyn      = force_rddyn;
+      sys.core[Id].dcache.force_wrdyn      = force_wrdyn;
+
     } else if (strstr(device_type, "cache")  != NULL) {
       if(strstr(blockName, "dcache") != NULL) {
         sys.core[Id].dcache.dcache_config[0] = size;
@@ -2685,57 +2728,84 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
         sys.core[Id].dcache.dcache_config[3] = nBanks;
         sys.core[Id].dcache.dcache_config[4] = 1.0;
         sys.core[Id].dcache.dcache_config[5] = delay;
-        sys.core[Id].dcache.buffer_sizes[0] = mshrSize;
-        sys.core[Id].dcache.buffer_sizes[1] = fillBuffSize;
-        sys.core[Id].dcache.buffer_sizes[2] = pfetchBuffSize;
-        sys.core[Id].dcache.buffer_sizes[3] = wbBuffSize;
+        sys.core[Id].dcache.buffer_sizes[0]  = mshrSize;
+        sys.core[Id].dcache.buffer_sizes[1]  = fillBuffSize;
+        sys.core[Id].dcache.buffer_sizes[2]  = pfetchBuffSize;
+        sys.core[Id].dcache.buffer_sizes[3]  = wbBuffSize;
+        sys.core[Id].dcache.force_lkg_w      = force_lkg_w;
+        sys.core[Id].dcache.force_rddyn_w    = force_rddyn_w;
+        sys.core[Id].dcache.force_wrdyn_w    = force_wrdyn_w;
+        sys.core[Id].dcache.force_lkg        = force_lkg;
+        sys.core[Id].dcache.force_rddyn      = force_rddyn;
+        sys.core[Id].dcache.force_wrdyn      = force_wrdyn;
+
       } else if (strstr(blockName, "FL2") != NULL) {
-        I(sys.core[Id].scoore ==2); 
+        I(sys.core[Id].scoore ==2);
         sys.core[Id].VPCfilter.dcache_config[0] = size;
         sys.core[Id].VPCfilter.dcache_config[1] = bsize;
         sys.core[Id].VPCfilter.dcache_config[2] = assoc;
         sys.core[Id].VPCfilter.dcache_config[3] = nBanks;
-        sys.core[Id].VPCfilter.dcache_config[4] =  1.0;
-        sys.core[Id].VPCfilter.dcache_config[5] =  delay;
-        sys.core[Id].VPCfilter.buffer_sizes[0] = mshrSize;
-        sys.core[Id].VPCfilter.buffer_sizes[1] = fillBuffSize;
-        sys.core[Id].VPCfilter.buffer_sizes[2] = pfetchBuffSize;
-        sys.core[Id].VPCfilter.buffer_sizes[3] = wbBuffSize;
+        sys.core[Id].VPCfilter.dcache_config[4] = 1.0;
+        sys.core[Id].VPCfilter.dcache_config[5] = delay;
+        sys.core[Id].VPCfilter.buffer_sizes[0]  = mshrSize;
+        sys.core[Id].VPCfilter.buffer_sizes[1]  = fillBuffSize;
+        sys.core[Id].VPCfilter.buffer_sizes[2]  = pfetchBuffSize;
+        sys.core[Id].VPCfilter.buffer_sizes[3]  = wbBuffSize;
+        sys.core[Id].VPCfilter.force_lkg_w      = force_lkg_w;
+        sys.core[Id].VPCfilter.force_rddyn_w    = force_rddyn_w;
+        sys.core[Id].VPCfilter.force_wrdyn_w    = force_wrdyn_w;
+        sys.core[Id].VPCfilter.force_lkg        = force_lkg;
+        sys.core[Id].VPCfilter.force_rddyn      = force_rddyn;
+        sys.core[Id].VPCfilter.force_wrdyn      = force_wrdyn;
+
       } else if (strstr(blockName, "L2") != NULL) {
         if (sys.number_of_cores >= sharedBy)
           sys.number_of_L2s = ceil(sys.number_of_cores/sharedBy); 
         else
-          sys.number_of_L2s = sys.number_of_cores; 
-        sys.L2[nId].clockrate = clockRate;
-        sys.L2[nId].device_type = 2;
-        sys.L2[nId].L2_config[0] = size;
-        sys.L2[nId].L2_config[1] = bsize;
-        sys.L2[nId].L2_config[2] = assoc;
-        sys.L2[nId].L2_config[3] = nBanks;
-        sys.L2[nId].L2_config[4] = delay;
-        sys.L2[nId].L2_config[5] = delay;
-        sys.L2[nId].buffer_sizes[0] = mshrSize;
-        sys.L2[nId].buffer_sizes[1] = fillBuffSize;
-        sys.L2[nId].buffer_sizes[2] = pfetchBuffSize;
-        sys.L2[nId].buffer_sizes[3] = wbBuffSize;
+          sys.number_of_L2s           = sys.number_of_cores;
+          sys.L2[nId].clockrate       = clockRate/4;
+          sys.L2[nId].device_type     = 2;
+          sys.L2[nId].L2_config[0]    = size;
+          sys.L2[nId].L2_config[1]    = bsize;
+          sys.L2[nId].L2_config[2]    = assoc;
+          sys.L2[nId].L2_config[3]    = nBanks;
+          sys.L2[nId].L2_config[4]    = delay;
+          sys.L2[nId].L2_config[5]    = delay;
+          sys.L2[nId].buffer_sizes[0] = mshrSize;
+          sys.L2[nId].buffer_sizes[1] = fillBuffSize;
+          sys.L2[nId].buffer_sizes[2] = pfetchBuffSize;
+          sys.L2[nId].buffer_sizes[3] = wbBuffSize;
+          sys.L2[nId].force_lkg_w     = force_lkg_w;
+          sys.L2[nId].force_rddyn_w   = force_rddyn_w;
+          sys.L2[nId].force_wrdyn_w   = force_wrdyn_w;
+          sys.L2[nId].force_lkg       = force_lkg;
+          sys.L2[nId].force_rddyn     = force_rddyn;
+          sys.L2[nId].force_wrdyn     = force_wrdyn;
+
       } else if (strstr(blockName, "L3") != NULL) {
         if (sys.number_of_cores >= sharedBy)
           sys.number_of_L3s = ceil(sys.number_of_cores/sharedBy); 
         else
           sys.number_of_L3s = sys.number_of_cores; 
-        sys.L3[nId].clockrate = clockRate;
-        sys.L3[nId].device_type = 2;
-        sys.L3[nId].L3_config[0] = size;
-        sys.L3[nId].L3_config[1] = bsize;
-        sys.L3[nId].L3_config[2] = assoc;
-        sys.L3[nId].L3_config[3] = nBanks;
-        sys.L3[nId].L3_config[4] =  delay;
-        sys.L3[nId].L3_config[5] =  delay;
+        sys.L3[nId].clockrate       = clockRate/4;
+        sys.L3[nId].device_type     = 2;
+        sys.L3[nId].L3_config[0]    = size;
+        sys.L3[nId].L3_config[1]    = bsize;
+        sys.L3[nId].L3_config[2]    = assoc;
+        sys.L3[nId].L3_config[3]    = nBanks;
+        sys.L3[nId].L3_config[4]    = delay;
+        sys.L3[nId].L3_config[5]    = delay;
         sys.L3[nId].buffer_sizes[0] = mshrSize;
         sys.L3[nId].buffer_sizes[1] = fillBuffSize;
         sys.L3[nId].buffer_sizes[2] = pfetchBuffSize;
         sys.L3[nId].buffer_sizes[3] = wbBuffSize;
-        sys.mc.llc_line_length = bsize;
+        sys.mc.llc_line_length      = bsize;
+        sys.L3[nId].force_lkg_w     = force_lkg_w;
+        sys.L3[nId].force_rddyn_w   = force_rddyn_w;
+        sys.L3[nId].force_wrdyn_w   = force_wrdyn_w;
+        sys.L3[nId].force_lkg       = force_lkg;
+        sys.L3[nId].force_rddyn     = force_rddyn;
+        sys.L3[nId].force_wrdyn     = force_wrdyn;
       }
     }
   } else if (strcmp(device_type, "memcontroller") == 0 || 
@@ -2754,7 +2824,7 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       SescConf->notCorrect();
     }
 
-    sys.mc.mc_clock                    = sys.target_core_clockrate/throttle;
+    sys.mc.mc_clock                    = sys.target_core_clockrate/throttle/4;
     sys.mc.memory_channels_per_mc      = numPorts;
     sys.mc.databus_width               = busWidth;
     sys.mc.addressbus_width            = sys.physical_address_width;

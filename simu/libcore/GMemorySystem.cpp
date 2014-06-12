@@ -249,6 +249,7 @@ MemObj *GMemorySystem::declareMemoryObj(const char *block, const char *field) {
 
 MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars) {
   bool shared = false; // Private by default
+  bool privatized = false;
 
   const char *device_descr_section = vPars[0];
   char *device_name = (vPars.size() > 1) ? vPars[1] : 0;
@@ -270,6 +271,7 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars) {
       int32_t nId = coreId / sharedBy;
       device_name = privatizeDeviceName(device_name, nId);
       shared = true;
+      privatized = true;
     }
 
 
@@ -295,8 +297,12 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars) {
 
   if (device_name) {
 
-    if (!shared)
-      device_name = privatizeDeviceName(device_name, coreId);
+    if (!privatized) {
+      if (shared)
+        device_name = privatizeDeviceName(device_name, 0);
+      else
+        device_name = privatizeDeviceName(device_name, coreId);
+    }
       //device_name = privatizeDeviceName(device_name, priv_counter++);
 
     MemObj *memdev = searchMemoryObj(shared, device_descr_section, device_name); 

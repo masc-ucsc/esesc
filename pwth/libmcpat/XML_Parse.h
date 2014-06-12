@@ -95,6 +95,12 @@ typedef struct{
   int number_entries;
   double read_accesses;
   double write_accesses;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } lsq_systemcore;
 typedef struct{
   int number_entries;
@@ -102,6 +108,12 @@ typedef struct{
   double total_accesses;
   double total_misses;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } itlb_systemcore;
 typedef struct{
   //params
@@ -122,6 +134,12 @@ typedef struct{
   double prefetch_buffer_reads;
   double prefetch_buffer_hits;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } icache_systemcore;
 typedef struct{
   //params
@@ -137,6 +155,12 @@ typedef struct{
   double total_hits;
   double total_misses;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } dtlb_systemcore;
 
 typedef struct{
@@ -153,6 +177,12 @@ typedef struct{
   double total_hits;
   double total_misses;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } scratchpad_systemcore;
 
 typedef struct{
@@ -180,6 +210,12 @@ typedef struct{
   double wbb_writes;
   double wbb_reads;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } dcache_systemcore;
 typedef struct{
   //params
@@ -195,6 +231,12 @@ typedef struct{
   double read_misses;
   double write_misses;
   double replacements;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } BTB_systemcore;
 typedef struct{
   //all params at the level of system.core(0-n)
@@ -516,6 +558,12 @@ typedef struct{
   double wbb_writes;
   double wbb_reads;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } system_L2;
 typedef struct{
   //params
@@ -546,6 +594,12 @@ typedef struct{
   double wbb_writes;
   double wbb_reads;
   double conflicts;
+  double force_lkg_w;
+  double force_rddyn_w;
+  double force_wrdyn_w;
+  bool force_lkg;
+  bool force_rddyn;
+  bool force_wrdyn;
 } system_L3;
 typedef struct{
   //params

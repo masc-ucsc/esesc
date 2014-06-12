@@ -135,8 +135,38 @@ Processor::Processor(ParseXML *XML_interface)
     for (i = 0;i < numL2; i++)
       {
         l2array.push_back(new SharedCache(XML,i, &interface_ip));
+        if (XML->sys.L2[i].force_lkg == true){
+          l2array[i]->unicache.caches->local_result.power.readOp.leakage = XML->sys.L2[i].force_lkg_w;
+          l2array[i]->unicache.caches->local_result.power.readOp.gate_leakage = 0;
+
+          l2array[i]->unicache.missb->local_result.power.readOp.leakage = 0;
+          l2array[i]->unicache.ifb->local_result.power.readOp.leakage = 0;
+          l2array[i]->unicache.prefetchb->local_result.power.readOp.leakage = 0;
+          l2array[i]->unicache.wbb->local_result.power.readOp.leakage = 0;
+
+        }
+        if (XML->sys.L2[i].force_rddyn == true){
+          l2array[i]->unicache.caches->local_result.power.readOp.dynamic = XML->sys.L2[i].force_rddyn_w;
+
+          l2array[i]->unicache.missb->local_result.power.readOp.dynamic= 0;
+          l2array[i]->unicache.ifb->local_result.power.readOp.dynamic = 0;
+          l2array[i]->unicache.prefetchb->local_result.power.readOp.dynamic = 0;
+          l2array[i]->unicache.wbb->local_result.power.readOp.dynamic = 0;
+
+        }
+        if (XML->sys.L2[i].force_wrdyn == true){
+          l2array[i]->unicache.caches->local_result.power.writeOp.dynamic = XML->sys.L2[i].force_wrdyn_w ;
+
+          l2array[i]->unicache.missb->local_result.power.writeOp.dynamic= 0;
+          l2array[i]->unicache.ifb->local_result.power.writeOp.dynamic = 0;
+          l2array[i]->unicache.prefetchb->local_result.power.writeOp.dynamic = 0;
+          l2array[i]->unicache.wbb->local_result.power.writeOp.dynamic = 0;
+
+        }
+        
         l2array[i]->computeEnergy();
         l2array[i]->computeEnergy(false);
+
         if (procdynp.homoL2){
           for(int j=1; j<procdynp.numL2;j++)
             l2array.push_back(l2array[i]);
@@ -198,6 +228,35 @@ Processor::Processor(ParseXML *XML_interface)
     for (i = 0;i < numL3; i++)
       {
         l3array.push_back(new SharedCache(XML,i, &interface_ip, L3));
+        if (XML->sys.L3[i].force_lkg == true){
+          l3array[i]->unicache.caches->local_result.power.readOp.leakage = XML->sys.L3[i].force_lkg_w;
+          l3array[i]->unicache.caches->local_result.power.readOp.gate_leakage = 0;
+
+          l3array[i]->unicache.missb->local_result.power.readOp.leakage = 0;
+          l3array[i]->unicache.ifb->local_result.power.readOp.leakage = 0;
+          l3array[i]->unicache.prefetchb->local_result.power.readOp.leakage = 0;
+          l3array[i]->unicache.wbb->local_result.power.readOp.leakage = 0;
+
+        }
+        if (XML->sys.L3[i].force_rddyn == true){
+          l3array[i]->unicache.caches->local_result.power.readOp.dynamic = XML->sys.L3[i].force_rddyn_w;
+
+          l3array[i]->unicache.missb->local_result.power.readOp.dynamic= 0;
+          l3array[i]->unicache.ifb->local_result.power.readOp.dynamic = 0;
+          l3array[i]->unicache.prefetchb->local_result.power.readOp.dynamic = 0;
+          l3array[i]->unicache.wbb->local_result.power.readOp.dynamic = 0;
+
+        }
+        if (XML->sys.L3[i].force_wrdyn == true){
+          l3array[i]->unicache.caches->local_result.power.writeOp.dynamic = XML->sys.L3[i].force_wrdyn_w ;
+
+          l3array[i]->unicache.missb->local_result.power.writeOp.dynamic= 0;
+          l3array[i]->unicache.ifb->local_result.power.writeOp.dynamic = 0;
+          l3array[i]->unicache.prefetchb->local_result.power.writeOp.dynamic = 0;
+          l3array[i]->unicache.wbb->local_result.power.writeOp.dynamic = 0;
+
+        }
+
         l3array[i]->computeEnergy();
         l3array[i]->computeEnergy(false);
         if (procdynp.homoL3){

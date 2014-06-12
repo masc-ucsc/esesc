@@ -312,10 +312,7 @@ CCache::CState::StateType CCache::CState::calcAdjustState(MemRequest *mreq) cons
       nstate = I;
       break;
     case ma_setDirty:   
-      if (state == O)
-        nstate = O;
-      else
-        nstate = M;
+      nstate = M;
       break;
     case ma_setShared:   
       if (state == O || state == M)
@@ -413,11 +410,14 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
       //I(num); // Otherwise, the need coherent would be set
     }else{
       for(int16_t i=0;i<l->getSharingCount();i++) {
+        int16_t pos = l->getSharingPos(i);
+        if (pos != portid) {
 #ifdef DEBUG
-        int32_t j = 
+          int32_t j = 
 #endif
-          router->sendSetStateOthersPos(l->getSharingPos(i),mreq,ma,dyn_missDelay);
-        I(j);
+            router->sendSetStateOthersPos(l->getSharingPos(i),mreq,ma,dyn_missDelay);
+          I(j);
+        }
       }
     }
 
@@ -595,7 +595,7 @@ void CCache::doSetState(MemRequest *mreq)
   int16_t portid = router->getCreatorPort(mreq);
   l->adjustState(mreq,portid);
 
-	// Propagate setState to all the upper levels
+	// FIXME: use the directory if possible to broadcast only the needed
   if(router->sendSetStateAll(mreq, mreq->getAction(), 1)) {
     // When finished, it will ack() 
   }else{

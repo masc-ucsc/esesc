@@ -228,7 +228,7 @@ bkPortOccp        = 1
 hitDelay          = 2
 missDelay         = 2
 MSHR              = "IL1MSHR"
-lowerLevel        = "PrivL2 L2 shared"
+lowerLevel        = "PrivL2 L2 sharedby 4"
 pfetchBuffSize   = 16
 
 [IL1MSHR]
@@ -239,6 +239,7 @@ nSubEntries       = 8
 [PerCore_DTLB]
 deviceType        = 'tlb'
 blockName         = "PTLB"
+coreCoupledFreq = false
 numPorts          = 0
 hitDelay          = 0
 size              = 32 * 4096 # 64*4096
@@ -254,6 +255,7 @@ numBanks          = 1
 [PerCore_ITLB]
 deviceType        = 'tlb'
 blockName         = "PTLB"
+coreCoupledFreq = false
 numPorts          = 0
 hitDelay          = 0 # delay charged in L1
 size              = 32 * 4096 # 64*4096
@@ -261,7 +263,7 @@ assoc             = 32 #  64
 bsize             = 4*1024
 replPolicy        = 'LRU'
 lowerLevel        = "IL1_core IL1"
-lowerTLB          = "Shared_TLB STLB shared"
+lowerTLB          = "Shared_TLB STLB sharedby 2"
 lowerTLB_delay    = 20
 # Power
 numBanks          = 1
@@ -280,7 +282,7 @@ replPolicy        = 'LRU'
 hitDelay          = 3 #+1 from the ALU
 missDelay         = 1 
 MSHR              = "DL1_MSHR"
-lowerLevel        = "PrivL2 L2 shared"  # I and D cache
+lowerLevel        = "PrivL2 L2 sharedby 4"
 fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
@@ -319,6 +321,7 @@ lowerLevel        = "$(memLevel)"
 fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
+forceLkg          = 0.0712786 #Cacti6.5
 
 [L2_MSHR]
 size              = 16 
@@ -338,6 +341,7 @@ lowerLevel        = "voidDevice"
 
 [MemCtrl]
 deviceType  = 'memcontroller'
+coreCoupledFreq = false
 blockName         = "memctrl"
 busWidth    =   64
 numPorts    =    1

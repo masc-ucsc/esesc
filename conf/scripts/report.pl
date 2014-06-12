@@ -331,6 +331,8 @@ sub newMemStat {
           $op_chippower_L += $mypow;
 
         } else {
+
+          #printf "DEBUG:[%s]", "pwrDyn@cache_in_parts[0](@cache_in_parts[1])";
           my $mypow = $cf->getResultField("pwrDyn@cache_in_parts[0](@cache_in_parts[1])","v");
           printf " %8.0f " ,$mypow;
           $op_chippower += $mypow;

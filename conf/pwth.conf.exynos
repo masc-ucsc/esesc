@@ -10,8 +10,8 @@ template[4] = "stats[%d] = %s_core_branch_mispredictions +%s_BPRED_Hybrid:nMiss 
 template[5] = "stats[%d] = %s_core_total_cycles +%s:clockTicks +testCounter"
 template[6] = "stats[%d] = %s_core_ROB_reads +%s:nCommitted +testCounter"
 template[7] = "stats[%d] = %s_core_ROB_writes +%s:nCommitted +testCounter"
-template[8] = "stats[%d] = %s_core_int_regfile_reads +%s_AUNIT_rdRegPool +%s_BUNIT_rdRegPool +%s_LUNIT_rdRegPool +%s_SUNIT_rdRegPool +testCounter"
-template[9] = "stats[%d] = %s_core_int_regfile_writes +%s_AUNIT_wrRegPool +%s_BUNIT_wrRegPool +%s_LUNIT_wrRegPool +%s_SUNIT_wrRegPool +testCounter"
+template[8] = "stats[%d] = %s_core_int_regfile_reads +%s_AUNIT_rdRegPool +%s_BUNIT_rdRegPool +%s_LSUNIT_rdRegPool +testCounter"
+template[9] = "stats[%d] = %s_core_int_regfile_writes +%s_AUNIT_wrRegPool +%s_BUNIT_wrRegPool +%s_LSUNIT_wrRegPool +testCounter"
 template[10] = "stats[%d] = %s_core_float_regfile_reads +%s_CUNIT_rdRegPool +testCounter"
 template[11] = "stats[%d] = %s_core_float_regfile_writes +%s_CUNIT_wrRegPool +testCounter"
 template[12] = "stats[%d] = %s_core_function_calls +%s_ExeEngine_iBALU_LCALL:n +%s_ExeEngine_iBALU_RCALL:n +testCounter"
@@ -53,8 +53,6 @@ template[3] = "stats[%d] = %s_write_misses +%s:writeBack +%s:writeMiss +testCoun
 [MCPwrCounterTemplate]
 template[0] = "stats[%d] = mc_read_accesses +MemBus(0):readHit +testCounter"
 template[1] = "stats[%d] = mc_write_accesses +testCounter"
-#template[0] = "stats[%d] = mc_read_accesses +L3:readMiss +testCounter"
-#template[1] = "stats[%d] = mc_write_accesses +L3:writeBack +L3:writeMiss +testCounter"
 
 [TLBPwrCounterTemplate]
 template[0] = "stats[%d] = %s_read_misses +%s:readMiss +testCounter"
