@@ -146,25 +146,12 @@ void isca_demo() {
 	MemObj *cache1 = gproc->getMemorySystem()->getDL1();
 	I(cache1);
 
-  printf("trivial test\n");
-
-
-  doread(cache1, 0x101);
-  waitAllMemOpsDone();
-
+  printf("access even address 0x102\n");
   doread(cache1, 0x102);
   waitAllMemOpsDone();
-
-  doread(cache1, 0x103);
-  waitAllMemOpsDone();
-
-  doread(cache1, 0x104);
-  waitAllMemOpsDone();
-
-  doread(cache1, 0x300);
-  waitAllMemOpsDone();
-
-  doread(cache1, 0x400);
+  
+  printf("access odd address 0x201\n");
+  doread(cache1, 0x201);
   waitAllMemOpsDone();
 }
 
@@ -685,13 +672,13 @@ int main(int argc, const char **argv) {
   crackInstARM.expand(&rinst);
   st = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
 
-  //isca_demo();
+  isca_demo();
 
   //printf("SINGLE CORE TEST\n");
   //single();
  	
-  multi();
-  memcpy();
+  //multi();
+  //memcpy();
   
   printf("test Done!\n");
   //TaskHandler::terminate(); // put CPUs to sleep while running fast-forward
