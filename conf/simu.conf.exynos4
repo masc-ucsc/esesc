@@ -321,7 +321,7 @@ lowerLevel        = "$(memLevel)"
 fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
-forceLkg          = 0.0712786 #Cacti6.5
+forceLkg          = 0.0712786/6 #Cacti6.5
 
 [L2_MSHR]
 size              = 16 

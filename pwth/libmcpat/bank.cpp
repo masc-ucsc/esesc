@@ -206,8 +206,8 @@ void Bank::compute_power_energy()
 	  power.readOp.gate_leakage += htree_out_search->power.readOp.gate_leakage;
 
     // WARNING: Uggly match between CAM and SRAM. CACTI has two different power models, they are not correlated. We used the average across 4 common SRAM/CAM sizes in the core. Not the best, but good to avoid even more buggy data
-    power.readOp.leakage /= 80.0;  
-    power.readOp.gate_leakage /= 80.0;
+    power.readOp.leakage /= 160.0 /*80.0*/;  
+    power.readOp.gate_leakage /= 160 /*80.0*/;
     // END WARNING
 
 
