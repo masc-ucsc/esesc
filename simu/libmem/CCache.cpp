@@ -254,6 +254,10 @@ void CCache::mustForwardReqDown(MemRequest *mreq)
 {
   s_reqMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
 
+  if (mreq->getAction() == ma_setDirty) {
+    mreq->adjustReqAction(ma_setExclusive);
+  }
+
   I(!mreq->isRetrying());
   router->scheduleReq(mreq, dyn_missDelay);
 }
@@ -311,8 +315,11 @@ CCache::CState::StateType CCache::CState::calcAdjustState(MemRequest *mreq) cons
     case ma_setInvalid:    
       nstate = I;
       break;
-    case ma_setDirty:   
-      nstate = M;
+    case ma_setDirty:
+      if (mreq->isDisp() && (state == S || state == O))
+        nstate = O;
+      else
+        nstate = M;
       break;
     case ma_setShared:   
       if (state == O || state == M)
@@ -331,42 +338,29 @@ CCache::CState::StateType CCache::CState::calcAdjustState(MemRequest *mreq) cons
 }
 // }}}
 
-void CCache::CState::adjustState(MemRequest *mreq, int16_t portid, bool redundant) 
+bool CCache::CState::adjustState(MemRequest *mreq, int16_t portid) 
   // {{{1
 {
   StateType ostate = state;
   state = calcAdjustState(mreq);
-  if (redundant && ostate == state)
-    return;
 
   //I(ostate != state); // only if we have full MSHR
-
   if (state == I) {
     invalidate();
-    return;
+    return true;
   }
 
   I(state != I);
-  if (portid<0) {
-    return;
+
+  if (mreq->isDisp()) {
+    removeSharing(portid);
+  }else{
+    addSharing(portid);
   }
 
-  I(portid>=0); // portid<0 means no portid found
-  if (nSharers==0) {
-    share[0] = portid;
-    nSharers++;
-    return;
-  }
+  GI(nSharers>1,state!=E && state!=M); // ME states require single share
 
-  for(int i=0;i<nSharers;i++) {
-    if(share[i] == portid) {
-      return;
-    }
-  }
-
-  I(state!=E && state!=M); // ME states require single share
-
-  addSharing(portid);
+  return (ostate != state); // changed state?
 }
 // }}}
 
@@ -429,6 +423,28 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
 }
 // }}}
 
+void CCache::CState::addSharing(int16_t id) 
+{
+  if (nSharers>=8 || id<0) // broadcast or add none
+    return;
+
+  I(id>=0); // portid<0 means no portid found
+  if (nSharers==0) {
+    share[0] = id;
+    nSharers++;
+    return;
+  }
+
+  for(int i=0;i<nSharers;i++) {
+    if(share[i] == id) {
+      return;
+    }
+  }
+
+
+  share[nSharers] = id;
+  nSharers++;
+}
 void CCache::CState::removeSharing(int16_t id)
 // {{{1
 {
@@ -526,7 +542,7 @@ void CCache::doDisp(MemRequest *mreq)
   Line *l=cacheBank->readLine(addr);
   if (l) {
     int16_t portid = router->getCreatorPort(mreq);
-    l->removeSharing(portid);
+    l->adjustState(mreq,portid);
   }
 
   mreq->ack();
@@ -537,6 +553,8 @@ void CCache::doReqAck(MemRequest *mreq)
 /* CCache reqAck {{{1 */
 {
   trackAddress(mreq);
+
+  mreq->recoverReqAction();
 
   AddrType addr = mreq->getAddr();
   Line *l = cacheBank->readLine(addr);
@@ -593,12 +611,15 @@ void CCache::doSetState(MemRequest *mreq)
   }
 
   int16_t portid = router->getCreatorPort(mreq);
-  l->adjustState(mreq,portid);
+  bool change  = l->adjustState(mreq,portid);
+  int32_t nmsg = 0;
+  if (change) {
+    nmsg = router->sendSetStateAll(mreq, mreq->getAction(), 1);
+  }
 
 	// FIXME: use the directory if possible to broadcast only the needed
-  if(router->sendSetStateAll(mreq, mreq->getAction(), 1)) {
-    // When finished, it will ack() 
-  }else{
+  if(nmsg == 0) {
+    // We are done
 		mreq->convert2SetStateAck(ma_setShared);
     router->scheduleSetStateAck(mreq, 1); 
   }
@@ -706,8 +727,6 @@ void CCache::dump() const
 TimeDelta_t CCache::ffread(AddrType addr)
 /* can accept reads? {{{1 */
 { 
-  return 0;
-
   AddrType addr_r=0;
 
   if (cacheBank->readLine(addr))
@@ -729,7 +748,8 @@ TimeDelta_t CCache::ffwrite(AddrType addr)
 
   Line *l = cacheBank->writeLine(addr);
   if (l) {
-    l->setModified(); // WARNING, can create random inconsistencies (no inv others)
+    //l->setModified(); // WARNING, can create random inconsistencies (no inv others)
+    l->setShared(); // WARNING, can create random inconsistencies (no inv others)
     return hitDelay;   // done!
   }
 

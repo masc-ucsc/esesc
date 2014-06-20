@@ -99,6 +99,8 @@ private:
   MemObj       *creatorObj;
   MemObj       *homeMemObj; // Starting home node
   MemObj       *currMemObj;
+  MemObj       *firstCache;
+  MsgAction     firstCache_ma;
 
 #ifdef DEBUG_CALLPATH
   MemObj       *prevMemObj;
@@ -130,6 +132,7 @@ private:
   void memSetStateAck(); // E.gL L1 -> L2 ack
 
   void memDisp();  // E.g: L1 -> L2
+
 
 	friend class MRouter; // only mrouter can call the req directly
   void redoReq(TimeDelta_t       lat)  { redoReqCB.schedule(lat); }
@@ -223,6 +226,24 @@ protected:
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; 
 		m->req(mreq);
+  }
+
+  void adjustReqAction(MsgAction _ma) {
+    if (firstCache)
+      return;
+
+    firstCache = currMemObj;
+    firstCache_ma = ma;
+    I(mt == mt_req);
+    I(_ma == ma_setExclusive);
+    ma = _ma;
+  }
+  void recoverReqAction() {
+    I(mt == mt_reqAck);
+    if (firstCache != currMemObj)
+      return;
+    firstCache = 0;
+    ma         = firstCache_ma;
   }
 
   void convert2ReqAck(MsgAction _ma) {

@@ -94,7 +94,7 @@ protected:
 		bool shouldNotifyHigherLevels(MemRequest *mreq, int16_t port) const;
 		StateType getState() const { return state; };
 		StateType calcAdjustState(MemRequest *mreq) const;
-		void adjustState(MemRequest *mreq, int16_t port, bool redundant = false);
+		bool adjustState(MemRequest *mreq, int16_t port);
 
     MsgAction othersNeed(MsgAction ma) const {
 			switch(ma) {
@@ -112,7 +112,7 @@ protected:
 			switch(state) {
 				case M:   return ma_setDirty;
 				case O:   return ma_setShared;
-				case E:   return ma_setShared;
+				case E:   return ma_setExclusive;
 				case S:   return ma_setShared;
 				case I:   return ma_setInvalid;
 			}
@@ -135,13 +135,7 @@ protected:
 			return nSharers; // Directory
 		}
     void removeSharing(int16_t id);
-		void addSharing(int16_t id) {
-      I(id != -1);
-			if (nSharers>=8)
-				return;
-			share[nSharers] = id;
-			nSharers++;
-		}
+		void addSharing(int16_t id);
 		int16_t getFirstSharingPos() const {
 			return share[0];
 		}

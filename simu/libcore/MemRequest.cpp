@@ -131,6 +131,7 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
   r->homeMemObj  = mobj;
   r->creatorObj  = mobj;
   r->currMemObj  = mobj;
+	r->firstCache  = 0;
 #ifdef DEBUG
   static uint64_t current_id = 0;
   r->id          = current_id++;

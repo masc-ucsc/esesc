@@ -214,7 +214,7 @@ void MemController::manageRam(void)
 		      	MemRequest *mreq = tempMem->mreq;
 	      		I(mreq->isReq());
 
-            if (mreq->getAction() == ma_setValid)
+            if (mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive)
               mreq->convert2ReqAck(ma_setExclusive);
             else
               mreq->convert2ReqAck(ma_setDirty);

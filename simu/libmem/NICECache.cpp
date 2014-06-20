@@ -68,7 +68,7 @@ void NICECache::doReq(MemRequest *mreq)
 		mreq->ack(hitDelay);
 		return;
 	}
-	if (mreq->getAction() == ma_setValid) {
+	if (mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive) {
 		mreq->convert2ReqAck(ma_setExclusive);
 		//MSG("rdnice %x",mreq->getAddr());
 	}else {
