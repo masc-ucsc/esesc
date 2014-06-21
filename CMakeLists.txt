@@ -219,6 +219,7 @@ ADD_SUBDIRECTORY(simu/libmem)
 ADD_SUBDIRECTORY(simu/libnet)
 #################################
 ADD_SUBDIRECTORY(main)
+ADD_SUBDIRECTORY(tests/gtest-1.7.0)
 ADD_SUBDIRECTORY(tests)
 
 
