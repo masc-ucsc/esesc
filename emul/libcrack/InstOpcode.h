@@ -1,5 +1,6 @@
 // Contributed by Jose Renau
 //                Luis Ceze
+//                Jia Xu
 //
 // The ESESC/BSD License
 //
@@ -538,7 +539,7 @@ enum RegType {
 };
 
 //enum ClusterType { AUnit = 0, BUnit, CUnit, LUnit, SUnit };
-enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32};
+enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32, MIPS};
 
 // Common alias
 #define LREG_ZERO  LREG_R0
@@ -567,5 +568,12 @@ enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32};
 #define LREG_SP          LREG_R14
 #define LREG_IP          LREG_R13
 
+// MIPS Mappings
+#define LREG_AT          LREG_R1
+#define LREG_GP          LREG_R28
+#define LREG_SP_MIPS     LREG_R29
+#define LREG_RA          LREG_R31
+#define LREG_LO          LREG_TMP7  //LO special registers for MIPS
+#define LREG_HI          LREG_TMP8  //HI special registers for MIPS
 
 #endif
