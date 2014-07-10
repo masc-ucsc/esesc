@@ -77,14 +77,13 @@ SamplerSMARTS::~SamplerSMARTS()
 }
 /* }}} */
 
-//changed by Hamid R. Khaleghzadeh///////////////
-int SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
 
   I(fid < emul->getNumEmuls());
   if(likely(!execute(fid, icount)))
-    return 0; // QEMU can still send a few additional instructions (emul should stop soon)
+    return; // QEMU can still send a few additional instructions (emul should stop soon)
   I(mode!=EmuInit);
 
   I(insn);
@@ -93,16 +92,16 @@ int SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, 
   if (getNextSwitch()>totalnInst) {
 
     if (mode == EmuRabbit || mode == EmuInit)
-      return 0;
+      return;
 
     if (mode == EmuDetail || mode == EmuTiming) {
-      return(emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag()));
-      //return;
+      emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
+      return;
     }
 
     I(mode == EmuWarmup);
 		doWarmupOpAddr(op, addr);
-    return 0;
+    return;
   }
 
 
@@ -115,7 +114,7 @@ int SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, 
 
   if (getNextSwitch() > totalnInst){//another thread just changed the mode
     pthread_mutex_unlock (&mode_lock);
-    return 0;
+    return;
   }
 
   lastMode = mode;
@@ -124,7 +123,7 @@ int SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, 
     if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
       markDone();
       pthread_mutex_unlock (&mode_lock);
-      return 0;
+      return;
     }
     if (doPower) {
       uint64_t mytime = getTime();
@@ -142,8 +141,6 @@ int SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, 
     }
   }
   pthread_mutex_unlock (&mode_lock);
-  
-  return 0;
 
 }
 /* }}} */

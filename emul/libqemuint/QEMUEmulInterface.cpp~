@@ -241,23 +241,6 @@ void QEMUEmulInterface::setFirstFlow(FlowID fid) {
   //QEMUReader does not have any variable called FirstFlow
 }
 
-//Added by Hamid R. Khaleghzadeh///////////
-short int QEMUEmulInterface::fIDStatus(FlowID fid)							//0:not usable by qemu, 1:is free or freed, 2: is taken
-{
-	if(fidFreePool[fid] == FID_FREED || fidFreePool[fid] == FID_FREE)
-		return FID_FREE;
-	else if(fidFreePool[fid] == FID_TAKEN)
-		return FID_TAKEN;
-	else
-		return FID_NOT_AVAILABLE;
-}
-
-void QEMUEmulInterface::drainFIFO(FlowID fid)
-{
-	reader->drainFIFO(fid);
-}
-//end/////////////////////////////////////
-
 void QEMUEmulInterface::setSampler(EmuSampler *a_sampler, FlowID fid) {
   EmulInterface::setSampler(a_sampler);
 

@@ -1,5 +1,4 @@
 // Contributed by Jose Renau
-//                Ehsan K.Ardestani
 //
 // The ESESC/BSD License
 //
@@ -33,64 +32,30 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef EMU_SAMPLER_PERIODIC_H
-#define EMU_SAMPLER_PERIODIC_H
+#ifndef EMU_SAMPLER_SMARTS_H
+#define EMU_SAMPLER_SMARTS_H
 
-// Comment out to enable Instruction Based Sampling (Original SMARTS)
-#define TBS 0
+#include <vector>
 
-
+#include "nanassert.h"
 #include "SamplerBase.h"
-#include "GStats.h"
 
 
-class SamplerPeriodic : public SamplerBase {
+class SamplerSMARTS : public SamplerBase {
 private:
 protected:
 
-  uint64_t totalnInstForcedDetail;
-  float    intervalRatio;
-  uint32_t TempToPerfRatio;
-
-  FlowID winnerFid;
-
-  GStatsCntr  *dsync;
-  GStatsMax  *threadProgressedTime;
-
-  static int32_t PerfSampleLeftForTemp; 
-
-  void coordinateWithOthersAndNextMode(FlowID fid);
-  void syncTimeAndTimingModes(FlowID fid);
-  void syncTimeAndWaitForOthers(FlowID fid);
-  void syncTimeAndContinue(FlowID fid);
-  void syncTimeAndFinishWaitingForOthers(FlowID fid);
-  void syncTimeAndSamples(FlowID fid);
-  void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
-
-  void updateCPI();
-  void updateCPIHist();
-  void insertNewCPI();
-  void computeEstCPI();
-  void loadPredCPI();
-  void updateIntervalRatio();
-  void updateIntervalRatioStats();
-
-  void doPWTH(FlowID fid);
-
-  void dumpCPI();
-  void dumpTime();
-
 public:
+  SamplerSMARTS(const char *name, const char *section, EmulInterface *emul, FlowID fid);
+  virtual ~SamplerSMARTS();
 
-  SamplerPeriodic(const char *name, const char *section, EmulInterface *emu, FlowID fid);
-  virtual ~SamplerPeriodic();
+  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
 
-  //changed by Hamid R. Khaleghzadeh///////////////
-  int queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
-
-  void dumpThreadProgressedTime(FlowID fid);
+  void updateCPI(uint32_t fid);
+  void syncStats(){
+  };
+  void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
   float getSamplingRatio() {return static_cast<float>(nInstTiming)/static_cast<float>(nInstRabbit + nInstWarmup + nInstDetail + nInstTiming);};
 };
-
 #endif
 

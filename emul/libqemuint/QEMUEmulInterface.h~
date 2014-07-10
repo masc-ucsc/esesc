@@ -87,11 +87,6 @@ class QEMUEmulInterface : public EmulInterface {
   void freeFid(FlowID fid);
   void setFirstFlow(FlowID fid);
   
-  //Added by Hamid R. Khaleghzadeh///////////
-  short int fIDStatus(FlowID fid);			// Return FID status
-  void drainFIFO(FlowID fid);
-  //end/////////////////////////////////////
-  
   void setSampler(EmuSampler *a_sampler, FlowID fid=0);
   void drainFIFO();
   FlowID mapLid(FlowID fid);

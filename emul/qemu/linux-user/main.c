@@ -195,6 +195,13 @@ static inline void end_exclusive(void)
 static inline void cpu_exec_start(CPUState *env)
 {
     pthread_mutex_lock(&exclusive_lock);
+    //added by Hamid R. Khaleghzadeh////////////
+    if(env->running == 1)
+    {
+    	pthread_mutex_unlock(&exclusive_lock);
+    	return;
+    }
+    //end///////////////////////////////////
     exclusive_idle();
     env->running = 1;
     pthread_mutex_unlock(&exclusive_lock);
@@ -204,6 +211,13 @@ static inline void cpu_exec_start(CPUState *env)
 static inline void cpu_exec_end(CPUState *env)
 {
     pthread_mutex_lock(&exclusive_lock);
+    //added by Hamid R. Khaleghzadeh////////////
+    if(env->running == 0)
+    {
+    	pthread_mutex_unlock(&exclusive_lock);
+    	return;
+    }
+    //end////////////////////////////////////////
     env->running = 0;
     if (pending_cpus > 1) {
         pending_cpus--;

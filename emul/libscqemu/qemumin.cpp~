@@ -153,24 +153,6 @@ extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid)
   return last_fid;//++fid;
 }
 
-//Added by Hamid R. Khaleghzadeh///////////
-extern "C" FlowID QEMUReader_resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid)
-{
-	//static uint64_t fid = 0; //FIXME: a hack for now, need fid pool later.
-  return last_fid;//++fid;
-}
-
-extern "C" size_t  QEMUReader_getSCpuMaxFlows(size_t cpuid)
-{
-	return 0;
-} 
-
-extern "C" size_t QEMUReader_getNumCpus()
-{
-	return 0;
-}
-//end/////////////////////////////////////
-
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
 }
 

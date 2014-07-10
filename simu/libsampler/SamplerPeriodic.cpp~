@@ -120,22 +120,20 @@ int SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid
     }
     I(mode == EmuWarmup);
     doWarmupOpAddr(op, addr);
-    return 0;
+    return;
   }
 
 #if 0
   // We did enough
   if (mode == EmuTiming)
     if (isItDone(fid))
-      return 0;
+      return;
 #endif
 
   // We are not done yet though. Look for the new mode
   I(getNextSwitch() <= totalnInst);
   coordinateWithOthersAndNextMode(fid);
   I(mode == next_mode); //it was a detailed sync
-  
-  return 0;
 }
 /* }}} */
 

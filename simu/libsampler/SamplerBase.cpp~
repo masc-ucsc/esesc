@@ -225,6 +225,7 @@ FlowID SamplerBase::getFid(FlowID last_fid)
 FlowID SamplerBase::resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid)
 {
 	FlowID fid = TaskHandler::resumeThread(uid, new_fid);	
+	syncnSamples(fid);
   justResumed[fid] = true;
   finished[fid] = false;
   return fid;

@@ -268,8 +268,11 @@ _syscall6(int,sys_futex,int *,uaddr,int,op,int,val,
 _syscall3(int, sys_sched_getaffinity, pid_t, pid, unsigned int, len,
           unsigned long *, user_mask_ptr);
 #define __NR_sys_sched_setaffinity __NR_sched_setaffinity
+//Commented by Hamid R. Khaleghzadeh /////////////////////////////
+/*
 _syscall3(int, sys_sched_setaffinity, pid_t, pid, unsigned int, len,
           unsigned long *, user_mask_ptr);
+*/
 _syscall4(int, reboot, int, magic1, int, magic2, unsigned int, cmd,
           void *, arg);
 
@@ -4185,6 +4188,180 @@ static int do_fork(CPUState *env, unsigned int flags, abi_ulong newsp,
     return ret;
 }
 
+//Added by Hamid R. Khaleghzadeh///////////
+//This method finds a new fid for a thread which intends to migrate to another core by syscall sched_setaffinity(). 
+//If one of the cpus, which is determined by mask, has a free FID then the thread will be migrated to it.
+//Else, first sutableFID is freed and the thread will be migrated to it.
+static int do_sched_setaffinity(CPUState *env, uint32_t tid, unsigned long *mask)	// Each bit in *mask corresponds with a cpuid
+{
+	unsigned long bitmap;
+	size_t sutableFIDs[128];			//There are at most 128 FIDs in the system
+	size_t sIndex;
+	size_t cpuid     = 0;
+  size_t cpuid_sub = 0;
+  int nThreads = 0;
+  
+	if(*mask == 0)
+	{
+		printf("\nWarning: Any CPU Hasn't Been Determined In CPUSET. So, SCHED_SETAFFINITY() Cannot Be Done\n");
+		errno = 22;
+		return -1;  
+	}
+	
+	CPUState *cpu_env = NULL;
+	if(((TaskState *)(((CPUState *)env)->opaque))->ts_tid == tid)
+		cpu_env = env;
+	else
+	{
+		cpu_env = first_cpu;
+		while(cpu_env)
+		{
+			if(((TaskState *)(((CPUState *)cpu_env)->opaque))->ts_tid == tid)
+				break;
+			
+			cpu_env = cpu_env->next_cpu;
+		}
+		
+		if(cpu_env == NULL)
+		{
+			printf("\nWarning: Any CPU_ENV Cannot Be Found. So, SCHED_SETAFFINITY() Cannot Be Done\n");
+			errno = 22;
+			return -1;  
+		}
+	}
+
+	for(sIndex = 0; sIndex < 128; sIndex++)
+		sutableFIDs[sIndex] = -1;
+	
+	sIndex = 0;
+	for(cpuid = 0; cpuid < QEMUReader_getNumCpus(); cpuid++)
+	{
+		bitmap = 1;
+		bitmap = bitmap << cpuid;
+		if(!(bitmap & (*mask)))
+		{
+			nThreads += QEMUReader_getSCpuMaxFlows(cpuid);
+			continue;
+		}
+		for(cpuid_sub = 0; cpuid_sub < QEMUReader_getSCpuMaxFlows(cpuid) ; cpuid_sub++);
+  		sutableFIDs[sIndex++] = (nThreads++);
+	} 
+	
+	for(sIndex = 0; sutableFIDs[sIndex] != -1 ; sIndex++)
+		if(QEMUReader_fIDStatus(sutableFIDs[sIndex]) == 1)		// fID is free or freed
+		{
+			pthread_mutex_lock(&cpu_env->add_inst_mutex);
+			if(QEMUReader_fIDStatus(((CPUState *)cpu_env)->fid) == 1) 		// fID is free or freed
+			{
+				printf("*** WILL resume (TID = %5d) , FIDs: %2d -> %2d\n", ((CPUState *)cpu_env)->host_tid,
+								(int)((CPUState *)cpu_env)->fid , (int)sutableFIDs[sIndex]);
+				((CPUState *)cpu_env)->fid = sutableFIDs[sIndex];
+				//sutableFIDs[sIndex] will be taken when thread is resumed
+			}
+			else
+			{
+				//QEMUReader_drainFIFO(((CPUState *)cpu_env)->fid);
+				QEMUReader_pauseThread(((CPUState *)cpu_env)->fid);
+				((CPUState *)cpu_env)->fid = QEMUReader_resumeThreadNew(((CPUState *)cpu_env)->host_tid, 
+																			((CPUState *)cpu_env)->fid,sutableFIDs[sIndex]);
+			}
+			
+			pthread_mutex_unlock(&cpu_env->add_inst_mutex);
+			printf(" *SCHED_SETAFFINITY(TID = %d) Is Done.\n",((CPUState *)cpu_env)->host_tid);
+			errno = 0;
+			return 0;		//sched_setaffinity has done correctly	
+		}
+		
+	// All FIDs are Taken. So, replace the thread which executed sched_setaffinity() and the thread which is runnig on the
+	//first sutableFIDs with each other.	
+	CPUState *p = first_cpu;
+	bool findCPUEnv = false;
+	while(p)
+	{
+		if(p->fid == sutableFIDs[0])
+		{
+			findCPUEnv = true;
+			break;
+		}
+		p = p-> next_cpu;
+	}
+	if(findCPUEnv == false)
+	{
+		//printf("\nERROR: There Is A Problem In Executing Of SCHED_SETAFFINITY(). CPUENV Not Found\n");
+		errno = 22;
+		return -1; 
+	}
+
+	printf("\nWarning: fid-%d is full. First, the fid is freed, then thread migration will be done...\n", p->fid);
+	pthread_mutex_lock(&cpu_env->add_inst_mutex);
+	if(QEMUReader_fIDStatus(((CPUState *)cpu_env)->fid) == 2) 		// fID is taken
+	{
+		//QEMUReader_drainFIFO(((CPUState *)cpu_env)->fid);
+		QEMUReader_pauseThread(((CPUState *)cpu_env)->fid);
+		
+		pthread_mutex_lock(&p->add_inst_mutex);
+		
+		//QEMUReader_drainFIFO(sutableFIDs[0]);
+		bool wasTaken = false;
+		if(QEMUReader_fIDStatus(sutableFIDs[0]) == 2) 		// fID is taken
+		{
+			QEMUReader_pauseThread(sutableFIDs[0]);
+			wasTaken = true;
+		}
+	
+		size_t tempFID = ((CPUState *)cpu_env)->fid;
+
+		((CPUState *)cpu_env)->fid = QEMUReader_resumeThreadNew(((CPUState *)cpu_env)->host_tid, ((CPUState *)cpu_env)->fid
+																												,sutableFIDs[0]);
+	
+		if(wasTaken)
+			p->fid = QEMUReader_resumeThreadNew(p->host_tid, p->fid, tempFID);
+		else
+		{
+			printf("*** WILL resume (TID = %5d) , FIDs: %2d -> %2d\n", p->host_tid, (int)p->fid , (int)tempFID);	
+			p->fid = tempFID;		//tempFID will be taken when thread is resumed
+		}
+	
+		pthread_mutex_unlock(&cpu_env->add_inst_mutex);
+		pthread_mutex_unlock(&p->add_inst_mutex);
+	}
+	else
+	{		
+		pthread_mutex_lock(&p->add_inst_mutex);
+		
+		//QEMUReader_drainFIFO(sutableFIDs[0]);
+		bool wasTaken = false;
+		if(QEMUReader_fIDStatus(sutableFIDs[0]) == 2) 		// fID is taken
+		{
+			QEMUReader_pauseThread(sutableFIDs[0]);
+			wasTaken = true;
+		}
+	
+		size_t tempFID = ((CPUState *)cpu_env)->fid;
+		
+		printf("*** WILL resume (TID = %5d) , FIDs: %2d -> %2d\n", ((CPUState *)cpu_env)->host_tid,
+						(int)((CPUState *)cpu_env)->fid , (int)sutableFIDs[0]);
+		((CPUState *)cpu_env)->fid = sutableFIDs[0];
+		//sutableFIDs[0] will be taken when thread is resumed
+		
+		if(wasTaken)
+			p->fid = QEMUReader_resumeThreadNew(p->host_tid, p->fid, tempFID);
+		else
+		{
+			printf("*** WILL resume (TID = %5d) , FIDs: %2d -> %2d\n", p->host_tid, (int)p->fid , (int)tempFID);	
+			p->fid = tempFID;		//tempFID will be taken when thread is resumed
+		}
+	
+		pthread_mutex_unlock(&cpu_env->add_inst_mutex);
+		pthread_mutex_unlock(&p->add_inst_mutex);	
+	}
+	
+	printf(" *SCHED_SETAFFINITY(TID1 = %d, TID2 = %d) Is Done.\n",((CPUState *)cpu_env)->host_tid , p->host_tid);
+	errno = 0;
+	return 0;	
+}
+//end/////////////////////////////////////
+
 /* warning : doesn't handle linux specific flags... */
 static int target_to_host_fcntl_cmd(int cmd)
 {
@@ -6932,7 +7109,12 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
             memcpy(mask, p, arg2);
             unlock_user_struct(p, arg2, 0);
 
-            ret = get_errno(sys_sched_setaffinity(arg1, mask_size, mask));
+            //commented by Hamid R. Khaleghzadeh //////////////////////////////////////
+            //ret = get_errno(sys_sched_setaffinity(arg1, mask_size, mask));
+            
+            //added by Hamid R. Khaleghzadeh //////////////////////////////////////
+            ret = get_errno(do_sched_setaffinity(cpu_env, arg1, mask));
+            //end/////////////////////////////////////////////////////////////////
         }
         break;
     case TARGET_NR_sched_setparam:

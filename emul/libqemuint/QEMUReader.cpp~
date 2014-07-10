@@ -155,7 +155,7 @@ int QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char
   {   
     //release lock
     QEMUReader_goto_sleep(env);
-    return -1;		//queueInstruction hasn't been done correctly.
+    return -1;
   }
   
   //Commented by Hamid R. Khaleghzadeh///////////////

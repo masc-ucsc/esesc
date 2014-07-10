@@ -227,6 +227,7 @@ typedef struct CPUWatchpoint {
     struct KVMState *kvm_state;                                         \
     struct kvm_run *kvm_run;                                            \
     int kvm_fd;                                                         \
-    int kvm_vcpu_dirty;
+    int kvm_vcpu_dirty;																									\
+    pthread_mutex_t add_inst_mutex; /*Added by H. R. Khaleghzadeh*/
 
 #endif
