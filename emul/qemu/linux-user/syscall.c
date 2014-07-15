@@ -4235,7 +4235,7 @@ static int do_sched_setaffinity(CPUState *env, uint32_t tid, unsigned long *mask
 	
 	sIndex = 0;
 	for(cpuid = 0; cpuid < QEMUReader_getNumCpus(); cpuid++)
-	{
+	{ 
 		bitmap = 1;
 		bitmap = bitmap << cpuid;
 		if(!(bitmap & (*mask)))
@@ -4243,7 +4243,18 @@ static int do_sched_setaffinity(CPUState *env, uint32_t tid, unsigned long *mask
 			nThreads += QEMUReader_getSCpuMaxFlows(cpuid);
 			continue;
 		}
-		for(cpuid_sub = 0; cpuid_sub < QEMUReader_getSCpuMaxFlows(cpuid) ; cpuid_sub++);
+		for(cpuid_sub = 0; cpuid_sub < QEMUReader_getSCpuMaxFlows(cpuid) ; cpuid_sub++)
+  	{
+  		sutableFIDs[sIndex++] = (nThreads++);
+  		if(cpu_env->fid == sutableFIDs[sIndex-1])		//The thread is running on one of cores which is determined by mask.
+  		{
+  			printf("*** resume (TID = %5d) , FIDs: %2d -> %2d\n", ((CPUState *)cpu_env)->host_tid, 
+  							(int)((CPUState *)cpu_env)->fid , (int)((CPUState *)cpu_env)->fid);
+  			printf(" *SCHED_SETAFFINITY(TID = %d) Is Done.\n",((CPUState *)cpu_env)->host_tid);	
+  			errno = 0;
+				return 0;		//sched_setaffinity has done correctly
+  		}
+		}
   		sutableFIDs[sIndex++] = (nThreads++);
 	} 
 	
