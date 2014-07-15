@@ -254,6 +254,8 @@ int cpu_exec(CPUState *env)
     TranslationBlock *tb;
     uint8_t *tc_ptr;
     unsigned long next_tb;
+    //Added by Hamid R. Khaleghzadeh///////////
+    int isAddingInst;
 
     if (env->halted) {
         if (!cpu_has_work(env)) {
@@ -651,17 +653,59 @@ int cpu_exec(CPUState *env)
                           uint32_t ninst = env->op_cnt;
                           if (ninst == 0)
                             ninst = tb->icount;
-                          QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, env->op_insn[ninst-1], ninst, (void *) env);
+                          //Commented by Hamid R. Khaleghzadeh/////////////
+                          //QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, env->op_insn[ninst-1], ninst, (void *) env);
+                          //Added by Hamid R. Khaleghzadeh/////////////
+                          do
+                          {
+		                        pthread_mutex_lock(&env->add_inst_mutex);
+		                        isAddingInst = QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, env->op_insn[ninst-1], ninst, (void *) env);
+		                        pthread_mutex_unlock(&env->add_inst_mutex);
+		                        if(isAddingInst == -1)
+		                        {
+		                        	struct timespec ts = {0,350000};
+        											nanosleep(&ts, 0);
+		                        }
+	                        }while(isAddingInst == -1);
+	                        //end////////////////////////////////////////
                             //printf("%d op:%x:%x:%x %x:%x\n",0, env->op_pc[ninst-1], ldl_code(env->op_pc[ninst-1]), env->op_insn[ninst-1],env->op_addr[ninst-1],env->op_data[ninst-1]);
                         }else if (esesc_allow_large_tb[env->fid]==0 && esesc_single_inst_tb[env->fid] == 0) { // WARMUP
                           for(i=0;i<env->op_cnt;i++) {
-                            QEMUReader_queue_inst(0xdeadbeaf, env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+                            //Commented by Hamid R. Khaleghzadeh/////////////
+                            //QEMUReader_queue_inst(0xdeadbeaf, env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+                            //Added by Hamid R. Khaleghzadeh/////////////
+                            do
+                            {
+		                          pthread_mutex_lock(&env->add_inst_mutex);
+		                          isAddingInst = QEMUReader_queue_inst(0xdeadbeaf, env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+		                          pthread_mutex_unlock(&env->add_inst_mutex);
+		                          if(isAddingInst == -1)
+				                      {
+				                      	struct timespec ts = {0,350000};
+		      											nanosleep(&ts, 0);
+				                      }
+	                          }while(isAddingInst == -1);
+	                          //end///////////////////////////////////////
                           }
                         }else{
                           // FIXME: what if env->op_cnt == 0
                           for(i=0;i<env->op_cnt;i++) {
                             // the msb of op_inst indicates thumb mode for ARM
-                            QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+                            //Commented by Hamid R. Khaleghzadeh/////////////
+                            //QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+                            //Added by Hamid R. Khaleghzadeh/////////////
+                            do
+		                        {
+		                          pthread_mutex_lock(&env->add_inst_mutex);
+		                          isAddingInst = QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+		                          pthread_mutex_unlock(&env->add_inst_mutex);
+		                          if(isAddingInst == -1)
+				                      {
+				                      	struct timespec ts = {0,350000};
+		      											nanosleep(&ts, 0);
+				                      }
+	                          }while(isAddingInst == -1);
+	                          //end///////////////////////////////////////
                             //printf("%d %d op:%x:%x:%x %x:%x\n", env->fid, i, env->op_pc[i], ldl_code(env->op_pc[i]), env->op_insn[i],env->op_addr[i],env->op_data[i]);
                           }
                         }
@@ -699,16 +743,58 @@ int cpu_exec(CPUState *env)
 																		uint32_t ninst = env->op_cnt;
 																		if (ninst == 0)
 																			ninst = tb->icount;
-																		QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, 0, ninst, (void *) env);
+																		//Added by Hamid R. Khaleghzadeh/////////////
+																		do
+																		{
+																			pthread_mutex_lock(&env->add_inst_mutex);
+																			isAddingInst = QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, 0, ninst, (void *) env);
+																			pthread_mutex_unlock(&env->add_inst_mutex);
+																			if(isAddingInst == -1)
+												              {
+												              	struct timespec ts = {0,350000};
+																				nanosleep(&ts, 0);
+												              }
+																		}while(isAddingInst == -1);
+																		//end////////////////////////////////////////
+																		//Commented by Hamid R. Khaleghzadeh/////////////
+																		//QEMUReader_queue_inst(0xdeaddead, env->op_pc[ninst-1], 0, env->fid, 0, ninst, (void *) env);
 																	}else if (esesc_allow_large_tb[env->fid]==0 && esesc_single_inst_tb[env->fid] == 0) { // WARMUP
 																		for(i=0;i<env->op_cnt;i++) {
-																			QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+																			//Commented by Hamid R. Khaleghzadeh/////////////
+																			//QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+																			//Added by Hamid R. Khaleghzadeh/////////////
+																			do
+																			{
+																				pthread_mutex_lock(&env->add_inst_mutex);
+																				isAddingInst = QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+																				pthread_mutex_unlock(&env->add_inst_mutex);
+																				if(isAddingInst == -1)
+														            {
+														            	struct timespec ts = {0,350000};
+																					nanosleep(&ts, 0);
+														            }
+																			}while(isAddingInst == -1);
+																			//end/////////////////////////////////////////
 																		}
 																	}else{
 																		// FIXME: what if env->op_cnt == 0
 																		for(i=0;i<env->op_cnt;i++) {
                                       // the msb of op_inst indicates thumb mode for ARM
-                                      QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+                                      //Commented by Hamid R. Khaleghzadeh/////////////
+                                      //QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+                                      //Added by Hamid R. Khaleghzadeh/////////////
+                                      do
+																			{
+																				pthread_mutex_lock(&env->add_inst_mutex);
+		                                    isAddingInst = QEMUReader_queue_inst(ldl_code(env->op_pc[i]), env->op_pc[i], env->op_addr[i], env->fid, env->op_insn[i], 1, (void *) env);
+		                                    pthread_mutex_unlock(&env->add_inst_mutex);
+		                                    if(isAddingInst == -1)
+														            {
+														            	struct timespec ts = {0,350000};
+																					nanosleep(&ts, 0);
+														            }
+	                                    }while(isAddingInst == -1);
+	                                    //end////////////////////////////////////////
                                       //printf("%d op:%x:%x:%x %x:%x\n",i, env->op_pc[i], ldl_code(env->op_pc[i]), env->op_insn[i],env->op_addr[i],env->op_data[i]);
                                     }
                                   }

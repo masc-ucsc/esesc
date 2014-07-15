@@ -111,18 +111,27 @@ extern "C" uint32_t QEMUReader_getFid(FlowID last_fid)
   return 0;
 }
 
+//Added by Hamid R. Khaleghzadeh///////////
+extern "C" short int QEMUReader_fIDStatus(FlowID fid)
+{
+	return 0;	
+}
+//end/////////////////////////////////////
+
 extern "C" uint64_t QEMUReader_get_time() 
 {
   return 0;
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, char op, uint64_t icount, void *env) 
+//changed by Hamid R. khaleghzadeh/////////////
+extern "C" int QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, char op, uint64_t icount, void *env) 
 {
   starting_pc = pc;
   MSG("QEMU:awake reached. Starting pc=0x%x\n", pc);
   awake = 1;
   pthread_exit(0); // Just wanted to initialize qemu, 
   //printf("pc=0x%x addr=0x%x data=0x%x op=%d\n",pc,addr,data,op);
+  return 0;
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)
@@ -143,6 +152,24 @@ extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid)
   //static uint64_t fid = 0; //FIXME: a hack for now, need fid pool later.
   return last_fid;//++fid;
 }
+
+//Added by Hamid R. Khaleghzadeh///////////
+extern "C" FlowID QEMUReader_resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid)
+{
+	//static uint64_t fid = 0; //FIXME: a hack for now, need fid pool later.
+  return last_fid;//++fid;
+}
+
+extern "C" size_t  QEMUReader_getSCpuMaxFlows(size_t cpuid)
+{
+	return 0;
+} 
+
+extern "C" size_t QEMUReader_getNumCpus()
+{
+	return 0;
+}
+//end/////////////////////////////////////
 
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
 }

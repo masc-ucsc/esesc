@@ -73,7 +73,8 @@ public:
   void  syncHeadTail(FlowID  fid);
 
   // Only method called by remote thread
-  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool keepStats = false);
+  //changed by Hamid R. Khaleghzadeh///////////////
+  int queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool keepStats = false);
   void syscall(uint32_t num, Time_t time, FlowID fid);
   
   void start();

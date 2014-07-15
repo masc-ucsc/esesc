@@ -43,7 +43,8 @@ extern "C" {
   void QEMUReader_goto_sleep(void *env);
   void QEMUReader_wakeup_from_sleep(void *env);
 
-  void QEMUReader_queue_inst(uint32_t insn
+  //changed by Hamid R. Khaleghzadeh///////////////
+  int QEMUReader_queue_inst(uint32_t insn
       ,uint32_t pc
       ,uint32_t addr
       ,uint32_t fid

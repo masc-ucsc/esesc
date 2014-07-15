@@ -70,15 +70,28 @@ extern "C" uint32_t QEMUReader_getFid(FlowID last_fid)
   return qsamplerlist[last_fid]->getFid(last_fid);
 }
 
+//Added by Hamid R. Khaleghzadeh///////////
+extern "C" short int QEMUReader_fIDStatus(FlowID fid)
+{
+	return qsamplerlist[0]->fIDStatus(fid);	
+}
+
+extern "C" void QEMUReader_drainFIFO(FlowID fid)
+{
+	qsamplerlist[fid]->drainFIFO(fid);	
+}
+//end/////////////////////////////////////
+
 extern "C" uint64_t QEMUReader_get_time() 
 {
   //FIXME: fid?
   return qsamplerlist[0]->getTime();
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void *env) 
+//changed by Hamid R. Khaleghzadeh///////////////
+extern "C" int QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void *env) 
 {
-  qsamplerlist[fid]->queue(insn,pc,addr,fid,op,icount,env);
+  return(qsamplerlist[fid]->queue(insn,pc,addr,fid,op,icount,env));
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)
@@ -108,9 +121,31 @@ extern "C" FlowID QEMUReader_resumeThreadGPU(FlowID uid) {
 extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid) { 
 
   uint32_t fid = qsamplerlist[0]->getFid(last_fid); 
-  MSG("resume %d -> %d",last_fid,fid);
+  //changed by Hamid R. Khaleghzadeh///////////
+  MSG("*** resume (TID = %5d) , FIDs: %2d -> %2d",uid,last_fid,fid);
   return(qsamplerlist[fid]->resumeThread(uid, fid));
 }
+
+//Added by Hamid R. Khaleghzadeh///////////
+extern "C" FlowID QEMUReader_resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid)
+{
+	I(QEMUReader_fIDStatus(new_fid) == 1);
+	uint32_t fid = qsamplerlist[0]->getFid(new_fid); 
+	MSG("*** resume (TID = %5d) , FIDs: %2d -> %2d",uid,last_fid,fid);
+	return qsamplerlist[fid]->resumeThreadNew(uid, last_fid, fid);	
+}
+
+extern "C" size_t QEMUReader_getSCpuMaxFlows(size_t cpuid)
+{
+	return qsamplerlist[0]->getSCpuMaxFlows(cpuid);
+} 
+
+extern "C" size_t QEMUReader_getNumCpus()
+{
+	return qsamplerlist[0]->getNumCpus();
+}
+//end/////////////////////////////////////
+
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
   qsamplerlist[fid]->pauseThread(fid);
 }

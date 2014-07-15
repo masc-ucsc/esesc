@@ -98,12 +98,13 @@ SamplerPeriodic::~SamplerPeriodic()
 }
 /* }}} */
 
-void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+//changed by Hamid R. Khaleghzadeh///////////////
+int SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
   if(likely(!execute(fid, icount)))
-    return; // QEMU can still send a few additional instructions (emul should stop soon)
+    return 0; // QEMU can still send a few additional instructions (emul should stop soon)
 
   I(insn);
 
@@ -112,27 +113,29 @@ void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fi
   // process the current sample mode
   if (getNextSwitch()>totalnInst) {
     if (mode == EmuRabbit || mode == EmuInit)
-      return;
+      return 0;
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
-      return;
+      return(emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag()));
+      //return;
     }
     I(mode == EmuWarmup);
     doWarmupOpAddr(op, addr);
-    return;
+    return 0;
   }
 
 #if 0
   // We did enough
   if (mode == EmuTiming)
     if (isItDone(fid))
-      return;
+      return 0;
 #endif
 
   // We are not done yet though. Look for the new mode
   I(getNextSwitch() <= totalnInst);
   coordinateWithOthersAndNextMode(fid);
   I(mode == next_mode); //it was a detailed sync
+  
+  return 0;
 }
 /* }}} */
 

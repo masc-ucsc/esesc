@@ -221,6 +221,26 @@ FlowID SamplerBase::getFid(FlowID last_fid)
   return(emul->getFid(last_fid));
 }
 
+//Added by Hamid R. Khaleghzadeh///////////
+FlowID SamplerBase::resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid)
+{
+	FlowID fid = TaskHandler::resumeThread(uid, new_fid);	
+  justResumed[fid] = true;
+  finished[fid] = false;
+  return fid;
+}
+
+size_t  SamplerBase::getSCpuMaxFlows(size_t cpuid)
+{
+	return TaskHandler::getSimu(cpuid)->getMaxFlows();
+} 
+
+size_t SamplerBase::getNumCpus(void)
+{
+	return TaskHandler::getNumCPUS();
+}
+//end/////////////////////////////////////
+
 FlowID SamplerBase::resumeThread(FlowID uid, FlowID last_fid)
 {
   FlowID fid = TaskHandler::resumeThread(uid, last_fid);

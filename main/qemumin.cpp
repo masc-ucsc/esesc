@@ -51,6 +51,13 @@ extern "C" uint32_t QEMUReader_getFid(FlowID last_fid)
   return 0;
 }
 
+//Added by Hamid R. Khaleghzadeh///////////
+extern "C" short int QEMUReader_fIDStatus(FlowID fid)
+{
+	return 0;	
+}
+//end/////////////////////////////////////
+
 extern "C" void QEMUReader_finish_thread(uint32_t fid)
 {
 }
@@ -65,11 +72,13 @@ extern "C" uint32_t QEMUReader_setnoStats()
   return 0;
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, uint32_t op, uint64_t icount, void *env) 
+//changed by Hamid R. khaleghzadeh/////////////
+extern "C" int QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, uint32_t op, uint64_t icount, void *env) 
 {
   if ((pc > 0xeb90 && pc < 0xeb9f) || addr == 0x407fdb1c ) {
     printf("%d pc=0x%x insn=0x%x op=%d icount=%d addr=0x%lx data=0x%lx\n",fid,pc,insn, op,(uint32_t)icount, addr, data);
   }
+  return 0;
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)
@@ -90,6 +99,24 @@ extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid)
   static int conta=0;
   return conta++;
 }
+
+//Added by Hamid R. Khaleghzadeh///////////
+extern "C" FlowID QEMUReader_resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid)
+{
+	static int conta=0;
+  return conta++;
+}
+
+extern "C" size_t  getSCpuMaxFlows(size_t cpuid)
+{
+	return 0;
+} 
+
+extern "C" size_t getNumCpus()
+{
+	return 0;
+}
+//end/////////////////////////////////////
 
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
 }

@@ -135,6 +135,11 @@ public:
   virtual void doPWTH() { I(0); };
 
   void pauseThread(FlowID fid);
+  //Added by Hamid R. Khaleghzadeh///////////
+  FlowID resumeThreadNew(FlowID uid, FlowID last_fid, FlowID new_fid);
+  size_t getSCpuMaxFlows(size_t cpuid);
+  size_t getNumCpus(void);
+  //end/////////////////////////////////////
   FlowID resumeThread(FlowID uid, FlowID last_fid);
   FlowID resumeThread(FlowID uid);
   FlowID getFid(FlowID last_fid);

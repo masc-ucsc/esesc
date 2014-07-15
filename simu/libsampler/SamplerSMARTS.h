@@ -49,7 +49,8 @@ public:
   SamplerSMARTS(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerSMARTS();
 
-  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
+  //changed by Hamid R. Khaleghzadeh///////////////
+  int queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
 
   void updateCPI(uint32_t fid);
   void syncStats(){

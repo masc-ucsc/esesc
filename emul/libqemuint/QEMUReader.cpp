@@ -146,11 +146,20 @@ QEMUReader::~QEMUReader() {
 }
 /* }}} */
 
-void QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void * env, bool keepStats)
+//changed by Hamid R. Khaleghzadeh///////////////
+int QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void * env, bool keepStats)
 /* queue instruction (called by QEMU) {{{1 */
 {
-  uint64_t conta=0;
-
+  //Added by Hamid R. Khaleghzadeh///////////////
+  if (tsfifo[fid].full()) 
+  {   
+    //release lock
+    QEMUReader_goto_sleep(env);
+    return -1;		//queueInstruction hasn't been done correctly.
+  }
+  
+  //Commented by Hamid R. Khaleghzadeh///////////////
+  /*uint64_t conta=0;
   if (tsfifo[fid].full()) {
      
     //release lock
@@ -171,8 +180,11 @@ void QEMUReader::queueInstruction(uint32_t insn, AddrType pc, AddrType addr, cha
     // accuire lock again
     QEMUReader_wakeup_from_sleep(env);
     // MSG("tsfifo not full anymore, wakeup from sleep fid %d", fid);
-  }
+  }*/
 
+  //Added by Hamid R. Khaleghzadeh///////////////
+  QEMUReader_wakeup_from_sleep(env);
+  
   RAWDInst *rinst = tsfifo[fid].getTailRef();
 
   I(rinst);
@@ -249,7 +261,7 @@ if ((rinst->getPC() == 0xdeaddead) || (rinst->getPC() == 0xdeaddeb1)){
     }
 #endif
 
-    return;
+    return 0;
   }
   
 #ifdef DEBUG
@@ -265,6 +277,8 @@ if ((rinst->getPC() == 0xdeaddead) || (rinst->getPC() == 0xdeaddeb1)){
   rawInst[fid]->inc(keepStats);
 
   tsfifo[fid].push();
+  
+  return 0;
  }
 /* }}} */
 

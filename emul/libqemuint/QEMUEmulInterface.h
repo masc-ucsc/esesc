@@ -64,8 +64,9 @@ class QEMUEmulInterface : public EmulInterface {
     reader->start();
   }
 
-  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool inEmuTiming) {
-    reader->queueInstruction(insn,pc,addr, thumb, fid, env, inEmuTiming);
+  //changed by Hamid R. Khaleghzadeh///////////////
+  int queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool inEmuTiming) {
+    return(reader->queueInstruction(insn,pc,addr, thumb, fid, env, inEmuTiming));
   }
 
 #ifdef ENABLE_CUDA
@@ -85,6 +86,11 @@ class QEMUEmulInterface : public EmulInterface {
   FlowID getFid(FlowID last_fid);
   void freeFid(FlowID fid);
   void setFirstFlow(FlowID fid);
+  
+  //Added by Hamid R. Khaleghzadeh///////////
+  short int fIDStatus(FlowID fid);			// Return FID status
+  void drainFIFO(FlowID fid);
+  //end/////////////////////////////////////
   
   void setSampler(EmuSampler *a_sampler, FlowID fid=0);
   void drainFIFO();
