@@ -4246,6 +4246,7 @@ static int do_sched_setaffinity(CPUState *env, uint32_t tid, unsigned long *mask
 		for(cpuid_sub = 0; cpuid_sub < QEMUReader_getSCpuMaxFlows(cpuid) ; cpuid_sub++)
   	{
   		sutableFIDs[sIndex++] = (nThreads++);
+  		
   		if(cpu_env->fid == sutableFIDs[sIndex-1])		//The thread is running on one of cores which is determined by mask.
   		{
   			printf("*** resume (TID = %5d) , FIDs: %2d -> %2d\n", ((CPUState *)cpu_env)->host_tid, 
@@ -4255,7 +4256,6 @@ static int do_sched_setaffinity(CPUState *env, uint32_t tid, unsigned long *mask
 				return 0;		//sched_setaffinity has done correctly
   		}
 		}
-  		sutableFIDs[sIndex++] = (nThreads++);
 	} 
 	
 	for(sIndex = 0; sutableFIDs[sIndex] != -1 ; sIndex++)
