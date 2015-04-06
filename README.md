@@ -1,6 +1,9 @@
 ESESC
 =====
 
+Note: This is a legacy release of ESESC that uses the ARMv7 ISA.
+
+
 [![Build Status](https://travis-ci.org/masc-ucsc/esesc.png)](https://travis-ci.org/masc-ucsc/esesc)
 
 * [ESESC Forum][1]
