@@ -55,35 +55,50 @@ DInst::DInst()
 
 void DInst::dump(const char *str) {
 #ifdef ENABLE_CUDA
-  printf("%s:PE:%d %p (%d) %lld %c DInst: pc=0x%x, addr=0x%x src1=%d (%d) src2 = %d dest1 =%d dest2 = %d",str, (int)getPE(), this, fid, (long long)ID, keepStats? 't': 'd', (int)pc,(int)addr,(int)(inst.getSrc1()), inst.getOpcode(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
+  fprintf(stderr, "%s:PE:%d WARP:%d %p (%d) %lld %c DInst: pc=0x%llx, addr=0x%llx src1=%d (%d) src2 = %d dest1 =%d dest2 = %d"
+      ,str
+      , (int)getPE()
+      , (int)getWarpID()
+      , this
+      , fid
+      , (long long)ID
+      , keepStats? 't': 'd'
+      , pc
+      , addr
+      , (int)(inst.getSrc1())
+      , inst.getOpcode()
+      , inst.getSrc2()
+      , inst.getDst1()
+      , inst.getDst2()
+      );
 #else
   printf("%s:%p (%d) %lld %c DInst: pc=0x%x, addr=0x%x src1=%d (%d) src2 = %d dest1 =%d dest2 = %d",str, this, fid, (long long)ID, keepStats? 't': 'd', (int)pc,(int)addr,(int)(inst.getSrc1()), inst.getOpcode(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
 #endif
 
   if (performed) {
-    printf(" performed");
+    fprintf(stderr," performed");
   }else if (executed) {
-    printf(" executed");
+    fprintf(stderr," executed");
   }else if (issued) {
-    printf(" issued");
+    fprintf(stderr," issued");
   }else{
-    printf(" non-issued");
+    fprintf(stderr," non-issued");
   }
   if (replay)
-    printf(" REPLAY ");
+    fprintf(stderr," REPLAY ");
 
   if (hasPending())
-    printf(" has pending");
+    fprintf(stderr," has pending");
   if (!isSrc1Ready())
-    printf(" has src1 deps");
+    fprintf(stderr," has src1 deps");
   if (!isSrc2Ready())
-    printf(" has src2 deps");
+    fprintf(stderr," has src2 deps");
   if (!isSrc3Ready())
-    printf(" has src3 deps");
+    fprintf(stderr," has src3 deps");
 
   //inst.dump("Inst->");
 
-  printf("\n");
+  fprintf(stderr,"\n");
 }
 
 void DInst::clearRATEntry() {
@@ -109,6 +124,7 @@ DInst *DInst::clone() {
 #ifdef ENABLE_CUDA
   i->memaccess = memaccess;
   i->pe_id = pe_id;
+  i->warp_id = warp_id;
 #endif
   i->keepStats   = keepStats;
 

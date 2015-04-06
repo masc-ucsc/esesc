@@ -36,6 +36,13 @@ PortManagerBanked::PortManagerBanked(const char *section, MemObj *_mobj)
   char tmpName[512];
   const char *name = mobj->getName();
 
+	hitDelay  = SescConf->getInt(section, "hitDelay");
+	missDelay = SescConf->getInt(section, "missDelay");
+	SescConf->isBetween(section,"missDelay",0,hitDelay);
+
+	tagDelay  = hitDelay-missDelay;
+	dataDelay = hitDelay-tagDelay;
+
 	numBanks   = SescConf->getInt(section, "numBanks");
 	SescConf->isBetween(section, "numBanks", 1, 1024);  // More than 1024???? (more likely a bug in the conf)
   SescConf->isPower2(section,"numBanks");
@@ -52,8 +59,14 @@ PortManagerBanked::PortManagerBanked(const char *section, MemObj *_mobj)
     I(bkPort[i]);
   }
   I(bkPort[0]);
-  sprintf(tmpName, "%s_ack", name);
-  ackPort = PortGeneric::create(tmpName,numPorts,portOccp);
+  int fillPorts = 1;
+  int fillOccp  = 1;
+  if (SescConf->checkInt(section,"sendFillPortOccp")) {
+    fillPorts = SescConf->getInt(section, "sendFillNumPorts");
+    fillOccp  = SescConf->getInt(section, "sendFillPortOccp");
+  }
+  sprintf(tmpName, "%s_sendFill", name);
+  sendFillPort = PortGeneric::create(tmpName,fillPorts,fillOccp);
 
   maxRequests = SescConf->getInt(section, "maxRequests");
   if(maxRequests == 0)
@@ -61,12 +74,23 @@ PortManagerBanked::PortManagerBanked(const char *section, MemObj *_mobj)
 
   curRequests = 0;
 
+  lineSize = SescConf->getInt(section,"bsize");
   if (SescConf->checkInt(section,"bankShift")) {
-     bankShift = SescConf->getInt(section,"bankShift");
+    bankShift = SescConf->getInt(section,"bankShift");
+    bankSize  = 1<<bankShift;
   }else{
-    uint32_t lineSize = SescConf->getInt(section,"bsize");
     bankShift = log2i(lineSize);
+    bankSize  = lineSize;
   }
+  if (SescConf->checkInt(section,"recvFillWidth")) {
+    recvFillWidth = SescConf->getInt(section,"recvFillWidth");
+    SescConf->isPower2(section,"recvFillWidth");
+    SescConf->isBetween(section,"recvFillWidth",1,lineSize);
+  }else{
+    recvFillWidth = lineSize;
+  }
+
+	blockTime = 0;
 }
 
 Time_t PortManagerBanked::nextBankSlot(AddrType addr, bool en) 
@@ -79,14 +103,42 @@ Time_t PortManagerBanked::nextBankSlot(AddrType addr, bool en)
   return bkPort[bank]->nextSlot(en); 
 }
 
+Time_t PortManagerBanked::calcNextBankSlot(AddrType addr) 
+{ 
+  if (numBanksMask == 0)
+    return bkPort[0]->calcNextSlot(); 
+
+  int32_t bank = (addr>>bankShift) & numBanksMask;
+
+  return bkPort[bank]->calcNextSlot(); 
+}
+
+void PortManagerBanked::nextBankSlotUntil(AddrType addr, Time_t until, bool en) 
+{ 
+  uint32_t bank;
+
+  if (numBanksMask == 0)
+    bank = 0;
+  else
+    bank = (addr>>bankShift) & numBanksMask;
+
+  while(bkPort[bank]->calcNextSlot() < until) {
+    bkPort[bank]->nextSlot(en); 
+  }
+}
+
 Time_t PortManagerBanked::reqDone(MemRequest *mreq)
+{
+  return sendFillPort->nextSlot(mreq->getStatsFlag())+dataDelay;
+}
+
+void PortManagerBanked::reqRetire(MemRequest *mreq)
 {
   curRequests--;
   I(curRequests>=0);
-  return ackPort->nextSlot(mreq->getStatsFlag());
 }
 
-bool PortManagerBanked::isBusy(AddrType addr) const
+bool PortManagerBanked::isBusy(AddrType addr, ExtraParameters* xdata) const
 {
   if(curRequests >= maxRequests)
     return true;
@@ -97,35 +149,79 @@ bool PortManagerBanked::isBusy(AddrType addr) const
 void PortManagerBanked::req(MemRequest *mreq)
 /* main processor read entry point {{{1 */
 {
-  curRequests++;
-	mreq->redoReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+	I(curRequests<=maxRequests);
+
+  if (!mreq->isRetrying())
+    curRequests++;
+
+	mreq->redoReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+tagDelay);
+}
+// }}}
+
+Time_t PortManagerBanked::snoopFillBankUse(MemRequest *mreq) {
+  Time_t max = 0;
+  Time_t max_fc = 0;
+  for(int fc = 0; fc<lineSize;   fc += recvFillWidth) {
+    max_fc++;
+    for(int i = 0;i<recvFillWidth;i += bankSize) {
+      Time_t t = nextBankSlot(mreq->getAddr()+fc+i,mreq->getStatsFlag());
+      if ((t+max_fc)>max)
+        max = t+max_fc;
+    }
+  }
+
+  // Make sure that all the banks are busy until the max time
+  Time_t cur_fc = 0;
+  for(int fc = 0; fc<lineSize ;  fc += recvFillWidth) {
+    cur_fc++;
+    for(int i = 0;i<recvFillWidth;i += bankSize) {
+      nextBankSlotUntil(mreq->getAddr()+fc+i,max-max_fc+cur_fc, mreq->getStatsFlag());
+    }
+  }
+
+  return max;
+}
+
+void PortManagerBanked::blockFill(MemRequest *mreq) 
+	// Block the cache ports for fill requests {{{1
+{
+	blockTime = globalClock;
+
+  snoopFillBankUse(mreq);
 }
 // }}}
 
 void PortManagerBanked::reqAck(MemRequest *mreq)
 /* request Ack {{{1 */
 {
-	mreq->redoReqAckAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  Time_t until = snoopFillBankUse(mreq);
+
+	blockTime =0;
+
+	mreq->redoReqAckAbs(until);
 }
 // }}}
 
 void PortManagerBanked::setState(MemRequest *mreq)
 /* set state {{{1 */
 {
-	mreq->redoSetStateAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+	mreq->redoSetStateAbs(globalClock+1);
+	//mreq->redoSetStateAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+1);
 }
 // }}}
 
 void PortManagerBanked::setStateAck(MemRequest *mreq)
 /* set state ack {{{1 */
 {
-	mreq->redoSetStateAckAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+	//mreq->redoSetStateAckAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+1);
+	mreq->redoSetStateAckAbs(globalClock+1);
 }
 // }}}
 
 void PortManagerBanked::disp(MemRequest *mreq)
 /* displace a CCache line {{{1 */
 {
-	mreq->redoDispAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag()));
+  Time_t t = snoopFillBankUse(mreq);
+	mreq->redoDispAbs(t);
 }
 // }}}

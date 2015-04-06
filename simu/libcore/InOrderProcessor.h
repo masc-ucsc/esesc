@@ -51,7 +51,8 @@ private:
   LSQNone     lsq;
   bool        busy;
 
-  DInst *RAT[LREG_MAX];
+  //DInst *RAT[LREG_MAX];
+  DInst **RAT;
 
   FastQueue<DInst *> rROB; // ready/retiring/executed ROB
 

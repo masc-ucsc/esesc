@@ -43,7 +43,9 @@
 #include "RAWDInst.h"
 #include "callback.h"
 #include "Snippets.h"
+#ifdef ENABLE_CUDA
 #include "CUDAInstruction.h"
+#endif
 
 typedef int32_t SSID_t;
 
@@ -53,6 +55,8 @@ class BPredictor;
 class Cluster;
 class Resource;
 class EmulInterface;
+
+
 
 // FIXME: do a nice class. Not so public
 class DInstNext {
@@ -120,6 +124,8 @@ private:
 #ifdef ENABLE_CUDA
   CUDAMemType memaccess;
   uint32_t pe_id;
+  uint32_t warp_id;
+  uint32_t block_id;
 #endif
 
   // END Boolean flags
@@ -193,23 +199,20 @@ public:
 
   bool getStatsFlag() const { return keepStats; }
 
-  static DInst *create(const Instruction *inst, RAWDInst *rinst, AddrType address, FlowID fid) {
+  static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
     DInst *i = dInstPool.out(); 
 
-    i->fid           = fid;
-    i->inst          = *inst;
     I(inst);
-    i->pc            = rinst->getPC();
-    i->addr          = address;
-    i->fetchTime = 0;
-    i->keepStats  = rinst->getStatsFlag();
 
-    //GI(inst->isMemory(), (i->getAddr() & 0x3) == 0); // Always word aligned access
-    //GI(i->getAddr(), (i->getAddr() & 0x3) == 0); // Even branches should be word aligned
+    i->fid       = fid;
+    i->inst      = *inst;
+    i->pc        = pc;
+    i->addr      = address;
+    i->fetchTime = 0;
+    i->keepStats = keepStats;
 
     i->setup();
     I(i->getInst()->getOpcode());
-
 
     return i;
   }
@@ -438,14 +441,6 @@ public:
 #endif
 
 #ifdef ENABLE_CUDA
-  bool isSharedAddress(){
-    // FIXME: This is not a check, it changes the memaccess value. It should not do so (bad coding)
-    if ((addr >> 61) == 6){
-      memaccess = SharedMem;
-      return true;
-    } 
-    return false;
-  }
   bool isGlobalAddress() const {
     return (memaccess==GlobalMem);
   }
@@ -466,15 +461,38 @@ public:
     return (memaccess==TextureMem);
   }
 
-  bool useSharedAddress(){ // SHould be phased out.. use isSharedAddress instead
+  bool isSharedAddress(){
     return (memaccess==SharedMem);
   }
 
-  void setcudastats(RAWDInst *rinst){
+  void setcudastats(RAWDInst *rinst, uint32_t l_peid, uint32_t l_warpid,  uint32_t l_blockid){
     memaccess            = rinst->getMemaccesstype();
-    uint64_t local_addr        = rinst->getAddr();
-    uint32_t peid_warpid = (local_addr >> 32);
-    pe_id                = ((peid_warpid >> 16) & 0x0000FFFF);
+    warp_id              = l_warpid;
+    pe_id                = l_peid;
+    block_id             = l_blockid;
+    correctCudaAddr();
+  }
+
+
+  void correctCudaAddr(){
+
+    //Remove all the extra information that is passed on in the address, (pe_id , warpid)
+    addr = (addr & 0xF0000000FFFFFFFFULL);
+
+    if (memaccess == SharedMem){
+      //Add the block ID to the address.
+      uint64_t bid_mask = block_id;
+      bid_mask          = (bid_mask << 32);
+      addr              = (addr | bid_mask);
+
+      //MSG("DINST: Shared mem address %llx processed",addr);
+    } else  if (memaccess == GlobalMem ){
+      //MSG("DINST: Global mem address %llx processed",addr);
+    } else {
+      //MSG("DINST: Clearing extra information in address %llx",addr);
+    }
+
+
   }
 
   void setPE(uint64_t local_addr){
@@ -482,6 +500,9 @@ public:
     pe_id       = ((peid_warpid >> 16) & 0x0000FFFF);
   }
 
+  CUDAMemType getCudaMemType() {
+    return memaccess;
+  }
 
   void markAddressLocal(FlowID fid){
     memaccess = LocalMem;
@@ -496,6 +517,23 @@ public:
 #endif
   }
 
+
+  uint32_t getWarpID() const {
+#ifdef ENABLE_CUDA
+    return warp_id;
+#else
+    return 0;
+#endif
+  }
+
+  uint32_t getBlockID() const {
+#ifdef ENABLE_CUDA
+    return block_id;
+#else
+    return 0;
+#endif
+  }
+
 };
 
 class Hash4DInst {
@@ -504,5 +542,28 @@ class Hash4DInst {
     return (size_t)(dinst);
   }
 };
+
+
+class ExtraParameters {
+  public:
+  bool sharedAddr;
+  AddrType pe_id;
+  AddrType warp_id;
+#ifdef ENABLE_CUDA
+  CUDAMemType memaccess;
+#endif
+
+  void configure(DInst* dinst){
+#ifdef ENABLE_CUDA
+  sharedAddr = dinst->isSharedAddress();
+  memaccess  = dinst->getCudaMemType();
+  pe_id      = dinst->getPE();
+  warp_id    = dinst->getWarpID();
+#endif
+  }
+
+};
+
+
 
 #endif   // DINST_H

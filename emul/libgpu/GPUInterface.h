@@ -68,7 +68,8 @@ typedef enum Branch_divergence_type {
   serial   = 0,
   post_dom = 1,
   sbi      = 2,
-  sbi_swi  = 3
+  sbi_swi  = 3,
+  original = 4
 } div_type;
 extern div_type branch_div_mech;
 
@@ -125,6 +126,7 @@ extern "C" {
   void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t size, uint32_t kind, void *env, uint32_t* cpufid);
   uint64_t GPUReader_translate_d2h(uint64_t addr_ptr);
   uint64_t GPUReader_translate_shared(uint64_t addr_ptr, uint32_t blockid, uint32_t warpid);
+	uint64_t GPUReader_encode_rawaddr(uint64_t addr_ptr, uint32_t blockid, uint32_t warpid, uint32_t pe_id, bool sharedAddr);
 }
 
 #endif

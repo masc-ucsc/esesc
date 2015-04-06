@@ -1,70 +1,55 @@
-IF(CMAKE_HOST_ARCH MATCHES "i386")
-SET(CMAKE_HOST_MARCH "i686 -m32")
-ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-IF(CMAKE_HOST_ARCH MATCHES "armel")
+
 SET(CMAKE_HOST_MARCH "native")
-ELSE(CMAKE_HOST_ARCH MATCHES "armel")
-SET(CMAKE_HOST_MARCH "opteron-sse3")
-SET(CMAKE_HOST_ARCH "native")
-ENDIF(CMAKE_HOST_ARCH MATCHES "armel")
-ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
-# Use this file ONLY for global CFLAG options
-IF(CC MATCHES "emcc")
-MESSAGE("Using emscripten")
-SET (CMAKE_C_COMPILER                  "emcc")
-SET (CMAKE_C_FLAGS                     "-Wno-warn-absolute-paths -Wall -std=c99")
-SET (CMAKE_C_FLAGS_DEBUG               "-g")
-SET (CMAKE_C_FLAGS_MINSIZEREL          "-Os -s ASM_JS=1 -DNDEBUG")
-SET (CMAKE_C_FLAGS_RELEASE             "-O2 -s ASM_JS=1 -DNDEBUG")
-SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -s ASM_JS=1 -g")
 
-SET (CMAKE_CXX_COMPILER                  "em++")
-SET (CMAKE_CXX_FLAGS                     "-Wno-warn-absolute-paths -Wall")
-SET (CMAKE_CXX_FLAGS_DEBUG               "-g")
-SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-O2 -s ASM_JS=1 -DNDEBUG")
-SET (CMAKE_CXX_FLAGS_RELEASE             "-O2 -s ASM_JS=1 -DNDEBUG")
-SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -s ASM_JS=1 -g")
-ELSE(CC MATCHES "emcc")
-IF(CC MATCHES "clang")
-MESSAGE("Using clang")
-SET (CMAKE_C_COMPILER                  "clang")
-SET (CMAKE_C_FLAGS                     "-Wall -std=c99")
-SET (CMAKE_C_FLAGS_DEBUG               "-g")
-SET (CMAKE_C_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
-SET (CMAKE_C_FLAGS_RELEASE             "-O4 -DNDEBUG")
-SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -g")
+IF(CMAKE_C_COMPILER MATCHES "emcc")
+  SET (CMAKE_C_FLAGS                     "-Wno-warn-absolute-paths -Wall -std=c99")
+  SET (CMAKE_C_FLAGS_MINSIZEREL          "-Os -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_C_FLAGS_RELEASE             "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -s ASM_JS=1 -g")
 
-SET (CMAKE_CXX_COMPILER                  "clang++")
-SET (CMAKE_CXX_FLAGS                     "-Wall")
-SET (CMAKE_CXX_FLAGS_DEBUG               "-g")
-SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
-SET (CMAKE_CXX_FLAGS_RELEASE             "-flto -O4 -DNDEBUG")
-SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -g")
-ELSE(CC MATCHES "clang")
-IF(CMAKE_HOST_ARCH MATCHES "i386") 
-SET(CMAKE_CXX_FLAGS "-g -m32 -march=i686 -ftree-vectorize -msse3 -Wno-deprecated -Wall")
-SET(CMAKE_C_FLAGS   "-g -m32 -march=i686 -ftree-vectorize -msse3 -Wall")
-ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-SET(CMAKE_CXX_FLAGS "-g -pipe -Wno-deprecated -Wall")
-SET(CMAKE_C_FLAGS   "-g -pipe -Wall")
-ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
+  SET (CMAKE_CXX_FLAGS                     "-Wno-warn-absolute-paths -Wall")
+  SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_CXX_FLAGS_RELEASE             "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -s ASM_JS=1 -g")
 
-# Uncomment this two lines to activate line coverage
-#SET(CMAKE_CXX_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
-#SET(CMAKE_C_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
+  SET(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG=1")
+  SET(CMAKE_C_FLAGS_DEBUG   "-g -O0 -DDEBUG=1")
+ELSE(CMAKE_C_COMPILER MATCHES "emcc")
+  IF(CMAKE_C_COMPILER MATCHES "clang")
+    SET (CMAKE_C_FLAGS                     "-Wall -std=c99")
+    SET (CMAKE_C_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
+    SET (CMAKE_C_FLAGS_RELEASE             "-O4 -DNDEBUG")
+    SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -g")
 
-SET(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
-SET(CMAKE_C_FLAGS_RELEASE   "-O2 -DNDEBUG")
+    SET (CMAKE_CXX_FLAGS                     "-Wall")
+    SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
+    SET (CMAKE_CXX_FLAGS_RELEASE             "-flto -O4 -DNDEBUG")
+    SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -g")
 
-SET(CMAKE_CXX_FLAGS_DEBUG "-O0 -DDEBUG=1")
-SET(CMAKE_C_FLAGS_DEBUG   "-O0 -DDEBUG=1")
-ENDIF(CC MATCHES "clang")
-ENDIF(CC MATCHES "emcc")
+    SET(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG=1")
+    SET(CMAKE_C_FLAGS_DEBUG   "-g -O0 -DDEBUG=1")
+  ELSE(CMAKE_C_COMPILER MATCHES "clang")
+    # Uncomment this two lines to activate line coverage
+    #SET(CMAKE_CXX_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
+    #SET(CMAKE_C_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
+
+    SET(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
+    SET(CMAKE_C_FLAGS_RELEASE   "-O2 -DNDEBUG")
+
+    SET(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG=1")
+    SET(CMAKE_C_FLAGS_DEBUG   "-g -O0 -DDEBUG=1")
+  ENDIF(CMAKE_C_COMPILER MATCHES "clang")
+ENDIF(CMAKE_C_COMPILER MATCHES "emcc")
+
+IF(NOT USING_NOTIFIED)
+  MESSAGE(STATUS "Using ${CMAKE_C_COMPILER}")
+  SET(USING_NOTIFIED 1)
+ENDIF(NOT USING_NOTIFIED)
 
 IF(CMAKE_BUILD_TYPE MATCHES "Debug") 
-SET(CMAKE_BUILD_TYPE "Debug")
+  SET(CMAKE_BUILD_TYPE "Debug")
 ELSE(CMAKE_BUILD_TYPE MATCHES "Debug")
-SET(CMAKE_BUILD_TYPE "Release")
+  SET(CMAKE_BUILD_TYPE "Release")
 ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 
 SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fPIC")
@@ -72,32 +57,7 @@ SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fPIC")
 SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -fPIC")
 SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC")
 
-##############
-# Full-system/user-mode
-IF(ENABLE_QEMU_USER AND ENABLE_QEMU_SYSTEM)
-  MESSAGE(ERROR "QEMU user-mode and full-system can not be compiled at the same time")
-ENDIF(ENABLE_QEMU_USER AND ENABLE_QEMU_SYSTEM)
-
-  IF(ENABLE_QEMU_USER)
-  SET(ENABLE_QEMU_USER 1)
-  SET(ENABLE_QEMU_SYSTEM 0)
-  ELSE(ENABLE_QEMU_USER)
-  IF(ENABLE_QEMU_SYSTEM)
-  SET(ENABLE_QEMU_USER 0)
-  SET(ENABLE_QEMU_SYSTEM 1)
-ELSE(ENABLE_QEMU_SYSTEM)
-# Default use user-mode
-  IF(ENABLE_NOEMU)
-  SET(ENABLE_QEMU_USER 0)
-  SET(ENABLE_QEMU_SYSTEM 0)
-  ELSE(ENABLE_NOEMU)
-  SET(ENABLE_QEMU_USER 1)
-  SET(ENABLE_QEMU_SYSTEM 0)
-  ENDIF(ENABLE_NOEMU)
-  ENDIF(ENABLE_QEMU_SYSTEM)
-ENDIF(ENABLE_QEMU_USER)
-
-
+###################################
 IF(ENABLE_NBSD)
   MESSAGE("Enabling NON BSD copyrighted files")
   SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_NBSD")
@@ -106,132 +66,7 @@ IF(ENABLE_NBSD)
   SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_NBSD")
 ENDIF(ENABLE_NBSD)
 
-IF(ENABLE_QEMU_SYSTEM)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_QEMU_SYSTEM")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_QEMU_SYSTEM")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_QEMU_SYSTEM")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_QEMU_SYSTEM")
-  ENDIF(ENABLE_QEMU_SYSTEM)
-IF(ENABLE_QEMU_USER)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_QEMU_USER")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_QEMU_USER")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_QEMU_USER")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_QEMU_USER")
-  ENDIF(ENABLE_QEMU_USER)
-IF(ENABLE_NOEMU)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_NOEMU")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_NOEMU")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_NOEMU")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_NOEMU")
-ENDIF(ENABLE_NOEMU)
-
-
-  SET(qemu_BUILD "${CMAKE_CURRENT_BINARY_DIR}/../qemu")
-  SET(qemu_SOURCE "${esesc_SOURCE_DIR}/emul/qemu")
-
-IF(NOT ENABLE_NOEMU)
-#############
-# ISA
-  IF(ESESC_QEMU_ISA MATCHES "sparc32")
-# If the ISA is SPARC, we assume only the 64 bit option. 
-  SET(ESESC_QEMU_ISA_ARMEL 0)
-SET(ESESC_QEMU_ISA_SPARC32 1)
-
-  IF(ENABLE_QEMU_SYSTEM)
-SET(CMAKE_QEMU_LIBS -Wl,--whole-archive ${qemu_BUILD}/sparc-linux-user/libqemu_esesc.a -Wl,--no-whole-archive)
-ELSE(ENABLE_QEMU_SYSTEM)
-  SET(CMAKE_QEMU_LIBS 
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/x86_64.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
-ENDIF(ENABLE_QEMU_SYSTEM)
-
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DESESC_QEMU_ISA_SPARC32=1")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DESESC_QEMU_ISA_SPARC32=1")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DESESC_QEMU_ISA_SPARC32=1")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DESESC_QEMU_ISA_SPARC32=1")
-  ELSE(ESESC_QEMU_ISA MATCHES "sparc32")
-# If the ISA is ARM, we have to check if it is a 32 bit or 64 bit system. 
-  SET(ESESC_QEMU_ISA_ARMEL 1)
-SET(ESESC_QEMU_ISA_SPARC32 0)
-
-  IF(ENABLE_QEMU_SYSTEM)
-SET(CMAKE_QEMU_LIBS -Wl,--whole-archive ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a -Wl,--no-whole-archive)
-ELSE(ENABLE_QEMU_SYSTEM)
-  IF(CMAKE_HOST_ARCH MATCHES "i386") 
-SET(ENABLE_I386 1)
-# 32bit CUDA when the emulated architecture is a 32bit ISA
-SET(ESESC_QEMU_ISA_ARM_32bit 1)
-  SET(CMAKE_QEMU_LIBS -g -m32 -march=i686
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/i386.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a /lib32/libdl.so.2 /lib32/libpcre.so.3 -Wl,-rpath,/usr/lib32 )
-  ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-# this could be ARM or X86 or native 32bit for 32bit Linux distros. CUDA emulation does not work with 64bit
-SET(ESESC_QEMU_ISA_ARM_64bit 1)
-  IF(CMAKE_HOST_ARCH MATCHES "armel") 
-  SET(CMAKE_QEMU_LIBS 
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/arm.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
-  ELSE(CMAKE_HOST_ARCH MATCHES "armel") 
-  SET(CMAKE_QEMU_LIBS 
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/x86_64.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
-  ENDIF(CMAKE_HOST_ARCH MATCHES "armel") 
-  ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
-
-ENDIF(ENABLE_QEMU_SYSTEM)
-
-# Check if the enable CUDA flag is set
-IF(ENABLE_CUDA)
-  SET(ENABLE_I386 1) #redundant
-SET(ENABLE_CUDA 1)
-# SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CUDA_LIBRARIES} qemuint gpuint)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} /usr/local/cuda/lib/libcudart.so qemuint gpuint)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_CUDA=1")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CUDA=1")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_CUDA=1")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_CUDA=1")
-  ELSE(ENABLE_CUDA)
-  SET(ENABLE_CUDA 0)
-ENDIF(ENABLE_CUDA)
-
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DESESC_QEMU_ISA_ARMEL=1")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DESESC_QEMU_ISA_ARMEL=1")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DESESC_QEMU_ISA_ARMEL=1")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DESESC_QEMU_ISA_ARMEL=1")
-
-IF(ENABLE_SCQEMU)
-
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-
-IF(ENABLE_CRACK_CACHE)
-#    SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_CRACK_CACHE=1")
-#    SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CRACK_CACHE=1")
-#    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_CRACK_CACHE=1")
-#    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_CRACK_CACHE=1")
-ENDIF(ENABLE_CRACK_CACHE)
-
-ENDIF(ENABLE_SCQEMU)
-
-  ENDIF(ESESC_QEMU_ISA MATCHES "sparc32")
-ENDIF(NOT ENABLE_NOEMU)
-
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CMAKE_THREAD_LIBS_INIT})
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${ZLIB_LIBRARIES})
-  IF(ENABLE_I386)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lncurses)
-ELSE(ENABLE_I386)
-#SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CURSES_LIBRARIES})
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lncurses)
-  ENDIF(ENABLE_I386)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${GNUTLS_LIBRARIES})
-
+###################################
 #IF(ENABLE_PEQ)
 #  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_PEQ=1")
 #  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_PEQ=1")
@@ -239,18 +74,45 @@ SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${GNUTLS_LIBRARIES})
 # SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_PEQ=1")
 #ENDIF(ENABLE_PEQ)
 
-  IF(CMAKE_HOST_ARCH MATCHES "i386") 
-# We do not have the 32bit SM library (which is not needed anyway)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS}  -lX11 -lXext)
-  ELSE(CMAKE_HOST_ARCH MATCHES "i386") 
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${X11_LIBRARIES})
-  ENDIF(CMAKE_HOST_ARCH MATCHES "i386") 
+###################################
+IF(NEW_BOOST)
+  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DNEW_BOOST")
+  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DNEW_BOOST")
+  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNEW_BOOST")
+  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNEW_BOOST")
+ENDIF(NEW_BOOST)
 
+###################################
+SET(qemu_BUILD "${CMAKE_CURRENT_BINARY_DIR}/../qemu")
+SET(qemu_SOURCE "${esesc_SOURCE_DIR}/emul/qemu")
+
+IF(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
+  SET(CMAKE_QEMU_LIBS 
+      -Wl,-T,${qemu_BUILD}/config-host.ld
+      -Wl,-T,${qemu_SOURCE}/x86_64.ld
+      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
+ELSE(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
+  SET(CMAKE_QEMU_OBJS -Wl,--warn-common -Wl,-z,relro -Wl,-z,now -pie 
+    ${qemu_BUILD}/mips64el-linux-user/exec.o ${qemu_BUILD}/mips64el-linux-user/translate-all.o ${qemu_BUILD}/mips64el-linux-user/cpu-exec.o ${qemu_BUILD}/mips64el-linux-user/tcg/tcg.o ${qemu_BUILD}/mips64el-linux-user/fpu/softfloat.o ${qemu_BUILD}/mips64el-linux-user/disas.o ${qemu_BUILD}/mips64el-linux-user/kvm-stub.o ${qemu_BUILD}/mips64el-linux-user/gdbstub.o ${qemu_BUILD}/mips64el-linux-user/thunk.o ${qemu_BUILD}/mips64el-linux-user/user-exec.o ${qemu_BUILD}/mips64el-linux-user/linux-user/main.o ${qemu_BUILD}/mips64el-linux-user/linux-user/syscall.o ${qemu_BUILD}/mips64el-linux-user/linux-user/strace.o ${qemu_BUILD}/mips64el-linux-user/linux-user/mmap.o ${qemu_BUILD}/mips64el-linux-user/linux-user/signal.o ${qemu_BUILD}/mips64el-linux-user/linux-user/elfload.o ${qemu_BUILD}/mips64el-linux-user/linux-user/linuxload.o ${qemu_BUILD}/mips64el-linux-user/linux-user/uaccess.o ${qemu_BUILD}/mips64el-linux-user/linux-user/uname.o ${qemu_BUILD}/mips64el-linux-user/target-mips/translate.o ${qemu_BUILD}/mips64el-linux-user/tcg/optimize.o ${qemu_BUILD}/mips64el-linux-user/tcg/tcg-op.o ${qemu_BUILD}/mips64el-linux-user/target-mips/dsp_helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/op_helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/lmi_helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/cpu.o ${qemu_BUILD}/mips64el-linux-user/target-mips/gdbstub.o ${qemu_BUILD}/mips64el-linux-user/target-mips/msa_helper.o ${qemu_BUILD}/mips64el-linux-user/../qemu-log.o ${qemu_BUILD}/mips64el-linux-user/../tcg-runtime.o ${qemu_BUILD}/mips64el-linux-user/../disas/i386.o ${qemu_BUILD}/mips64el-linux-user/../disas/mips.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/qdev.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/qdev-properties.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/fw-path-provider.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/irq.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/hotplug.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/nmi.o ${qemu_BUILD}/mips64el-linux-user/../qom/object.o ${qemu_BUILD}/mips64el-linux-user/../qom/container.o ${qemu_BUILD}/mips64el-linux-user/../qom/qom-qobject.o ${qemu_BUILD}/mips64el-linux-user/../qom/cpu.o ${qemu_BUILD}/mips64el-linux-user/../qom/object_interfaces.o ${qemu_BUILD}/mips64el-linux-user/trace/generated-helpers.o
+    ${qemu_BUILD}/libqemuutil.a
+    ${qemu_BUILD}/libqemustub.a)
+ENDIF(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
+
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${ZLIB_LIBRARIES})
+#SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CURSES_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lncurses)
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${GNUTLS_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${X11_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CURL_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${MLIB_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${RT_LIBRARIES})
+
 # Just in case that you want the SDL (maybe for full-system??)
 #SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${SDL_LIBRARIES})
+
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${UTIL_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lglib-2.0)
+
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lcryptopp)
 

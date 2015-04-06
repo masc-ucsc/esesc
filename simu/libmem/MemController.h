@@ -129,10 +129,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  TimeDelta_t ffread(AddrType addr);
-  TimeDelta_t ffwrite(AddrType addr);
+  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
 
-	bool isBusy(AddrType addr) const;
+	bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
 
   uint16_t getLineSize() const;
 
@@ -141,9 +141,9 @@ public:
   typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;
  // typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;  // Added by LNB 5/27/2014
 
-  TimeDelta_t ffread(AddrType addr, DataType data);
-  TimeDelta_t ffwrite(AddrType addr, DataType data);
-  void        ffinvalidate(AddrType addr, int32_t lineSize);
+  //TimeDelta_t ffread(AddrType addr, DataType data);
+  //TimeDelta_t ffwrite(AddrType addr, DataType data);
+  //void        ffinvalidate(AddrType addr, int32_t lineSize);
   private:
   uint32_t getBank(MemRequest *mreq) const;
   uint32_t getRow(MemRequest *mreq) const;

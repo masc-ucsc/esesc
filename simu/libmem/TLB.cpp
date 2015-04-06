@@ -63,6 +63,9 @@ TLB::TLB(MemorySystem* current ,const char *section ,const char *name)
   MemObj *lower_level     = NULL;
   lower_level             = current->declareMemoryObj(section, "lowerLevel");
 
+  maxRequests             = SescConf->getInt(section, "maxRequests");
+  curRequests = 0;
+
   if (lower_level){
     addLowerLevel(lower_level);
     lowerCache = lower_level;
@@ -137,11 +140,13 @@ void TLB::doReq(MemRequest *mreq)
 
   if (pending.empty() || retrying) {
     // 1 outstanding miss at most (TLB, no MSHR complications)
+
     MemRequest::sendReqRead(
         lowerCache,
         mreq->getStatsFlag(),
         calcPage1Addr(mreq->getAddr()),
-        readPage1CB::create(this,mreq)
+        readPage1CB::create(this,mreq),
+        &(mreq->getExtraParams())
         );
   }
 
@@ -163,10 +168,7 @@ void TLB::doReqAck(MemRequest *mreq)
   avgMemLat.sample(mreq->getTimeDelay()+delay, mreq->getStatsFlag());
 
   if (mreq->isHomeNode()) {
-    if (delay)
-      mreq->ack(delay);
-    else
-      mreq->ack();
+    mreq->ack();
     return;
   }
 
@@ -178,7 +180,7 @@ void TLB::doSetState(MemRequest *mreq)
   /* forward set state to all the upper nodes {{{1 */
 {
   if (router->isTopLevel()) {
-    mreq->convert2SetStateAck(ma_setInvalid);
+    mreq->convert2SetStateAck(ma_setInvalid,false);
     router->scheduleSetStateAck(mreq,delay);
     return;
   }
@@ -193,13 +195,13 @@ void TLB::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool TLB::isBusy(AddrType addr) const
+bool TLB::isBusy(AddrType addr, ExtraParameters* xdata) const
 /* accept requests if no pending misses {{{1 */
 {
-  if(!pending.empty())
-    return true;
+  if(pending.empty())
+    return curRequests >= maxRequests;
 
-  return lowerCache->isBusy(addr);
+  return true;
 }
 /* }}} */
 
@@ -209,7 +211,8 @@ void TLB::readPage1(MemRequest *mreq)
       lowerCache,
       mreq->getStatsFlag(),
       calcPage2Addr(mreq->getAddr()),
-      readPage2CB::create(this,mreq)
+      readPage2CB::create(this,mreq),
+      &(mreq->getExtraParams())
       );
 }
 
@@ -219,7 +222,8 @@ void TLB::readPage2(MemRequest *mreq)
       lowerCache,
       mreq->getStatsFlag(),
       calcPage3Addr(mreq->getAddr()),
-      readPage3CB::create(this,mreq)
+      readPage3CB::create(this,mreq),
+      &(mreq->getExtraParams())
       );
 }
 
@@ -240,7 +244,7 @@ void TLB::readPage3(MemRequest *mreq)
   tlbBank->fillLine(mreq->getAddr());
   TimeDelta_t lat = 0;
   if (lowerTLB)
-    lat += lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
+    lat += lowerTLB->ffread(mreq->getAddr(),&(mreq->getExtraParams())); // Fill the L2 too
 
   I(!pending.empty());
   I(pending.front() == mreq);
@@ -252,14 +256,14 @@ void TLB::readPage3(MemRequest *mreq)
   wakeupNext();
 }
 
-TimeDelta_t TLB::ffread(AddrType addr)
+TimeDelta_t TLB::ffread(AddrType addr, ExtraParameters* xdata)
   // {{{1 rabbit read
 { 
   if (tlbBank->readLine(addr))
     return delay;   // done!
 
   if (lowerTLB)
-    lowerTLB->ffread(addr);
+    lowerTLB->ffread(addr, xdata);
  
   tlbBank->fillLine(addr);
   if (lowerCache)
@@ -268,14 +272,14 @@ TimeDelta_t TLB::ffread(AddrType addr)
 }
 // 1}}}
 
-TimeDelta_t TLB::ffwrite(AddrType addr)
+TimeDelta_t TLB::ffwrite(AddrType addr, ExtraParameters* xdata)
   // {{{1 rabbit write
 { 
   if (tlbBank->readLine(addr))
     return delay;   // done!
 
   if (lowerTLB)
-    lowerTLB->ffwrite(addr);
+    lowerTLB->ffwrite(addr, xdata);
  
   tlbBank->fillLine(addr);
   if (lowerCache)
@@ -301,13 +305,14 @@ void TLB::req(MemRequest *mreq)
 /* main read entry point {{{1 */
 {
   if(mreq->getAddr() == 0) {
-    if (delay)
-      mreq->ack(delay);
-    else
-      mreq->ack();
+    mreq->ack();
     return;
   }
-	I(!mreq->isRetrying());
+  if (!mreq->isRetrying())
+    curRequests++;
+  I(curRequests<=maxRequests);
+  I(curRequests>0);
+	//I(!mreq->isRetrying());
 	mreq->redoReqAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
 }
 // }}}
@@ -315,7 +320,11 @@ void TLB::req(MemRequest *mreq)
 void TLB::reqAck(MemRequest *mreq)
 /* main read entry point {{{1 */
 {
-	I(!mreq->isRetrying());
+	//I(!mreq->isRetrying());
+  if (!mreq->isRetrying())
+    curRequests--;
+  I(curRequests<=maxRequests);
+  I(curRequests>=0);
 	mreq->redoReqAckAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
 }
 // }}}

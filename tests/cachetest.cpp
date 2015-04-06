@@ -1,36 +1,20 @@
 //cache test
 //
-// this file tests that the caches adhere to the MOESI protocol as described
-// by AMD which can be found here:
-// http://www.chip-architect.com/news/2003_09_21_Detailed_Architecture_of_AMDs_64bit_Core.html#3.18:
+// TODO: 
 //
-//possible state transitions:
-// 
-// Modified-> Owner
-// Modified-> Invalid
+// -no double snoop detect
 //
-// Exclusive-> Modified
-// Exclusive-> Shared
-// Exclusive-> Invalid
+// -Create represure in the L1 cache with requests.
 //
-// Owner-> Invalid
-//
-// Shared-> Modified
-// Shared-> Invalid
-//
-// Invalid-> Modified
-// Invalid-> Exclusive
-// Invalid-> Shared
-//
-//
-//
+// -3 cores doing a write simultaneously, how to handle snoops
 
 #include <stdio.h>
 #include <exception>
+#include <strings.h>
+
 #include "gtest/gtest.h"
 #include "CCache.h"
 #include "GProcessor.h"
-#include "BootLoader.h"
 #include "MemObj.h"
 #include "MemRequest.h"
 #include "callback.h"
@@ -40,9 +24,6 @@
 #include "nanassert.h"
 #include "RAWDInst.h"
 #include "Instruction.h"
-#include "CrackBase.h"
-#include "ARMCrack.h"
-#include "ThumbCrack.h"
 #include "MemStruct.h"
 
 using ::testing::EmptyTestEventListener;
@@ -54,16 +35,29 @@ using ::testing::TestInfo;
 using ::testing::TestPartResult;
 using ::testing::UnitTest;
 
+#ifdef DEBUG_CALLPATH
+extern bool forcemsgdump;
+#endif
+
 static int rd_pending = 0;
 static int wr_pending = 0;
 static int num_operations=0;
 
+#ifdef ENABLE_NBSD
+#include "MemRequest.h"
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *_mreq) {
+  I(0);
+}
+void meminterface_req_done(void *param, int mesi) {
+  I(0);
+}
+#endif
+
 enum currState{
   Modified, //0
   Exclusive, //1
-  Owner, //2
-  Shared,//3
-  Invalid //4
+  Shared,//2
+  Invalid //3
 };
 
 currState getState(CCache *cache, AddrType addr){
@@ -75,9 +69,6 @@ currState getState(CCache *cache, AddrType addr){
   if(cache->Exclusive(addr))
     state=Exclusive;
   
-  if(cache->Owner(addr))
-    state=Owner;
-
   if(cache->Shared(addr))
     state=Shared;
 
@@ -89,8 +80,6 @@ currState getState(CCache *cache, AddrType addr){
 
 DInst *ld;
 DInst *st;
-ARMCrack crackInstARM;
-
 RAWDInst rinst;
 
 void rdDone(DInst *dinst) {
@@ -104,6 +93,7 @@ void rdDone(DInst *dinst) {
 void wrDone(DInst *dinst) {
 
   printf("wrdone @%lld\n",(long long)globalClock);
+
 	wr_pending--;
   dinst->recycle();
 }
@@ -122,12 +112,16 @@ static void doread(MemObj *cache, AddrType addr)
   DInst *ldClone = ld->clone();
   ldClone->setAddr(addr);
 
-  while(cache->isBusy(addr))
+  while(cache->isBusy(addr,0))
     EventScheduler::advanceClock();
 
   rdDoneCB *cb = rdDoneCB::create(ldClone);
   printf("rd %x @%lld\n", (unsigned int)addr,(long long)globalClock);
-  MemRequest::sendReqRead(cache, ldClone, addr, cb);
+
+  ExtraParameters param;
+  param.configure(ldClone);
+
+  MemRequest::sendReqRead(cache, ldClone->getStatsFlag(), addr, cb, &param);
   rd_pending++;
 }
 
@@ -137,12 +131,16 @@ static void dowrite(MemObj *cache, AddrType addr)
   DInst *stClone = st->clone();
   stClone->setAddr(addr);
 
-	while(cache->isBusy(addr))
+	while(cache->isBusy(addr,0))
 		EventScheduler::advanceClock();
 
   wrDoneCB *cb = wrDoneCB::create(stClone);
   printf("wr %x @%lld\n", (unsigned int)addr,(long long)globalClock);
-	MemRequest::sendReqWrite(cache, stClone, addr, cb);
+
+  ExtraParameters param;
+  param.configure(stClone);
+
+	MemRequest::sendReqWrite(cache, stClone->getStatsFlag(), addr, cb, &param);
 	wr_pending++;
 }
 
@@ -152,9 +150,6 @@ GMemorySystem *gms_p1 = 0;
 void initialize(){
   
   if(!pluggedin){
-#if 0
-    BootLoader::plug(arg1,arg2);
-#else
     int arg1          = 1;
     const char *arg2[] = {"cachetest", 0};
     setenv("ESESC_tradCORE_DL1","DL1_core DL1",1);
@@ -165,19 +160,20 @@ void initialize(){
     gms_p0->buildMemorySystem();
     gms_p1 = new MemorySystem(1);
     gms_p1->buildMemorySystem();
-#endif
     pluggedin=true;
+#ifdef DEBUG_CALLPATH
+    forcemsgdump = true;
+#endif
   }
 
   // Create a LD (e5d33000) with PC = 0xfeeffeef and address 1203
-  rinst.set(0xe5d33000,0xfeeffeef,1203,true);
-  crackInstARM.expand(&rinst);
-  ld = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
+  Instruction *ld_inst = new Instruction();
+  ld_inst->set(iLALU_LD, LREG_R1, LREG_R2, LREG_R3, LREG_R4);
+  ld = DInst::create(ld_inst, 0xfeeffeef, 1203, 0, true);
 
-  // Create a ST (e5832000) with PC = 0x410 and address 0x400
-  rinst.set(0xe5832000,0x410,0x400,true);
-  crackInstARM.expand(&rinst);
-  st = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
+  Instruction *st_inst = new Instruction();
+  st_inst->set(iSALU_ST, LREG_R1, LREG_R2, LREG_R3, LREG_R4);
+  st = DInst::create(st_inst, 0x410, 0x400, 0, true);
 }
 
 
@@ -194,12 +190,7 @@ CCache *p0getDL1(){
 }
 
 CCache *p0getL2(){
-#if 0
-	GProcessor *gproc0 = TaskHandler::getSimu(0);
-	MemObj *P0DL1=gproc0->getMemorySystem()->getDL1();
-#else
 	MemObj *P0DL1=gms_p0->getDL1();
-#endif
 	MRouter *router=P0DL1->getRouter();
 	MemObj *L2=router->getDownNode();
 	 CCache *l2c=static_cast<CCache*>(L2);
@@ -207,18 +198,17 @@ CCache *p0getL2(){
    return l2c;
 }
 CCache *p0getL3(){
-#if 0
-	GProcessor *gproc0 = TaskHandler::getSimu(0);
-	MemObj *P0DL1=gproc0->getMemorySystem()->getDL1();
-#else
 	MemObj *P0DL1=gms_p0->getDL1();
-#endif
 	MRouter *router=P0DL1->getRouter();
 	MemObj *L2=router->getDownNode();
 	MRouter *router2= L2->getRouter();
   MemObj *L3=router2->getDownNode();
+  if (strncasecmp(L3->getName(),"L3",2)!=0)
+    return 0;
+  if (strcasecmp(L3->getDeviceType(),"cache")!=0)
+    return 0;
+
 	CCache *l3c= static_cast<CCache*>(L3);
-  //l3c->setNeedsCoherence();
   return l3c;
 }
 
@@ -261,25 +251,70 @@ protected:
     initialize();
     p0dl1=p0getDL1();
     p0l2 =p0getL2();
+    p0l2->setCoreDL1(0); // to allow fake L2 direct accesses
     p1l2 =p1getL2();
     l3   =p0getL3();
     p1dl1=p1getDL1();
   }
   virtual void TearDown() {
-    BootLoader::unplug();
   }
 };
 
 // the first test checks that if no cache has data and then one 
 // cache reads it from memory, then that cache gets set to Exclusive
 
-TEST_F(CacheTest,Exclusive_first_test){
-  doread(p0dl1,0x100);
+TEST_F(CacheTest,l1miss_l2miss){
+  doread(p0dl1,0x100); // L1 miss, L2 miss
   waitAllMemOpsDone();
   EXPECT_EQ(Exclusive,getState(p0dl1,0x100));
   EXPECT_EQ(Invalid,getState(p1dl1,0x100));
   EXPECT_EQ(Exclusive,getState(p0l2,0x100));
-  EXPECT_EQ(Exclusive,getState(l3,0x100));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x100));
+}
+
+TEST_F(CacheTest,L1miss_l2hit){
+  doread(p0l2,0x180);  // L2 miss
+  waitAllMemOpsDone();
+  EXPECT_EQ(Invalid,getState(p0dl1,0x180));
+  EXPECT_EQ(Invalid,getState(p1dl1,0x180));
+  EXPECT_EQ(Exclusive,getState(p0l2,0x180));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x180));
+
+  dowrite(p0dl1,0x180); // L1 miss, L2 hit
+  waitAllMemOpsDone();
+  EXPECT_EQ(Modified,getState(p0dl1,0x180));
+  EXPECT_EQ(Invalid,getState(p1dl1,0x180));
+  EXPECT_EQ(Exclusive,getState(p0l2,0x180));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x180));
+}
+
+TEST_F(CacheTest,multiple_reqs){
+  // Setup, L2 line (empty in all the others)
+  doread(p0l2,0xF000);  // L2 miss
+  waitAllMemOpsDone();
+  EXPECT_EQ(Invalid,getState(p0dl1,0xF000));
+  EXPECT_EQ(Invalid,getState(p1dl1,0xF000));
+  EXPECT_EQ(Exclusive,getState(p0l2,0xF000));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0xF000));
+
+  doread(p0dl1,0xF000); // L1 miss, L2 hit
+  doread(p1dl1,0xF000); // L1 miss, L2 hit
+  waitAllMemOpsDone();
+  EXPECT_EQ(Shared,getState(p0dl1,0xF000));
+  EXPECT_EQ(Shared,getState(p1dl1,0xF000));
+  if (p0l2 == p1l2) { // Shared L2 conf
+    EXPECT_EQ(Exclusive,getState(p0l2,0xF000));
+  }else{
+    EXPECT_EQ(Shared,getState(p0l2,0xF000));
+    EXPECT_EQ(Shared,getState(p1l2,0xF000));
+  }
+  if (l3) {
+    EXPECT_EQ(Exclusive,getState(l3,0xF000));
+  }
 }
 
 // the second test checks that if one cache reads a line and then
@@ -292,14 +327,14 @@ TEST_F(CacheTest,Shared_second_test){
   
   EXPECT_EQ(Shared,getState(p0dl1,0x200));
   EXPECT_EQ(Shared,getState(p1dl1,0x200));
-  EXPECT_EQ(Shared,getState(p0l2,0x200));
-  EXPECT_EQ(Shared,getState(p1l2,0x200));
   if (p0l2 == p1l2) { // Shared L2 conf
-    // The request did not reach the L3
-    EXPECT_EQ(Exclusive,getState(l3,0x200));
+    EXPECT_EQ(Exclusive,getState(p0l2,0x200));
   }else{
-    EXPECT_EQ(Shared,getState(l3,0x200));
+    EXPECT_EQ(Shared,getState(p0l2,0x200));
+    EXPECT_EQ(Shared,getState(p1l2,0x200));
   }
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x200));
 }
 
 // in the third test, a cache has a write miss that no one else has, and we check if 
@@ -310,7 +345,8 @@ TEST_F(CacheTest, Modified_third_test){
   waitAllMemOpsDone();
   EXPECT_EQ(Modified,getState(p0dl1,0x300));
   EXPECT_EQ(Exclusive,getState(p0l2,0x300));
-  EXPECT_EQ(Exclusive,getState(l3,0x300));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x300));
 }
 
 // in the fourth test, a cache reads from memory and becomes exclusive, 
@@ -325,7 +361,8 @@ TEST_F(CacheTest,Modified_fourth_test){
   waitAllMemOpsDone();
   EXPECT_EQ(Modified,getState(p0dl1,0x400));
   EXPECT_EQ(Exclusive,getState(p0l2,0x400));
-  EXPECT_EQ(Exclusive,getState(l3,0x400));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x400));
 }
 
 // in the fifth test, a cache has a write miss and goes to modified, then
@@ -338,9 +375,18 @@ TEST_F(CacheTest,Owner_fifth_test){
   doread(p1dl1,0x500);
   waitAllMemOpsDone();
 
-  EXPECT_EQ(Owner, getState(p0dl1,0x500));
+  EXPECT_EQ(Shared, getState(p0dl1,0x500));
   EXPECT_EQ(Shared,getState(p1dl1,0x500));
-  EXPECT_EQ(Shared,getState(p0l2,0x500));
+  if (p0l2 == p1l2) { // Shared L2 conf
+		EXPECT_EQ(Modified,getState(p0l2,0x500));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x500));
+	}else{
+		EXPECT_EQ(Shared,getState(p0l2,0x500));
+		EXPECT_EQ(Shared,getState(p1l2,0x500));
+    if (l3)
+      EXPECT_EQ(Modified,getState(l3,0x500));
+	}
 }
 
 //in the sixth test, a cache has a read miss, then the other
@@ -358,7 +404,23 @@ TEST_F(CacheTest, Invalid_sixth_test){
   EXPECT_EQ(Invalid,getState(p0dl1,0x600));
   EXPECT_EQ(Modified,getState(p1dl1,0x600));
   EXPECT_EQ(Exclusive,getState(p1l2,0x600));
-  EXPECT_EQ(Exclusive,getState(l3,0x600));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x600));
+
+  dowrite(p0dl1,0x600);
+  waitAllMemOpsDone();
+  EXPECT_EQ(Modified,getState(p0dl1,0x600));
+  EXPECT_EQ(Invalid,getState(p1dl1,0x600));
+  if (p0l2 == p1l2) { // Shared L2 conf
+    EXPECT_EQ(Modified,getState(p0l2,0x600));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x600));
+	}else{
+    EXPECT_EQ(Invalid,getState(p1l2,0x600));
+    EXPECT_EQ(Exclusive,getState(p0l2,0x600));
+    if (l3)
+      EXPECT_EQ(Modified,getState(l3,0x600));
+	}
 }
 
 
@@ -374,20 +436,25 @@ TEST_F(CacheTest,Invalid_seventh_test){
   waitAllMemOpsDone();
   EXPECT_EQ(Shared,getState(p0dl1,0x700));
   EXPECT_EQ(Shared,getState(p1dl1,0x700));
-  EXPECT_EQ(Shared,getState(p0l2,0x700));
-  EXPECT_EQ(Shared,getState(p1l2,0x700));
-  if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Exclusive,getState(l3,0x700));
-  }else{
-    EXPECT_EQ(Shared,getState(l3,0x700));
+  if (l3) {
+    if (p0l2 == p1l2) { // Shared L2 conf
+      EXPECT_EQ(Exclusive,getState(p1l2,0x700));
+      EXPECT_EQ(Exclusive,getState(l3,0x700));
+    }else{
+      EXPECT_EQ(Shared,getState(p0l2,0x700));
+      EXPECT_EQ(Shared,getState(p1l2,0x700));
+      EXPECT_EQ(Exclusive,getState(l3,0x700));
+    }
   }
   dowrite(p1dl1,0x700);
   waitAllMemOpsDone();
 
   EXPECT_EQ(Invalid,getState(p0dl1,0x700));
   EXPECT_EQ(Modified,getState(p1dl1,0x700));
-  EXPECT_EQ(Exclusive,getState(p1l2,0x700));
-  EXPECT_EQ(Exclusive,getState(l3,0x700));
+  EXPECT_EQ(Exclusive,getState(p1l2,0x700)); 
+  if (l3) {
+    EXPECT_EQ(Exclusive,getState(l3,0x700));
+  }
 }
 
 //in the eighth test, a cache has a write miss, becoming modified. Then 
@@ -402,15 +469,22 @@ TEST_F(CacheTest,Invalid_eighth_test){
   waitAllMemOpsDone();
   doread(p0dl1,0x800);
   waitAllMemOpsDone();
-  EXPECT_EQ(Owner,getState(p1dl1,0x800));
+  EXPECT_EQ(Shared,getState(p1dl1,0x800));
   EXPECT_EQ(Shared,getState(p0dl1,0x800));
   dowrite(p0dl1,0x800);
   waitAllMemOpsDone();
 
   EXPECT_EQ(Invalid,getState(p1dl1,0x800));
   EXPECT_EQ(Modified,getState(p0dl1,0x800));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x800));
-  EXPECT_EQ(Exclusive,getState(l3,0x800));
+  if (p0l2 == p1l2) { // Shared L2 conf
+    EXPECT_EQ(Modified,getState(p0l2,0x800));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x800));
+  }else{
+    EXPECT_EQ(Shared,getState(p0l2,0x800)); 
+    if (l3)
+      EXPECT_EQ(Modified,getState(l3,0x800));
+  }
 }
  
 
@@ -424,33 +498,105 @@ TEST_F(CacheTest,Invalid_ninth_test){
   waitAllMemOpsDone();
   EXPECT_EQ(Invalid,getState(p0dl1,0x900));
   EXPECT_EQ(Modified,getState(p1dl1,0x900));
-  EXPECT_EQ(Exclusive,getState(p1l2,0x900));
-  EXPECT_EQ(Exclusive,getState(l3,0x900));
+  if (p0l2 == p1l2) { // Shared L2 conf
+    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x900));
+  }else{
+    EXPECT_EQ(Invalid,getState(p0l2,0x900));
+    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x900));
+  }
 
   doread(p1dl1,0x900);
   waitAllMemOpsDone();
   EXPECT_EQ(Invalid,getState(p0dl1,0x900));
   EXPECT_EQ(Modified,getState(p1dl1,0x900));
-  EXPECT_EQ(Exclusive,getState(p1l2,0x900));
-  EXPECT_EQ(Exclusive,getState(l3,0x900));
+  if (p0l2 == p1l2) { // Shared L2 conf
+    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x900));
+  }else{
+    EXPECT_EQ(Invalid,getState(p0l2,0x900));
+    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x900));
+  }
 
   doread(p0dl1,0x900);
   waitAllMemOpsDone();
   EXPECT_EQ(Shared,getState(p0dl1,0x900));
-  EXPECT_EQ(Owner,getState(p1dl1,0x900));
-  EXPECT_EQ(Shared,getState(p0l2,0x900));
+  EXPECT_EQ(Shared,getState(p1dl1,0x900));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Exclusive,getState(l3,0x900));
+    EXPECT_EQ(Modified,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x900));
   }else{
-    EXPECT_EQ(Shared,getState(l3,0x900));
+    EXPECT_EQ(Shared,getState(p0l2,0x900));
+    EXPECT_EQ(Shared,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Modified,getState(l3,0x900));
   }
 
   dowrite(p0dl1,0x900);
   waitAllMemOpsDone();
   EXPECT_EQ(Invalid,getState(p1dl1,0x900));
   EXPECT_EQ(Modified,getState(p0dl1,0x900));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x900));
-  EXPECT_EQ(Exclusive,getState(l3,0x900));
+  if (p0l2 == p1l2) { // Shared L2 conf
+    EXPECT_EQ(Modified,getState(p1l2,0x900));
+  if (l3)
+    EXPECT_EQ(Exclusive,getState(l3,0x900));
+  }else{
+    EXPECT_EQ(Shared,getState(p0l2,0x900)); // It could be E
+    EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Modified,getState(l3,0x900));
+  }
+}
+
+TEST_F(CacheTest,l2_bw){
+
+  printf("BEGIN L2 BW test\n");
+
+  Time_t start;
+  int conta;
+  double t;
+
+  start = globalClock;
+  conta = 0;
+  for(int i=0;i<32768;i+=128) {
+    doread(p0l2,0x1000 + i); // Fill L2
+    conta++;
+  }
+  waitAllMemOpsDone();
+  Time_t l2filltime = globalClock - start;
+  t = ((double)l2filltime)/conta;
+  printf("L2 BW miss test %lld (%g cycles/l2_miss)\n", l2filltime, t);
+
+  start = globalClock;
+  conta =0;
+  for(int i=0;i<32768/2;i+=128) {
+    doread(p0dl1,0x1000 + i);
+    conta++;
+  }
+  waitAllMemOpsDone();
+  Time_t l1_rdtime = globalClock - start;
+  t = ((double)l1_rdtime)/conta;
+  printf("L2 BW rd test %lld (%g cycles/l1_rd)\n", l1_rdtime, t);
+
+  start = globalClock;
+  conta =0;
+  for(int i=32768/2;i<32768;i+=128) {
+    dowrite(p0dl1,0x1000 + i);
+    conta++;
+  }
+  waitAllMemOpsDone();
+  Time_t l1_wrtime = globalClock - start;
+  t = ((double)l1_wrtime)/conta;
+  printf("L2 BW wr test %lld (%g cycles/l1_wr)\n", l1_wrtime, t);
+
+  printf("END L2 BW test\n");
 }
 
 

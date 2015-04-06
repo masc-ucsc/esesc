@@ -56,7 +56,7 @@ static inline void hreg_compute_hflags(CPUPPCState *env)
     /* We 'forget' FE0 & FE1: we'll never generate imprecise exceptions */
     hflags_mask = (1 << MSR_VR) | (1 << MSR_AP) | (1 << MSR_SA) |
         (1 << MSR_PR) | (1 << MSR_FP) | (1 << MSR_SE) | (1 << MSR_BE) |
-        (1 << MSR_LE);
+        (1 << MSR_LE) | (1 << MSR_VSX);
     hflags_mask |= (1ULL << MSR_CM) | (1ULL << MSR_SF) | MSR_HVB;
     hreg_compute_mem_idx(env);
     env->hflags = env->msr & hflags_mask;
@@ -68,10 +68,13 @@ static inline int hreg_store_msr(CPUPPCState *env, target_ulong value,
                                  int alter_hv)
 {
     int excp;
+#if !defined(CONFIG_USER_ONLY)
+    CPUState *cs = CPU(ppc_env_get_cpu(env));
+#endif
 
     excp = 0;
     value &= env->msr_mask;
-#if !defined (CONFIG_USER_ONLY)
+#if !defined(CONFIG_USER_ONLY)
     if (!alter_hv) {
         /* mtmsr cannot alter the hypervisor state */
         value &= ~MSR_HVB;
@@ -80,9 +83,9 @@ static inline int hreg_store_msr(CPUPPCState *env, target_ulong value,
     if (((value >> MSR_IR) & 1) != msr_ir ||
         ((value >> MSR_DR) & 1) != msr_dr) {
         /* Flush all tlb when changing translation mode */
-        tlb_flush(env, 1);
+        tlb_flush(cs, 1);
         excp = POWERPC_EXCP_NONE;
-        env->interrupt_request |= CPU_INTERRUPT_EXITTB;
+        cs->interrupt_request |= CPU_INTERRUPT_EXITTB;
     }
     if (unlikely((env->flags & POWERPC_FLAG_TGPR) &&
                  ((value ^ env->msr) & (1 << MSR_TGPR)))) {
@@ -96,10 +99,10 @@ static inline int hreg_store_msr(CPUPPCState *env, target_ulong value,
 #endif
     env->msr = value;
     hreg_compute_hflags(env);
-#if !defined (CONFIG_USER_ONLY)
+#if !defined(CONFIG_USER_ONLY)
     if (unlikely(msr_pow == 1)) {
-        if ((*env->check_pow)(env)) {
-            env->halted = 1;
+        if (!env->pending_interrupts && (*env->check_pow)(env)) {
+            cs->halted = 1;
             excp = EXCP_HALTED;
         }
     }

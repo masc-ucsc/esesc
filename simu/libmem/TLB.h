@@ -121,6 +121,9 @@ protected:
   TimeDelta_t delay;
   TimeDelta_t lowerTLBdelay;
 
+  int16_t maxRequests;
+  int16_t curRequests;
+
   GStatsCntr  tlbReadHit;
   GStatsCntr  tlbReadMiss;
   GStatsCntr  tlblowerReadHit;
@@ -158,10 +161,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  TimeDelta_t ffread(AddrType addr);
-  TimeDelta_t ffwrite(AddrType addr);
+  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
 
-	bool isBusy(AddrType addr) const;
+	bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
 
   //TLB specific
   void readPage1(MemRequest *mreq);

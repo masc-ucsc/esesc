@@ -52,6 +52,8 @@ private:
   LSQNone     lsq;
   bool        busy;
 
+  bool*       inst_perpe_percyc; //Only needed for the GPUSMProc
+
   DInst **RAT;
 
   FastQueue<DInst *> rROB; // ready/retiring/executed ROB

@@ -173,21 +173,21 @@ void StridePrefetcher::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool StridePrefetcher::isBusy(AddrType addr) const
+bool StridePrefetcher::isBusy(AddrType addr, ExtraParameters* xdata) const
 /* always can accept writes {{{1 */
 {
   return false;
 }
 /* }}} */
 
-TimeDelta_t StridePrefetcher::ffread(AddrType addr)
+TimeDelta_t StridePrefetcher::ffread(AddrType addr, ExtraParameters* xdata)
   /* fast forward reads {{{1 */
 { 
   return delay;
 }
 /* }}} */
 
-TimeDelta_t StridePrefetcher::ffwrite(AddrType addr)
+TimeDelta_t StridePrefetcher::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* fast forward writes {{{1 */
 { 
   return delay;

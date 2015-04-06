@@ -118,7 +118,7 @@ class GMemorySystem {
   
   MemObj *declareMemoryObj_uniqueName(char *name, char *device_descr_section);
   MemObj *declareMemoryObj(const char *block, const char *field);
-  MemObj *finishDeclareMemoryObj(std::vector<char *> vPars);
+  MemObj *finishDeclareMemoryObj(std::vector<char *> vPars, char* name_suffix = NULL);
 
 
   uint32_t getNumMemObjs() { return MemObjNames.size(); }

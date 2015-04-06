@@ -39,7 +39,8 @@
 #include "Bus.h"
 /* }}} */
 #ifdef ENABLE_NBSD
-void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, void *mreq); 
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *mreq); 
+void meminterface_req_done(void *req, int mesi);
 #endif
 
 Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
@@ -67,6 +68,11 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   lower_level = current->declareMemoryObj(section, "lowerLevel");   
   if (lower_level)
     addLowerLevel(lower_level);
+
+#ifdef ENABLE_NBSD
+	dcache = name[0]=='I'?false:true;
+	I(name[0] == 'I' || name[0] == 'D');
+#endif
 }
 /* }}} */
 
@@ -93,6 +99,30 @@ void Bus::doReqAck(MemRequest *mreq)
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
 
   if (mreq->isHomeNode()) {
+#if ENABLE_NBSD
+    enum MESI {Invalid=0,Shared,SharedDirty,Exclusive,Modified};
+    int mesi;
+    if (mreq->getAction() == ma_setInvalid)
+      mesi = Invalid;
+    else if (mreq->getAction() == ma_setShared)
+      mesi = Shared;
+    else if (mreq->getAction() == ma_setExclusive)
+      mesi = Exclusive;
+    else if (mreq->getAction() == ma_setDirty)
+      mesi = Modified;
+    else{
+      I(0);
+    }
+
+    if (!dcache) {
+      if (mesi == Exclusive)
+        mesi = Shared;
+      else if (mesi != Shared)
+        I(0);
+    }
+
+    meminterface_req_done(mreq->param, mesi);
+#endif
     mreq->ack(when);
     return;
   }
@@ -106,9 +136,9 @@ void Bus::doSetState(MemRequest *mreq)
 {
   if (router->isTopLevel()) {
 #if ENABLE_NBSD
-    meminterface_start_snoop_req(mreq->getAddr(), mreq->getAction() == ma_setInvalid, getCoreID(), mreq);
+    meminterface_start_snoop_req(mreq->getAddr(), mreq->getAction() == ma_setInvalid, getCoreID(), dcache, mreq);
 #else
-    mreq->convert2SetStateAck(ma_setInvalid); // same as a miss (not sharing here)
+    mreq->convert2SetStateAck(ma_setInvalid,false); // same as a miss (not sharing here)
     router->scheduleSetStateAck(mreq,1);
 #endif
     return;
@@ -124,21 +154,21 @@ void Bus::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool Bus::isBusy(AddrType addr) const
+bool Bus::isBusy(AddrType addr, ExtraParameters* xdata) const
 /* always can accept writes {{{1 */
 {
   return false;
 }
 /* }}} */
 
-TimeDelta_t Bus::ffread(AddrType addr)
+TimeDelta_t Bus::ffread(AddrType addr, ExtraParameters* xdata)
   /* fast forward reads {{{1 */
 { 
   return delay;
 }
 /* }}} */
 
-TimeDelta_t Bus::ffwrite(AddrType addr)
+TimeDelta_t Bus::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* fast forward writes {{{1 */
 { 
   return delay;

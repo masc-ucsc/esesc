@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "qemu.h"
-#include "disas.h"
+#include "disas/disas.h"
 
 #ifdef _ARCH_PPC64
 #undef ARCH_DLINFO
@@ -98,7 +98,7 @@ enum {
 static const char *get_elf_platform(void)
 {
     static char elf_platform[] = "i386";
-    int family = (thread_env->cpuid_version >> 8) & 0xff;
+    int family = object_property_get_int(OBJECT(thread_cpu), "family", NULL);
     if (family > 6)
         family = 6;
     if (family >= 3)
@@ -110,7 +110,9 @@ static const char *get_elf_platform(void)
 
 static uint32_t get_elf_hwcap(void)
 {
-  return thread_env->cpuid_features;
+    X86CPU *cpu = X86_CPU(thread_cpu);
+
+    return cpu->env.features[FEAT_1_EDX];
 }
 
 #ifdef TARGET_X86_64
@@ -349,8 +351,10 @@ static inline void init_thread(struct target_pt_regs *_regs, struct image_info *
 
     _regs->gpr[1] = infop->start_stack;
 #if defined(TARGET_PPC64) && !defined(TARGET_ABI32)
-    entry = ldq_raw(infop->entry) + infop->load_addr;
-    toc = ldq_raw(infop->entry + 8) + infop->load_addr;
+    get_user_u64(entry, infop->entry);
+    entry += infop->load_addr;
+    get_user_u64(toc, infop->entry + 8);
+    toc += infop->load_addr;
     _regs->gpr[2] = toc;
     infop->entry = entry;
 #endif
@@ -363,8 +367,9 @@ static inline void init_thread(struct target_pt_regs *_regs, struct image_info *
     get_user_ual(_regs->gpr[3], pos);
     pos += sizeof(abi_ulong);
     _regs->gpr[4] = pos;
-    for (tmp = 1; tmp != 0; pos += sizeof(abi_ulong))
-        tmp = ldl(pos);
+    for (tmp = 1; tmp != 0; pos += sizeof(abi_ulong)) {
+        get_user_ual(tmp, pos);
+    }
     _regs->gpr[5] = pos;
 }
 
@@ -993,12 +998,12 @@ static abi_ulong load_elf_interp(struct elfhdr * interp_elf_ex,
 
 static int symfind(const void *s0, const void *s1)
 {
-    struct elf_sym *key = (struct elf_sym *)s0;
+    target_ulong addr = *(target_ulong *)s0;
     struct elf_sym *sym = (struct elf_sym *)s1;
     int result = 0;
-    if (key->st_value < sym->st_value) {
+    if (addr < sym->st_value) {
         result = -1;
-    } else if (key->st_value > sym->st_value + sym->st_size) {
+    } else if (addr >= sym->st_value + sym->st_size) {
         result = 1;
     }
     return result;
@@ -1013,12 +1018,9 @@ static const char *lookup_symbolxx(struct syminfo *s, target_ulong orig_addr)
 #endif
 
     // binary search
-    struct elf_sym key;
     struct elf_sym *sym;
 
-    key.st_value = orig_addr;
-
-    sym = bsearch(&key, syms, s->disas_num_syms, sizeof(*syms), symfind);
+    sym = bsearch(&orig_addr, syms, s->disas_num_syms, sizeof(*syms), symfind);
     if (sym != NULL) {
         return s->disas_strtab + sym->st_name;
     }

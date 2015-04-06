@@ -11,15 +11,17 @@
  *
  */
 
-#include "hw/virtio.h"
+#include "hw/virtio/virtio.h"
 #include "virtio-9p.h"
 #include "virtio-9p-xattr.h"
+#include "fsdev/qemu-fsdev.h"   /* local_ops */
 #include <arpa/inet.h>
 #include <pwd.h>
 #include <grp.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include "qemu-xattr.h"
+#include "qemu/xattr.h"
+#include <libgen.h>
 #include <linux/fs.h>
 #ifdef CONFIG_LINUX_MAGIC_H
 #include <linux/magic.h>
@@ -39,15 +41,92 @@
 #define BTRFS_SUPER_MAGIC 0x9123683E
 #endif
 
+#define VIRTFS_META_DIR ".virtfs_metadata"
+
+static char *local_mapped_attr_path(FsContext *ctx, const char *path)
+{
+    char *dir_name;
+    char *tmp_path = g_strdup(path);
+    char *base_name = basename(tmp_path);
+    char *buffer;
+
+    /* NULL terminate the directory */
+    dir_name = tmp_path;
+    *(base_name - 1) = '\0';
+
+    buffer = g_strdup_printf("%s/%s/%s/%s",
+             ctx->fs_root, dir_name, VIRTFS_META_DIR, base_name);
+    g_free(tmp_path);
+    return buffer;
+}
+
+static FILE *local_fopen(const char *path, const char *mode)
+{
+    int fd, o_mode = 0;
+    FILE *fp;
+    int flags = O_NOFOLLOW;
+    /*
+     * only supports two modes
+     */
+    if (mode[0] == 'r') {
+        flags |= O_RDONLY;
+    } else if (mode[0] == 'w') {
+        flags |= O_WRONLY | O_TRUNC | O_CREAT;
+        o_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+    } else {
+        return NULL;
+    }
+    fd = open(path, flags, o_mode);
+    if (fd == -1) {
+        return NULL;
+    }
+    fp = fdopen(fd, mode);
+    if (!fp) {
+        close(fd);
+    }
+    return fp;
+}
+
+#define ATTR_MAX 100
+static void local_mapped_file_attr(FsContext *ctx, const char *path,
+                                   struct stat *stbuf)
+{
+    FILE *fp;
+    char buf[ATTR_MAX];
+    char *attr_path;
+
+    attr_path = local_mapped_attr_path(ctx, path);
+    fp = local_fopen(attr_path, "r");
+    g_free(attr_path);
+    if (!fp) {
+        return;
+    }
+    memset(buf, 0, ATTR_MAX);
+    while (fgets(buf, ATTR_MAX, fp)) {
+        if (!strncmp(buf, "virtfs.uid", 10)) {
+            stbuf->st_uid = atoi(buf+11);
+        } else if (!strncmp(buf, "virtfs.gid", 10)) {
+            stbuf->st_gid = atoi(buf+11);
+        } else if (!strncmp(buf, "virtfs.mode", 11)) {
+            stbuf->st_mode = atoi(buf+12);
+        } else if (!strncmp(buf, "virtfs.rdev", 11)) {
+            stbuf->st_rdev = atoi(buf+12);
+        }
+        memset(buf, 0, ATTR_MAX);
+    }
+    fclose(fp);
+}
+
 static int local_lstat(FsContext *fs_ctx, V9fsPath *fs_path, struct stat *stbuf)
 {
     int err;
-    char buffer[PATH_MAX];
+    char *buffer;
     char *path = fs_path->data;
 
-    err =  lstat(rpath(fs_ctx, path, buffer), stbuf);
+    buffer = rpath(fs_ctx, path);
+    err =  lstat(buffer, stbuf);
     if (err) {
-        return err;
+        goto err_out;
     }
     if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
         /* Actual credentials are part of extended attrs */
@@ -55,24 +134,120 @@ static int local_lstat(FsContext *fs_ctx, V9fsPath *fs_path, struct stat *stbuf)
         gid_t tmp_gid;
         mode_t tmp_mode;
         dev_t tmp_dev;
-        if (getxattr(rpath(fs_ctx, path, buffer), "user.virtfs.uid", &tmp_uid,
-                    sizeof(uid_t)) > 0) {
-            stbuf->st_uid = tmp_uid;
+        if (getxattr(buffer, "user.virtfs.uid", &tmp_uid, sizeof(uid_t)) > 0) {
+            stbuf->st_uid = le32_to_cpu(tmp_uid);
         }
-        if (getxattr(rpath(fs_ctx, path, buffer), "user.virtfs.gid", &tmp_gid,
-                    sizeof(gid_t)) > 0) {
-            stbuf->st_gid = tmp_gid;
+        if (getxattr(buffer, "user.virtfs.gid", &tmp_gid, sizeof(gid_t)) > 0) {
+            stbuf->st_gid = le32_to_cpu(tmp_gid);
         }
-        if (getxattr(rpath(fs_ctx, path, buffer), "user.virtfs.mode",
+        if (getxattr(buffer, "user.virtfs.mode",
                     &tmp_mode, sizeof(mode_t)) > 0) {
-            stbuf->st_mode = tmp_mode;
+            stbuf->st_mode = le32_to_cpu(tmp_mode);
         }
-        if (getxattr(rpath(fs_ctx, path, buffer), "user.virtfs.rdev", &tmp_dev,
-                        sizeof(dev_t)) > 0) {
-                stbuf->st_rdev = tmp_dev;
+        if (getxattr(buffer, "user.virtfs.rdev", &tmp_dev, sizeof(dev_t)) > 0) {
+            stbuf->st_rdev = le64_to_cpu(tmp_dev);
         }
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        local_mapped_file_attr(fs_ctx, path, stbuf);
     }
+
+err_out:
+    g_free(buffer);
     return err;
+}
+
+static int local_create_mapped_attr_dir(FsContext *ctx, const char *path)
+{
+    int err;
+    char *attr_dir;
+    char *tmp_path = g_strdup(path);
+
+    attr_dir = g_strdup_printf("%s/%s/%s",
+             ctx->fs_root, dirname(tmp_path), VIRTFS_META_DIR);
+
+    err = mkdir(attr_dir, 0700);
+    if (err < 0 && errno == EEXIST) {
+        err = 0;
+    }
+    g_free(attr_dir);
+    g_free(tmp_path);
+    return err;
+}
+
+static int local_set_mapped_file_attr(FsContext *ctx,
+                                      const char *path, FsCred *credp)
+{
+    FILE *fp;
+    int ret = 0;
+    char buf[ATTR_MAX];
+    char *attr_path;
+    int uid = -1, gid = -1, mode = -1, rdev = -1;
+
+    attr_path = local_mapped_attr_path(ctx, path);
+    fp = local_fopen(attr_path, "r");
+    if (!fp) {
+        goto create_map_file;
+    }
+    memset(buf, 0, ATTR_MAX);
+    while (fgets(buf, ATTR_MAX, fp)) {
+        if (!strncmp(buf, "virtfs.uid", 10)) {
+            uid = atoi(buf+11);
+        } else if (!strncmp(buf, "virtfs.gid", 10)) {
+            gid = atoi(buf+11);
+        } else if (!strncmp(buf, "virtfs.mode", 11)) {
+            mode = atoi(buf+12);
+        } else if (!strncmp(buf, "virtfs.rdev", 11)) {
+            rdev = atoi(buf+12);
+        }
+        memset(buf, 0, ATTR_MAX);
+    }
+    fclose(fp);
+    goto update_map_file;
+
+create_map_file:
+    ret = local_create_mapped_attr_dir(ctx, path);
+    if (ret < 0) {
+        goto err_out;
+    }
+
+update_map_file:
+    fp = local_fopen(attr_path, "w");
+    if (!fp) {
+        ret = -1;
+        goto err_out;
+    }
+
+    if (credp->fc_uid != -1) {
+        uid = credp->fc_uid;
+    }
+    if (credp->fc_gid != -1) {
+        gid = credp->fc_gid;
+    }
+    if (credp->fc_mode != -1) {
+        mode = credp->fc_mode;
+    }
+    if (credp->fc_rdev != -1) {
+        rdev = credp->fc_rdev;
+    }
+
+
+    if (uid != -1) {
+        fprintf(fp, "virtfs.uid=%d\n", uid);
+    }
+    if (gid != -1) {
+        fprintf(fp, "virtfs.gid=%d\n", gid);
+    }
+    if (mode != -1) {
+        fprintf(fp, "virtfs.mode=%d\n", mode);
+    }
+    if (rdev != -1) {
+        fprintf(fp, "virtfs.rdev=%d\n", rdev);
+    }
+    fclose(fp);
+
+err_out:
+    g_free(attr_path);
+    return ret;
 }
 
 static int local_set_xattr(const char *path, FsCred *credp)
@@ -80,29 +255,29 @@ static int local_set_xattr(const char *path, FsCred *credp)
     int err;
 
     if (credp->fc_uid != -1) {
-        err = setxattr(path, "user.virtfs.uid", &credp->fc_uid, sizeof(uid_t),
-                0);
+        uint32_t tmp_uid = cpu_to_le32(credp->fc_uid);
+        err = setxattr(path, "user.virtfs.uid", &tmp_uid, sizeof(uid_t), 0);
         if (err) {
             return err;
         }
     }
     if (credp->fc_gid != -1) {
-        err = setxattr(path, "user.virtfs.gid", &credp->fc_gid, sizeof(gid_t),
-                0);
+        uint32_t tmp_gid = cpu_to_le32(credp->fc_gid);
+        err = setxattr(path, "user.virtfs.gid", &tmp_gid, sizeof(gid_t), 0);
         if (err) {
             return err;
         }
     }
     if (credp->fc_mode != -1) {
-        err = setxattr(path, "user.virtfs.mode", &credp->fc_mode,
-                sizeof(mode_t), 0);
+        uint32_t tmp_mode = cpu_to_le32(credp->fc_mode);
+        err = setxattr(path, "user.virtfs.mode", &tmp_mode, sizeof(mode_t), 0);
         if (err) {
             return err;
         }
     }
     if (credp->fc_rdev != -1) {
-        err = setxattr(path, "user.virtfs.rdev", &credp->fc_rdev,
-                sizeof(dev_t), 0);
+        uint64_t tmp_rdev = cpu_to_le64(credp->fc_rdev);
+        err = setxattr(path, "user.virtfs.rdev", &tmp_rdev, sizeof(dev_t), 0);
         if (err) {
             return err;
         }
@@ -113,34 +288,43 @@ static int local_set_xattr(const char *path, FsCred *credp)
 static int local_post_create_passthrough(FsContext *fs_ctx, const char *path,
                                          FsCred *credp)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
 
-    if (chmod(rpath(fs_ctx, path, buffer), credp->fc_mode & 07777) < 0) {
-        return -1;
-    }
-    if (lchown(rpath(fs_ctx, path, buffer), credp->fc_uid,
-                credp->fc_gid) < 0) {
+    buffer = rpath(fs_ctx, path);
+    if (lchown(buffer, credp->fc_uid, credp->fc_gid) < 0) {
         /*
          * If we fail to change ownership and if we are
          * using security model none. Ignore the error
          */
         if ((fs_ctx->export_flags & V9FS_SEC_MASK) != V9FS_SM_NONE) {
-            return -1;
+            goto err;
         }
     }
+
+    if (chmod(buffer, credp->fc_mode & 07777) < 0) {
+        goto err;
+    }
+
+    g_free(buffer);
     return 0;
+err:
+    g_free(buffer);
+    return -1;
 }
 
 static ssize_t local_readlink(FsContext *fs_ctx, V9fsPath *fs_path,
                               char *buf, size_t bufsz)
 {
     ssize_t tsize = -1;
-    char buffer[PATH_MAX];
+    char *buffer;
     char *path = fs_path->data;
 
-    if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
+    if ((fs_ctx->export_flags & V9FS_SM_MAPPED) ||
+        (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE)) {
         int fd;
-        fd = open(rpath(fs_ctx, path, buffer), O_RDONLY);
+        buffer = rpath(fs_ctx, path);
+        fd = open(buffer, O_RDONLY | O_NOFOLLOW);
+        g_free(buffer);
         if (fd == -1) {
             return -1;
         }
@@ -151,7 +335,9 @@ static ssize_t local_readlink(FsContext *fs_ctx, V9fsPath *fs_path,
         return tsize;
     } else if ((fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
                (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        tsize = readlink(rpath(fs_ctx, path, buffer), buf, bufsz);
+        buffer = rpath(fs_ctx, path);
+        tsize = readlink(buffer, buf, bufsz);
+        g_free(buffer);
     }
     return tsize;
 }
@@ -169,20 +355,24 @@ static int local_closedir(FsContext *ctx, V9fsFidOpenState *fs)
 static int local_open(FsContext *ctx, V9fsPath *fs_path,
                       int flags, V9fsFidOpenState *fs)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
     char *path = fs_path->data;
 
-    fs->fd = open(rpath(ctx, path, buffer), flags);
+    buffer = rpath(ctx, path);
+    fs->fd = open(buffer, flags | O_NOFOLLOW);
+    g_free(buffer);
     return fs->fd;
 }
 
 static int local_opendir(FsContext *ctx,
                          V9fsPath *fs_path, V9fsFidOpenState *fs)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
     char *path = fs_path->data;
 
-    fs->dir = opendir(rpath(ctx, path, buffer));
+    buffer = rpath(ctx, path);
+    fs->dir = opendir(buffer);
+    g_free(buffer);
     if (!fs->dir) {
         return -1;
     }
@@ -203,7 +393,21 @@ static int local_readdir_r(FsContext *ctx, V9fsFidOpenState *fs,
                            struct dirent *entry,
                            struct dirent **result)
 {
-    return readdir_r(fs->dir, entry, result);
+    int ret;
+
+again:
+    ret = readdir_r(fs->dir, entry, result);
+    if (ctx->export_flags & V9FS_SM_MAPPED) {
+        entry->d_type = DT_UNKNOWN;
+    } else if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        if (!ret && *result != NULL &&
+            !strcmp(entry->d_name, VIRTFS_META_DIR)) {
+            /* skp the meta data directory */
+            goto again;
+        }
+        entry->d_type = DT_UNKNOWN;
+    }
+    return ret;
 }
 
 static void local_seekdir(FsContext *ctx, V9fsFidOpenState *fs, off_t off)
@@ -259,16 +463,23 @@ static ssize_t local_pwritev(FsContext *ctx, V9fsFidOpenState *fs,
 
 static int local_chmod(FsContext *fs_ctx, V9fsPath *fs_path, FsCred *credp)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
+    int ret = -1;
     char *path = fs_path->data;
 
     if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
-        return local_set_xattr(rpath(fs_ctx, path, buffer), credp);
+        buffer = rpath(fs_ctx, path);
+        ret = local_set_xattr(buffer, credp);
+        g_free(buffer);
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        return local_set_mapped_file_attr(fs_ctx, path, credp);
     } else if ((fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
                (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        return chmod(rpath(fs_ctx, path, buffer), credp->fc_mode);
+        buffer = rpath(fs_ctx, path);
+        ret = chmod(buffer, credp->fc_mode);
+        g_free(buffer);
     }
-    return -1;
+    return ret;
 }
 
 static int local_mknod(FsContext *fs_ctx, V9fsPath *dir_path,
@@ -278,7 +489,7 @@ static int local_mknod(FsContext *fs_ctx, V9fsPath *dir_path,
     int err = -1;
     int serrno = 0;
     V9fsString fullname;
-    char buffer[PATH_MAX];
+    char *buffer;
 
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
@@ -286,21 +497,36 @@ static int local_mknod(FsContext *fs_ctx, V9fsPath *dir_path,
 
     /* Determine the security model */
     if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
-        err = mknod(rpath(fs_ctx, path, buffer),
-                SM_LOCAL_MODE_BITS|S_IFREG, 0);
+        buffer = rpath(fs_ctx, path);
+        err = mknod(buffer, SM_LOCAL_MODE_BITS|S_IFREG, 0);
         if (err == -1) {
+            g_free(buffer);
             goto out;
         }
-        err = local_set_xattr(rpath(fs_ctx, path, buffer), credp);
+        err = local_set_xattr(buffer, credp);
+        if (err == -1) {
+            serrno = errno;
+            goto err_end;
+        }
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+
+        buffer = rpath(fs_ctx, path);
+        err = mknod(buffer, SM_LOCAL_MODE_BITS|S_IFREG, 0);
+        if (err == -1) {
+            g_free(buffer);
+            goto out;
+        }
+        err = local_set_mapped_file_attr(fs_ctx, path, credp);
         if (err == -1) {
             serrno = errno;
             goto err_end;
         }
     } else if ((fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
                (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        err = mknod(rpath(fs_ctx, path, buffer), credp->fc_mode,
-                credp->fc_rdev);
+        buffer = rpath(fs_ctx, path);
+        err = mknod(buffer, credp->fc_mode, credp->fc_rdev);
         if (err == -1) {
+            g_free(buffer);
             goto out;
         }
         err = local_post_create_passthrough(fs_ctx, path, credp);
@@ -312,8 +538,9 @@ static int local_mknod(FsContext *fs_ctx, V9fsPath *dir_path,
     goto out;
 
 err_end:
-    remove(rpath(fs_ctx, path, buffer));
+    remove(buffer);
     errno = serrno;
+    g_free(buffer);
 out:
     v9fs_string_free(&fullname);
     return err;
@@ -326,7 +553,7 @@ static int local_mkdir(FsContext *fs_ctx, V9fsPath *dir_path,
     int err = -1;
     int serrno = 0;
     V9fsString fullname;
-    char buffer[PATH_MAX];
+    char *buffer;
 
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
@@ -334,20 +561,37 @@ static int local_mkdir(FsContext *fs_ctx, V9fsPath *dir_path,
 
     /* Determine the security model */
     if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
-        err = mkdir(rpath(fs_ctx, path, buffer), SM_LOCAL_DIR_MODE_BITS);
+        buffer = rpath(fs_ctx, path);
+        err = mkdir(buffer, SM_LOCAL_DIR_MODE_BITS);
         if (err == -1) {
+            g_free(buffer);
             goto out;
         }
         credp->fc_mode = credp->fc_mode|S_IFDIR;
-        err = local_set_xattr(rpath(fs_ctx, path, buffer), credp);
+        err = local_set_xattr(buffer, credp);
+        if (err == -1) {
+            serrno = errno;
+            goto err_end;
+        }
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        buffer = rpath(fs_ctx, path);
+        err = mkdir(buffer, SM_LOCAL_DIR_MODE_BITS);
+        if (err == -1) {
+            g_free(buffer);
+            goto out;
+        }
+        credp->fc_mode = credp->fc_mode|S_IFDIR;
+        err = local_set_mapped_file_attr(fs_ctx, path, credp);
         if (err == -1) {
             serrno = errno;
             goto err_end;
         }
     } else if ((fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
                (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        err = mkdir(rpath(fs_ctx, path, buffer), credp->fc_mode);
+        buffer = rpath(fs_ctx, path);
+        err = mkdir(buffer, credp->fc_mode);
         if (err == -1) {
+            g_free(buffer);
             goto out;
         }
         err = local_post_create_passthrough(fs_ctx, path, credp);
@@ -359,8 +603,9 @@ static int local_mkdir(FsContext *fs_ctx, V9fsPath *dir_path,
     goto out;
 
 err_end:
-    remove(rpath(fs_ctx, path, buffer));
+    remove(buffer);
     errno = serrno;
+    g_free(buffer);
 out:
     v9fs_string_free(&fullname);
     return err;
@@ -388,22 +633,21 @@ static int local_fstat(FsContext *fs_ctx, int fid_type,
         mode_t tmp_mode;
         dev_t tmp_dev;
 
-        if (fgetxattr(fd, "user.virtfs.uid",
-                      &tmp_uid, sizeof(uid_t)) > 0) {
-            stbuf->st_uid = tmp_uid;
+        if (fgetxattr(fd, "user.virtfs.uid", &tmp_uid, sizeof(uid_t)) > 0) {
+            stbuf->st_uid = le32_to_cpu(tmp_uid);
         }
-        if (fgetxattr(fd, "user.virtfs.gid",
-                      &tmp_gid, sizeof(gid_t)) > 0) {
-            stbuf->st_gid = tmp_gid;
+        if (fgetxattr(fd, "user.virtfs.gid", &tmp_gid, sizeof(gid_t)) > 0) {
+            stbuf->st_gid = le32_to_cpu(tmp_gid);
         }
-        if (fgetxattr(fd, "user.virtfs.mode",
-                      &tmp_mode, sizeof(mode_t)) > 0) {
-            stbuf->st_mode = tmp_mode;
+        if (fgetxattr(fd, "user.virtfs.mode", &tmp_mode, sizeof(mode_t)) > 0) {
+            stbuf->st_mode = le32_to_cpu(tmp_mode);
         }
-        if (fgetxattr(fd, "user.virtfs.rdev",
-                      &tmp_dev, sizeof(dev_t)) > 0) {
-                stbuf->st_rdev = tmp_dev;
+        if (fgetxattr(fd, "user.virtfs.rdev", &tmp_dev, sizeof(dev_t)) > 0) {
+            stbuf->st_rdev = le64_to_cpu(tmp_dev);
         }
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        errno = EOPNOTSUPP;
+        return -1;
     }
     return err;
 }
@@ -416,7 +660,12 @@ static int local_open2(FsContext *fs_ctx, V9fsPath *dir_path, const char *name,
     int err = -1;
     int serrno = 0;
     V9fsString fullname;
-    char buffer[PATH_MAX];
+    char *buffer;
+
+    /*
+     * Mark all the open to not follow symlinks
+     */
+    flags |= O_NOFOLLOW;
 
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
@@ -424,22 +673,41 @@ static int local_open2(FsContext *fs_ctx, V9fsPath *dir_path, const char *name,
 
     /* Determine the security model */
     if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
-        fd = open(rpath(fs_ctx, path, buffer), flags, SM_LOCAL_MODE_BITS);
+        buffer = rpath(fs_ctx, path);
+        fd = open(buffer, flags, SM_LOCAL_MODE_BITS);
         if (fd == -1) {
+            g_free(buffer);
             err = fd;
             goto out;
         }
         credp->fc_mode = credp->fc_mode|S_IFREG;
         /* Set cleint credentials in xattr */
-        err = local_set_xattr(rpath(fs_ctx, path, buffer), credp);
+        err = local_set_xattr(buffer, credp);
+        if (err == -1) {
+            serrno = errno;
+            goto err_end;
+        }
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        buffer = rpath(fs_ctx, path);
+        fd = open(buffer, flags, SM_LOCAL_MODE_BITS);
+        if (fd == -1) {
+            g_free(buffer);
+            err = fd;
+            goto out;
+        }
+        credp->fc_mode = credp->fc_mode|S_IFREG;
+        /* Set client credentials in .virtfs_metadata directory files */
+        err = local_set_mapped_file_attr(fs_ctx, path, credp);
         if (err == -1) {
             serrno = errno;
             goto err_end;
         }
     } else if ((fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
                (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        fd = open(rpath(fs_ctx, path, buffer), flags, credp->fc_mode);
+        buffer = rpath(fs_ctx, path);
+        fd = open(buffer, flags, credp->fc_mode);
         if (fd == -1) {
+            g_free(buffer);
             err = fd;
             goto out;
         }
@@ -455,8 +723,9 @@ static int local_open2(FsContext *fs_ctx, V9fsPath *dir_path, const char *name,
 
 err_end:
     close(fd);
-    remove(rpath(fs_ctx, path, buffer));
+    remove(buffer);
     errno = serrno;
+    g_free(buffer);
 out:
     v9fs_string_free(&fullname);
     return err;
@@ -470,7 +739,7 @@ static int local_symlink(FsContext *fs_ctx, const char *oldpath,
     int serrno = 0;
     char *newpath;
     V9fsString fullname;
-    char buffer[PATH_MAX];
+    char *buffer;
 
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
@@ -480,9 +749,10 @@ static int local_symlink(FsContext *fs_ctx, const char *oldpath,
     if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
         int fd;
         ssize_t oldpath_size, write_size;
-        fd = open(rpath(fs_ctx, newpath, buffer), O_CREAT|O_EXCL|O_RDWR,
-                SM_LOCAL_MODE_BITS);
+        buffer = rpath(fs_ctx, newpath);
+        fd = open(buffer, O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW, SM_LOCAL_MODE_BITS);
         if (fd == -1) {
+            g_free(buffer);
             err = fd;
             goto out;
         }
@@ -501,19 +771,50 @@ static int local_symlink(FsContext *fs_ctx, const char *oldpath,
         close(fd);
         /* Set cleint credentials in symlink's xattr */
         credp->fc_mode = credp->fc_mode|S_IFLNK;
-        err = local_set_xattr(rpath(fs_ctx, newpath, buffer), credp);
+        err = local_set_xattr(buffer, credp);
+        if (err == -1) {
+            serrno = errno;
+            goto err_end;
+        }
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        int fd;
+        ssize_t oldpath_size, write_size;
+        buffer = rpath(fs_ctx, newpath);
+        fd = open(buffer, O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW, SM_LOCAL_MODE_BITS);
+        if (fd == -1) {
+            g_free(buffer);
+            err = fd;
+            goto out;
+        }
+        /* Write the oldpath (target) to the file. */
+        oldpath_size = strlen(oldpath);
+        do {
+            write_size = write(fd, (void *)oldpath, oldpath_size);
+        } while (write_size == -1 && errno == EINTR);
+
+        if (write_size != oldpath_size) {
+            serrno = errno;
+            close(fd);
+            err = -1;
+            goto err_end;
+        }
+        close(fd);
+        /* Set cleint credentials in symlink's xattr */
+        credp->fc_mode = credp->fc_mode|S_IFLNK;
+        err = local_set_mapped_file_attr(fs_ctx, newpath, credp);
         if (err == -1) {
             serrno = errno;
             goto err_end;
         }
     } else if ((fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
                (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        err = symlink(oldpath, rpath(fs_ctx, newpath, buffer));
+        buffer = rpath(fs_ctx, newpath);
+        err = symlink(oldpath, buffer);
         if (err) {
+            g_free(buffer);
             goto out;
         }
-        err = lchown(rpath(fs_ctx, newpath, buffer), credp->fc_uid,
-                     credp->fc_gid);
+        err = lchown(buffer, credp->fc_uid, credp->fc_gid);
         if (err == -1) {
             /*
              * If we fail to change ownership and if we are
@@ -529,8 +830,9 @@ static int local_symlink(FsContext *fs_ctx, const char *oldpath,
     goto out;
 
 err_end:
-    remove(rpath(fs_ctx, newpath, buffer));
+    remove(buffer);
     errno = serrno;
+    g_free(buffer);
 out:
     v9fs_string_free(&fullname);
     return err;
@@ -541,62 +843,166 @@ static int local_link(FsContext *ctx, V9fsPath *oldpath,
 {
     int ret;
     V9fsString newpath;
-    char buffer[PATH_MAX], buffer1[PATH_MAX];
+    char *buffer, *buffer1;
 
     v9fs_string_init(&newpath);
     v9fs_string_sprintf(&newpath, "%s/%s", dirpath->data, name);
 
-    ret = link(rpath(ctx, oldpath->data, buffer),
-               rpath(ctx, newpath.data, buffer1));
+    buffer = rpath(ctx, oldpath->data);
+    buffer1 = rpath(ctx, newpath.data);
+    ret = link(buffer, buffer1);
+    g_free(buffer);
+    g_free(buffer1);
+
+    /* now link the virtfs_metadata files */
+    if (!ret && (ctx->export_flags & V9FS_SM_MAPPED_FILE)) {
+        /* Link the .virtfs_metadata files. Create the metada directory */
+        ret = local_create_mapped_attr_dir(ctx, newpath.data);
+        if (ret < 0) {
+            goto err_out;
+        }
+        buffer = local_mapped_attr_path(ctx, oldpath->data);
+        buffer1 = local_mapped_attr_path(ctx, newpath.data);
+        ret = link(buffer, buffer1);
+        g_free(buffer);
+        g_free(buffer1);
+        if (ret < 0 && errno != ENOENT) {
+            goto err_out;
+        }
+    }
+err_out:
     v9fs_string_free(&newpath);
     return ret;
 }
 
 static int local_truncate(FsContext *ctx, V9fsPath *fs_path, off_t size)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
+    int ret;
     char *path = fs_path->data;
 
-    return truncate(rpath(ctx, path, buffer), size);
+    buffer = rpath(ctx, path);
+    ret = truncate(buffer, size);
+    g_free(buffer);
+    return ret;
 }
 
 static int local_rename(FsContext *ctx, const char *oldpath,
                         const char *newpath)
 {
-    char buffer[PATH_MAX], buffer1[PATH_MAX];
+    int err;
+    char *buffer, *buffer1;
 
-    return rename(rpath(ctx, oldpath, buffer), rpath(ctx, newpath, buffer1));
+    if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        err = local_create_mapped_attr_dir(ctx, newpath);
+        if (err < 0) {
+            return err;
+        }
+        /* rename the .virtfs_metadata files */
+        buffer = local_mapped_attr_path(ctx, oldpath);
+        buffer1 = local_mapped_attr_path(ctx, newpath);
+        err = rename(buffer, buffer1);
+        g_free(buffer);
+        g_free(buffer1);
+        if (err < 0 && errno != ENOENT) {
+            return err;
+        }
+    }
+
+    buffer = rpath(ctx, oldpath);
+    buffer1 = rpath(ctx, newpath);
+    err = rename(buffer, buffer1);
+    g_free(buffer);
+    g_free(buffer1);
+    return err;
 }
 
 static int local_chown(FsContext *fs_ctx, V9fsPath *fs_path, FsCred *credp)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
+    int ret = -1;
     char *path = fs_path->data;
 
     if ((credp->fc_uid == -1 && credp->fc_gid == -1) ||
         (fs_ctx->export_flags & V9FS_SM_PASSTHROUGH) ||
         (fs_ctx->export_flags & V9FS_SM_NONE)) {
-        return lchown(rpath(fs_ctx, path, buffer),
-                      credp->fc_uid, credp->fc_gid);
+        buffer = rpath(fs_ctx, path);
+        ret = lchown(buffer, credp->fc_uid, credp->fc_gid);
+        g_free(buffer);
     } else if (fs_ctx->export_flags & V9FS_SM_MAPPED) {
-        return local_set_xattr(rpath(fs_ctx, path, buffer), credp);
+        buffer = rpath(fs_ctx, path);
+        ret = local_set_xattr(buffer, credp);
+        g_free(buffer);
+    } else if (fs_ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        return local_set_mapped_file_attr(fs_ctx, path, credp);
     }
-    return -1;
+    return ret;
 }
 
 static int local_utimensat(FsContext *s, V9fsPath *fs_path,
                            const struct timespec *buf)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
+    int ret;
     char *path = fs_path->data;
 
-    return qemu_utimens(rpath(s, path, buffer), buf);
+    buffer = rpath(s, path);
+    ret = qemu_utimens(buffer, buf);
+    g_free(buffer);
+    return ret;
 }
 
 static int local_remove(FsContext *ctx, const char *path)
 {
-    char buffer[PATH_MAX];
-    return remove(rpath(ctx, path, buffer));
+    int err;
+    struct stat stbuf;
+    char *buffer;
+
+    if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        buffer = rpath(ctx, path);
+        err =  lstat(buffer, &stbuf);
+        g_free(buffer);
+        if (err) {
+            goto err_out;
+        }
+        /*
+         * If directory remove .virtfs_metadata contained in the
+         * directory
+         */
+        if (S_ISDIR(stbuf.st_mode)) {
+            buffer = g_strdup_printf("%s/%s/%s", ctx->fs_root,
+                                     path, VIRTFS_META_DIR);
+            err = remove(buffer);
+            g_free(buffer);
+            if (err < 0 && errno != ENOENT) {
+                /*
+                 * We didn't had the .virtfs_metadata file. May be file created
+                 * in non-mapped mode ?. Ignore ENOENT.
+                 */
+                goto err_out;
+            }
+        }
+        /*
+         * Now remove the name from parent directory
+         * .virtfs_metadata directory
+         */
+        buffer = local_mapped_attr_path(ctx, path);
+        err = remove(buffer);
+        g_free(buffer);
+        if (err < 0 && errno != ENOENT) {
+            /*
+             * We didn't had the .virtfs_metadata file. May be file created
+             * in non-mapped mode ?. Ignore ENOENT.
+             */
+            goto err_out;
+        }
+    }
+
+    buffer = rpath(ctx, path);
+    err = remove(buffer);
+    g_free(buffer);
+err_out:
+    return err;
 }
 
 static int local_fsync(FsContext *ctx, int fid_type,
@@ -619,10 +1025,14 @@ static int local_fsync(FsContext *ctx, int fid_type,
 
 static int local_statfs(FsContext *s, V9fsPath *fs_path, struct statfs *stbuf)
 {
-    char buffer[PATH_MAX];
+    char *buffer;
+    int ret;
     char *path = fs_path->data;
 
-    return statfs(rpath(s, path, buffer), stbuf);
+    buffer = rpath(s, path);
+    ret = statfs(buffer, stbuf);
+    g_free(buffer);
+    return ret;
 }
 
 static ssize_t local_lgetxattr(FsContext *ctx, V9fsPath *fs_path,
@@ -695,21 +1105,59 @@ static int local_unlinkat(FsContext *ctx, V9fsPath *dir,
 {
     int ret;
     V9fsString fullname;
-    char buffer[PATH_MAX];
+    char *buffer;
+
     v9fs_string_init(&fullname);
 
     v9fs_string_sprintf(&fullname, "%s/%s", dir->data, name);
-    ret = remove(rpath(ctx, fullname.data, buffer));
-    v9fs_string_free(&fullname);
+    if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        if (flags == AT_REMOVEDIR) {
+            /*
+             * If directory remove .virtfs_metadata contained in the
+             * directory
+             */
+            buffer = g_strdup_printf("%s/%s/%s", ctx->fs_root,
+                                     fullname.data, VIRTFS_META_DIR);
+            ret = remove(buffer);
+            g_free(buffer);
+            if (ret < 0 && errno != ENOENT) {
+                /*
+                 * We didn't had the .virtfs_metadata file. May be file created
+                 * in non-mapped mode ?. Ignore ENOENT.
+                 */
+                goto err_out;
+            }
+        }
+        /*
+         * Now remove the name from parent directory
+         * .virtfs_metadata directory.
+         */
+        buffer = local_mapped_attr_path(ctx, fullname.data);
+        ret = remove(buffer);
+        g_free(buffer);
+        if (ret < 0 && errno != ENOENT) {
+            /*
+             * We didn't had the .virtfs_metadata file. May be file created
+             * in non-mapped mode ?. Ignore ENOENT.
+             */
+            goto err_out;
+        }
+    }
+    /* Remove the name finally */
+    buffer = rpath(ctx, fullname.data);
+    ret = remove(buffer);
+    g_free(buffer);
 
+err_out:
+    v9fs_string_free(&fullname);
     return ret;
 }
 
 static int local_ioc_getversion(FsContext *ctx, V9fsPath *path,
                                 mode_t st_mode, uint64_t *st_gen)
 {
-    int err;
 #ifdef FS_IOC_GETVERSION
+    int err;
     V9fsFidOpenState fid_open;
 
     /*
@@ -717,7 +1165,8 @@ static int local_ioc_getversion(FsContext *ctx, V9fsPath *path,
      * We can get fd for regular files and directories only
      */
     if (!S_ISREG(st_mode) && !S_ISDIR(st_mode)) {
-            return 0;
+        errno = ENOTTY;
+        return -1;
     }
     err = local_open(ctx, path, O_RDONLY, &fid_open);
     if (err < 0) {
@@ -725,10 +1174,11 @@ static int local_ioc_getversion(FsContext *ctx, V9fsPath *path,
     }
     err = ioctl(fid_open.fd, FS_IOC_GETVERSION, st_gen);
     local_close(ctx, &fid_open);
-#else
-    err = -ENOTTY;
-#endif
     return err;
+#else
+    errno = ENOTTY;
+    return -1;
+#endif
 }
 
 static int local_init(FsContext *ctx)
@@ -736,6 +1186,19 @@ static int local_init(FsContext *ctx)
     int err = 0;
     struct statfs stbuf;
 
+    if (ctx->export_flags & V9FS_SM_PASSTHROUGH) {
+        ctx->xops = passthrough_xattr_ops;
+    } else if (ctx->export_flags & V9FS_SM_MAPPED) {
+        ctx->xops = mapped_xattr_ops;
+    } else if (ctx->export_flags & V9FS_SM_NONE) {
+        ctx->xops = none_xattr_ops;
+    } else if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
+        /*
+         * xattr operation for mapped-file and passthrough
+         * remain same.
+         */
+        ctx->xops = passthrough_xattr_ops;
+    }
     ctx->export_flags |= V9FS_PATHNAME_FSCONTEXT;
 #ifdef FS_IOC_GETVERSION
     /*
@@ -770,13 +1233,17 @@ static int local_parse_opts(QemuOpts *opts, struct FsDriverEntry *fse)
 
     if (!strcmp(sec_model, "passthrough")) {
         fse->export_flags |= V9FS_SM_PASSTHROUGH;
-    } else if (!strcmp(sec_model, "mapped")) {
+    } else if (!strcmp(sec_model, "mapped") ||
+               !strcmp(sec_model, "mapped-xattr")) {
         fse->export_flags |= V9FS_SM_MAPPED;
     } else if (!strcmp(sec_model, "none")) {
         fse->export_flags |= V9FS_SM_NONE;
+    } else if (!strcmp(sec_model, "mapped-file")) {
+        fse->export_flags |= V9FS_SM_MAPPED_FILE;
     } else {
         fprintf(stderr, "Invalid security model %s specified, valid options are"
-                "\n\t [passthrough|mapped|none]\n", sec_model);
+                "\n\t [passthrough|mapped-xattr|mapped-file|none]\n",
+                sec_model);
         return -1;
     }
 

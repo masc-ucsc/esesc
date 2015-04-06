@@ -16,30 +16,24 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdarg.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <inttypes.h>
 
 #define DEBUG_DISAS
-#define SH4_DEBUG_DISAS
 //#define SH4_SINGLE_STEP
 
 #include "cpu.h"
-#include "disas.h"
+#include "disas/disas.h"
 #include "tcg-op.h"
-#include "qemu-common.h"
+#include "exec/cpu_ldst.h"
 
-#include "helper.h"
-#define GEN_HELPER 1
-#include "helper.h"
+#include "exec/helper-proto.h"
+#include "exec/helper-gen.h"
+
+#include "trace-tcg.h"
+
 
 typedef struct DisasContext {
     struct TranslationBlock *tb;
     target_ulong pc;
-    uint32_t sr;
-    uint32_t fpscr;
     uint16_t opcode;
     uint32_t flags;
     int bstate;
@@ -53,7 +47,7 @@ typedef struct DisasContext {
 #if defined(CONFIG_USER_ONLY)
 #define IS_USER(ctx) 1
 #else
-#define IS_USER(ctx) (!(ctx->sr & SR_MD))
+#define IS_USER(ctx) (!(ctx->flags & SR_MD))
 #endif
 
 enum {
@@ -78,9 +72,9 @@ static TCGv cpu_flags, cpu_delayed_pc;
 
 static uint32_t gen_opc_hflags[OPC_BUF_SIZE];
 
-#include "gen-icount.h"
+#include "exec/gen-icount.h"
 
-static void sh4_translate_init(void)
+void sh4_translate_init(void)
 {
     int i;
     static int done_init = 0;
@@ -109,60 +103,57 @@ static void sh4_translate_init(void)
 
     for (i = 0; i < 24; i++)
         cpu_gregs[i] = tcg_global_mem_new_i32(TCG_AREG0,
-                                              offsetof(CPUState, gregs[i]),
+                                              offsetof(CPUSH4State, gregs[i]),
                                               gregnames[i]);
 
     cpu_pc = tcg_global_mem_new_i32(TCG_AREG0,
-                                    offsetof(CPUState, pc), "PC");
+                                    offsetof(CPUSH4State, pc), "PC");
     cpu_sr = tcg_global_mem_new_i32(TCG_AREG0,
-                                    offsetof(CPUState, sr), "SR");
+                                    offsetof(CPUSH4State, sr), "SR");
     cpu_ssr = tcg_global_mem_new_i32(TCG_AREG0,
-                                     offsetof(CPUState, ssr), "SSR");
+                                     offsetof(CPUSH4State, ssr), "SSR");
     cpu_spc = tcg_global_mem_new_i32(TCG_AREG0,
-                                     offsetof(CPUState, spc), "SPC");
+                                     offsetof(CPUSH4State, spc), "SPC");
     cpu_gbr = tcg_global_mem_new_i32(TCG_AREG0,
-                                     offsetof(CPUState, gbr), "GBR");
+                                     offsetof(CPUSH4State, gbr), "GBR");
     cpu_vbr = tcg_global_mem_new_i32(TCG_AREG0,
-                                     offsetof(CPUState, vbr), "VBR");
+                                     offsetof(CPUSH4State, vbr), "VBR");
     cpu_sgr = tcg_global_mem_new_i32(TCG_AREG0,
-                                     offsetof(CPUState, sgr), "SGR");
+                                     offsetof(CPUSH4State, sgr), "SGR");
     cpu_dbr = tcg_global_mem_new_i32(TCG_AREG0,
-                                     offsetof(CPUState, dbr), "DBR");
+                                     offsetof(CPUSH4State, dbr), "DBR");
     cpu_mach = tcg_global_mem_new_i32(TCG_AREG0,
-                                      offsetof(CPUState, mach), "MACH");
+                                      offsetof(CPUSH4State, mach), "MACH");
     cpu_macl = tcg_global_mem_new_i32(TCG_AREG0,
-                                      offsetof(CPUState, macl), "MACL");
+                                      offsetof(CPUSH4State, macl), "MACL");
     cpu_pr = tcg_global_mem_new_i32(TCG_AREG0,
-                                    offsetof(CPUState, pr), "PR");
+                                    offsetof(CPUSH4State, pr), "PR");
     cpu_fpscr = tcg_global_mem_new_i32(TCG_AREG0,
-                                       offsetof(CPUState, fpscr), "FPSCR");
+                                       offsetof(CPUSH4State, fpscr), "FPSCR");
     cpu_fpul = tcg_global_mem_new_i32(TCG_AREG0,
-                                      offsetof(CPUState, fpul), "FPUL");
+                                      offsetof(CPUSH4State, fpul), "FPUL");
 
     cpu_flags = tcg_global_mem_new_i32(TCG_AREG0,
-				       offsetof(CPUState, flags), "_flags_");
+				       offsetof(CPUSH4State, flags), "_flags_");
     cpu_delayed_pc = tcg_global_mem_new_i32(TCG_AREG0,
-					    offsetof(CPUState, delayed_pc),
+					    offsetof(CPUSH4State, delayed_pc),
 					    "_delayed_pc_");
     cpu_ldst = tcg_global_mem_new_i32(TCG_AREG0,
-				      offsetof(CPUState, ldst), "_ldst_");
+				      offsetof(CPUSH4State, ldst), "_ldst_");
 
     for (i = 0; i < 32; i++)
         cpu_fregs[i] = tcg_global_mem_new_i32(TCG_AREG0,
-                                              offsetof(CPUState, fregs[i]),
+                                              offsetof(CPUSH4State, fregs[i]),
                                               fregnames[i]);
-
-    /* register helpers */
-#define GEN_HELPER 2
-#include "helper.h"
 
     done_init = 1;
 }
 
-void cpu_dump_state(CPUState * env, FILE * f,
-		    int (*cpu_fprintf) (FILE * f, const char *fmt, ...),
-		    int flags)
+void superh_cpu_dump_state(CPUState *cs, FILE *f,
+                           fprintf_function cpu_fprintf, int flags)
 {
+    SuperHCPU *cpu = SUPERH_CPU(cs);
+    CPUSH4State *env = &cpu->env;
     int i;
     cpu_fprintf(f, "pc=0x%08x sr=0x%08x pr=0x%08x fpscr=0x%08x\n",
 		env->pc, env->sr, env->pr, env->fpscr);
@@ -184,113 +175,6 @@ void cpu_dump_state(CPUState * env, FILE * f,
     }
 }
 
-void cpu_reset(CPUSH4State * env)
-{
-    if (qemu_loglevel_mask(CPU_LOG_RESET)) {
-        qemu_log("CPU Reset (CPU %d)\n", env->cpu_index);
-        log_cpu_state(env, 0);
-    }
-
-    memset(env, 0, offsetof(CPUSH4State, breakpoints));
-    tlb_flush(env, 1);
-
-    env->pc = 0xA0000000;
-#if defined(CONFIG_USER_ONLY)
-    env->fpscr = FPSCR_PR; /* value for userspace according to the kernel */
-    set_float_rounding_mode(float_round_nearest_even, &env->fp_status); /* ?! */
-#else
-    env->sr = SR_MD | SR_RB | SR_BL | SR_I3 | SR_I2 | SR_I1 | SR_I0;
-    env->fpscr = FPSCR_DN | FPSCR_RM_ZERO; /* CPU reset value according to SH4 manual */
-    set_float_rounding_mode(float_round_to_zero, &env->fp_status);
-    set_flush_to_zero(1, &env->fp_status);
-#endif
-    set_default_nan_mode(1, &env->fp_status);
-}
-
-typedef struct {
-    const char *name;
-    int id;
-    uint32_t pvr;
-    uint32_t prr;
-    uint32_t cvr;
-    uint32_t features;
-} sh4_def_t;
-
-static sh4_def_t sh4_defs[] = {
-    {
-	.name = "SH7750R",
-	.id = SH_CPU_SH7750R,
-	.pvr = 0x00050000,
-	.prr = 0x00000100,
-	.cvr = 0x00110000,
-	.features = SH_FEATURE_BCR3_AND_BCR4,
-    }, {
-	.name = "SH7751R",
-	.id = SH_CPU_SH7751R,
-	.pvr = 0x04050005,
-	.prr = 0x00000113,
-	.cvr = 0x00110000,	/* Neutered caches, should be 0x20480000 */
-	.features = SH_FEATURE_BCR3_AND_BCR4,
-    }, {
-	.name = "SH7785",
-	.id = SH_CPU_SH7785,
-	.pvr = 0x10300700,
-	.prr = 0x00000200,
-	.cvr = 0x71440211,
-	.features = SH_FEATURE_SH4A,
-     },
-};
-
-static const sh4_def_t *cpu_sh4_find_by_name(const char *name)
-{
-    int i;
-
-    if (strcasecmp(name, "any") == 0)
-	return &sh4_defs[0];
-
-    for (i = 0; i < ARRAY_SIZE(sh4_defs); i++)
-	if (strcasecmp(name, sh4_defs[i].name) == 0)
-	    return &sh4_defs[i];
-
-    return NULL;
-}
-
-void sh4_cpu_list(FILE *f, fprintf_function cpu_fprintf)
-{
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(sh4_defs); i++)
-	(*cpu_fprintf)(f, "%s\n", sh4_defs[i].name);
-}
-
-static void cpu_register(CPUSH4State *env, const sh4_def_t *def)
-{
-    env->pvr = def->pvr;
-    env->prr = def->prr;
-    env->cvr = def->cvr;
-    env->id = def->id;
-}
-
-CPUSH4State *cpu_sh4_init(const char *cpu_model)
-{
-    CPUSH4State *env;
-    const sh4_def_t *def;
-
-    def = cpu_sh4_find_by_name(cpu_model);
-    if (!def)
-	return NULL;
-    env = g_malloc0(sizeof(CPUSH4State));
-    env->features = def->features;
-    cpu_exec_init(env);
-    env->movcal_backup_tail = &(env->movcal_backup);
-    sh4_translate_init();
-    env->cpu_model_str = cpu_model;
-    cpu_reset(env);
-    cpu_register(env, def);
-    qemu_init_vcpu(env);
-    return env;
-}
-
 static void gen_goto_tb(DisasContext * ctx, int n, target_ulong dest)
 {
     TranslationBlock *tb;
@@ -301,11 +185,11 @@ static void gen_goto_tb(DisasContext * ctx, int n, target_ulong dest)
 	/* Use a direct jump if in same page and singlestep not enabled */
         tcg_gen_goto_tb(n);
         tcg_gen_movi_i32(cpu_pc, dest);
-        tcg_gen_exit_tb((tcg_target_long)tb + n);
+        tcg_gen_exit_tb((uintptr_t)tb + n);
     } else {
         tcg_gen_movi_i32(cpu_pc, dest);
         if (ctx->singlestep_enabled)
-            gen_helper_debug();
+            gen_helper_debug(cpu_env);
         tcg_gen_exit_tb(0);
     }
 }
@@ -317,7 +201,7 @@ static void gen_jump(DisasContext * ctx)
 	   delayed jump as immediate jump are conditinal jumps */
 	tcg_gen_mov_i32(cpu_pc, cpu_delayed_pc);
 	if (ctx->singlestep_enabled)
-	    gen_helper_debug();
+            gen_helper_debug(cpu_env);
 	tcg_gen_exit_tb(0);
     } else {
 	gen_goto_tb(ctx, 0, ctx->delayed_pc);
@@ -366,16 +250,6 @@ static void gen_delayed_conditional_jump(DisasContext * ctx)
     gen_set_label(l1);
     tcg_gen_andi_i32(cpu_flags, cpu_flags, ~DELAY_SLOT_TRUE);
     gen_jump(ctx);
-}
-
-static inline void gen_set_t(void)
-{
-    tcg_gen_ori_i32(cpu_sr, cpu_sr, SR_T);
-}
-
-static inline void gen_clr_t(void)
-{
-    tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
 }
 
 static inline void gen_cmp(int cond, TCGv t0, TCGv t1)
@@ -452,44 +326,47 @@ static inline void gen_store_fpr64 (TCGv_i64 t, int reg)
 #define B11_8 ((ctx->opcode >> 8) & 0xf)
 #define B15_12 ((ctx->opcode >> 12) & 0xf)
 
-#define REG(x) ((x) < 8 && (ctx->sr & (SR_MD | SR_RB)) == (SR_MD | SR_RB) ? \
-		(cpu_gregs[x + 16]) : (cpu_gregs[x]))
+#define REG(x) ((x) < 8 && (ctx->flags & (SR_MD | SR_RB)) == (SR_MD | SR_RB) \
+                ? (cpu_gregs[x + 16]) : (cpu_gregs[x]))
 
-#define ALTREG(x) ((x) < 8 && (ctx->sr & (SR_MD | SR_RB)) != (SR_MD | SR_RB) \
+#define ALTREG(x) ((x) < 8 && (ctx->flags & (SR_MD | SR_RB)) != (SR_MD | SR_RB)\
 		? (cpu_gregs[x + 16]) : (cpu_gregs[x]))
 
-#define FREG(x) (ctx->fpscr & FPSCR_FR ? (x) ^ 0x10 : (x))
+#define FREG(x) (ctx->flags & FPSCR_FR ? (x) ^ 0x10 : (x))
 #define XHACK(x) ((((x) & 1 ) << 4) | ((x) & 0xe))
-#define XREG(x) (ctx->fpscr & FPSCR_FR ? XHACK(x) ^ 0x10 : XHACK(x))
+#define XREG(x) (ctx->flags & FPSCR_FR ? XHACK(x) ^ 0x10 : XHACK(x))
 #define DREG(x) FREG(x) /* Assumes lsb of (x) is always 0 */
 
 #define CHECK_NOT_DELAY_SLOT \
   if (ctx->flags & (DELAY_SLOT | DELAY_SLOT_CONDITIONAL))     \
   {                                                           \
-      gen_helper_raise_slot_illegal_instruction();            \
-      ctx->bstate = BS_EXCP;                                  \
+      tcg_gen_movi_i32(cpu_pc, ctx->pc);                      \
+      gen_helper_raise_slot_illegal_instruction(cpu_env);     \
+      ctx->bstate = BS_BRANCH;                                \
       return;                                                 \
   }
 
 #define CHECK_PRIVILEGED                                        \
   if (IS_USER(ctx)) {                                           \
+      tcg_gen_movi_i32(cpu_pc, ctx->pc);                        \
       if (ctx->flags & (DELAY_SLOT | DELAY_SLOT_CONDITIONAL)) { \
-         gen_helper_raise_slot_illegal_instruction();           \
+          gen_helper_raise_slot_illegal_instruction(cpu_env);   \
       } else {                                                  \
-         gen_helper_raise_illegal_instruction();                \
+          gen_helper_raise_illegal_instruction(cpu_env);        \
       }                                                         \
-      ctx->bstate = BS_EXCP;                                    \
+      ctx->bstate = BS_BRANCH;                                  \
       return;                                                   \
   }
 
 #define CHECK_FPU_ENABLED                                       \
   if (ctx->flags & SR_FD) {                                     \
+      tcg_gen_movi_i32(cpu_pc, ctx->pc);                        \
       if (ctx->flags & (DELAY_SLOT | DELAY_SLOT_CONDITIONAL)) { \
-          gen_helper_raise_slot_fpu_disable();                  \
+          gen_helper_raise_slot_fpu_disable(cpu_env);           \
       } else {                                                  \
-          gen_helper_raise_fpu_disable();                       \
+          gen_helper_raise_fpu_disable(cpu_env);                \
       }                                                         \
-      ctx->bstate = BS_EXCP;                                    \
+      ctx->bstate = BS_BRANCH;                                  \
       return;                                                   \
   }
 
@@ -521,7 +398,7 @@ static void _decode_opc(DisasContext * ctx)
 	  if (opcode != 0x0093 /* ocbi */
 	      && opcode != 0x00c3 /* movca.l */)
 	      {
-		  gen_helper_discard_movcal_backup ();
+                  gen_helper_discard_movcal_backup(cpu_env);
 		  ctx->has_movcal = 0;
 	      }
 	}
@@ -548,11 +425,11 @@ static void _decode_opc(DisasContext * ctx)
 	tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_S);
 	return;
     case 0x0008:		/* clrt */
-	gen_clr_t();
+        tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
 	return;
     case 0x0038:		/* ldtlb */
 	CHECK_PRIVILEGED
-	gen_helper_ldtlb();
+        gen_helper_ldtlb(cpu_env);
 	return;
     case 0x002b:		/* rte */
 	CHECK_PRIVILEGED
@@ -566,21 +443,22 @@ static void _decode_opc(DisasContext * ctx)
 	tcg_gen_ori_i32(cpu_sr, cpu_sr, SR_S);
 	return;
     case 0x0018:		/* sett */
-	gen_set_t();
+        tcg_gen_ori_i32(cpu_sr, cpu_sr, SR_T);
 	return;
     case 0xfbfd:		/* frchg */
 	tcg_gen_xori_i32(cpu_fpscr, cpu_fpscr, FPSCR_FR);
 	ctx->bstate = BS_STOP;
 	return;
     case 0xf3fd:		/* fschg */
-	tcg_gen_xori_i32(cpu_fpscr, cpu_fpscr, FPSCR_SZ);
+        tcg_gen_xori_i32(cpu_fpscr, cpu_fpscr, FPSCR_SZ);
 	ctx->bstate = BS_STOP;
 	return;
     case 0x0009:		/* nop */
 	return;
     case 0x001b:		/* sleep */
 	CHECK_PRIVILEGED
-	gen_helper_sleep(tcg_const_i32(ctx->pc + 2));
+        tcg_gen_movi_i32(cpu_pc, ctx->pc + 2);
+        gen_helper_sleep(cpu_env);
 	return;
     }
 
@@ -589,7 +467,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, REG(B11_8), B3_0 * 4);
-	    tcg_gen_qemu_st32(REG(B7_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_TEUL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -597,7 +475,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, REG(B7_4), B3_0 * 4);
-	    tcg_gen_qemu_ld32s(REG(B11_8), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -607,14 +485,14 @@ static void _decode_opc(DisasContext * ctx)
     case 0x9000:		/* mov.w @(disp,PC),Rn */
 	{
 	    TCGv addr = tcg_const_i32(ctx->pc + 4 + B7_0 * 2);
-	    tcg_gen_qemu_ld16s(REG(B11_8), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESW);
 	    tcg_temp_free(addr);
 	}
 	return;
     case 0xd000:		/* mov.l @(disp,PC),Rn */
 	{
 	    TCGv addr = tcg_const_i32((ctx->pc + 4 + B7_0 * 4) & ~3);
-	    tcg_gen_qemu_ld32s(REG(B11_8), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -641,28 +519,29 @@ static void _decode_opc(DisasContext * ctx)
 	tcg_gen_mov_i32(REG(B11_8), REG(B7_4));
 	return;
     case 0x2000:		/* mov.b Rm,@Rn */
-	tcg_gen_qemu_st8(REG(B7_4), REG(B11_8), ctx->memidx);
+        tcg_gen_qemu_st_i32(REG(B7_4), REG(B11_8), ctx->memidx, MO_UB);
 	return;
     case 0x2001:		/* mov.w Rm,@Rn */
-	tcg_gen_qemu_st16(REG(B7_4), REG(B11_8), ctx->memidx);
+        tcg_gen_qemu_st_i32(REG(B7_4), REG(B11_8), ctx->memidx, MO_TEUW);
 	return;
     case 0x2002:		/* mov.l Rm,@Rn */
-	tcg_gen_qemu_st32(REG(B7_4), REG(B11_8), ctx->memidx);
+        tcg_gen_qemu_st_i32(REG(B7_4), REG(B11_8), ctx->memidx, MO_TEUL);
 	return;
     case 0x6000:		/* mov.b @Rm,Rn */
-	tcg_gen_qemu_ld8s(REG(B11_8), REG(B7_4), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(B11_8), REG(B7_4), ctx->memidx, MO_SB);
 	return;
     case 0x6001:		/* mov.w @Rm,Rn */
-	tcg_gen_qemu_ld16s(REG(B11_8), REG(B7_4), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(B11_8), REG(B7_4), ctx->memidx, MO_TESW);
 	return;
     case 0x6002:		/* mov.l @Rm,Rn */
-	tcg_gen_qemu_ld32s(REG(B11_8), REG(B7_4), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(B11_8), REG(B7_4), ctx->memidx, MO_TESL);
 	return;
     case 0x2004:		/* mov.b Rm,@-Rn */
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 1);
-	    tcg_gen_qemu_st8(REG(B7_4), addr, ctx->memidx);	/* might cause re-execution */
+            /* might cause re-execution */
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_UB);
 	    tcg_gen_mov_i32(REG(B11_8), addr);			/* modify register status */
 	    tcg_temp_free(addr);
 	}
@@ -671,7 +550,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 2);
-	    tcg_gen_qemu_st16(REG(B7_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_TEUW);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	    tcg_temp_free(addr);
 	}
@@ -680,22 +559,22 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(REG(B7_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	}
 	return;
     case 0x6004:		/* mov.b @Rm+,Rn */
-	tcg_gen_qemu_ld8s(REG(B11_8), REG(B7_4), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(B11_8), REG(B7_4), ctx->memidx, MO_SB);
 	if ( B11_8 != B7_4 )
 		tcg_gen_addi_i32(REG(B7_4), REG(B7_4), 1);
 	return;
     case 0x6005:		/* mov.w @Rm+,Rn */
-	tcg_gen_qemu_ld16s(REG(B11_8), REG(B7_4), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(B11_8), REG(B7_4), ctx->memidx, MO_TESW);
 	if ( B11_8 != B7_4 )
 		tcg_gen_addi_i32(REG(B7_4), REG(B7_4), 2);
 	return;
     case 0x6006:		/* mov.l @Rm+,Rn */
-	tcg_gen_qemu_ld32s(REG(B11_8), REG(B7_4), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(B11_8), REG(B7_4), ctx->memidx, MO_TESL);
 	if ( B11_8 != B7_4 )
 		tcg_gen_addi_i32(REG(B7_4), REG(B7_4), 4);
 	return;
@@ -703,7 +582,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B11_8), REG(0));
-	    tcg_gen_qemu_st8(REG(B7_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -711,7 +590,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B11_8), REG(0));
-	    tcg_gen_qemu_st16(REG(B7_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_TEUW);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -719,7 +598,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B11_8), REG(0));
-	    tcg_gen_qemu_st32(REG(B7_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_TEUL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -727,7 +606,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B7_4), REG(0));
-	    tcg_gen_qemu_ld8s(REG(B11_8), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_SB);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -735,7 +614,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B7_4), REG(0));
-	    tcg_gen_qemu_ld16s(REG(B11_8), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESW);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -743,7 +622,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B7_4), REG(0));
-	    tcg_gen_qemu_ld32s(REG(B11_8), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -761,17 +640,7 @@ static void _decode_opc(DisasContext * ctx)
 	}
 	return;
     case 0x6009:		/* swap.w Rm,Rn */
-	{
-	    TCGv high, low;
-	    high = tcg_temp_new();
-	    tcg_gen_shli_i32(high, REG(B7_4), 16);
-	    low = tcg_temp_new();
-	    tcg_gen_shri_i32(low, REG(B7_4), 16);
-	    tcg_gen_ext16u_i32(low, low);
-	    tcg_gen_or_i32(REG(B11_8), high, low);
-	    tcg_temp_free(low);
-	    tcg_temp_free(high);
-	}
+        tcg_gen_rotli_i32(REG(B11_8), REG(B7_4), 16);
 	return;
     case 0x200d:		/* xtrct Rm,Rn */
 	{
@@ -780,7 +649,6 @@ static void _decode_opc(DisasContext * ctx)
 	    tcg_gen_shli_i32(high, REG(B7_4), 16);
 	    low = tcg_temp_new();
 	    tcg_gen_shri_i32(low, REG(B11_8), 16);
-	    tcg_gen_ext16u_i32(low, low);
 	    tcg_gen_or_i32(REG(B11_8), high, low);
 	    tcg_temp_free(low);
 	    tcg_temp_free(high);
@@ -790,10 +658,43 @@ static void _decode_opc(DisasContext * ctx)
 	tcg_gen_add_i32(REG(B11_8), REG(B11_8), REG(B7_4));
 	return;
     case 0x300e:		/* addc Rm,Rn */
-	gen_helper_addc(REG(B11_8), REG(B7_4), REG(B11_8));
+        {
+            TCGv t0, t1, t2;
+            t0 = tcg_temp_new();
+            tcg_gen_andi_i32(t0, cpu_sr, SR_T);
+            t1 = tcg_temp_new();
+            tcg_gen_add_i32(t1, REG(B7_4), REG(B11_8));
+            tcg_gen_add_i32(t0, t0, t1);
+            t2 = tcg_temp_new();
+            tcg_gen_setcond_i32(TCG_COND_GTU, t2, REG(B11_8), t1);
+            tcg_gen_setcond_i32(TCG_COND_GTU, t1, t1, t0);
+            tcg_gen_or_i32(t1, t1, t2);
+            tcg_temp_free(t2);
+            tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
+            tcg_gen_or_i32(cpu_sr, cpu_sr, t1);
+            tcg_temp_free(t1);
+            tcg_gen_mov_i32(REG(B11_8), t0);
+            tcg_temp_free(t0);
+        }
 	return;
     case 0x300f:		/* addv Rm,Rn */
-	gen_helper_addv(REG(B11_8), REG(B7_4), REG(B11_8));
+        {
+            TCGv t0, t1, t2;
+            t0 = tcg_temp_new();
+            tcg_gen_add_i32(t0, REG(B7_4), REG(B11_8));
+            t1 = tcg_temp_new();
+            tcg_gen_xor_i32(t1, t0, REG(B11_8));
+            t2 = tcg_temp_new();
+            tcg_gen_xor_i32(t2, REG(B7_4), REG(B11_8));
+            tcg_gen_andc_i32(t1, t1, t2);
+            tcg_temp_free(t2);
+            tcg_gen_shri_i32(t1, t1, 31);
+            tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
+            tcg_gen_or_i32(cpu_sr, cpu_sr, t1);
+            tcg_temp_free(t1);
+            tcg_gen_mov_i32(REG(B7_4), t0);
+            tcg_temp_free(t0);
+        }
 	return;
     case 0x2009:		/* and Rm,Rn */
 	tcg_gen_and_i32(REG(B11_8), REG(B11_8), REG(B7_4));
@@ -846,39 +747,13 @@ static void _decode_opc(DisasContext * ctx)
 	}
 	return;
     case 0x3004:		/* div1 Rm,Rn */
-	gen_helper_div1(REG(B11_8), REG(B7_4), REG(B11_8));
+        gen_helper_div1(REG(B11_8), cpu_env, REG(B7_4), REG(B11_8));
 	return;
     case 0x300d:		/* dmuls.l Rm,Rn */
-	{
-	    TCGv_i64 tmp1 = tcg_temp_new_i64();
-	    TCGv_i64 tmp2 = tcg_temp_new_i64();
-
-	    tcg_gen_ext_i32_i64(tmp1, REG(B7_4));
-	    tcg_gen_ext_i32_i64(tmp2, REG(B11_8));
-	    tcg_gen_mul_i64(tmp1, tmp1, tmp2);
-	    tcg_gen_trunc_i64_i32(cpu_macl, tmp1);
-	    tcg_gen_shri_i64(tmp1, tmp1, 32);
-	    tcg_gen_trunc_i64_i32(cpu_mach, tmp1);
-
-	    tcg_temp_free_i64(tmp2);
-	    tcg_temp_free_i64(tmp1);
-	}
+        tcg_gen_muls2_i32(cpu_macl, cpu_mach, REG(B7_4), REG(B11_8));
 	return;
     case 0x3005:		/* dmulu.l Rm,Rn */
-	{
-	    TCGv_i64 tmp1 = tcg_temp_new_i64();
-	    TCGv_i64 tmp2 = tcg_temp_new_i64();
-
-	    tcg_gen_extu_i32_i64(tmp1, REG(B7_4));
-	    tcg_gen_extu_i32_i64(tmp2, REG(B11_8));
-	    tcg_gen_mul_i64(tmp1, tmp1, tmp2);
-	    tcg_gen_trunc_i64_i32(cpu_macl, tmp1);
-	    tcg_gen_shri_i64(tmp1, tmp1, 32);
-	    tcg_gen_trunc_i64_i32(cpu_mach, tmp1);
-
-	    tcg_temp_free_i64(tmp2);
-	    tcg_temp_free_i64(tmp1);
-	}
+        tcg_gen_mulu2_i32(cpu_macl, cpu_mach, REG(B7_4), REG(B11_8));
 	return;
     case 0x600e:		/* exts.b Rm,Rn */
 	tcg_gen_ext8s_i32(REG(B11_8), REG(B7_4));
@@ -896,10 +771,10 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv arg0, arg1;
 	    arg0 = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(arg0, REG(B7_4), ctx->memidx);
+            tcg_gen_qemu_ld_i32(arg0, REG(B7_4), ctx->memidx, MO_TESL);
 	    arg1 = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(arg1, REG(B11_8), ctx->memidx);
-	    gen_helper_macl(arg0, arg1);
+            tcg_gen_qemu_ld_i32(arg1, REG(B11_8), ctx->memidx, MO_TESL);
+            gen_helper_macl(cpu_env, arg0, arg1);
 	    tcg_temp_free(arg1);
 	    tcg_temp_free(arg0);
 	    tcg_gen_addi_i32(REG(B7_4), REG(B7_4), 4);
@@ -910,10 +785,10 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv arg0, arg1;
 	    arg0 = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(arg0, REG(B7_4), ctx->memidx);
+            tcg_gen_qemu_ld_i32(arg0, REG(B7_4), ctx->memidx, MO_TESL);
 	    arg1 = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(arg1, REG(B11_8), ctx->memidx);
-	    gen_helper_macw(arg0, arg1);
+            tcg_gen_qemu_ld_i32(arg1, REG(B11_8), ctx->memidx, MO_TESL);
+            gen_helper_macw(cpu_env, arg0, arg1);
 	    tcg_temp_free(arg1);
 	    tcg_temp_free(arg0);
 	    tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 2);
@@ -1042,10 +917,43 @@ static void _decode_opc(DisasContext * ctx)
 	tcg_gen_sub_i32(REG(B11_8), REG(B11_8), REG(B7_4));
 	return;
     case 0x300a:		/* subc Rm,Rn */
-	gen_helper_subc(REG(B11_8), REG(B7_4), REG(B11_8));
+        {
+            TCGv t0, t1, t2;
+            t0 = tcg_temp_new();
+            tcg_gen_andi_i32(t0, cpu_sr, SR_T);
+            t1 = tcg_temp_new();
+            tcg_gen_sub_i32(t1, REG(B11_8), REG(B7_4));
+            tcg_gen_sub_i32(t0, t1, t0);
+            t2 = tcg_temp_new();
+            tcg_gen_setcond_i32(TCG_COND_LTU, t2, REG(B11_8), t1);
+            tcg_gen_setcond_i32(TCG_COND_LTU, t1, t1, t0);
+            tcg_gen_or_i32(t1, t1, t2);
+            tcg_temp_free(t2);
+            tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
+            tcg_gen_or_i32(cpu_sr, cpu_sr, t1);
+            tcg_temp_free(t1);
+            tcg_gen_mov_i32(REG(B11_8), t0);
+            tcg_temp_free(t0);
+        }
 	return;
     case 0x300b:		/* subv Rm,Rn */
-	gen_helper_subv(REG(B11_8), REG(B7_4), REG(B11_8));
+        {
+            TCGv t0, t1, t2;
+            t0 = tcg_temp_new();
+            tcg_gen_sub_i32(t0, REG(B11_8), REG(B7_4));
+            t1 = tcg_temp_new();
+            tcg_gen_xor_i32(t1, t0, REG(B7_4));
+            t2 = tcg_temp_new();
+            tcg_gen_xor_i32(t2, REG(B11_8), REG(B7_4));
+            tcg_gen_and_i32(t1, t1, t2);
+            tcg_temp_free(t2);
+            tcg_gen_shri_i32(t1, t1, 31);
+            tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
+            tcg_gen_or_i32(cpu_sr, cpu_sr, t1);
+            tcg_temp_free(t1);
+            tcg_gen_mov_i32(REG(B11_8), t0);
+            tcg_temp_free(t0);
+        }
 	return;
     case 0x2008:		/* tst Rm,Rn */
 	{
@@ -1060,7 +968,7 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0xf00c: /* fmov {F,D,X}Rm,{F,D,X}Rn - FPSCR: Nothing */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_SZ) {
+        if (ctx->flags & FPSCR_SZ) {
 	    TCGv_i64 fp = tcg_temp_new_i64();
 	    gen_load_fpr64(fp, XREG(B7_4));
 	    gen_store_fpr64(fp, XREG(B11_8));
@@ -1071,61 +979,67 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0xf00a: /* fmov {F,D,X}Rm,@Rn - FPSCR: Nothing */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_SZ) {
+        if (ctx->flags & FPSCR_SZ) {
 	    TCGv addr_hi = tcg_temp_new();
 	    int fr = XREG(B7_4);
 	    tcg_gen_addi_i32(addr_hi, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(cpu_fregs[fr  ], REG(B11_8), ctx->memidx);
-	    tcg_gen_qemu_st32(cpu_fregs[fr+1], addr_hi,	   ctx->memidx);
+            tcg_gen_qemu_st_i32(cpu_fregs[fr], REG(B11_8),
+                                ctx->memidx, MO_TEUL);
+            tcg_gen_qemu_st_i32(cpu_fregs[fr+1], addr_hi,
+                                ctx->memidx, MO_TEUL);
 	    tcg_temp_free(addr_hi);
 	} else {
-	    tcg_gen_qemu_st32(cpu_fregs[FREG(B7_4)], REG(B11_8), ctx->memidx);
+            tcg_gen_qemu_st_i32(cpu_fregs[FREG(B7_4)], REG(B11_8),
+                                ctx->memidx, MO_TEUL);
 	}
 	return;
     case 0xf008: /* fmov @Rm,{F,D,X}Rn - FPSCR: Nothing */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_SZ) {
+        if (ctx->flags & FPSCR_SZ) {
 	    TCGv addr_hi = tcg_temp_new();
 	    int fr = XREG(B11_8);
 	    tcg_gen_addi_i32(addr_hi, REG(B7_4), 4);
-	    tcg_gen_qemu_ld32u(cpu_fregs[fr  ], REG(B7_4), ctx->memidx);
-	    tcg_gen_qemu_ld32u(cpu_fregs[fr+1], addr_hi,   ctx->memidx);
+            tcg_gen_qemu_ld_i32(cpu_fregs[fr], REG(B7_4), ctx->memidx, MO_TEUL);
+            tcg_gen_qemu_ld_i32(cpu_fregs[fr+1], addr_hi, ctx->memidx, MO_TEUL);
 	    tcg_temp_free(addr_hi);
 	} else {
-	    tcg_gen_qemu_ld32u(cpu_fregs[FREG(B11_8)], REG(B7_4), ctx->memidx);
+            tcg_gen_qemu_ld_i32(cpu_fregs[FREG(B11_8)], REG(B7_4),
+                                ctx->memidx, MO_TEUL);
 	}
 	return;
     case 0xf009: /* fmov @Rm+,{F,D,X}Rn - FPSCR: Nothing */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_SZ) {
+        if (ctx->flags & FPSCR_SZ) {
 	    TCGv addr_hi = tcg_temp_new();
 	    int fr = XREG(B11_8);
 	    tcg_gen_addi_i32(addr_hi, REG(B7_4), 4);
-	    tcg_gen_qemu_ld32u(cpu_fregs[fr  ], REG(B7_4), ctx->memidx);
-	    tcg_gen_qemu_ld32u(cpu_fregs[fr+1], addr_hi,   ctx->memidx);
+            tcg_gen_qemu_ld_i32(cpu_fregs[fr], REG(B7_4), ctx->memidx, MO_TEUL);
+            tcg_gen_qemu_ld_i32(cpu_fregs[fr+1], addr_hi, ctx->memidx, MO_TEUL);
 	    tcg_gen_addi_i32(REG(B7_4), REG(B7_4), 8);
 	    tcg_temp_free(addr_hi);
 	} else {
-	    tcg_gen_qemu_ld32u(cpu_fregs[FREG(B11_8)], REG(B7_4), ctx->memidx);
+            tcg_gen_qemu_ld_i32(cpu_fregs[FREG(B11_8)], REG(B7_4),
+                                ctx->memidx, MO_TEUL);
 	    tcg_gen_addi_i32(REG(B7_4), REG(B7_4), 4);
 	}
 	return;
     case 0xf00b: /* fmov {F,D,X}Rm,@-Rn - FPSCR: Nothing */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_SZ) {
+        if (ctx->flags & FPSCR_SZ) {
 	    TCGv addr = tcg_temp_new_i32();
 	    int fr = XREG(B7_4);
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(cpu_fregs[fr+1], addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(cpu_fregs[fr+1], addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_subi_i32(addr, addr, 4);
-	    tcg_gen_qemu_st32(cpu_fregs[fr  ], addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(cpu_fregs[fr], addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	    tcg_temp_free(addr);
 	} else {
 	    TCGv addr;
 	    addr = tcg_temp_new_i32();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(cpu_fregs[FREG(B7_4)], addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(cpu_fregs[FREG(B7_4)], addr,
+                                ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	    tcg_temp_free(addr);
 	}
@@ -1135,13 +1049,16 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new_i32();
 	    tcg_gen_add_i32(addr, REG(B7_4), REG(0));
-	    if (ctx->fpscr & FPSCR_SZ) {
+            if (ctx->flags & FPSCR_SZ) {
 		int fr = XREG(B11_8);
-		tcg_gen_qemu_ld32u(cpu_fregs[fr	 ], addr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(cpu_fregs[fr], addr,
+                                    ctx->memidx, MO_TEUL);
 		tcg_gen_addi_i32(addr, addr, 4);
-		tcg_gen_qemu_ld32u(cpu_fregs[fr+1], addr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(cpu_fregs[fr+1], addr,
+                                    ctx->memidx, MO_TEUL);
 	    } else {
-		tcg_gen_qemu_ld32u(cpu_fregs[FREG(B11_8)], addr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(cpu_fregs[FREG(B11_8)], addr,
+                                    ctx->memidx, MO_TEUL);
 	    }
 	    tcg_temp_free(addr);
 	}
@@ -1151,13 +1068,16 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(B11_8), REG(0));
-	    if (ctx->fpscr & FPSCR_SZ) {
+            if (ctx->flags & FPSCR_SZ) {
 		int fr = XREG(B7_4);
-		tcg_gen_qemu_ld32u(cpu_fregs[fr	 ], addr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(cpu_fregs[fr], addr,
+                                    ctx->memidx, MO_TEUL);
 		tcg_gen_addi_i32(addr, addr, 4);
-		tcg_gen_qemu_ld32u(cpu_fregs[fr+1], addr, ctx->memidx);
+                tcg_gen_qemu_ld_i32(cpu_fregs[fr+1], addr,
+                                    ctx->memidx, MO_TEUL);
 	    } else {
-		tcg_gen_qemu_st32(cpu_fregs[FREG(B7_4)], addr, ctx->memidx);
+                tcg_gen_qemu_st_i32(cpu_fregs[FREG(B7_4)], addr,
+                                    ctx->memidx, MO_TEUL);
 	    }
 	    tcg_temp_free(addr);
 	}
@@ -1170,7 +1090,7 @@ static void _decode_opc(DisasContext * ctx)
     case 0xf005: /* fcmp/gt Rm,Rn - FPSCR: R[PR,Enable.V]/W[Cause,Flag] */
 	{
 	    CHECK_FPU_ENABLED
-	    if (ctx->fpscr & FPSCR_PR) {
+            if (ctx->flags & FPSCR_PR) {
                 TCGv_i64 fp0, fp1;
 
 		if (ctx->opcode & 0x0110)
@@ -1181,22 +1101,22 @@ static void _decode_opc(DisasContext * ctx)
 		gen_load_fpr64(fp1, DREG(B7_4));
                 switch (ctx->opcode & 0xf00f) {
                 case 0xf000:		/* fadd Rm,Rn */
-                    gen_helper_fadd_DT(fp0, fp0, fp1);
+                    gen_helper_fadd_DT(fp0, cpu_env, fp0, fp1);
                     break;
                 case 0xf001:		/* fsub Rm,Rn */
-                    gen_helper_fsub_DT(fp0, fp0, fp1);
+                    gen_helper_fsub_DT(fp0, cpu_env, fp0, fp1);
                     break;
                 case 0xf002:		/* fmul Rm,Rn */
-                    gen_helper_fmul_DT(fp0, fp0, fp1);
+                    gen_helper_fmul_DT(fp0, cpu_env, fp0, fp1);
                     break;
                 case 0xf003:		/* fdiv Rm,Rn */
-                    gen_helper_fdiv_DT(fp0, fp0, fp1);
+                    gen_helper_fdiv_DT(fp0, cpu_env, fp0, fp1);
                     break;
                 case 0xf004:		/* fcmp/eq Rm,Rn */
-                    gen_helper_fcmp_eq_DT(fp0, fp1);
+                    gen_helper_fcmp_eq_DT(cpu_env, fp0, fp1);
                     return;
                 case 0xf005:		/* fcmp/gt Rm,Rn */
-                    gen_helper_fcmp_gt_DT(fp0, fp1);
+                    gen_helper_fcmp_gt_DT(cpu_env, fp0, fp1);
                     return;
                 }
 		gen_store_fpr64(fp0, DREG(B11_8));
@@ -1205,22 +1125,32 @@ static void _decode_opc(DisasContext * ctx)
 	    } else {
                 switch (ctx->opcode & 0xf00f) {
                 case 0xf000:		/* fadd Rm,Rn */
-                    gen_helper_fadd_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B7_4)]);
+                    gen_helper_fadd_FT(cpu_fregs[FREG(B11_8)], cpu_env,
+                                       cpu_fregs[FREG(B11_8)],
+                                       cpu_fregs[FREG(B7_4)]);
                     break;
                 case 0xf001:		/* fsub Rm,Rn */
-                    gen_helper_fsub_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B7_4)]);
+                    gen_helper_fsub_FT(cpu_fregs[FREG(B11_8)], cpu_env,
+                                       cpu_fregs[FREG(B11_8)],
+                                       cpu_fregs[FREG(B7_4)]);
                     break;
                 case 0xf002:		/* fmul Rm,Rn */
-                    gen_helper_fmul_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B7_4)]);
+                    gen_helper_fmul_FT(cpu_fregs[FREG(B11_8)], cpu_env,
+                                       cpu_fregs[FREG(B11_8)],
+                                       cpu_fregs[FREG(B7_4)]);
                     break;
                 case 0xf003:		/* fdiv Rm,Rn */
-                    gen_helper_fdiv_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B7_4)]);
+                    gen_helper_fdiv_FT(cpu_fregs[FREG(B11_8)], cpu_env,
+                                       cpu_fregs[FREG(B11_8)],
+                                       cpu_fregs[FREG(B7_4)]);
                     break;
                 case 0xf004:		/* fcmp/eq Rm,Rn */
-                    gen_helper_fcmp_eq_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B7_4)]);
+                    gen_helper_fcmp_eq_FT(cpu_env, cpu_fregs[FREG(B11_8)],
+                                          cpu_fregs[FREG(B7_4)]);
                     return;
                 case 0xf005:		/* fcmp/gt Rm,Rn */
-                    gen_helper_fcmp_gt_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B7_4)]);
+                    gen_helper_fcmp_gt_FT(cpu_env, cpu_fregs[FREG(B11_8)],
+                                          cpu_fregs[FREG(B7_4)]);
                     return;
                 }
 	    }
@@ -1229,11 +1159,12 @@ static void _decode_opc(DisasContext * ctx)
     case 0xf00e: /* fmac FR0,RM,Rn */
         {
             CHECK_FPU_ENABLED
-            if (ctx->fpscr & FPSCR_PR) {
+            if (ctx->flags & FPSCR_PR) {
                 break; /* illegal instruction */
             } else {
-                gen_helper_fmac_FT(cpu_fregs[FREG(B11_8)],
-                                   cpu_fregs[FREG(0)], cpu_fregs[FREG(B7_4)], cpu_fregs[FREG(B11_8)]);
+                gen_helper_fmac_FT(cpu_fregs[FREG(B11_8)], cpu_env,
+                                   cpu_fregs[FREG(0)], cpu_fregs[FREG(B7_4)],
+                                   cpu_fregs[FREG(B11_8)]);
                 return;
             }
         }
@@ -1249,9 +1180,9 @@ static void _decode_opc(DisasContext * ctx)
 	    addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(0), cpu_gbr);
 	    val = tcg_temp_new();
-	    tcg_gen_qemu_ld8u(val, addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_gen_andi_i32(val, val, B7_0);
-	    tcg_gen_qemu_st8(val, addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(val);
 	    tcg_temp_free(addr);
 	}
@@ -1285,7 +1216,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, cpu_gbr, B7_0);
-	    tcg_gen_qemu_ld8s(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(0), addr, ctx->memidx, MO_SB);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1293,7 +1224,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, cpu_gbr, B7_0 * 2);
-	    tcg_gen_qemu_ld16s(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(0), addr, ctx->memidx, MO_TESW);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1301,7 +1232,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, cpu_gbr, B7_0 * 4);
-	    tcg_gen_qemu_ld32s(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(0), addr, ctx->memidx, MO_TESL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1309,7 +1240,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, cpu_gbr, B7_0);
-	    tcg_gen_qemu_st8(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(0), addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1317,7 +1248,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, cpu_gbr, B7_0 * 2);
-	    tcg_gen_qemu_st16(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(0), addr, ctx->memidx, MO_TEUW);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1325,7 +1256,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, cpu_gbr, B7_0 * 4);
-	    tcg_gen_qemu_st32(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(0), addr, ctx->memidx, MO_TEUL);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1333,7 +1264,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, REG(B7_4), B3_0);
-	    tcg_gen_qemu_st8(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(0), addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1341,7 +1272,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, REG(B7_4), B3_0 * 2);
-	    tcg_gen_qemu_st16(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(0), addr, ctx->memidx, MO_TEUW);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1349,7 +1280,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, REG(B7_4), B3_0);
-	    tcg_gen_qemu_ld8s(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(0), addr, ctx->memidx, MO_SB);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1357,7 +1288,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_addi_i32(addr, REG(B7_4), B3_0 * 2);
-	    tcg_gen_qemu_ld16s(REG(0), addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(0), addr, ctx->memidx, MO_TESW);
 	    tcg_temp_free(addr);
 	}
 	return;
@@ -1373,9 +1304,9 @@ static void _decode_opc(DisasContext * ctx)
 	    addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(0), cpu_gbr);
 	    val = tcg_temp_new();
-	    tcg_gen_qemu_ld8u(val, addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_gen_ori_i32(val, val, B7_0);
-	    tcg_gen_qemu_st8(val, addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(val);
 	    tcg_temp_free(addr);
 	}
@@ -1384,8 +1315,9 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv imm;
 	    CHECK_NOT_DELAY_SLOT
+            tcg_gen_movi_i32(cpu_pc, ctx->pc);
 	    imm = tcg_const_i32(B7_0);
-	    gen_helper_trapa(imm);
+            gen_helper_trapa(cpu_env, imm);
 	    tcg_temp_free(imm);
 	    ctx->bstate = BS_BRANCH;
 	}
@@ -1402,7 +1334,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv val = tcg_temp_new();
 	    tcg_gen_add_i32(val, REG(0), cpu_gbr);
-	    tcg_gen_qemu_ld8u(val, val, ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, val, ctx->memidx, MO_UB);
 	    tcg_gen_andi_i32(val, val, B7_0);
 	    gen_cmp_imm(TCG_COND_EQ, val, 0);
 	    tcg_temp_free(val);
@@ -1417,9 +1349,9 @@ static void _decode_opc(DisasContext * ctx)
 	    addr = tcg_temp_new();
 	    tcg_gen_add_i32(addr, REG(0), cpu_gbr);
 	    val = tcg_temp_new();
-	    tcg_gen_qemu_ld8u(val, addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_gen_xori_i32(val, val, B7_0);
-	    tcg_gen_qemu_st8(val, addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(val);
 	    tcg_temp_free(addr);
 	}
@@ -1433,7 +1365,7 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0x4087:		/* ldc.l @Rm+,Rn_BANK */
 	CHECK_PRIVILEGED
-	tcg_gen_qemu_ld32s(ALTREG(B6_4), REG(B11_8), ctx->memidx);
+        tcg_gen_qemu_ld_i32(ALTREG(B6_4), REG(B11_8), ctx->memidx, MO_TESL);
 	tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);
 	return;
     case 0x0082:		/* stc Rm_BANK,Rn */
@@ -1445,7 +1377,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(ALTREG(B6_4), addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(ALTREG(B6_4), addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	    tcg_temp_free(addr);
 	}
@@ -1498,7 +1430,7 @@ static void _decode_opc(DisasContext * ctx)
 	CHECK_PRIVILEGED
 	{
 	    TCGv val = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(val, REG(B11_8), ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, REG(B11_8), ctx->memidx, MO_TESL);
 	    tcg_gen_andi_i32(cpu_sr, val, 0x700083f3);
 	    tcg_temp_free(val);
 	    tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);
@@ -1514,7 +1446,7 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv addr = tcg_temp_new();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(cpu_sr, addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(cpu_sr, addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	    tcg_temp_free(addr);
 	}
@@ -1526,7 +1458,7 @@ static void _decode_opc(DisasContext * ctx)
     return;							\
   case ldpnum:							\
     prechk    							\
-    tcg_gen_qemu_ld32s (cpu_##reg, REG(B11_8), ctx->memidx);	\
+    tcg_gen_qemu_ld_i32(cpu_##reg, REG(B11_8), ctx->memidx, MO_TESL); \
     tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);		\
     return;
 #define ST(reg,stnum,stpnum,prechk)		\
@@ -1539,7 +1471,7 @@ static void _decode_opc(DisasContext * ctx)
     {								\
 	TCGv addr = tcg_temp_new();				\
 	tcg_gen_subi_i32(addr, REG(B11_8), 4);			\
-	tcg_gen_qemu_st32 (cpu_##reg, addr, ctx->memidx);	\
+        tcg_gen_qemu_st_i32(cpu_##reg, addr, ctx->memidx, MO_TEUL); \
 	tcg_gen_mov_i32(REG(B11_8), addr);			\
 	tcg_temp_free(addr);					\
     }								\
@@ -1560,16 +1492,16 @@ static void _decode_opc(DisasContext * ctx)
 	LDST(fpul, 0x405a, 0x4056, 0x005a, 0x4052, {CHECK_FPU_ENABLED})
     case 0x406a:		/* lds Rm,FPSCR */
 	CHECK_FPU_ENABLED
-	gen_helper_ld_fpscr(REG(B11_8));
+        gen_helper_ld_fpscr(cpu_env, REG(B11_8));
 	ctx->bstate = BS_STOP;
 	return;
     case 0x4066:		/* lds.l @Rm+,FPSCR */
 	CHECK_FPU_ENABLED
 	{
 	    TCGv addr = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(addr, REG(B11_8), ctx->memidx);
+            tcg_gen_qemu_ld_i32(addr, REG(B11_8), ctx->memidx, MO_TESL);
 	    tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);
-	    gen_helper_ld_fpscr(addr);
+            gen_helper_ld_fpscr(cpu_env, addr);
 	    tcg_temp_free(addr);
 	    ctx->bstate = BS_STOP;
 	}
@@ -1586,7 +1518,7 @@ static void _decode_opc(DisasContext * ctx)
 	    tcg_gen_andi_i32(val, cpu_fpscr, 0x003fffff);
 	    addr = tcg_temp_new();
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
-	    tcg_gen_qemu_st32(val, addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(val, addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
 	    tcg_temp_free(addr);
 	    tcg_temp_free(val);
@@ -1595,21 +1527,21 @@ static void _decode_opc(DisasContext * ctx)
     case 0x00c3:		/* movca.l R0,@Rm */
         {
             TCGv val = tcg_temp_new();
-            tcg_gen_qemu_ld32u(val, REG(B11_8), ctx->memidx);
-            gen_helper_movcal (REG(B11_8), val);            
-            tcg_gen_qemu_st32(REG(0), REG(B11_8), ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, REG(B11_8), ctx->memidx, MO_TEUL);
+            gen_helper_movcal(cpu_env, REG(B11_8), val);
+            tcg_gen_qemu_st_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
         }
         ctx->has_movcal = 1;
 	return;
     case 0x40a9:
 	/* MOVUA.L @Rm,R0 (Rm) -> R0
 	   Load non-boundary-aligned data */
-	tcg_gen_qemu_ld32u(REG(0), REG(B11_8), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
 	return;
     case 0x40e9:
 	/* MOVUA.L @Rm+,R0   (Rm) -> R0, Rm + 4 -> Rm
 	   Load non-boundary-aligned data */
-	tcg_gen_qemu_ld32u(REG(0), REG(B11_8), ctx->memidx);
+        tcg_gen_qemu_ld_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
 	tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);
 	return;
     case 0x0029:		/* movt Rn */
@@ -1623,10 +1555,10 @@ static void _decode_opc(DisasContext * ctx)
         */
         if (ctx->features & SH_FEATURE_SH4A) {
 	    int label = gen_new_label();
-	    gen_clr_t();
+            tcg_gen_andi_i32(cpu_sr, cpu_sr, ~SR_T);
 	    tcg_gen_or_i32(cpu_sr, cpu_sr, cpu_ldst);
 	    tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_ldst, 0, label);
-	    tcg_gen_qemu_st32(REG(0), REG(B11_8), ctx->memidx);
+            tcg_gen_qemu_st_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
 	    gen_set_label(label);
 	    tcg_gen_movi_i32(cpu_ldst, 0);
 	    return;
@@ -1641,29 +1573,21 @@ static void _decode_opc(DisasContext * ctx)
         */
 	if (ctx->features & SH_FEATURE_SH4A) {
 	    tcg_gen_movi_i32(cpu_ldst, 0);
-	    tcg_gen_qemu_ld32s(REG(0), REG(B11_8), ctx->memidx);
+            tcg_gen_qemu_ld_i32(REG(0), REG(B11_8), ctx->memidx, MO_TESL);
 	    tcg_gen_movi_i32(cpu_ldst, 1);
 	    return;
 	} else
 	    break;
     case 0x0093:		/* ocbi @Rn */
 	{
-	    gen_helper_ocbi (REG(B11_8));
+            gen_helper_ocbi(cpu_env, REG(B11_8));
 	}
 	return;
     case 0x00a3:		/* ocbp @Rn */
-	{
-	    TCGv dummy = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(dummy, REG(B11_8), ctx->memidx);
-	    tcg_temp_free(dummy);
-	}
-	return;
     case 0x00b3:		/* ocbwb @Rn */
-	{
-	    TCGv dummy = tcg_temp_new();
-	    tcg_gen_qemu_ld32s(dummy, REG(B11_8), ctx->memidx);
-	    tcg_temp_free(dummy);
-	}
+        /* These instructions are supposed to do nothing in case of
+           a cache miss. Given that we only partially emulate caches
+           it is safe to simply ignore them. */
 	return;
     case 0x0083:		/* pref @Rn */
 	return;
@@ -1747,10 +1671,10 @@ static void _decode_opc(DisasContext * ctx)
 	    addr = tcg_temp_local_new();
 	    tcg_gen_mov_i32(addr, REG(B11_8));
 	    val = tcg_temp_local_new();
-	    tcg_gen_qemu_ld8u(val, addr, ctx->memidx);
+            tcg_gen_qemu_ld_i32(val, addr, ctx->memidx, MO_UB);
 	    gen_cmp_imm(TCG_COND_EQ, val, 0);
 	    tcg_gen_ori_i32(val, val, 0x80);
-	    tcg_gen_qemu_st8(val, addr, ctx->memidx);
+            tcg_gen_qemu_st_i32(val, addr, ctx->memidx, MO_UB);
 	    tcg_temp_free(val);
 	    tcg_temp_free(addr);
 	}
@@ -1765,32 +1689,32 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0xf02d: /* float FPUL,FRn/DRn - FPSCR: R[PR,Enable.I]/W[Cause,Flag] */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_PR) {
+        if (ctx->flags & FPSCR_PR) {
 	    TCGv_i64 fp;
 	    if (ctx->opcode & 0x0100)
 		break; /* illegal instruction */
 	    fp = tcg_temp_new_i64();
-	    gen_helper_float_DT(fp, cpu_fpul);
+            gen_helper_float_DT(fp, cpu_env, cpu_fpul);
 	    gen_store_fpr64(fp, DREG(B11_8));
 	    tcg_temp_free_i64(fp);
 	}
 	else {
-	    gen_helper_float_FT(cpu_fregs[FREG(B11_8)], cpu_fpul);
+            gen_helper_float_FT(cpu_fregs[FREG(B11_8)], cpu_env, cpu_fpul);
 	}
 	return;
     case 0xf03d: /* ftrc FRm/DRm,FPUL - FPSCR: R[PR,Enable.V]/W[Cause,Flag] */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_PR) {
+        if (ctx->flags & FPSCR_PR) {
 	    TCGv_i64 fp;
 	    if (ctx->opcode & 0x0100)
 		break; /* illegal instruction */
 	    fp = tcg_temp_new_i64();
 	    gen_load_fpr64(fp, DREG(B11_8));
-	    gen_helper_ftrc_DT(cpu_fpul, fp);
+            gen_helper_ftrc_DT(cpu_fpul, cpu_env, fp);
 	    tcg_temp_free_i64(fp);
 	}
 	else {
-	    gen_helper_ftrc_FT(cpu_fpul, cpu_fregs[FREG(B11_8)]);
+            gen_helper_ftrc_FT(cpu_fpul, cpu_env, cpu_fregs[FREG(B11_8)]);
 	}
 	return;
     case 0xf04d: /* fneg FRn/DRn - FPSCR: Nothing */
@@ -1801,7 +1725,7 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0xf05d: /* fabs FRn/DRn */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_PR) {
+        if (ctx->flags & FPSCR_PR) {
 	    if (ctx->opcode & 0x0100)
 		break; /* illegal instruction */
 	    TCGv_i64 fp = tcg_temp_new_i64();
@@ -1815,16 +1739,17 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0xf06d: /* fsqrt FRn */
 	CHECK_FPU_ENABLED
-	if (ctx->fpscr & FPSCR_PR) {
+        if (ctx->flags & FPSCR_PR) {
 	    if (ctx->opcode & 0x0100)
 		break; /* illegal instruction */
 	    TCGv_i64 fp = tcg_temp_new_i64();
 	    gen_load_fpr64(fp, DREG(B11_8));
-	    gen_helper_fsqrt_DT(fp, fp);
+            gen_helper_fsqrt_DT(fp, cpu_env, fp);
 	    gen_store_fpr64(fp, DREG(B11_8));
 	    tcg_temp_free_i64(fp);
 	} else {
-	    gen_helper_fsqrt_FT(cpu_fregs[FREG(B11_8)], cpu_fregs[FREG(B11_8)]);
+            gen_helper_fsqrt_FT(cpu_fregs[FREG(B11_8)], cpu_env,
+                                cpu_fregs[FREG(B11_8)]);
 	}
 	return;
     case 0xf07d: /* fsrra FRn */
@@ -1832,13 +1757,13 @@ static void _decode_opc(DisasContext * ctx)
 	break;
     case 0xf08d: /* fldi0 FRn - FPSCR: R[PR] */
 	CHECK_FPU_ENABLED
-	if (!(ctx->fpscr & FPSCR_PR)) {
+        if (!(ctx->flags & FPSCR_PR)) {
 	    tcg_gen_movi_i32(cpu_fregs[FREG(B11_8)], 0);
 	}
 	return;
     case 0xf09d: /* fldi1 FRn - FPSCR: R[PR] */
 	CHECK_FPU_ENABLED
-	if (!(ctx->fpscr & FPSCR_PR)) {
+        if (!(ctx->flags & FPSCR_PR)) {
 	    tcg_gen_movi_i32(cpu_fregs[FREG(B11_8)], 0x3f800000);
 	}
 	return;
@@ -1846,7 +1771,7 @@ static void _decode_opc(DisasContext * ctx)
 	CHECK_FPU_ENABLED
 	{
 	    TCGv_i64 fp = tcg_temp_new_i64();
-	    gen_helper_fcnvsd_FT_DT(fp, cpu_fpul);
+            gen_helper_fcnvsd_FT_DT(fp, cpu_env, cpu_fpul);
 	    gen_store_fpr64(fp, DREG(B11_8));
 	    tcg_temp_free_i64(fp);
 	}
@@ -1856,17 +1781,17 @@ static void _decode_opc(DisasContext * ctx)
 	{
 	    TCGv_i64 fp = tcg_temp_new_i64();
 	    gen_load_fpr64(fp, DREG(B11_8));
-	    gen_helper_fcnvds_DT_FT(cpu_fpul, fp);
+            gen_helper_fcnvds_DT_FT(cpu_fpul, cpu_env, fp);
 	    tcg_temp_free_i64(fp);
 	}
 	return;
     case 0xf0ed: /* fipr FVm,FVn */
         CHECK_FPU_ENABLED
-        if ((ctx->fpscr & FPSCR_PR) == 0) {
+        if ((ctx->flags & FPSCR_PR) == 0) {
             TCGv m, n;
             m = tcg_const_i32((ctx->opcode >> 8) & 3);
             n = tcg_const_i32((ctx->opcode >> 10) & 3);
-            gen_helper_fipr(m, n);
+            gen_helper_fipr(cpu_env, m, n);
             tcg_temp_free(m);
             tcg_temp_free(n);
             return;
@@ -1875,10 +1800,10 @@ static void _decode_opc(DisasContext * ctx)
     case 0xf0fd: /* ftrv XMTRX,FVn */
         CHECK_FPU_ENABLED
         if ((ctx->opcode & 0x0300) == 0x0100 &&
-            (ctx->fpscr & FPSCR_PR) == 0) {
+            (ctx->flags & FPSCR_PR) == 0) {
             TCGv n;
             n = tcg_const_i32((ctx->opcode >> 10) & 3);
-            gen_helper_ftrv(n);
+            gen_helper_ftrv(cpu_env, n);
             tcg_temp_free(n);
             return;
         }
@@ -1889,19 +1814,20 @@ static void _decode_opc(DisasContext * ctx)
 	    ctx->opcode, ctx->pc);
     fflush(stderr);
 #endif
+    tcg_gen_movi_i32(cpu_pc, ctx->pc);
     if (ctx->flags & (DELAY_SLOT | DELAY_SLOT_CONDITIONAL)) {
-       gen_helper_raise_slot_illegal_instruction();
+        gen_helper_raise_slot_illegal_instruction(cpu_env);
     } else {
-       gen_helper_raise_illegal_instruction();
+        gen_helper_raise_illegal_instruction(cpu_env);
     }
-    ctx->bstate = BS_EXCP;
+    ctx->bstate = BS_BRANCH;
 }
 
 static void decode_opc(DisasContext * ctx)
 {
     uint32_t old_flags = ctx->flags;
 
-    if (unlikely(qemu_loglevel_mask(CPU_LOG_TB_OP))) {
+    if (unlikely(qemu_loglevel_mask(CPU_LOG_TB_OP | CPU_LOG_TB_OP_OPT))) {
         tcg_gen_debug_insn_start(ctx->pc);
     }
 
@@ -1932,62 +1858,60 @@ static void decode_opc(DisasContext * ctx)
 }
 
 static inline void
-gen_intermediate_code_internal(CPUState * env, TranslationBlock * tb,
-                               int search_pc)
+gen_intermediate_code_internal(SuperHCPU *cpu, TranslationBlock *tb,
+                               bool search_pc)
 {
+    CPUState *cs = CPU(cpu);
+    CPUSH4State *env = &cpu->env;
     DisasContext ctx;
     target_ulong pc_start;
-    static uint16_t *gen_opc_end;
     CPUBreakpoint *bp;
     int i, ii;
     int num_insns;
     int max_insns;
 
     pc_start = tb->pc;
-    gen_opc_end = gen_opc_buf + OPC_MAX_SIZE;
     ctx.pc = pc_start;
     ctx.flags = (uint32_t)tb->flags;
     ctx.bstate = BS_NONE;
-    ctx.sr = env->sr;
-    ctx.fpscr = env->fpscr;
-    ctx.memidx = (env->sr & SR_MD) == 0 ? 1 : 0;
+    ctx.memidx = (ctx.flags & SR_MD) == 0 ? 1 : 0;
     /* We don't know if the delayed pc came from a dynamic or static branch,
        so assume it is a dynamic branch.  */
     ctx.delayed_pc = -1; /* use delayed pc from env pointer */
     ctx.tb = tb;
-    ctx.singlestep_enabled = env->singlestep_enabled;
+    ctx.singlestep_enabled = cs->singlestep_enabled;
     ctx.features = env->features;
-    ctx.has_movcal = (tb->flags & TB_FLAG_PENDING_MOVCA);
+    ctx.has_movcal = (ctx.flags & TB_FLAG_PENDING_MOVCA);
 
     ii = -1;
     num_insns = 0;
     max_insns = tb->cflags & CF_COUNT_MASK;
     if (max_insns == 0)
         max_insns = CF_COUNT_MASK;
-    gen_icount_start();
-    while (ctx.bstate == BS_NONE && gen_opc_ptr < gen_opc_end) {
-        if (unlikely(!QTAILQ_EMPTY(&env->breakpoints))) {
-            QTAILQ_FOREACH(bp, &env->breakpoints, entry) {
+    gen_tb_start(tb);
+    while (ctx.bstate == BS_NONE && !tcg_op_buf_full()) {
+        if (unlikely(!QTAILQ_EMPTY(&cs->breakpoints))) {
+            QTAILQ_FOREACH(bp, &cs->breakpoints, entry) {
                 if (ctx.pc == bp->pc) {
 		    /* We have hit a breakpoint - make sure PC is up-to-date */
 		    tcg_gen_movi_i32(cpu_pc, ctx.pc);
-		    gen_helper_debug();
-		    ctx.bstate = BS_EXCP;
+                    gen_helper_debug(cpu_env);
+                    ctx.bstate = BS_BRANCH;
 		    break;
 		}
 	    }
 	}
         if (search_pc) {
-            i = gen_opc_ptr - gen_opc_buf;
+            i = tcg_op_buf_count();
             if (ii < i) {
                 ii++;
                 while (ii < i)
-                    gen_opc_instr_start[ii++] = 0;
+                    tcg_ctx.gen_opc_instr_start[ii++] = 0;
             }
-            gen_opc_pc[ii] = ctx.pc;
+            tcg_ctx.gen_opc_pc[ii] = ctx.pc;
             gen_opc_hflags[ii] = ctx.flags;
-            gen_opc_instr_start[ii] = 1;
-            gen_opc_icount[ii] = num_insns;
+            tcg_ctx.gen_opc_instr_start[ii] = 1;
+            tcg_ctx.gen_opc_icount[ii] = num_insns;
         }
         if (num_insns + 1 == max_insns && (tb->cflags & CF_LAST_IO))
             gen_io_start();
@@ -1995,14 +1919,15 @@ gen_intermediate_code_internal(CPUState * env, TranslationBlock * tb,
 	fprintf(stderr, "Loading opcode at address 0x%08x\n", ctx.pc);
 	fflush(stderr);
 #endif
-	ctx.opcode = lduw_code(ctx.pc);
+        ctx.opcode = cpu_lduw_code(env, ctx.pc);
 	decode_opc(&ctx);
         num_insns++;
 	ctx.pc += 2;
 	if ((ctx.pc & (TARGET_PAGE_SIZE - 1)) == 0)
 	    break;
-	if (env->singlestep_enabled)
+        if (cs->singlestep_enabled) {
 	    break;
+        }
         if (num_insns >= max_insns)
             break;
         if (singlestep)
@@ -2010,9 +1935,9 @@ gen_intermediate_code_internal(CPUState * env, TranslationBlock * tb,
     }
     if (tb->cflags & CF_LAST_IO)
         gen_io_end();
-    if (env->singlestep_enabled) {
+    if (cs->singlestep_enabled) {
         tcg_gen_movi_i32(cpu_pc, ctx.pc);
-        gen_helper_debug();
+        gen_helper_debug(cpu_env);
     } else {
 	switch (ctx.bstate) {
         case BS_STOP:
@@ -2034,42 +1959,39 @@ gen_intermediate_code_internal(CPUState * env, TranslationBlock * tb,
 	}
     }
 
-    gen_icount_end(tb, num_insns);
-    *gen_opc_ptr = INDEX_op_end;
+    gen_tb_end(tb, num_insns);
+
     if (search_pc) {
-        i = gen_opc_ptr - gen_opc_buf;
+        i = tcg_op_buf_count();
         ii++;
         while (ii <= i)
-            gen_opc_instr_start[ii++] = 0;
+            tcg_ctx.gen_opc_instr_start[ii++] = 0;
     } else {
         tb->size = ctx.pc - pc_start;
         tb->icount = num_insns;
     }
 
 #ifdef DEBUG_DISAS
-#ifdef SH4_DEBUG_DISAS
-    qemu_log_mask(CPU_LOG_TB_IN_ASM, "\n");
-#endif
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
 	qemu_log("IN:\n");	/* , lookup_symbol(pc_start)); */
-	log_target_disas(pc_start, ctx.pc - pc_start, 0);
+        log_target_disas(env, pc_start, ctx.pc - pc_start, 0);
 	qemu_log("\n");
     }
 #endif
 }
 
-void gen_intermediate_code(CPUState * env, struct TranslationBlock *tb)
+void gen_intermediate_code(CPUSH4State * env, struct TranslationBlock *tb)
 {
-    gen_intermediate_code_internal(env, tb, 0);
+    gen_intermediate_code_internal(sh_env_get_cpu(env), tb, false);
 }
 
-void gen_intermediate_code_pc(CPUState * env, struct TranslationBlock *tb)
+void gen_intermediate_code_pc(CPUSH4State * env, struct TranslationBlock *tb)
 {
-    gen_intermediate_code_internal(env, tb, 1);
+    gen_intermediate_code_internal(sh_env_get_cpu(env), tb, true);
 }
 
-void restore_state_to_opc(CPUState *env, TranslationBlock *tb, int pc_pos)
+void restore_state_to_opc(CPUSH4State *env, TranslationBlock *tb, int pc_pos)
 {
-    env->pc = gen_opc_pc[pc_pos];
+    env->pc = tcg_ctx.gen_opc_pc[pc_pos];
     env->flags = gen_opc_hflags[pc_pos];
 }

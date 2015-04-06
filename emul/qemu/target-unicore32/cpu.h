@@ -1,14 +1,15 @@
 /*
  * UniCore32 virtual CPU header
  *
- * Copyright (C) 2010-2011 GUAN Xue-tao
+ * Copyright (C) 2010-2012 Guan Xuetao
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * published by the Free Software Foundation, or (at your option) any
+ * later version. See the COPYING file in the top-level directory.
  */
-#ifndef __CPU_UC32_H__
-#define __CPU_UC32_H__
+#ifndef QEMU_UNICORE32_CPU_H
+#define QEMU_UNICORE32_CPU_H
 
 #define TARGET_LONG_BITS                32
 #define TARGET_PAGE_BITS                12
@@ -18,14 +19,16 @@
 
 #define ELF_MACHINE             EM_UNICORE32
 
-#define CPUState                struct CPUState_UniCore32
+#define CPUArchState                struct CPUUniCore32State
 
-#include "cpu-defs.h"
-#include "softfloat.h"
+#include "config.h"
+#include "qemu-common.h"
+#include "exec/cpu-defs.h"
+#include "fpu/softfloat.h"
 
 #define NB_MMU_MODES            2
 
-typedef struct CPUState_UniCore32 {
+typedef struct CPUUniCore32State {
     /* Regs for current mode.  */
     uint32_t regs[32];
     /* Frequently accessed ASR bits are stored separately for efficiently.
@@ -69,7 +72,7 @@ typedef struct CPUState_UniCore32 {
     /* Internal CPU feature flags.  */
     uint32_t features;
 
-} CPUState_UniCore32;
+} CPUUniCore32State;
 
 #define ASR_M                   (0x1f)
 #define ASR_MODE_USER           (0x10)
@@ -86,13 +89,15 @@ typedef struct CPUState_UniCore32 {
 #define ASR_NZCV                (ASR_N | ASR_Z | ASR_C | ASR_V)
 #define ASR_RESERVED            (~(ASR_M | ASR_I | ASR_NZCV))
 
-#define UC32_EXCP_PRIV          (ASR_MODE_PRIV)
-#define UC32_EXCP_TRAP          (ASR_MODE_TRAP)
+#define UC32_EXCP_PRIV          (1)
+#define UC32_EXCP_ITRAP         (2)
+#define UC32_EXCP_DTRAP         (3)
+#define UC32_EXCP_INTR          (4)
 
 /* Return the current ASR value.  */
-target_ulong cpu_asr_read(CPUState *env1);
+target_ulong cpu_asr_read(CPUUniCore32State *env1);
 /* Set the ASR.  Note that some bits of mask must be all-set or all-clear.  */
-void cpu_asr_write(CPUState *env1, target_ulong val, target_ulong mask);
+void cpu_asr_write(CPUUniCore32State *env1, target_ulong val, target_ulong mask);
 
 /* UniCore-F64 system registers.  */
 #define UC32_UCF64_FPSCR                (31)
@@ -117,54 +122,28 @@ void cpu_asr_write(CPUState *env1, target_ulong val, target_ulong mask);
 #define UC32_HWCAP_CMOV                 4 /* 1 << 2 */
 #define UC32_HWCAP_UCF64                8 /* 1 << 3 */
 
-#define UC32_CPUID(env)                 (env->cp0.c0_cpuid)
-#define UC32_CPUID_UCV2                 0x40010863
-#define UC32_CPUID_ANY                  0xffffffff
-
 #define cpu_init                        uc32_cpu_init
 #define cpu_exec                        uc32_cpu_exec
 #define cpu_signal_handler              uc32_cpu_signal_handler
-#define cpu_handle_mmu_fault            uc32_cpu_handle_mmu_fault
 
-CPUState *uc32_cpu_init(const char *cpu_model);
-int uc32_cpu_exec(CPUState *s);
+CPUUniCore32State *uc32_cpu_init(const char *cpu_model);
+int uc32_cpu_exec(CPUUniCore32State *s);
 int uc32_cpu_signal_handler(int host_signum, void *pinfo, void *puc);
-int uc32_cpu_handle_mmu_fault(CPUState *env, target_ulong address, int rw,
-                              int mmu_idx);
-
-#define CPU_SAVE_VERSION 2
 
 /* MMU modes definitions */
 #define MMU_MODE0_SUFFIX _kernel
 #define MMU_MODE1_SUFFIX _user
 #define MMU_USER_IDX 1
-static inline int cpu_mmu_index(CPUState *env)
+static inline int cpu_mmu_index(CPUUniCore32State *env)
 {
     return (env->uncached_asr & ASR_M) == ASR_MODE_USER ? 1 : 0;
 }
 
-static inline void cpu_clone_regs(CPUState *env, target_ulong newsp)
-{
-    if (newsp) {
-        env->regs[29] = newsp;
-    }
-    env->regs[0] = 0;
-}
+#include "exec/cpu-all.h"
+#include "cpu-qom.h"
+#include "exec/exec-all.h"
 
-static inline void cpu_set_tls(CPUState *env, target_ulong newtls)
-{
-    env->regs[16] = newtls;
-}
-
-#include "cpu-all.h"
-#include "exec-all.h"
-
-static inline void cpu_pc_from_tb(CPUState *env, TranslationBlock *tb)
-{
-    env->regs[31] = tb->pc;
-}
-
-static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
+static inline void cpu_get_tb_cpu_state(CPUUniCore32State *env, target_ulong *pc,
                                         target_ulong *cs_base, int *flags)
 {
     *pc = env->regs[31];
@@ -175,14 +154,9 @@ static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
     }
 }
 
+int uc32_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
+                              int mmu_idx);
 void uc32_translate_init(void);
-void do_interrupt(CPUState *);
-void switch_mode(CPUState_UniCore32 *, int);
+void switch_mode(CPUUniCore32State *, int);
 
-static inline bool cpu_has_work(CPUState *env)
-{
-    return env->interrupt_request &
-        (CPU_INTERRUPT_HARD | CPU_INTERRUPT_EXITTB);
-}
-
-#endif /* __CPU_UC32_H__ */
+#endif /* QEMU_UNICORE32_CPU_H */

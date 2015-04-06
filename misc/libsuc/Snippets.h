@@ -30,6 +30,7 @@ typedef uint64_t Time_t;
 const uint64_t MaxTime = ((~0ULL) - 1024);  // -1024 is to give a little bit of margin
 
 extern volatile Time_t globalClock; // Defined in Thread.cpp
+extern volatile Time_t deadClock; // Defined in Thread.cpp
 
 typedef uint16_t TimeDelta_t;
 const uint16_t MaxDeltaTime = (65535 - 1024);  // -1024 is to give a little bit of margin

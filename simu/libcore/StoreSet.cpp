@@ -42,7 +42,10 @@ StoreSet::StoreSet(const int32_t id)
   
 #ifdef STORESET_CLEARING
   clear_interval = CLR_INTRVL;
-  clearStoreSetsTimerCB.scheduleAbs(clear_interval+globalClock);
+  Time_t when = clear_interval+globalClock;
+  if (when >= (globalClock*2))
+      when = globalClock*2 - 1; // To avoid assertion about possible bug. Long enough anyway
+  clearStoreSetsTimerCB.scheduleAbs(when);
 #endif
 }
 /* }}} */
@@ -124,7 +127,7 @@ void StoreSet::clearStoreSetsTimer()
   Time_t when = clear_interval+globalClock;
   if (when >= (globalClock*2))
       when = globalClock*2 - 1; // To avoid assertion about possible bug. Long enough anyway
-  clearStoreSetsTimerCB.scheduleAbs(clear_interval+globalClock);
+  clearStoreSetsTimerCB.scheduleAbs(when);
 }
 /* }}} */
 #endif

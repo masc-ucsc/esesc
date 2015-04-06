@@ -112,8 +112,7 @@ QEMU user mode emulation features:
 @end itemize
 
 Linux user emulator (Linux host only) can be used to launch the Wine
-Windows API emulator (@url{http://www.winehq.org}). A Darwin user
-emulator (Darwin hosts only) exists and a BSD user emulator for BSD
+Windows API emulator (@url{http://www.winehq.org}). A BSD user emulator for BSD
 hosts is under development. It would also be possible to develop a
 similar user emulator for Solaris.
 
@@ -263,16 +262,16 @@ Current QEMU limitations:
 
 @item Core Xtensa ISA emulation, including most options: code density,
 loop, extended L32R, 16- and 32-bit multiplication, 32-bit division,
-MAC16, miscellaneous operations, boolean, multiprocessor synchronization,
+MAC16, miscellaneous operations, boolean, FP coprocessor, coprocessor
+context, debug, multiprocessor synchronization,
 conditional store, exceptions, relocatable vectors, unaligned exception,
 interrupts (including high priority and timer), hardware alignment,
 region protection, region translation, MMU, windowed registers, thread
 pointer, processor ID.
 
-@item Not implemented options: FP coprocessor, coprocessor context,
-data/instruction cache (including cache prefetch and locking), XLMI,
-processor interface, debug. Also options not covered by the core ISA
-(e.g. FLIX, wide branches) are not implemented.
+@item Not implemented options: data/instruction cache (including cache
+prefetch and locking), XLMI, processor interface. Also options not
+covered by the core ISA (e.g. FLIX, wide branches) are not implemented.
 
 @item Can run most Xtensa Linux binaries.
 
@@ -537,7 +536,7 @@ timers, especially together with the use of bottom halves (BHs).
 @node Hardware interrupts
 @section Hardware interrupts
 
-In order to be faster, QEMU does not check at every basic block if an
+In order to be faster, QEMU does not check at every basic block if a
 hardware interrupt is pending. Instead, the user must asynchronously
 call a specific function to tell that an interrupt is pending. This
 function resets the chaining of the currently executing basic

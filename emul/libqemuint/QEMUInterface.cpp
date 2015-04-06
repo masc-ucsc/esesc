@@ -72,21 +72,21 @@ extern "C" uint32_t QEMUReader_getFid(FlowID last_fid)
 
 extern "C" uint64_t QEMUReader_get_time() 
 {
-  //FIXME: fid?
   return qsamplerlist[0]->getTime();
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void *env) 
-{
-  qsamplerlist[fid]->queue(insn,pc,addr,fid,op,icount,env);
+extern "C" void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env) {
+  I(fid<128); // qsampler statically sized to 128 at most
+
+  qsamplerlist[fid]->queue(pc,addr,fid,op,src1, src2, dest, LREG_InvalidOutput, env);
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)
 {
+  MSG("QEMUReader_finish(%d)",fid);
   qsamplerlist[fid]->stop();
   qsamplerlist[fid]->pauseThread(fid);
   qsamplerlist[fid]->terminate();
-//  qsamplerlist[fid]->freeFid(fid);
 }
 
 extern "C" void QEMUReader_finish_thread(uint32_t fid)

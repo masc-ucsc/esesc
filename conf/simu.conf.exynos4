@@ -1,6 +1,5 @@
 # SCOORE Constants
 memLatency        = 150 # 110ns chromebook
-#mshrType         = "blocking"
 #memLevel         = "BigMem Memory" # No BW model
 #memLevel          = "AdvMem MemBus" # No Pref
 memLevel          = "MemCtrl MemBus" # No Pref
@@ -227,14 +226,8 @@ bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 2
 missDelay         = 2
-MSHR              = "IL1MSHR"
 lowerLevel        = "PrivL2 L2 sharedby 4"
 pfetchBuffSize   = 16
-
-[IL1MSHR]
-size              = 4
-type              = "full" 
-nSubEntries       = 8
 
 [PerCore_DTLB]
 deviceType        = 'tlb'
@@ -245,6 +238,7 @@ hitDelay          = 0
 size              = 32 * 4096 # 64*4096
 assoc             = 32 #  64
 bsize             = 4*1024
+maxRequests       = 7
 replPolicy        = 'LRU'
 lowerLevel        = "DL1_core DL1"
 lowerTLB          = "Shared_TLB STLB shared"
@@ -261,6 +255,7 @@ hitDelay          = 0 # delay charged in L1
 size              = 32 * 4096 # 64*4096
 assoc             = 32 #  64
 bsize             = 4*1024
+maxRequests       = 4
 replPolicy        = 'LRU'
 lowerLevel        = "IL1_core IL1"
 lowerTLB          = "Shared_TLB STLB sharedby 2"
@@ -281,7 +276,6 @@ bsize             = 64
 replPolicy        = 'LRU'
 hitDelay          = 3 #+1 from the ALU
 missDelay         = 1 
-MSHR              = "DL1_MSHR"
 lowerLevel        = "PrivL2 L2 sharedby 4"
 fillBuffSize      = 4
 pfetchBuffSize    = 16
@@ -292,12 +286,6 @@ bkPortOccp        = 1
 maxRequests       = 8 
 bankShift         = 6
 
-[DL1_MSHR]
-size              = 8 
-type              = "full"
-nSubEntries       = 8 
-
-
 [PrivL2]
 deviceType        = 'cache'
 coreCoupledFreq   = false
@@ -305,7 +293,7 @@ inclusive         = true
 directory         = false
 blockName         = "L2"
 numBanks          = 1 
-maxRequests       = 2 
+maxRequests       = 8 
 size              = 1*1024*1024 
 assoc             = 16
 bsize             = 64
@@ -314,7 +302,6 @@ bkNumPorts        = 1
 bkPortOccp        = 2 
 hitDelay          = 18 # 20 total
 missDelay         = 1 
-MSHR              = 'L2_MSHR'
 #lowerLevel        = "Shared_TLB STLB shared"
 #lowerLevel       = "L3Cache L3 shared"
 lowerLevel        = "$(memLevel)"
@@ -323,11 +310,6 @@ pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
 
-[L2_MSHR]
-size              = 16 
-type              = "full" 
-nSubEntries       = 4 
-
 [Shared_TLB]
 deviceType        = 'tlb'
 blockName         = "STLB"
@@ -335,6 +317,7 @@ numPorts          = 0
 hitDelay          = 30 # 1
 size              = 512*4096
 assoc             = 4
+maxRequests       = 4
 bsize             = 4*1024
 replPolicy        = 'LRU'
 lowerLevel        = "voidDevice"

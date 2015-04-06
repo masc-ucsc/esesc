@@ -114,6 +114,9 @@
 #ifdef TARGET_NR_epoll_create
 { TARGET_NR_epoll_create, "epoll_create" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_epoll_create1
+{ TARGET_NR_epoll_create1, "epoll_create1" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_epoll_ctl
 { TARGET_NR_epoll_ctl, "epoll_ctl" , NULL, NULL, NULL },
 #endif
@@ -612,9 +615,6 @@
 #ifdef TARGET_NR_oldstat
 { TARGET_NR_oldstat, "oldstat" , NULL, NULL, NULL },
 #endif
-#ifdef TARGET_NR_oldumount
-{ TARGET_NR_oldumount, "oldumount" , NULL, NULL, NULL },
-#endif
 #ifdef TARGET_NR_olduname
 { TARGET_NR_olduname, "olduname" , NULL, NULL, NULL },
 #endif
@@ -972,9 +972,6 @@
 #ifdef TARGET_NR_prctl
 { TARGET_NR_prctl, "prctl" , NULL, NULL, NULL },
 #endif
-#ifdef TARGET_NR_pread
-{ TARGET_NR_pread, "pread" , NULL, NULL, NULL },
-#endif
 #ifdef TARGET_NR_pread64
 { TARGET_NR_pread64, "pread64" , NULL, NULL, NULL },
 #endif
@@ -992,9 +989,6 @@
 #endif
 #ifdef TARGET_NR_putpmsg
 { TARGET_NR_putpmsg, "putpmsg" , NULL, NULL, NULL },
-#endif
-#ifdef TARGET_NR_pwrite
-{ TARGET_NR_pwrite, "pwrite" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_pwrite64
 { TARGET_NR_pwrite64, "pwrite64" , NULL, NULL, NULL },
@@ -1190,6 +1184,9 @@
 #endif
 #ifdef TARGET_NR_set_mempolicy
 { TARGET_NR_set_mempolicy, "set_mempolicy" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_setns
+{ TARGET_NR_setns, "setns" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_setpgid
 { TARGET_NR_setpgid, "setpgid" , NULL, NULL, NULL },
@@ -1410,6 +1407,15 @@
 #ifdef TARGET_NR_timer_settime
 { TARGET_NR_timer_settime, "timer_settime" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_timerfd_create
+{ TARGET_NR_timerfd_create, "timerfd_create" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_timerfd_gettime
+{ TARGET_NR_timerfd_gettime, "timerfd_gettime" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_timerfd_settime
+{ TARGET_NR_timerfd_settime, "timerfd_settime" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_times
 { TARGET_NR_times, "times" , NULL, NULL, NULL },
 #endif
@@ -1526,4 +1532,13 @@
 #endif
 #ifdef TARGET_NR_sync_file_range2
 { TARGET_NR_sync_file_range2, "sync_file_range2", NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_pipe2
+{ TARGET_NR_pipe2, "pipe2", NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_atomic_cmpxchg_32
+{ TARGET_NR_atomic_cmpxchg_32, "atomic_cmpxchg_32", NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_atomic_barrier
+{ TARGET_NR_atomic_barrier, "atomic_barrier", NULL, NULL, NULL },
 #endif

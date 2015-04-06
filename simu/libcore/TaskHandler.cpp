@@ -43,7 +43,7 @@
 /* }}} */
 
 std::vector<TaskHandler::EmulSimuMapping >   TaskHandler::allmaps;
-bool TaskHandler::terminate_all;
+volatile bool TaskHandler::terminate_all;
 pthread_mutex_t TaskHandler::mutex;
 
 FlowID* TaskHandler::running;
@@ -193,7 +193,7 @@ void TaskHandler::addEmulShared(EmulInterface *eint) {
 
 void TaskHandler::addSimu(GProcessor *gproc) {
   /* add a new simulator to the system {{{1 */
-  I(cpus.size() == static_cast<size_t>(gproc->getId()));
+  I(cpus.size() == static_cast<size_t>(gproc->getID()));
   cpus.push_back(gproc);
 }
 /* }}} */
@@ -228,12 +228,11 @@ FlowID TaskHandler::resumeThread(FlowID uid, FlowID fid) {
   allmaps[fid].simu->setActive();
   running[running_size] = fid;
   running_size++;
-/*
-  fprintf(stderr,"CPUResume: running_size = %d : running->",running_size);
+
+  fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
   for (int i = 0; i < running_size; i++)
-    fprintf(stderr,"%d->",running[i]);
+    fprintf(stderr,"%d:",running[i]);
   fprintf(stderr,"\n");
-*/
 
   pthread_mutex_unlock (&mutex);
   return (fid);
@@ -294,23 +293,19 @@ FlowID TaskHandler::resumeThread(FlowID fid) {
     return (GPU_fid);
   }  
 
-
-
   allmaps[GPU_fid].active = true;
   allmaps[GPU_fid].simu->setActive();
 
   // Make sure that the fid is not in the running queue
   // This might happen if the execution is very slow. 
   
-   running[running_size] = GPU_fid;
-   running_size++;
+  running[running_size] = GPU_fid;
+  running_size++;
 
-/*
-   fprintf(stderr,"GPUResume: running_size = %d : running->",running_size);
-   for (int i = 0; i < running_size; i++)
-     fprintf(stderr,"%d->",running[i]);
-   fprintf(stderr,"\n");
-*/
+  fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
+  for (int i = 0; i < running_size; i++)
+    fprintf(stderr,"%d:",running[i]);
+  fprintf(stderr,"\n");
 
 //  allmaps[GPU_fid].emul->getSampler()-> startMode(GPU_fid);
   pthread_mutex_unlock (&mutex);
@@ -334,20 +329,27 @@ void TaskHandler::syncRunning(){
 }
 /* }}} */
 
-
 void TaskHandler::removeFromRunning(FlowID fid){
   /* remove fid from the running queue {{{1 */
   //pthread_mutex_lock (&mutex);
+ 
   for (size_t i=0;i<running_size;i++){
-    if (running[i] == fid){
-      if (i < running_size-1)
-        //(memmove((void *)running[i],(const void *)running[i+1],(running_size-(i+1))*sizeof(FlowID)));
-        for (size_t j = i; j<running_size-1; j++){
-          running[j] = running[j+1];
-        }
-      running_size--;
-      i = running_size+10;
+    if (running[i] != fid)
+      continue;
+
+    if (i < running_size-1) {
+      for (size_t j = i; j<running_size-1; j++){
+        running[j] = running[j+1];
+      }
     }
+    running_size--;
+
+    fprintf(stderr,"removeFromRunning: fid=%d running_size=%d : running=",fid,running_size);
+    for (int j = 0; j < running_size; j++)
+      fprintf(stderr,"%d:",running[j]);
+    fprintf(stderr,"\n");
+
+    break;
   }
 
   if (allmaps[fid].active){
@@ -371,8 +373,6 @@ void TaskHandler::pauseThread(FlowID fid){
     return;
   }
 
-  //IS(MSG("TaskHandler::pauseThread(%d)",fid));
-  //running_size--;
   removeFromRunning(fid);
   allmaps[fid].active = false;
   allmaps[fid].simu->clearActive();

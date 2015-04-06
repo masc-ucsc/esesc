@@ -44,28 +44,35 @@
 /* }}} */
 
 class GXBar: public MemObj {
-protected:
 
-  uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const{
-    uint32_t numLineBits = log2i(LineSize);
+  protected:
+    enum BypassMode {
+      bypass_none,
+      bypass_global,
+      bypass_shared
+    } bypassMode;
 
-    addr = addr >> numLineBits;
+    virtual uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks, const ExtraParameters* xdata = NULL) const{
+      uint32_t numLineBits = log2i(LineSize);
+
+      addr = addr >> numLineBits;
 #if 0
-    addr = addr % Modfactor;   
+      addr = addr % Modfactor;   
 #else
-    uint32_t addr1 = addr % 7;   
-    uint32_t addr2 = addr % 1023;   
-    addr = addr1 ^ addr2;
+      uint32_t addr1 = addr % 7;   
+      uint32_t addr2 = addr % 1023;   
+      addr = addr1 ^ addr2;
 #endif
+      MSG("Calling this function...");
 
-    return(addr&(numLowerBanks-1));
-  }
+      return(addr&(numLowerBanks-1));
+    }
 
-  static uint32_t Xbar_unXbar_balance;
+    static uint32_t Xbar_unXbar_balance;
 
- public:
-  GXBar(const char *device_descr_section, const char *device_name = NULL);
-  ~GXBar() {}
+  public:
+    GXBar(const char *device_descr_section, const char *device_name = NULL);
+    ~GXBar() {}
 
 };
 #endif

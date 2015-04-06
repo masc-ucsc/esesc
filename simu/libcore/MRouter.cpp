@@ -86,9 +86,9 @@ void MRouter::fillRouteTables()
 
   I(up_node.size()==0); // First level cache only
   I(up_map.size() == 0);
-  //MSG("Fill router is %s",self_mobj->getName());
+  MSG("Fill router is %s",self_mobj->getName());
 
-  I(down_node.size()>=1);
+  // it can be a nicecache I(down_node.size()>=1);
   for (size_t i = 0; i < down_node.size(); i++){
     down_node[i]->getRouter()->updateRouteTables(self_mobj, self_mobj);
   }
@@ -103,12 +103,12 @@ void MRouter::fillRouteTables()
     else
       rb = rb->down_node[0]->getRouter();
   }
-//  MSG("Bottom:clear router is %s",bottom->getName());
+  MSG("Bottom:clear router is %s",bottom->getName());
   rb = bottom->getRouter();
   rb->self_mobj->clearNeedsCoherence();
   while(rb->up_node.size()==1) {
     MemObj *uobj = rb->up_node[0];
-//    MSG("single:clear router is %s",uobj->getName());
+    MSG("single:clear router is %s",uobj->getName());
     uobj->clearNeedsCoherence();
     rb = uobj->router;
   }
@@ -130,6 +130,7 @@ void MRouter::updateRouteTables(MemObj *upmobj, MemObj * const top_node)
   upmobj->setNeedsCoherence();
 
   up_map[top_node] = upmobj;
+  //MSG("Router %s: Setting upmap[%s (Addr = %p)] = %s (Addr = %p)",self_mobj->getName(),top_node->getName(),top_node,upmobj->getName(),upmobj); 
   for(size_t i=0;i<down_node.size();i++) {
     down_node[i]->getRouter()->updateRouteTables(self_mobj, top_node);
     down_node[i]->getRouter()->updateRouteTables(self_mobj, self_mobj);
@@ -214,11 +215,13 @@ void MRouter::scheduleReqAck(MemRequest *mreq, TimeDelta_t lat)
 {
   I(!up_node.empty());
   MemObj *obj = up_node[0];
+
   if (up_node.size()>1) {
     UPMapType::const_iterator it = up_map.find(mreq->getHomeNode());
     I(it != up_map.end());
     obj = it->second;
   }
+
   mreq->startReqAck(obj, lat);
 }
 /* }}} */
@@ -233,6 +236,7 @@ void MRouter::scheduleReqAckAbs(MemRequest *mreq, Time_t w)
     I(it != up_map.end());
     obj = it->second;
   }
+	obj->blockFill(mreq);
   mreq->startReqAckAbs(obj, w);
 }
 /* }}} */
@@ -291,11 +295,18 @@ void MRouter::scheduleDisp(MemRequest *mreq, TimeDelta_t lat)
 }
 /* }}} */
 
-void MRouter::sendDisp(AddrType addr, bool doStats, TimeDelta_t lat)
+void MRouter::sendDirtyDisp(AddrType addr, bool doStats, TimeDelta_t lat, ExtraParameters* xdata)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()==1);
-  MemRequest::sendDisp(down_node[0], self_mobj, addr, doStats);
+  MemRequest::sendDirtyDisp(down_node[0], self_mobj, addr, doStats, xdata);
+}
+/* }}} */
+void MRouter::sendCleanDisp(AddrType addr, bool doStats, TimeDelta_t lat, ExtraParameters* xdata)
+  /* schedule Displace (down) {{{1 */
+{
+  I(down_node.size()==1);
+  MemRequest::sendCleanDisp(down_node[0], self_mobj, addr, doStats, xdata);
 }
 /* }}} */
 
@@ -318,8 +329,13 @@ int32_t MRouter::sendSetStateOthers(MemRequest *mreq, MsgAction ma, TimeDelta_t 
   for(size_t i=0;i<up_node.size();i++) {
     if (up_node[i] == skip_mobj) 
       continue;
+    
+    if (addr == 0xa000000005601213)
+    {
+      I(0);
+    }
 
-    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats, &(mreq->getExtraParams()));
     breq->addPendingSetStateAck(mreq);
 
     breq->startSetState(up_node[i], lat);
@@ -338,8 +354,14 @@ int32_t MRouter::sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction
 
   bool doStats  = mreq->getStatsFlag();
   AddrType addr = mreq->getAddr();
+  
+  if (addr == 0xa000000005601213)
+  {
+    I(0);
+  }
 
-  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
+
+  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats, &(mreq->getExtraParams()));
   breq->addPendingSetStateAck(mreq);
 
   breq->startSetState(up_node[pos], lat);
@@ -356,11 +378,15 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
 
   bool doStats  = mreq->getStatsFlag();
   AddrType addr = mreq->getAddr();
+  if (addr == 0xa000000005601213)
+  {
+    I(0);
+  }
 
   I(mreq->isSetState());
   int32_t conta = 0;
   for(size_t i=0;i<up_node.size();i++) {
-    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats, &(mreq->getExtraParams()));
     breq->addPendingSetStateAck(mreq);
 
     breq->startSetState(up_node[i], lat);
@@ -371,41 +397,41 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffread(AddrType addr)
+TimeDelta_t MRouter::ffread(AddrType addr, ExtraParameters* xdata)
   /* propagate the read to the lower level {{{1 */
 {
-  return down_node[0]->ffread(addr);
+  return down_node[0]->ffread(addr,xdata);
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffwrite(AddrType addr)
+TimeDelta_t MRouter::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* propagate the read to the lower level {{{1 */
 {
-  return down_node[0]->ffwrite(addr);
+  return down_node[0]->ffwrite(addr,xdata);
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffreadPos(uint32_t pos, AddrType addr)
-  /* propagate the read to the lower level {{{1 */
-{
-  I(pos<down_node.size());
-  return down_node[pos]->ffread(addr);
-}
-/* }}} */
-
-TimeDelta_t MRouter::ffwritePos(uint32_t pos ,AddrType addr)
+TimeDelta_t MRouter::ffreadPos(uint32_t pos, AddrType addr, ExtraParameters* xdata)
   /* propagate the read to the lower level {{{1 */
 {
   I(pos<down_node.size());
-  return down_node[pos]->ffwrite(addr);
+  return down_node[pos]->ffread(addr,xdata);
 }
 /* }}} */
 
-bool MRouter::isBusyPos(uint32_t pos, AddrType addr) const
+TimeDelta_t MRouter::ffwritePos(uint32_t pos ,AddrType addr, ExtraParameters* xdata)
+  /* propagate the read to the lower level {{{1 */
+{
+  I(pos<down_node.size());
+  return down_node[pos]->ffwrite(addr,xdata);
+}
+/* }}} */
+
+bool MRouter::isBusyPos(uint32_t pos, AddrType addr, ExtraParameters* xdata) const
   /* propagate the isBusy {{{1 */
 {
   I(pos<down_node.size());
-  return down_node[pos]->isBusy(addr);
+  return down_node[pos]->isBusy(addr,xdata);
 }
 /* }}} */
 

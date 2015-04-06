@@ -25,14 +25,10 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#ifdef __OpenBSD__
-#include <soundcard.h>
-#else
 #include <sys/soundcard.h>
-#endif
 #include "qemu-common.h"
-#include "host-utils.h"
-#include "qemu-char.h"
+#include "qemu/main-loop.h"
+#include "qemu/host-utils.h"
 #include "audio.h"
 
 #define AUDIO_CAP "oss"
@@ -740,10 +736,8 @@ static void oss_fini_in (HWVoiceIn *hw)
 
     oss_anal_close (&oss->fd);
 
-    if (oss->pcm_buf) {
-        g_free (oss->pcm_buf);
-        oss->pcm_buf = NULL;
-    }
+    g_free(oss->pcm_buf);
+    oss->pcm_buf = NULL;
 }
 
 static int oss_run_in (HWVoiceIn *hw)
@@ -853,6 +847,10 @@ static int oss_ctl_in (HWVoiceIn *hw, int cmd, ...)
 
 static void *oss_audio_init (void)
 {
+    if (access(conf.devpath_in, R_OK | W_OK) < 0 ||
+        access(conf.devpath_out, R_OK | W_OK) < 0) {
+        return NULL;
+    }
     return &conf;
 }
 

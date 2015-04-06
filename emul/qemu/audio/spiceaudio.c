@@ -18,15 +18,24 @@
  */
 
 #include "hw/hw.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "ui/qemu-spice.h"
 
 #define AUDIO_CAP "spice"
 #include "audio.h"
 #include "audio_int.h"
 
-#define LINE_IN_SAMPLES 1024
-#define LINE_OUT_SAMPLES 1024
+#if SPICE_INTERFACE_PLAYBACK_MAJOR > 1 || SPICE_INTERFACE_PLAYBACK_MINOR >= 3
+#define LINE_OUT_SAMPLES (480 * 4)
+#else
+#define LINE_OUT_SAMPLES (256 * 4)
+#endif
+
+#if SPICE_INTERFACE_RECORD_MAJOR > 2 || SPICE_INTERFACE_RECORD_MINOR >= 3
+#define LINE_IN_SAMPLES (480 * 4)
+#else
+#define LINE_IN_SAMPLES (256 * 4)
+#endif
 
 typedef struct SpiceRateCtl {
     int64_t               start_ticks;
@@ -81,7 +90,7 @@ static void spice_audio_fini (void *opaque)
 static void rate_start (SpiceRateCtl *rate)
 {
     memset (rate, 0, sizeof (*rate));
-    rate->start_ticks = qemu_get_clock_ns (vm_clock);
+    rate->start_ticks = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 static int rate_get_samples (struct audio_pcm_info *info, SpiceRateCtl *rate)
@@ -91,12 +100,12 @@ static int rate_get_samples (struct audio_pcm_info *info, SpiceRateCtl *rate)
     int64_t bytes;
     int64_t samples;
 
-    now = qemu_get_clock_ns (vm_clock);
+    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     ticks = now - rate->start_ticks;
     bytes = muldiv64 (ticks, info->bytes_per_second, get_ticks_per_sec ());
     samples = (bytes - rate->bytes_sent) >> info->shift;
     if (samples < 0 || samples > 65536) {
-        fprintf (stderr, "Resetting rate control (%" PRId64 " samples)\n", samples);
+        error_report("Resetting rate control (%" PRId64 " samples)", samples);
         rate_start (rate);
         samples = 0;
     }
@@ -111,7 +120,11 @@ static int line_out_init (HWVoiceOut *hw, struct audsettings *as)
     SpiceVoiceOut *out = container_of (hw, SpiceVoiceOut, hw);
     struct audsettings settings;
 
+#if SPICE_INTERFACE_PLAYBACK_MAJOR > 1 || SPICE_INTERFACE_PLAYBACK_MINOR >= 3
+    settings.freq       = spice_server_get_best_playback_rate(NULL);
+#else
     settings.freq       = SPICE_INTERFACE_PLAYBACK_FREQ;
+#endif
     settings.nchannels  = SPICE_INTERFACE_PLAYBACK_CHAN;
     settings.fmt        = AUD_FMT_S16;
     settings.endianness = AUDIO_HOST_ENDIANNESS;
@@ -122,6 +135,9 @@ static int line_out_init (HWVoiceOut *hw, struct audsettings *as)
 
     out->sin.base.sif = &playback_sif.base;
     qemu_spice_add_interface (&out->sin.base);
+#if SPICE_INTERFACE_PLAYBACK_MAJOR > 1 || SPICE_INTERFACE_PLAYBACK_MINOR >= 3
+    spice_server_set_playback_rate(&out->sin, settings.freq);
+#endif
     return 0;
 }
 
@@ -202,7 +218,26 @@ static int line_out_ctl (HWVoiceOut *hw, int cmd, ...)
         }
         spice_server_playback_stop (&out->sin);
         break;
+    case VOICE_VOLUME:
+        {
+#if ((SPICE_INTERFACE_PLAYBACK_MAJOR >= 1) && (SPICE_INTERFACE_PLAYBACK_MINOR >= 2))
+            SWVoiceOut *sw;
+            va_list ap;
+            uint16_t vol[2];
+
+            va_start (ap, cmd);
+            sw = va_arg (ap, SWVoiceOut *);
+            va_end (ap);
+
+            vol[0] = sw->vol.l / ((1ULL << 16) + 1);
+            vol[1] = sw->vol.r / ((1ULL << 16) + 1);
+            spice_server_playback_set_volume (&out->sin, 2, vol);
+            spice_server_playback_set_mute (&out->sin, sw->vol.mute);
+#endif
+            break;
+        }
     }
+
     return 0;
 }
 
@@ -213,7 +248,11 @@ static int line_in_init (HWVoiceIn *hw, struct audsettings *as)
     SpiceVoiceIn *in = container_of (hw, SpiceVoiceIn, hw);
     struct audsettings settings;
 
+#if SPICE_INTERFACE_RECORD_MAJOR > 2 || SPICE_INTERFACE_RECORD_MINOR >= 3
+    settings.freq       = spice_server_get_best_record_rate(NULL);
+#else
     settings.freq       = SPICE_INTERFACE_RECORD_FREQ;
+#endif
     settings.nchannels  = SPICE_INTERFACE_RECORD_CHAN;
     settings.fmt        = AUD_FMT_S16;
     settings.endianness = AUDIO_HOST_ENDIANNESS;
@@ -224,6 +263,9 @@ static int line_in_init (HWVoiceIn *hw, struct audsettings *as)
 
     in->sin.base.sif = &record_sif.base;
     qemu_spice_add_interface (&in->sin.base);
+#if SPICE_INTERFACE_RECORD_MAJOR > 2 || SPICE_INTERFACE_RECORD_MINOR >= 3
+    spice_server_set_record_rate(&in->sin, settings.freq);
+#endif
     return 0;
 }
 
@@ -304,7 +346,26 @@ static int line_in_ctl (HWVoiceIn *hw, int cmd, ...)
         in->active = 0;
         spice_server_record_stop (&in->sin);
         break;
+    case VOICE_VOLUME:
+        {
+#if ((SPICE_INTERFACE_RECORD_MAJOR >= 2) && (SPICE_INTERFACE_RECORD_MINOR >= 2))
+            SWVoiceIn *sw;
+            va_list ap;
+            uint16_t vol[2];
+
+            va_start (ap, cmd);
+            sw = va_arg (ap, SWVoiceIn *);
+            va_end (ap);
+
+            vol[0] = sw->vol.l / ((1ULL << 16) + 1);
+            vol[1] = sw->vol.r / ((1ULL << 16) + 1);
+            spice_server_record_set_volume (&in->sin, 2, vol);
+            spice_server_record_set_mute (&in->sin, sw->vol.mute);
+#endif
+            break;
+        }
     }
+
     return 0;
 }
 
@@ -337,6 +398,9 @@ struct audio_driver spice_audio_driver = {
     .max_voices_in  = 1,
     .voice_size_out = sizeof (SpiceVoiceOut),
     .voice_size_in  = sizeof (SpiceVoiceIn),
+#if ((SPICE_INTERFACE_PLAYBACK_MAJOR >= 1) && (SPICE_INTERFACE_PLAYBACK_MINOR >= 2))
+    .ctl_caps       = VOICE_VOLUME_CAP
+#endif
 };
 
 void qemu_spice_audio_init (void)

@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -43,6 +43,9 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   /* dummy constructor {{{1 */
   : MemObj(section, sName)
   ,hitDelay  (SescConf->getInt(section,"hitDelay"))
+  ,bsize     (SescConf->getInt(section,"bsize"))
+  ,bsizeLog2       (log2i(SescConf->getInt(section,"bsize")))
+  ,coldWarmup      (SescConf->getBool(section,"coldWarmup"))
   ,readHit         ("%s:readHit",         sName)
   ,pushDownHit     ("%s:pushDownHit",     sName)
   ,writeHit        ("%s:writeHit",        sName)
@@ -55,17 +58,44 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
 {
 
 	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
+  
 
+  warmupStepStart = 256 / 2;
+  warmupStep      = warmupStepStart;
+  warmupNext      = 16;
+  warmupSlowEvery = 16;
 }
 /* }}} */
 
-void NICECache::doReq(MemRequest *mreq)    
+void NICECache::doReq(MemRequest *mreq)
   /* read (down) {{{1 */
-{ 
+{
   readHit.inc(mreq->getStatsFlag());
 
 	if (mreq->isHomeNode()) {
-		mreq->ack(hitDelay);
+    if(coldWarmup && warmup.find(mreq->getAddr()>>bsizeLog2) == warmup.end()) {
+
+      TimeDelta_t lat;
+      warmupNext--;
+      if (warmupNext <= 0) {
+        warmupNext = warmupSlowEvery;
+        warmupStep--;
+        if (warmupStep <= 0) {
+          warmupSlowEvery = warmupSlowEvery>>1;
+          if (warmupSlowEvery <=0 )
+            coldWarmup = false;
+          warmupStepStart = warmupStepStart<<1;
+          warmupStep      = warmupStepStart;
+        }
+        lat = hitDelay;
+      }else{
+        lat = 1;
+      }
+      warmup.insert(mreq->getAddr()>>bsizeLog2);
+      mreq->ack(lat);
+    }else{
+      mreq->ack(hitDelay);
+    }
 		return;
 	}
 	if (mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive) {
@@ -76,55 +106,77 @@ void NICECache::doReq(MemRequest *mreq)
 		//MSG("wrnice %x",mreq->getAddr());
 	}
 
-  router->scheduleReqAck(mreq, hitDelay);
+  if(coldWarmup && warmup.find(mreq->getAddr()>>bsizeLog2) == warmup.end()) {
+    warmup.insert(mreq->getAddr()>>bsizeLog2);
+    TimeDelta_t lat;
+    warmupNext--;
+    if (warmupNext <= 0) {
+      warmupNext = warmupSlowEvery;
+      warmupStep--;
+      if (warmupStep <= 0) {
+        warmupSlowEvery = warmupSlowEvery>>1;
+        if (warmupSlowEvery <=0 )
+          coldWarmup = false;
+        warmupStepStart = warmupStepStart<<1;
+        warmupStep      = warmupStepStart;
+      }
+      lat = hitDelay;
+    }else{
+      lat = 1;
+      //MSG("%lld 0x%llx",globalClock, (long long)mreq->getAddr()>>bsizeLog2);
+    }
+    router->scheduleReqAck(mreq, lat);
+  }else{
+    router->scheduleReqAck(mreq, hitDelay);
+  }
 }
 /* }}} */
 
-void NICECache::doReqAck(MemRequest *req)    
+void NICECache::doReqAck(MemRequest *req)
   /* req ack {{{1 */
-{ 
+{
   I(0);
 }
 // 1}}}
 
-void NICECache::doSetState(MemRequest *req)    
+void NICECache::doSetState(MemRequest *req)
   /* change state request  (up) {{{1 */
-{ 
+{
 	I(0);
 }
 /* }}} */
 
-void NICECache::doSetStateAck(MemRequest *req)    
-  /* push (down) {{{1 */
-{ 
+void NICECache::doSetStateAck(MemRequest *req)
+ /* push (down) {{{1 */
+{
 	I(0);
 }
 /* }}} */
 
-void NICECache::doDisp(MemRequest *req)    
+void NICECache::doDisp(MemRequest *req)
   /* push (up) {{{1 */
-{ 
-  req->ack();
+{
+  req->ack(hitDelay);
 }
 /* }}} */
 
-bool NICECache::isBusy(AddrType addr) const
+bool NICECache::isBusy(AddrType addr, ExtraParameters* xdata) const
   /* can accept reads? {{{1 */
-{ 
-  return false;  
+{
+  return false;
 }
 /* }}} */
 
-TimeDelta_t NICECache::ffread(AddrType addr)
+TimeDelta_t NICECache::ffread(AddrType addr, ExtraParameters* xdata)
   /* warmup fast forward read {{{1 */
-{ 
+{
   return 1;
 }
 /* }}} */
 
-TimeDelta_t NICECache::ffwrite(AddrType addr)
+TimeDelta_t NICECache::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* warmup fast forward writed {{{1 */
-{ 
+{
   return 1;
 }
 /* }}} */

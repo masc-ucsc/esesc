@@ -749,14 +749,14 @@ void PowerModel::updatePowerGStats() {
 
   for(size_t i=0; i< energyBundle->cntrs.size(); i++) {
     if (clockInterval[ncores-1] > 1 || !energyBundle->cntrs[i].isGPU()){
-        powerDynCntr[i]->sample(1000*energyBundle->cntrs[i].getDyn());  
-        powerLkgCntr[i]->sample(1000*energyBundle->cntrs[i].getScaledLkg());  
-        energyCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*energyBundle->cntrs[i].getCyc()/1e3);  
-        engDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6);  
+        powerDynCntr[i]->sample(1000*energyBundle->cntrs[i].getDyn(), true);  
+        powerLkgCntr[i]->sample(1000*energyBundle->cntrs[i].getScaledLkg(), true);  
+        energyCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*energyBundle->cntrs[i].getCyc()/1e3, true);
+        engDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6, true);
         if (currentWin){
           currentEngDelayCntr[i]->reset();
         }
-        currentEngDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6);  
+        currentEngDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6, true);  
     }
   }
 

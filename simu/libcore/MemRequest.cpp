@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -47,7 +47,9 @@
 #include "MemStruct.h"
 /* }}} */
 
-pool<MemRequest>  MemRequest::actPool(256, "MemRequest");
+pool<MemRequest>  MemRequest::actPool(2048, "MemRequest");
+
+bool forcemsgdump=false;
 
 MemRequest::MemRequest()
   /* constructor  */
@@ -66,12 +68,12 @@ MemRequest::MemRequest()
 }
 /*  */
 
-MemRequest::~MemRequest() 
-	// destructor 
+MemRequest::~MemRequest()
+	// destructor
 {
   // to avoid warnings
 }
-// 
+//
 
 void MemRequest::redoReq()         { upce(); currMemObj->doReq(this);         }
 void MemRequest::redoReqAck()      { upce(); currMemObj->doReqAck(this);      }
@@ -85,7 +87,7 @@ void MemRequest::startSetState()    { I(mt == mt_setState);    currMemObj->setSt
 void MemRequest::startSetStateAck() { I(mt == mt_setStateAck); currMemObj->setStateAck(this); }
 void MemRequest::startDisp()        { I(mt == mt_disp);        currMemObj->disp(this);        }
 
-void MemRequest::addPendingSetStateAck(MemRequest *mreq) 
+void MemRequest::addPendingSetStateAck(MemRequest *mreq)
 {
   I(mreq->id < id);
   I(mreq->mt == mt_setState || mreq->mt == mt_req || mreq->mt == mt_reqAck);
@@ -96,10 +98,13 @@ void MemRequest::addPendingSetStateAck(MemRequest *mreq)
 }
 
 void MemRequest::setStateAckDone(TimeDelta_t lat)
-{  
+{
   MemRequest *orig = setStateAckOrig;
   if(orig==0)
 		return;
+  if (orig->mt == mt_setState)
+    orig->needsDisp |= needsDisp;
+
   setStateAckOrig = 0;
   I(orig->pendingSetStateAck>0);
   orig->pendingSetStateAck--;
@@ -111,9 +116,11 @@ void MemRequest::setStateAckDone(TimeDelta_t lat)
     }else if (orig->mt == mt_setState) {
       //I(orig->setStateAckOrig==0);
       //orig->ack();
-      orig->convert2SetStateAck(orig->ma);
+      orig->convert2SetStateAck(orig->ma, orig->needsDisp);
 			I(orig->currMemObj == orig->creatorObj);
-			orig->startSetStateAck();
+			//orig->startSetStateAck();
+      // NOTE: no PortManager because this message is already accounted
+      orig->redoSetStateAckAbs(globalClock);
       //orig->setStateAckDone(); No recursive/dep chains for the moment
     }else{
       I(0);
@@ -121,8 +128,9 @@ void MemRequest::setStateAckDone(TimeDelta_t lat)
   }
 }
 
-MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, CallbackBase *cb) 
+MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, CallbackBase *cb)
 {
+
   I(mobj);
 
   MemRequest *r = actPool.out();
@@ -132,10 +140,10 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
   r->creatorObj  = mobj;
   r->currMemObj  = mobj;
 	r->firstCache  = 0;
-#ifdef DEBUG
+//#ifdef DEBUG
   static uint64_t current_id = 0;
   r->id          = current_id++;
-#endif
+//#endif
 #ifdef DEBUG_CALLPATH
   r->prevMemObj  = 0;
   r->calledge.clear();
@@ -143,10 +151,14 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
 #endif
   r->cb          = cb;
   r->startClock  = globalClock;
-	r->retrying = false;
-	r->doStats  = doStats;
+	r->retrying    = false;
+  r->needsDisp   = false;
+	r->doStats     = doStats;
   r->pendingSetStateAck = 0;
   r->setStateAckOrig    = 0;
+#ifdef ENABLE_NBSD
+  r->param       = 0;
+#endif
 
   return r;
 }
@@ -164,14 +176,18 @@ void MemRequest::dump_all() {
 void MemRequest::dump_calledge(TimeDelta_t lat, bool interesting)
 {
 #if 1
-  if(!interesting)
+  if(!interesting && !forcemsgdump)
     return;
 #endif
 
   Time_t total = 0;
+  Time_t last_tismo = 0;
   for(size_t i = 0;i<calledge.size();i++) {
     CallEdge ce  = calledge[i];
-    total       += ce.tismo;
+    if (last_tismo==0)
+      last_tismo = ce.tismo;
+    total     += ce.tismo - last_tismo;
+    last_tismo = ce.tismo;
     if (ce.mt == mt_setState || ce.mt == mt_disp) {
       interesting = true;
       break;
@@ -192,6 +208,7 @@ void MemRequest::rawdump_calledge(TimeDelta_t lat, Time_t total) {
   c->mapReset();
 
   char gname[1024];
+  Time_t last_tismo = 0xdeadbeef;
   for(size_t i=0;i<calledge.size();i++) {
     CallEdge ce = calledge[i];
     // get Type
@@ -244,7 +261,10 @@ void MemRequest::rawdump_calledge(TimeDelta_t lat, Time_t total) {
     gname[k]=0;
     printf(" -> %s",gname);
 
-    printf(" [label=\"%d%s_%s%d\"]\n", (int)i, t, a, ce.tismo);
+    if (last_tismo==0xdeadbeef)
+      last_tismo = ce.tismo;
+    printf(" [label=\"%d%s_%s_%lld_d%d\"]\n", (int)i, t, a, (long long int)ce.tismo, (int)(ce.tismo-last_tismo));
+    last_tismo = ce.tismo;
   }
   printf("  %s -> CPU [label=\"%dRA%d\"]\n",gname, (int)calledge.size(), lat);
 
@@ -266,7 +286,7 @@ void MemRequest::upce()
   else
     MSG("mreq %d: starts:%s ends:%s",id, ce.s->getName(), ce.e->getName());
 */
-  ce.tismo      = globalClock-lastCallTime;
+  ce.tismo      = globalClock; // -lastCallTime;
   ce.mt         = mt;
   ce.ma         = ma;
   I(globalClock>=lastCallTime);
@@ -276,16 +296,14 @@ void MemRequest::upce()
 }
 #endif
 
-void MemRequest::setNextHop(MemObj *newMemObj) 
+void MemRequest::setNextHop(MemObj *newMemObj)
 {
 	I(currMemObj != newMemObj);
-#ifdef DEBUG_CALLPATH
   prevMemObj = currMemObj;
-#endif
   currMemObj = newMemObj;
 }
 
-void MemRequest::destroy() 
+void MemRequest::destroy()
 /* destroy/recycle current and parent_req messages  */
 {
   actPool.in(this);

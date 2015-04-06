@@ -108,7 +108,7 @@ protected:
 
   FILE *genReportFileNameAndOpen(const char *str);
   void fetchNextMode();
-	void doWarmupOpAddr(char op, uint64_t addr);
+	void doWarmupOpAddr(InstOpcode op, uint64_t addr);
 
   void setNextSwitch(uint64_t instNum);
   uint64_t getNextSwitch() const { return nextSwitch; }

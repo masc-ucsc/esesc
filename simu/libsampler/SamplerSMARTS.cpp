@@ -57,13 +57,13 @@ SamplerSMARTS::SamplerSMARTS(const char *iname, const char *section, EmulInterfa
   if (nInstSkip)
     startRabbit(fid);
 
-  std::cout << "Sampler: TBS, R:" << nInstRabbit
+  std::cout << "Sampler: inst, R:" << nInstRabbit
             << ", W:"             << nInstWarmup
             << ", D:"             << nInstDetail
             << ", T:"             << nInstTiming
             << std::endl;
 
-  std::cout << "Sampler: TBS, nInstMax:" << nInstMax
+  std::cout << "Sampler: inst, nInstMax:" << nInstMax
             << ", nInstSkip:"            << nInstSkip
             << ", maxnsTime:"           << maxnsTime
             << std::endl;
@@ -77,16 +77,14 @@ SamplerSMARTS::~SamplerSMARTS()
 }
 /* }}} */
 
-void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
 
   I(fid < emul->getNumEmuls());
-  if(likely(!execute(fid, icount)))
+  if(likely(!execute(fid, 1)))
     return; // QEMU can still send a few additional instructions (emul should stop soon)
   I(mode!=EmuInit);
-
-  I(insn);
 
   // process the current sample mode
   if (getNextSwitch()>totalnInst) {
@@ -95,15 +93,14 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid,
       return;
 
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
+      emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, env, getStatsFlag());
       return;
     }
 
     I(mode == EmuWarmup);
-		doWarmupOpAddr(op, addr);
+		doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
     return;
   }
-
 
   // Look for the new mode
   I(getNextSwitch() <= totalnInst);
@@ -120,6 +117,21 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid,
   lastMode = mode;
   nextMode(ROTATE, fid);
   if (lastMode == EmuTiming) { // timing is going to be over
+
+#if 0
+		static double last_timing         = 0;
+		static long long last_globalClock = 0;
+
+		MSG("%f %lld"
+				,iusage[EmuTiming]->getDouble()
+				,globalClock-last_globalClock);
+
+		last_timing      = iusage[EmuTiming]->getDouble();
+		last_globalClock = globalClock;
+#endif
+
+    BootLoader::reportSample();
+    
     if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
       markDone();
       pthread_mutex_unlock (&mode_lock);
@@ -157,13 +169,24 @@ void SamplerSMARTS::updateCPI(FlowID fid){
 
 
 void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
-
   if (rotate){
-
     fetchNextMode();
     I(next_mode != EmuInit);
 
-    setMode(next_mode, fid);
+    //If in live mode and warmup is to be forced
+    if(BootLoader::genwarm > 0 && next_mode == EmuTiming) {
+      BootLoader::genwarm--;
+      setMode(EmuWarmup, fid);
+      //setMode(EmuRabbit, fid);
+    } else if(BootLoader::live_warmup > 0 && next_mode == EmuTiming) {
+      BootLoader::live_warmup--;
+      BootLoader::sample_count++;
+      setMode(EmuWarmup, fid);
+      //setMode(EmuRabbit, fid);
+    } else {
+      setMode(next_mode, fid);
+    }
+
     I(mode == next_mode);
     if (next_mode == EmuRabbit){
       setModeNativeRabbit();

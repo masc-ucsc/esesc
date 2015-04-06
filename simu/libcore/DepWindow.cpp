@@ -45,8 +45,8 @@
 DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName)
   :gproc(gp)
   ,srcCluster(aCluster)
-  ,Id(gp->getId())
-  ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getId()))
+  ,Id(gp->getID())
+  ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getID()))
   ,WakeUpDelay(SescConf->getInt(clusterName, "wakeupDelay"))
   ,SchedDelay(SescConf->getInt(clusterName, "schedDelay"))
   ,RegFileDelay(SescConf->getInt(clusterName, "regFileDelay"))
@@ -59,7 +59,7 @@ DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName)
                                  ,SescConf->getInt(clusterName, "wakeUpPortOccp"));
 
   SescConf->isInt(clusterName, "wakeupDelay");
-  SescConf->isBetween(clusterName, "wakeupDelay", 1, 1024);
+  SescConf->isBetween(clusterName, "wakeupDelay", 0, 1024);
 
   sprintf(cadena,"P(%d)_%s_sched", Id, clusterName);
   schedPort = PortGeneric::create(cadena

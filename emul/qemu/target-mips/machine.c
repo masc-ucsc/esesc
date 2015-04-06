@@ -25,6 +25,7 @@ static void save_tc(QEMUFile *f, TCState *tc)
     qemu_put_betls(f, &tc->CP0_TCSchedule);
     qemu_put_betls(f, &tc->CP0_TCScheFBack);
     qemu_put_sbe32s(f, &tc->CP0_Debug_tcstatus);
+    qemu_put_betls(f, &tc->CP0_UserLocal);
 }
 
 static void save_fpu(QEMUFile *f, CPUMIPSFPUContext *fpu)
@@ -42,7 +43,7 @@ static void save_fpu(QEMUFile *f, CPUMIPSFPUContext *fpu)
 
 void cpu_save(QEMUFile *f, void *opaque)
 {
-    CPUState *env = opaque;
+    CPUMIPSState *env = opaque;
     int i;
 
     /* Save active TC */
@@ -60,7 +61,12 @@ void cpu_save(QEMUFile *f, void *opaque)
     qemu_put_be32s(f, &env->tlb->nb_tlb);
     qemu_put_be32s(f, &env->tlb->tlb_in_use);
     for(i = 0; i < MIPS_TLB_MAX; i++) {
-        uint16_t flags = ((env->tlb->mmu.r4k.tlb[i].G << 10) |
+        uint16_t flags = ((env->tlb->mmu.r4k.tlb[i].EHINV << 15) |
+                          (env->tlb->mmu.r4k.tlb[i].RI1 << 14) |
+                          (env->tlb->mmu.r4k.tlb[i].RI0 << 13) |
+                          (env->tlb->mmu.r4k.tlb[i].XI1 << 12) |
+                          (env->tlb->mmu.r4k.tlb[i].XI0 << 11) |
+                          (env->tlb->mmu.r4k.tlb[i].G << 10) |
                           (env->tlb->mmu.r4k.tlb[i].C0 << 7) |
                           (env->tlb->mmu.r4k.tlb[i].C1 << 4) |
                           (env->tlb->mmu.r4k.tlb[i].V0 << 3) |
@@ -110,6 +116,8 @@ void cpu_save(QEMUFile *f, void *opaque)
     qemu_put_sbe32s(f, &env->CP0_SRSConf4);
     qemu_put_sbe32s(f, &env->CP0_HWREna);
     qemu_put_betls(f, &env->CP0_BadVAddr);
+    qemu_put_be32s(f, &env->CP0_BadInstr);
+    qemu_put_be32s(f, &env->CP0_BadInstrP);
     qemu_put_sbe32s(f, &env->CP0_Count);
     qemu_put_betls(f, &env->CP0_EntryHi);
     qemu_put_sbe32s(f, &env->CP0_Compare);
@@ -143,6 +151,9 @@ void cpu_save(QEMUFile *f, void *opaque)
     qemu_put_sbe32s(f, &env->CP0_DataHi);
     qemu_put_betls(f, &env->CP0_ErrorEPC);
     qemu_put_sbe32s(f, &env->CP0_DESAVE);
+    for (i = 0; i < MIPS_KSCRATCH_NUM; i++) {
+        qemu_put_betls(f, &env->CP0_KScratch[i]);
+    }
 
     /* Save inactive TC state */
     for (i = 0; i < MIPS_SHADOW_SET_MAX; i++)
@@ -151,7 +162,7 @@ void cpu_save(QEMUFile *f, void *opaque)
         save_fpu(f, &env->fpus[i]);
 }
 
-static void load_tc(QEMUFile *f, TCState *tc)
+static void load_tc(QEMUFile *f, TCState *tc, int version_id)
 {
     int i;
 
@@ -173,6 +184,9 @@ static void load_tc(QEMUFile *f, TCState *tc)
     qemu_get_betls(f, &tc->CP0_TCSchedule);
     qemu_get_betls(f, &tc->CP0_TCScheFBack);
     qemu_get_sbe32s(f, &tc->CP0_Debug_tcstatus);
+    if (version_id >= 4) {
+        qemu_get_betls(f, &tc->CP0_UserLocal);
+    }
 }
 
 static void load_fpu(QEMUFile *f, CPUMIPSFPUContext *fpu)
@@ -190,14 +204,16 @@ static void load_fpu(QEMUFile *f, CPUMIPSFPUContext *fpu)
 
 int cpu_load(QEMUFile *f, void *opaque, int version_id)
 {
-    CPUState *env = opaque;
+    CPUMIPSState *env = opaque;
+    MIPSCPU *cpu = mips_env_get_cpu(env);
     int i;
 
-    if (version_id != 3)
+    if (version_id < 3) {
         return -EINVAL;
+    }
 
     /* Load active TC */
-    load_tc(f, &env->active_tc);
+    load_tc(f, &env->active_tc, version_id);
 
     /* Load active FPU */
     load_fpu(f, &env->active_fpu);
@@ -226,6 +242,13 @@ int cpu_load(QEMUFile *f, void *opaque, int version_id)
         env->tlb->mmu.r4k.tlb[i].V1 = (flags >> 2) & 1;
         env->tlb->mmu.r4k.tlb[i].D0 = (flags >> 1) & 1;
         env->tlb->mmu.r4k.tlb[i].D1 = (flags >> 0) & 1;
+        if (version_id >= 5) {
+            env->tlb->mmu.r4k.tlb[i].EHINV = (flags >> 15) & 1;
+            env->tlb->mmu.r4k.tlb[i].RI1 = (flags >> 14) & 1;
+            env->tlb->mmu.r4k.tlb[i].RI0 = (flags >> 13) & 1;
+            env->tlb->mmu.r4k.tlb[i].XI1 = (flags >> 12) & 1;
+            env->tlb->mmu.r4k.tlb[i].XI0 = (flags >> 11) & 1;
+        }
         qemu_get_betls(f, &env->tlb->mmu.r4k.tlb[i].PFN[0]);
         qemu_get_betls(f, &env->tlb->mmu.r4k.tlb[i].PFN[1]);
     }
@@ -262,6 +285,10 @@ int cpu_load(QEMUFile *f, void *opaque, int version_id)
     qemu_get_sbe32s(f, &env->CP0_SRSConf4);
     qemu_get_sbe32s(f, &env->CP0_HWREna);
     qemu_get_betls(f, &env->CP0_BadVAddr);
+    if (version_id >= 5) {
+        qemu_get_be32s(f, &env->CP0_BadInstr);
+        qemu_get_be32s(f, &env->CP0_BadInstrP);
+    }
     qemu_get_sbe32s(f, &env->CP0_Count);
     qemu_get_betls(f, &env->CP0_EntryHi);
     qemu_get_sbe32s(f, &env->CP0_Compare);
@@ -295,14 +322,20 @@ int cpu_load(QEMUFile *f, void *opaque, int version_id)
     qemu_get_sbe32s(f, &env->CP0_DataHi);
     qemu_get_betls(f, &env->CP0_ErrorEPC);
     qemu_get_sbe32s(f, &env->CP0_DESAVE);
+    if (version_id >= 5) {
+        for (i = 0; i < MIPS_KSCRATCH_NUM; i++) {
+            qemu_get_betls(f, &env->CP0_KScratch[i]);
+        }
+    }
 
     /* Load inactive TC state */
-    for (i = 0; i < MIPS_SHADOW_SET_MAX; i++)
-        load_tc(f, &env->tcs[i]);
+    for (i = 0; i < MIPS_SHADOW_SET_MAX; i++) {
+        load_tc(f, &env->tcs[i], version_id);
+    }
     for (i = 0; i < MIPS_FPU_MAX; i++)
         load_fpu(f, &env->fpus[i]);
 
     /* XXX: ensure compatibility for halted bit ? */
-    tlb_flush(env, 1);
+    tlb_flush(CPU(cpu), 1);
     return 0;
 }

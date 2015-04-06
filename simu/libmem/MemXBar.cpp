@@ -40,17 +40,57 @@
 
 /* }}} */
 
-MemXBar::MemXBar(MemorySystem* current ,const char *section ,const char *name)
-  /* constructor {{{1 */
+MemXBar::MemXBar(const char *section ,const char *name)
   : GXBar(section, name)
-  ,readHit          ("%s:readHit",         name)
-  ,writeHit         ("%s:writeHit",         name)
+{/*{{{*/
 
-{
+  MSG("Partially initializing a type of MemXBar:%s\n",name);  
+  setParam(section, name);
+
+}/*}}}*/
+
+MemXBar::MemXBar(MemorySystem* current ,const char *section ,const char *name)
+  /* constructor */
+  : GXBar(section, name)
+{/*{{{*/
+  
+  I(current);
   char * tmp;
-  printf("building a memXbar named:%s\n",name);  
-  Xbar_unXbar_balance++; //increment balance of XBars
   lower_level_banks = NULL; 
+  
+  MSG("building a memXbar named:%s\n",name);  
+  setParam(section, name);
+
+
+  lower_level_banks = new MemObj*[numLowerLevelBanks];
+  XBar_rw_req       = new GStatsCntr* [numLowerLevelBanks];
+
+  std::vector<char *> vPars = SescConf->getSplitCharPtr(section, "lowerLevel");
+  //size_t size = strlen(vPars[0]);
+
+  for(size_t i=0;i<numLowerLevelBanks;i++) {    
+    //lower_level_banks[i] = current->declareMemoryObj(section, "lowerLevel");   
+    tmp = (char*)malloc(255);
+    sprintf(tmp,"%s(%lu)",vPars[1],i);
+    lower_level_banks[i] = current->declareMemoryObj_uniqueName(tmp,vPars[0]);         
+    addLowerLevel(lower_level_banks[i]);
+
+    XBar_rw_req[i]   = new GStatsCntr("%s_to_%s:rw_req",name,lower_level_banks[i]->getName());
+  }
+
+  if(Xbar_unXbar_balance !=0){
+    printf("ERROR: Crossbars and UnCrossbars are unbalanced: %d\n",Xbar_unXbar_balance);
+    exit(1);
+  }
+    
+  //free(tmp);
+
+}
+/* }}} */
+
+void MemXBar::setParam(const char *section, const char *name)
+{/*{{{*/
+  Xbar_unXbar_balance++; //increment balance of XBars
 
   SescConf->isInt(section, "lowerLevelBanks");
   SescConf->isInt(section, "LineSize");
@@ -67,29 +107,7 @@ MemXBar::MemXBar(MemorySystem* current ,const char *section ,const char *name)
     printf("ERROR: XBAR: %s does not have a Modfactor(%d) bigger than the number of structures(%d) below it!\n",name,Modfactor,numLowerLevelBanks);
     exit(1);
   }
-
-  lower_level_banks = new MemObj*[numLowerLevelBanks];
-
-  std::vector<char *> vPars = SescConf->getSplitCharPtr(section, "lowerLevel");
-  //size_t size = strlen(vPars[0]);
-
-  for(size_t i=0;i<numLowerLevelBanks;i++) {    
-    //lower_level_banks[i] = current->declareMemoryObj(section, "lowerLevel");   
-    tmp = (char*)malloc(255);
-    sprintf(tmp,"%s(%lu)",vPars[0],i);
-    lower_level_banks[i] = current->declareMemoryObj_uniqueName(tmp,vPars[0]);         
-    addLowerLevel(lower_level_banks[i]);
-  }
-
-  if(Xbar_unXbar_balance !=0){
-    printf("ERROR: Crossbars and UnCrossbars are unbalanced: %d\n",Xbar_unXbar_balance);
-    exit(1);
-  }
-    
-  //free(tmp);
-  I(current);
-}
-/* }}} */
+}/*}}}*/
 
 void MemXBar::doReq(MemRequest *mreq)
   /* read if splitter above L1 (down) {{{1 */
@@ -98,8 +116,9 @@ void MemXBar::doReq(MemRequest *mreq)
     mreq->ack();
     return;
   } 
-  readHit.inc(mreq->getStatsFlag());
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);  
+
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));  
+  XBar_rw_req[pos]->inc(mreq->getStatsFlag());
   router->scheduleReqPos(pos, mreq);
 }
 /* }}} */
@@ -118,50 +137,51 @@ void MemXBar::doReqAck(MemRequest *mreq)
 void MemXBar::doSetState(MemRequest *mreq)
   /* setState (up) {{{1 */
 {  
-  router->sendSetStateAll(mreq, mreq->getAction());
+  //FIXME
+    router->sendSetStateAll(mreq, mreq->getAction());
 }
 /* }}} */
 
 void MemXBar::doSetStateAck(MemRequest *mreq)
   /* setStateAck (down) {{{1 */
 {
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));
   router->scheduleSetStateAckPos(pos, mreq);
-	I(0); 
 	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
+	// I(0); 
 }
 /* }}} */
 
 void MemXBar::doDisp(MemRequest *mreq)
   /* disp (down) {{{1 */
 {
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));
   router->scheduleDispPos(pos, mreq);
-	I(0); 
+	// I(0); 
 	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
 }
 /* }}} */
 
-bool MemXBar::isBusy(AddrType addr) const
+bool MemXBar::isBusy(AddrType addr, ExtraParameters* xdata) const
 /* always can accept writes {{{1 */
 {
-  uint32_t pos = addrHash(addr,LineSize,Modfactor,numLowerLevelBanks);
-  return router->isBusyPos(pos, addr);
+  uint32_t pos = addrHash(addr,LineSize,Modfactor,numLowerLevelBanks,xdata);
+  return router->isBusyPos(pos, addr,xdata);
 }
 /* }}} */
 
-TimeDelta_t MemXBar::ffread(AddrType addr)
+TimeDelta_t MemXBar::ffread(AddrType addr, ExtraParameters* xdata)
   /* fast forward reads {{{1 */
 { 
-  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
+  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks, xdata);
   return router->ffreadPos(pos, addr);
 }
 /* }}} */
 
-TimeDelta_t MemXBar::ffwrite(AddrType addr)
+TimeDelta_t MemXBar::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* fast forward writes {{{1 */
 { 
-  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
+  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks, xdata);
   return router->ffwritePos(pos, addr);
 }
 /* }}} */

@@ -21,19 +21,35 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
 
+#include <sys/types.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h> 
+
 #include <alloca.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <unistd.h>
 
 #include "nanassert.h"
 #include "Report.h"
+#include "SescConf.h"
+#include "NodeInt.h"
+#include "transporter.h"
 
 FILE *Report::rfd[MAXREPORTSTACK];
 const char *Report::fns[MAXREPORTSTACK];
 int32_t Report::tos=0;
+char Report::checkpoint_id[10];
+bool Report::is_live = false;
+SocketBuffer *Report::buffer;
+unsigned char * Report::binReportData;
+int Report::binLength = 0;
+std::string Report::schema = "\"sample_count\":4";
 
 Report::Report() {
   rfd[0]=stdout;
@@ -47,6 +63,10 @@ const char * Report::getNameID() {
 }
 
 void Report::openFile(const char *name) {
+  //live stuff
+  if(is_live)
+    return;
+
   I(tos<MAXREPORTSTACK);
 
   FILE *ffd;
@@ -81,6 +101,10 @@ void Report::close() {
 }
 
 void Report::field(int32_t fn, const char *format,...) {
+  //live stuff
+  if(is_live)
+    return;
+
   va_list ap;
 
   I( fn < tos );
@@ -96,23 +120,108 @@ void Report::field(int32_t fn, const char *format,...) {
 }
 
 void Report::field(const char *format, ...) {
+  if(is_live)
+    return;
   va_list ap;
-
   I( tos );
-  FILE *ffd = rfd[tos-1];
-  
+  FILE *ffd = rfd[tos-1];  
   va_start(ap, format);
 
-  vfprintf(ffd, format, ap);
+  //live stuff
+  char b[1024];
+  if (is_live) {
+    vsprintf(b, format, ap);
+  } else {
+    vfprintf(ffd, format, ap);
+  }
 
   va_end(ap);
 
-  fprintf(ffd, "\n");
+  //live stuff
+  if(is_live) {
+    buffer->add("s,");
+    buffer->add(checkpoint_id);
+    buffer->add(",");
+    buffer->add(b);
+    buffer->add(";");
+  } else {
+    fprintf(ffd, "\n");
+  }
 }
 
 void Report::flush() {
+  //live stuff
+  if(is_live)
+    return;
+
   if( tos == 0 )
     return;
   
   fflush(rfd[tos-1]);
+}
+
+void Report::openSocket (int64_t cpid) {
+  //live stuff
+  is_live = SescConf->getBool("","live");
+  if(is_live) {
+    buffer = new SocketBuffer(); 
+    bzero(checkpoint_id, 10);
+    sprintf(checkpoint_id, "%ld", cpid);
+  }
+}
+
+void Report::flushSocket(int64_t sample_count) {
+  //live stuff
+  return;
+
+  char b[128];
+  bzero(b, 128);
+  sprintf(b, ",sample_count=%ld;", sample_count);
+  buffer->add("s,");
+  buffer->add(checkpoint_id);
+  buffer->add(b);
+  buffer->flush(checkpoint_id);
+}
+
+void Report::binField(double data) {
+  memcpy(binReportData + binLength, &data, 8);
+  binLength += 8;
+}
+
+void Report::binField(double nData, double data) {
+  memcpy(binReportData + binLength, &nData, 8);
+  binLength += 8;
+  memcpy(binReportData + binLength, &data, 8);
+  binLength += 8;
+}
+
+void Report::binField(double d1, double d2, double d3) {
+  memcpy(binReportData + binLength, &d1, 8);
+  binLength += 8;
+  memcpy(binReportData + binLength, &d2, 8);
+  binLength += 8;
+  memcpy(binReportData + binLength, &d3, 8);
+  binLength += 8;
+}
+
+void Report::setBinField(int data) {
+  memcpy(binReportData + binLength, &data, 4);
+  binLength += 4;
+}
+
+void Report::binFlush() {
+  Transporter::send_data("gstats", binReportData, binLength, "gstats");
+  binReportData = new unsigned char[MAX_REPORT_BUFFER];
+  binLength = 0;
+}
+
+void Report::scheme(const char * name, const char * sch) {
+  std::string sname = name;
+  std::string ssch = sch;
+  schema += ",\"" + sname + "\"" + ':' + sch;
+}
+
+void Report::sendSchema() {
+  binReportData = new unsigned char[MAX_REPORT_BUFFER];
+  Transporter::send_schema("gstats", schema);
 }

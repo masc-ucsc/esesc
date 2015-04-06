@@ -7,11 +7,11 @@
  * non-internal declarations are in hw/ide.h
  */
 #include <hw/ide.h>
-#include <hw/isa.h>
-#include "iorange.h"
-#include "dma.h"
-#include "sysemu.h"
-#include "hw/scsi-defs.h"
+#include <hw/isa/isa.h>
+#include "sysemu/dma.h"
+#include "sysemu/sysemu.h"
+#include "hw/block/block.h"
+#include "block/scsi.h"
 
 /* debug IDE devices */
 //#define DEBUG_IDE
@@ -21,10 +21,12 @@
 
 typedef struct IDEBus IDEBus;
 typedef struct IDEDevice IDEDevice;
-typedef struct IDEDeviceInfo IDEDeviceInfo;
 typedef struct IDEState IDEState;
 typedef struct IDEDMA IDEDMA;
 typedef struct IDEDMAOps IDEDMAOps;
+
+#define TYPE_IDE_BUS "IDE"
+#define IDE_BUS(obj) OBJECT_CHECK(IDEBus, (obj), TYPE_IDE_BUS)
 
 /* Bits of HD_STATUS */
 #define ERR_STAT		0x01
@@ -287,6 +289,7 @@ typedef struct IDEDMAOps IDEDMAOps;
 #define ATAPI_INT_REASON_TAG            0xf8
 
 /* same constants as bochs */
+#define ASC_NO_SEEK_COMPLETE                 0x02
 #define ASC_ILLEGAL_OPCODE                   0x20
 #define ASC_LOGICAL_BLOCK_OOR                0x21
 #define ASC_INV_FIELD_IN_CMD_PACKET          0x24
@@ -294,6 +297,7 @@ typedef struct IDEDMAOps IDEDMAOps;
 #define ASC_INCOMPATIBLE_FORMAT              0x30
 #define ASC_MEDIUM_NOT_PRESENT               0x3a
 #define ASC_SAVING_PARAMETERS_NOT_SUPPORTED  0x39
+#define ASC_DATA_PHASE_ERROR                 0x4b
 #define ASC_MEDIA_REMOVAL_PREVENTED          0x53
 
 #define CFA_NO_ERROR            0x00
@@ -317,9 +321,12 @@ typedef enum { IDE_HD, IDE_CD, IDE_CFATA } IDEDriveKind;
 
 typedef void EndTransferFunc(IDEState *);
 
-typedef void DMAStartFunc(IDEDMA *, IDEState *, BlockDriverCompletionFunc *);
-typedef int DMAFunc(IDEDMA *);
+typedef void DMAStartFunc(IDEDMA *, IDEState *, BlockCompletionFunc *);
+typedef void DMAVoidFunc(IDEDMA *);
 typedef int DMAIntFunc(IDEDMA *, int);
+typedef int32_t DMAInt32Func(IDEDMA *, int);
+typedef void DMAu32Func(IDEDMA *, uint32_t);
+typedef void DMAStopFunc(IDEDMA *, bool);
 typedef void DMARestartFunc(void *, int, RunState);
 
 struct unreported_events {
@@ -342,13 +349,15 @@ struct IDEState {
     uint8_t unit;
     /* ide config */
     IDEDriveKind drive_kind;
-    int cylinders, heads, sectors;
+    int cylinders, heads, sectors, chs_trans;
     int64_t nb_sectors;
     int mult_sectors;
     int identify_set;
     uint8_t identify_data[512];
     int drive_serial;
     char drive_serial_str[21];
+    char drive_model_str[41];
+    uint64_t wwn;
     /* ide regs */
     uint8_t feature;
     uint8_t error;
@@ -368,7 +377,7 @@ struct IDEState {
 
     /* set for lba48 access */
     uint8_t lba48;
-    BlockDriverState *bs;
+    BlockBackend *blk;
     char version[9];
     /* ATAPI specific */
     struct unreported_events events;
@@ -379,13 +388,17 @@ struct IDEState {
     uint8_t cdrom_changed;
     int packet_transfer_size;
     int elementary_transfer_size;
-    int io_buffer_index;
+    int32_t io_buffer_index;
     int lba;
     int cd_sector_size;
     int atapi_dma; /* true if dma is requested for the packet cmd */
     BlockAcctCookie acct;
+    BlockAIOCB *pio_aiocb;
+    struct iovec iov;
+    QEMUIOVector qiov;
     /* ATA DMA state */
-    int io_buffer_size;
+    int32_t io_buffer_offset;
+    int32_t io_buffer_size;
     QEMUSGList sg;
     /* PIO transfer handling */
     int req_nb_sectors; /* number of sectors per interrupt */
@@ -395,8 +408,8 @@ struct IDEState {
     uint8_t *io_buffer;
     /* PIO save/restore */
     int32_t io_buffer_total_len;
-    int cur_io_buffer_offset;
-    int cur_io_buffer_len;
+    int32_t cur_io_buffer_offset;
+    int32_t cur_io_buffer_len;
     uint8_t end_transfer_fn_idx;
     QEMUTimer *sector_write_timer; /* only used for win2k install hack */
     uint32_t irq_count; /* counts IRQs when using win2k install hack */
@@ -419,21 +432,22 @@ struct IDEState {
 
 struct IDEDMAOps {
     DMAStartFunc *start_dma;
-    DMAFunc *start_transfer;
-    DMAIntFunc *prepare_buf;
+    DMAVoidFunc *start_transfer;
+    DMAInt32Func *prepare_buf;
+    DMAu32Func *commit_buf;
     DMAIntFunc *rw_buf;
     DMAIntFunc *set_unit;
-    DMAIntFunc *add_status;
-    DMAFunc *set_inactive;
+    DMAStopFunc *set_inactive;
+    DMAVoidFunc *cmd_done;
     DMARestartFunc *restart_cb;
-    DMAFunc *reset;
+    DMAVoidFunc *reset;
 };
 
 struct IDEDMA {
     const struct IDEDMAOps *ops;
     struct iovec iov;
     QEMUIOVector qiov;
-    BlockDriverAIOCB *aiocb;
+    BlockAIOCB *aiocb;
 };
 
 struct IDEBus {
@@ -442,6 +456,7 @@ struct IDEBus {
     IDEDevice *slave;
     IDEState ifs[2];
     int bus_id;
+    int max_units;
     IDEDMA *dma;
     uint8_t unit;
     uint8_t cmd;
@@ -450,37 +465,36 @@ struct IDEBus {
     int error_status;
 };
 
+#define TYPE_IDE_DEVICE "ide-device"
+#define IDE_DEVICE(obj) \
+     OBJECT_CHECK(IDEDevice, (obj), TYPE_IDE_DEVICE)
+#define IDE_DEVICE_CLASS(klass) \
+     OBJECT_CLASS_CHECK(IDEDeviceClass, (klass), TYPE_IDE_DEVICE)
+#define IDE_DEVICE_GET_CLASS(obj) \
+     OBJECT_GET_CLASS(IDEDeviceClass, (obj), TYPE_IDE_DEVICE)
+
+typedef struct IDEDeviceClass {
+    DeviceClass parent_class;
+    int (*init)(IDEDevice *dev);
+} IDEDeviceClass;
+
 struct IDEDevice {
     DeviceState qdev;
     uint32_t unit;
     BlockConf conf;
+    int chs_trans;
     char *version;
     char *serial;
+    char *model;
+    uint64_t wwn;
 };
 
-typedef int (*ide_qdev_initfn)(IDEDevice *dev);
-struct IDEDeviceInfo {
-    DeviceInfo qdev;
-    ide_qdev_initfn init;
-};
-
-#define BM_STATUS_DMAING 0x01
-#define BM_STATUS_ERROR  0x02
-#define BM_STATUS_INT    0x04
-
-/* FIXME These are not status register bits */
-#define BM_STATUS_DMA_RETRY  0x08
-#define BM_STATUS_PIO_RETRY  0x10
-#define BM_STATUS_RETRY_READ  0x20
-#define BM_STATUS_RETRY_FLUSH 0x40
-#define BM_STATUS_RETRY_TRIM 0x80
-
-#define BM_MIGRATION_COMPAT_STATUS_BITS \
-        (BM_STATUS_DMA_RETRY | BM_STATUS_PIO_RETRY | \
-        BM_STATUS_RETRY_READ | BM_STATUS_RETRY_FLUSH)
-
-#define BM_CMD_START     0x01
-#define BM_CMD_READ      0x08
+/* These are used for the error_status field of IDEBus */
+#define IDE_RETRY_DMA  0x08
+#define IDE_RETRY_PIO  0x10
+#define IDE_RETRY_READ  0x20
+#define IDE_RETRY_FLUSH 0x40
+#define IDE_RETRY_TRIM 0x80
 
 static inline IDEState *idebus_active_if(IDEBus *bus)
 {
@@ -512,10 +526,12 @@ void ide_bus_reset(IDEBus *bus);
 int64_t ide_get_sector(IDEState *s);
 void ide_set_sector(IDEState *s, int64_t sector_num);
 
+void ide_start_dma(IDEState *s, BlockCompletionFunc *cb);
 void ide_dma_error(IDEState *s);
 
 void ide_atapi_cmd_ok(IDEState *s);
 void ide_atapi_cmd_error(IDEState *s, int sense_key, int asc);
+void ide_atapi_dma_restart(IDEState *s);
 void ide_atapi_io_error(IDEState *s, int ret);
 
 void ide_ioport_write(void *opaque, uint32_t addr, uint32_t val);
@@ -527,11 +543,12 @@ uint32_t ide_data_readw(void *opaque, uint32_t addr);
 void ide_data_writel(void *opaque, uint32_t addr, uint32_t val);
 uint32_t ide_data_readl(void *opaque, uint32_t addr);
 
-int ide_init_drive(IDEState *s, BlockDriverState *bs, IDEDriveKind kind,
-                   const char *version, const char *serial);
+int ide_init_drive(IDEState *s, BlockBackend *blk, IDEDriveKind kind,
+                   const char *version, const char *serial, const char *model,
+                   uint64_t wwn,
+                   uint32_t cylinders, uint32_t heads, uint32_t secs,
+                   int chs_trans);
 void ide_init2(IDEBus *bus, qemu_irq irq);
-void ide_init2_with_non_qdev_drives(IDEBus *bus, DriveInfo *hd0,
-                                    DriveInfo *hd1, qemu_irq irq);
 void ide_init_ioport(IDEBus *bus, ISADevice *isa, int iobase, int iobase2);
 
 void ide_exec_cmd(IDEBus *bus, uint32_t val);
@@ -543,17 +560,18 @@ void ide_flush_cache(IDEState *s);
 void ide_transfer_start(IDEState *s, uint8_t *buf, int size,
                         EndTransferFunc *end_transfer_func);
 void ide_transfer_stop(IDEState *s);
-void ide_set_inactive(IDEState *s);
-BlockDriverAIOCB *ide_issue_trim(BlockDriverState *bs,
+void ide_set_inactive(IDEState *s, bool more);
+BlockAIOCB *ide_issue_trim(BlockBackend *blk,
         int64_t sector_num, QEMUIOVector *qiov, int nb_sectors,
-        BlockDriverCompletionFunc *cb, void *opaque);
+        BlockCompletionFunc *cb, void *opaque);
 
 /* hw/ide/atapi.c */
 void ide_atapi_cmd(IDEState *s);
 void ide_atapi_cmd_reply_end(IDEState *s);
 
 /* hw/ide/qdev.c */
-void ide_bus_new(IDEBus *idebus, DeviceState *dev, int bus_id);
+void ide_bus_new(IDEBus *idebus, size_t idebus_size, DeviceState *dev,
+                 int bus_id, int max_units);
 IDEDevice *ide_create_drive(IDEBus *bus, int unit, DriveInfo *drive);
 
 #endif /* HW_IDE_INTERNAL_H */

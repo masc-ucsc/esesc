@@ -39,6 +39,7 @@
 
 #include "MemObj.h"
 #include "MemRequest.h"
+#include "SescConf.h"
 /* }}} */
 
 #ifdef DEBUG
@@ -60,7 +61,11 @@ MemObj::MemObj(const char *sSection, const char *sName)
   ,name(sName)
   ,id(id_counter++)
 {
+  deviceType = SescConf->getCharPtr(section,"deviceType");
+
 	coreid = -1; // No first Level cache by default
+  firstLevelIL1 = false;
+  firstLevelDL1 = false;
   // Create router (different objects may override the default router)
   router = new MRouter(this);
 
@@ -99,6 +104,11 @@ void MemObj::addLowerLevel(MemObj *obj) {
 void MemObj::addUpperLevel(MemObj *obj) { 
 	//printf("%s upper level is %s\n",getName(),obj->getName());
 	router->addUpNode(obj);
+}
+
+void MemObj::blockFill(MemRequest *mreq)
+{
+	// Most objects do nothing
 }
 
 void MemObj::dump() const
@@ -157,21 +167,21 @@ void DummyMemObj::doDisp(MemRequest *req)
 }
 /* }}} */
 
-bool DummyMemObj::isBusy(AddrType addr) const 
+bool DummyMemObj::isBusy(AddrType addr, ExtraParameters* xdata) const 
 // Can it accept more requests {{{1
 {
 	return false;
 }
 // }}}
 
-TimeDelta_t DummyMemObj::ffread(AddrType addr)
+TimeDelta_t DummyMemObj::ffread(AddrType addr, ExtraParameters* xdata)
   /* fast forward read {{{1 */
 { 
   return 1;   // 1 cycle does everything :)
 }
 /* }}} */
 
-TimeDelta_t DummyMemObj::ffwrite(AddrType addr)
+TimeDelta_t DummyMemObj::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* fast forward write {{{1 */
 { 
   return 1;   // 1 cycle does everything :)

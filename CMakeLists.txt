@@ -3,48 +3,19 @@ INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
 SET(CMAKE_MODULE_PATH "${esesc_SOURCE_DIR}/cmake-modules/conf")
 cmake_minimum_required(VERSION 2.7)
 
-################################################
-# QEMU System/User and ISA configuration options
-
-MESSAGE("cmake configuration options:")
-IF(ENABLE_QEMU_SYSTEM)
-  MESSAGE(" -DENABLE_QEMU_SYSTEM=1         Full System QEMU (qemu must be compiled first)")
-ENDIF(ENABLE_QEMU_SYSTEM)
-IF(ENABLE_QEMU_USER)
-  MESSAGE("  -DENABLE_QEMU_USER=1          User Mode QEMU (qemu must be compiled first) (default)")
-  IF(APPLE)
-    MESSAGE(ERROR, "QEMU Linux User does not work with OS X")
-  ENDIF(APPLE)
-
-ENDIF(ENABLE_QEMU_USER)
-
-IF(ENABLE_CUDA)
-  IF(ENABLE_QEMU_USER)
-    MESSAGE("  -DENABLE_CUDA=1               Enable CUDA support for QEMU-user (Qemu must support CUDA first)")
-  ELSE(ENABLE_QEMU_USER)
-    MESSAGE("  -DENABLE_CUDA=0               Disabling CUDA support for QEMU-system (default)")
-  ENDIF(ENABLE_QEMU_USER)
-ELSE(ENABLE_CUDA)
-  MESSAGE("  -DENABLE_CUDA=0               Disable CUDA support for QEMU-user (default)")
-ENDIF(ENABLE_CUDA)
-
-
 #IF(ENABLE_PEQ)
 #  MESSAGE("  -DENABLE_PEQ=1                Enable Equation based power model support")
 #ELSE(ENABLE_PEQ)
 #  MESSAGE("  -DENABLE_PEQ=0                Disable Equation based power model Fusupport (default)")
 #ENDIF(ENABLE_PEQ)
 
-IF(ESESC_QEMU_ISA_ARMEL)
-  MESSAGE("  -DESESC_QEMU_ISA=armel        qemu/armel ISA")
-ENDIF(ESESC_QEMU_ISA_ARMEL)
-
-IF(ESESC_QEMU_ISA_SPARC32)
-  MESSAGE("  -DESESC_QEMU_ISA=sparc32      qemu/sparc32 ISA (default)")
-ENDIF(ESESC_QEMU_ISA_SPARC32)
+IF(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
+  MESSAGE("  -DESESC_QEMU_ISA=armv7        qemu/armv7 ISA")
+ELSE(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
+  MESSAGE("  -DESESC_QEMU_ISA=mips         qemu/mips64r6 ISA")
+ENDIF(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
 
 #############
-MESSAGE("  -DCMAKE_HOST_ARCH=${CMAKE_HOST_ARCH} compilation")
 MESSAGE("  -DCMAKE_HOST_MARCH=${CMAKE_HOST_MARCH} compilation")
 
 #############
@@ -63,10 +34,6 @@ FIND_PACKAGE(Curses)
 FIND_PACKAGE(FLEX)
 FIND_PACKAGE(BISON)
 FIND_PACKAGE(X11)
-
-IF(ENABLE_CUDA)
-  FIND_PACKAGE(CUDA)
-ENDIF(ENABLE_CUDA)
 
 if(COMMAND cmake_policy)
   cmake_policy(SET CMP0003 NEW)
@@ -172,19 +139,16 @@ ExternalProject_Add(libiberty
 set_target_properties(libiberty PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set(libiberty_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/libiberty/libiberty.a)
 
-IF(CMAKE_HOST_ARCH MATCHES "i386")
-  SET(QEMU_EXTRA --cpu=i386)
-ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-  SET(QEMU_EXTRA )
-ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
-
-IF(ENABLE_CUDA)
-  SET(QEMU_EXTRA --cpu=i386 --enable-esesc_cuda)
-ENDIF(ENABLE_CUDA)
+IF(CMAKE_BUILD_TYPE MATCHES "Debug")
+  SET(QEMU_EXTRA --enable-debug --cc=${CMAKE_C_COMPILER})
+ELSE(CMAKE_BUILD_TYPE MATCHES "Debug")
+  SET(QEMU_EXTRA --cc=${CMAKE_C_COMPILER})
+ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu --target-list=arm-linux-user --enable-esesc_user --python=python2 --disable-docs --disable-smartcard --disable-guest-base --cc=gcc ${QEMU_EXTRA}
+  #CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu --target-list=arm-linux-user --enable-esesc_user --python=python2 --disable-docs --disable-smartcard --disable-guest-base 
+  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu --target-list=mips64el-linux-user --disable-docs --enable-esesc --python=python2 --disable-system --disable-tools --without-pixman --disable-werror --disable-guest-agent ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0
@@ -196,17 +160,9 @@ ExternalProject_Add(qemu
 set_target_properties(qemu PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 #################################
-ADD_SUBDIRECTORY(misc/libmigdb)
-ADD_SUBDIRECTORY(emul/libcrack)
+#ADD_SUBDIRECTORY(misc/libmigdb)
 ADD_SUBDIRECTORY(emul/libemulint)
 ADD_SUBDIRECTORY(emul/libqemuint)
-IF(ENABLE_CUDA)
-  ADD_SUBDIRECTORY(emul/libgpu)
-  SET(QEMU_EXTRA --enable-esesc_cuda)
-ENDIF(ENABLE_CUDA)
-IF(ENABLE_SCQEMU)
-  ADD_SUBDIRECTORY(emul/libscqemu)
-ENDIF(ENABLE_SCQEMU)
 #################################
 ADD_SUBDIRECTORY(pwth/libpeq)
 ADD_SUBDIRECTORY(pwth/libmcpat)

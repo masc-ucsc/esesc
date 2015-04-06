@@ -88,7 +88,11 @@ static void doread(MemObj *cache, AddrType addr)
 
   rdDoneCB *cb = rdDoneCB::create(ldClone);
   printf("rd %x @%lld\n", (unsigned int)addr,(long long)globalClock);
-  MemRequest::sendReqRead(cache, ldClone, addr, cb);
+
+
+  ExtraParameters param;
+  param.configure(ldClone);
+  MemRequest::sendReqRead(cache, ldClone->getStatsFlag(), addr, cb, &param);
   rd_pending++;
 }
 
@@ -103,7 +107,11 @@ static void dowrite(MemObj *cache, AddrType addr)
 
   wrDoneCB *cb = wrDoneCB::create(stClone);
   printf("wr %x @%lld\n", (unsigned int)addr,(long long)globalClock);
-	MemRequest::sendReqWrite(cache, stClone, addr, cb);
+
+  ExtraParameters param;
+  param.configure(stClone);
+
+	MemRequest::sendReqWrite(cache, stClone->getStatsFlag(), addr, cb, &param);
 	wr_pending++;
 }
 

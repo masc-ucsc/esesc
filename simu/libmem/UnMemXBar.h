@@ -66,10 +66,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  TimeDelta_t ffread(AddrType addr);
-  TimeDelta_t ffwrite(AddrType addr);
+  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
 
-	bool isBusy(AddrType addr) const;
+	bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
 
 };
 

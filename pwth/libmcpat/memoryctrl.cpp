@@ -433,7 +433,7 @@ MemoryController::MemoryController(ParseXML *XML_interface,InputParameter* inter
   area.set_area(area.get_area()+ transecEngine->area.get_area());
   PHY = new MCPHY(XML, &interface_ip, mcp);
   area.set_area(area.get_area()+ PHY->area.get_area());
-	maxDynPower.sample(power.readOp.dynamic*mcp.clockRate);
+	maxDynPower.sample(power.readOp.dynamic*mcp.clockRate,true);
   //+++++++++Transaction engine +++++++++++++++++ ////TODO needs better numbers, Run the RTL code from OpenSparc.
 //  transecEngine.initialize(&interface_ip);
 //  transecEngine.peakDataTransferRate = XML->sys.mem.peak_transfer_rate;

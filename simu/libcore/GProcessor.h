@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -116,6 +116,9 @@ class GProcessor {
     GStatsCntr   clockTicks;
 
     static Time_t       lastWallClock;
+    Time_t              lastUpdatedWallClock;
+    Time_t              activeclock_start;
+    Time_t              activeclock_end;
     static GStatsCntr   *wallClock;
 
     // END Statistics
@@ -140,11 +143,11 @@ class GProcessor {
   public:
 
     virtual ~GProcessor();
-    int getId() const { return cpu_id; }
+    int getID() const { return cpu_id; }
     GStatsCntr *getnCommitted() { return &nCommitted;}
 
     GMemorySystem *getMemorySystem() const { return memorySystem; }
-    virtual LSQ *getLSQ() = 0;    
+    virtual LSQ *getLSQ() = 0;
     virtual bool isFlushing() = 0;
     virtual bool isReplayRecovering() = 0;
     virtual Time_t getReplayID() = 0;
@@ -181,10 +184,38 @@ class GProcessor {
     }
 
     void setWallClock(bool en=true) {
+
+      trackactivity();
+
       if (lastWallClock == globalClock || !en)
         return;
+
       lastWallClock = globalClock;
       wallClock->inc(en);
+
+    }
+
+    void trackactivity(){
+      if ((activeclock_end == (lastWallClock-1))){
+      } else {
+        if (activeclock_start != activeclock_end) {
+        //MSG("\nCPU[%d]\t%lld\t%lld\n"
+        //    ,cpu_id
+        //    ,(long long int) activeclock_start
+        //    ,(long long int) activeclock_end
+        //    );
+        }
+        activeclock_start =  lastWallClock;
+      }
+      activeclock_end = lastWallClock;
+    }
+
+    void dumpactivity(){
+      //MSG("\nCPU[%d]\t%lld\t%lld\n"
+      //    ,cpu_id
+      //    ,(long long int) activeclock_start
+      //    ,(long long int) activeclock_end
+      //   );
     }
 
     StoreSet *getSS() { return &storeset; }

@@ -43,7 +43,7 @@ UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *nam
   /* constructor {{{1 */
   : GXBar(section, name)
 {
-  printf("building an UnMemXbar named:%s\n",name);
+  MSG("building an UnMemXbar named:%s\n",name);
   Xbar_unXbar_balance--; //decrement balance of XBars
   lower_level = NULL; 
 
@@ -62,15 +62,18 @@ UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *nam
     exit(1);
   }
 
+#ifdef OLD_CODE_TO_BE_PHASED_OUT
   std::vector<char *> vPars = SescConf->getSplitCharPtr(section, "lowerLevel");
   size_t size = strlen(vPars[0]);
   char *tmp = (char*)malloc(size + 6);
-
-  sprintf(tmp,"%s(0)",vPars[1]);
-  //lower_level = current->declareMemoryObj(section, "lowerLevel");   
+  sprintf(tmp,"%s",vPars[1]);
   lower_level = current->declareMemoryObj_uniqueName(tmp,vPars[0]);         
+#else
+  lower_level = current->declareMemoryObj(section,"lowerLevel");         
+  //Must have only one lower level!
+#endif
+
   addLowerLevel(lower_level);
-    
   I(current);
 }
 /* }}} */
@@ -87,19 +90,15 @@ void UnMemXBar::doReqAck(MemRequest *mreq)
 {
   I(!mreq->isHomeNode());
 
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);  
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));  
   router->scheduleReqAckPos(pos, mreq);
-
-	I(0); 
-	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
-
 }
 /* }}} */
 
 void UnMemXBar::doSetState(MemRequest *mreq)
   /* setState (up) {{{1 */
 {  
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));
   router->scheduleSetStatePos(pos, mreq);
 }
 /* }}} */
@@ -118,24 +117,23 @@ void UnMemXBar::doDisp(MemRequest *mreq)
 }
 /* }}} */
 
-bool UnMemXBar::isBusy(AddrType addr) const
+bool UnMemXBar::isBusy(AddrType addr, ExtraParameters* xdata) const
 /* always can accept writes {{{1 */
 {
-  return router->isBusyPos(0, addr);
+  return router->isBusyPos(0, addr,xdata);
 }
 /* }}} */
 
-TimeDelta_t UnMemXBar::ffread(AddrType addr)
+TimeDelta_t UnMemXBar::ffread(AddrType addr, ExtraParameters* xdata)
   /* fast forward reads {{{1 */
 { 
   return router->ffread(addr);
 }
 /* }}} */
 
-TimeDelta_t UnMemXBar::ffwrite(AddrType addr)
+TimeDelta_t UnMemXBar::ffwrite(AddrType addr, ExtraParameters* xdata)
   /* fast forward writes {{{1 */
 { 
   return router->ffwrite(addr);
 }
 /* }}} */
-

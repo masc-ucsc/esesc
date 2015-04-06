@@ -125,8 +125,8 @@ void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID 
   // not happening for GPU, the CPU will decide!
 
   // We did enough
-  if (totalnInst >= nInstMax || endSimSiged) {
-  //if (totalnSamples >= nSampleMax || endSimSiged) { //FIXME
+  //if (totalnInst >= nInstMax/* || endSimSiged*/) {
+  if (totalnInst >= nInstMax) {
     markDone();
     return;
   }
@@ -167,10 +167,10 @@ void SamplerGPUSpacial::doPWTH() {
 
     //std::cout<<" Timeinterval "<<ti<<" mytime "<<mytime<<" last time "<<lastTime<<"\n";  
 
-    simt = BootLoader::getPowerModelPtr()->calcStats(ti, false, sFid); 
+    BootLoader::getPowerModelPtr()->calcStats(ti, false, sFid); 
     lastTime = mytime;
 
-    endSimSiged = (simt==90)?1:0; // 90 is a signal, not the actual time.
+    //endSimSiged = (simt==90)?1:0; // 90 is a signal, not the actual time.
 }
 
 uint64_t SamplerGPUSpacial::getGPUTime() {

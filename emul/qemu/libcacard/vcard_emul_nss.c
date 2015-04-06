@@ -33,6 +33,9 @@
 #include "vreader.h"
 #include "vevent.h"
 
+#include "libcacard/vcardt_internal.h"
+
+
 typedef enum {
     VCardEmulUnknown = -1,
     VCardEmulFalse = 0,
@@ -87,17 +90,13 @@ static int nss_emul_init;
 /*
  * allocate the set of arrays for certs, cert_len, key
  */
-static PRBool
+static void
 vcard_emul_alloc_arrays(unsigned char ***certsp, int **cert_lenp,
                         VCardKey ***keysp, int cert_count)
 {
-    *certsp = NULL;
-    *cert_lenp = NULL;
-    *keysp = NULL;
-    *certsp = (unsigned char **)g_malloc(sizeof(unsigned char *)*cert_count);
-    *cert_lenp = (int *)g_malloc(sizeof(int)*cert_count);
-    *keysp = (VCardKey **)g_malloc(sizeof(VCardKey *)*cert_count);
-    return PR_TRUE;
+    *certsp = g_new(unsigned char *, cert_count);
+    *cert_lenp = g_new(int, cert_count);
+    *keysp = g_new(VCardKey *, cert_count);
 }
 
 /*
@@ -140,7 +139,7 @@ vcard_emul_make_key(PK11SlotInfo *slot, CERTCertificate *cert)
 {
     VCardKey *key;
 
-    key = (VCardKey *)g_malloc(sizeof(VCardKey));
+    key = g_new(VCardKey, 1);
     key->slot = PK11_ReferenceSlot(slot);
     key->cert = CERT_DupCertificate(cert);
     /* NOTE: if we aren't logged into the token, this could return NULL */
@@ -168,7 +167,6 @@ vcard_emul_delete_key(VCardKey *key)
     if (key->slot) {
         PK11_FreeSlot(key->slot);
     }
-    return;
 }
 
 /*
@@ -288,10 +286,10 @@ vcard_emul_rsa_op(VCard *card, VCardKey *key,
             }
         }
         if ((i < buffer_size) && (buffer[i] == 0)) {
-            /* yes, we have a properly formated PKCS #1 signature */
+            /* yes, we have a properly formatted PKCS #1 signature */
             /*
              * NOTE: even if we accidentally got an encrypt buffer, which
-             * through shear luck started with 00, 01, ff, 00, it won't matter
+             * through sheer luck started with 00, 01, ff, 00, it won't matter
              * because the resulting Sign operation will effectively decrypt
              * the real buffer.
              */
@@ -369,7 +367,7 @@ vcard_7816_status_t
 vcard_emul_login(VCard *card, unsigned char *pin, int pin_len)
 {
     PK11SlotInfo *slot;
-    unsigned char *pin_string = NULL;
+    unsigned char *pin_string;
     int i;
     SECStatus rv;
 
@@ -403,7 +401,7 @@ vcard_emul_login(VCard *card, unsigned char *pin, int pin_len)
 }
 
 void
-vcard_emul_reset(VCard *card, VCardPower power)
+vcard_emul_logout(VCard *card)
 {
     PK11SlotInfo *slot;
 
@@ -411,22 +409,29 @@ vcard_emul_reset(VCard *card, VCardPower power)
         return;
     }
 
+    slot = vcard_emul_card_get_slot(card);
+    if (PK11_IsLoggedIn(slot, NULL)) {
+        PK11_Logout(slot); /* NOTE: ignoring SECStatus return value */
+    }
+}
+
+void
+vcard_emul_reset(VCard *card, VCardPower power)
+{
     /*
      * if we reset the card (either power on or power off), we lose our login
      * state
      */
-    /* TODO: we may also need to send insertion/removal events? */
-    slot = vcard_emul_card_get_slot(card);
-    PK11_Logout(slot); /* NOTE: ignoring SECStatus return value */
-    return;
-}
+    vcard_emul_logout(card);
 
+    /* TODO: we may also need to send insertion/removal events? */
+}
 
 static VReader *
 vcard_emul_find_vreader_from_slot(PK11SlotInfo *slot)
 {
     VReaderList *reader_list = vreader_get_reader_list();
-    VReaderListEntry *current_entry = NULL;
+    VReaderListEntry *current_entry;
 
     if (reader_list == NULL) {
         return NULL;
@@ -436,11 +441,13 @@ vcard_emul_find_vreader_from_slot(PK11SlotInfo *slot)
         VReader *reader = vreader_list_get_reader(current_entry);
         VReaderEmul *reader_emul = vreader_get_private(reader);
         if (reader_emul->slot == slot) {
+            vreader_list_delete(reader_list);
             return reader;
         }
         vreader_free(reader);
     }
 
+    vreader_list_delete(reader_list);
     return NULL;
 }
 
@@ -452,11 +459,11 @@ vreader_emul_new(PK11SlotInfo *slot, VCardEmulType type, const char *params)
 {
     VReaderEmul *new_reader_emul;
 
-    new_reader_emul = (VReaderEmul *)g_malloc(sizeof(VReaderEmul));
+    new_reader_emul = g_new(VReaderEmul, 1);
 
     new_reader_emul->slot = PK11_ReferenceSlot(slot);
     new_reader_emul->default_type = type;
-    new_reader_emul->type_params = strdup(params);
+    new_reader_emul->type_params = g_strdup(params);
     new_reader_emul->present = PR_FALSE;
     new_reader_emul->series = 0;
     new_reader_emul->saved_vcard = NULL;
@@ -472,9 +479,7 @@ vreader_emul_delete(VReaderEmul *vreader_emul)
     if (vreader_emul->slot) {
         PK11_FreeSlot(vreader_emul->slot);
     }
-    if (vreader_emul->type_params) {
-        g_free(vreader_emul->type_params);
-    }
+    g_free(vreader_emul->type_params);
     g_free(vreader_emul);
 }
 
@@ -521,21 +526,25 @@ vcard_emul_reader_get_slot(VReader *vreader)
 }
 
 /*
- *  Card ATR's map to physical cards. VCARD_ATR_PREFIX will set appropriate
+ *  Card ATR's map to physical cards. vcard_alloc_atr will set appropriate
  *  historical bytes for any software emulated card. The remaining bytes can be
  *  used to indicate the actual emulator
  */
-static const unsigned char nss_atr[] = { VCARD_ATR_PREFIX(3), 'N', 'S', 'S' };
+static unsigned char *nss_atr;
+static int nss_atr_len;
 
 void
 vcard_emul_get_atr(VCard *card, unsigned char *atr, int *atr_len)
 {
-    int len = MIN(sizeof(nss_atr), *atr_len);
+    int len;
     assert(atr != NULL);
 
+    if (nss_atr == NULL) {
+        nss_atr = vcard_alloc_atr("NSS", &nss_atr_len);
+    }
+    len = MIN(nss_atr_len, *atr_len);
     memcpy(atr, nss_atr, len);
     *atr_len = len;
-    return;
 }
 
 /*
@@ -596,7 +605,6 @@ vcard_emul_mirror_card(VReader *vreader)
     int *cert_len;
     VCardKey **keys;
     PK11SlotInfo *slot;
-    PRBool ret;
     VCard *card;
 
     slot = vcard_emul_reader_get_slot(vreader);
@@ -616,16 +624,8 @@ vcard_emul_mirror_card(VReader *vreader)
         cert_count++;
     }
 
-    if (cert_count == 0) {
-        PK11_DestroyGenericObjects(firstObj);
-        return NULL;
-    }
-
     /* allocate the arrays */
-    ret = vcard_emul_alloc_arrays(&certs, &cert_len, &keys, cert_count);
-    if (ret == PR_FALSE) {
-        return NULL;
-    }
+    vcard_emul_alloc_arrays(&certs, &cert_len, &keys, cert_count);
 
     /* fill in the arrays */
     cert_count = 0;
@@ -682,8 +682,19 @@ vcard_emul_event_thread(void *arg)
     SECMODModule *module = (SECMODModule *)arg;
 
     do {
+        /*
+         * XXX - the latency value doesn't matter one bit. you only get no
+         * blocking (flags |= CKF_DONT_BLOCK) or PKCS11_WAIT_LATENCY (==500),
+         * hard coded in coolkey.  And it isn't coolkey's fault - the timeout
+         * value we pass get's dropped on the floor before C_WaitForSlotEvent
+         * is called.
+         */
         slot = SECMOD_WaitForAnyTokenEvent(module, 0, 500);
         if (slot == NULL) {
+            /* this could be just a no event indication */
+            if (PORT_GetError() == SEC_ERROR_NO_EVENT) {
+                continue;
+            }
             break;
         }
         vreader = vcard_emul_find_vreader_from_slot(slot);
@@ -862,7 +873,7 @@ VCardEmulError
 vcard_emul_init(const VCardEmulOptions *options)
 {
     SECStatus rv;
-    PRBool ret, has_readers = PR_FALSE, need_coolkey_module;
+    PRBool has_readers = PR_FALSE;
     VReader *vreader;
     VReaderEmul *vreader_emul;
     SECMODListLock *module_lock;
@@ -885,7 +896,21 @@ vcard_emul_init(const VCardEmulOptions *options)
     if (options->nss_db) {
         rv = NSS_Init(options->nss_db);
     } else {
-        rv = NSS_Init("sql:/etc/pki/nssdb");
+        gchar *path;
+#ifndef _WIN32
+        path = g_strdup("/etc/pki/nssdb");
+#else
+        if (g_get_system_config_dirs() == NULL ||
+            g_get_system_config_dirs()[0] == NULL) {
+            return VCARD_EMUL_FAIL;
+        }
+
+        path = g_build_filename(
+            g_get_system_config_dirs()[0], "pki", "nssdb", NULL);
+#endif
+
+        rv = NSS_Init(path);
+        g_free(path);
     }
     if (rv != SECSuccess) {
         return VCARD_EMUL_FAIL;
@@ -912,13 +937,10 @@ vcard_emul_init(const VCardEmulOptions *options)
         vreader = vreader_new(options->vreader[i].vname, vreader_emul,
                               vreader_emul_delete);
         vreader_add_reader(vreader);
-        cert_count = options->vreader[i].cert_count;
 
-        ret = vcard_emul_alloc_arrays(&certs, &cert_len, &keys,
-                                      options->vreader[i].cert_count);
-        if (ret == PR_FALSE) {
-            continue;
-        }
+        vcard_emul_alloc_arrays(&certs, &cert_len, &keys,
+                                options->vreader[i].cert_count);
+
         cert_count = 0;
         for (j = 0; j < options->vreader[i].cert_count; j++) {
             /* we should have a better way of identifying certs than by
@@ -961,43 +983,28 @@ vcard_emul_init(const VCardEmulOptions *options)
     /* make sure we have some PKCS #11 module loaded */
     module_lock = SECMOD_GetDefaultModuleListLock();
     module_list = SECMOD_GetDefaultModuleList();
-    need_coolkey_module = !has_readers;
     SECMOD_GetReadLock(module_lock);
     for (mlp = module_list; mlp; mlp = mlp->next) {
         SECMODModule *module = mlp->module;
         if (module_has_removable_hw_slots(module)) {
-            need_coolkey_module = PR_FALSE;
             break;
         }
     }
     SECMOD_ReleaseReadLock(module_lock);
 
-    if (need_coolkey_module) {
-        SECMODModule *module;
-        module = SECMOD_LoadUserModule(
-                    (char *)"library=libcoolkeypk11.so name=Coolkey",
-                    NULL, PR_FALSE);
-        if (module == NULL) {
-            return VCARD_EMUL_FAIL;
-        }
-        SECMOD_DestroyModule(module); /* free our reference, Module will still
-                                       * be on the list.
-                                       * until we destroy it */
-    }
-
     /* now examine all the slots, finding which should be readers */
     /* We should control this with options. For now we mirror out any
      * removable hardware slot */
     default_card_type = options->hw_card_type;
-    default_type_params = strdup(options->hw_type_params);
+    default_type_params = g_strdup(options->hw_type_params);
 
     SECMOD_GetReadLock(module_lock);
     for (mlp = module_list; mlp; mlp = mlp->next) {
         SECMODModule *module = mlp->module;
-        PRBool has_emul_slots = PR_FALSE;
 
-        if (module == NULL) {
-                continue;
+        /* Ignore the internal module */
+        if (module == NULL || module == SECMOD_GetInternalModule()) {
+            continue;
         }
 
         for (i = 0; i < module->slotCount; i++) {
@@ -1007,14 +1014,21 @@ vcard_emul_init(const VCardEmulOptions *options)
             if (slot == NULL || !PK11_IsRemovable(slot) || !PK11_IsHW(slot)) {
                 continue;
             }
+            if (strcmp("E-Gate 0 0", PK11_GetSlotName(slot)) == 0) {
+                /*
+                 * coolkey <= 1.1.0-20 emulates this reader if it can't find
+                 * any hardware readers. This causes problems, warn user of
+                 * problems.
+                 */
+                fprintf(stderr, "known bad coolkey version - see "
+                        "https://bugzilla.redhat.com/show_bug.cgi?id=802435\n");
+                continue;
+            }
             vreader_emul = vreader_emul_new(slot, options->hw_card_type,
                                             options->hw_type_params);
             vreader = vreader_new(PK11_GetSlotName(slot), vreader_emul,
                                   vreader_emul_delete);
             vreader_add_reader(vreader);
-
-            has_readers = PR_TRUE;
-            has_emul_slots = PR_TRUE;
 
             if (PK11_IsPresent(slot)) {
                 VCard *vcard;
@@ -1024,12 +1038,10 @@ vcard_emul_init(const VCardEmulOptions *options)
                 vcard_free(vcard);
             }
         }
-        if (has_emul_slots) {
-            vcard_emul_new_event_thread(module);
-        }
+        vcard_emul_new_event_thread(module);
     }
     SECMOD_ReleaseReadLock(module_lock);
-    nss_emul_init = has_readers;
+    nss_emul_init = PR_TRUE;
 
     return VCARD_EMUL_OK;
 }
@@ -1041,7 +1053,7 @@ void
 vcard_emul_replay_insertion_events(void)
 {
     VReaderListEntry *current_entry;
-    VReaderListEntry *next_entry = NULL;
+    VReaderListEntry *next_entry;
     VReaderList *list = vreader_get_reader_list();
 
     for (current_entry = vreader_list_get_first(list); current_entry;
@@ -1050,6 +1062,8 @@ vcard_emul_replay_insertion_events(void)
         next_entry = vreader_list_get_next(current_entry);
         vreader_queue_card_event(vreader);
     }
+
+    vreader_list_delete(list);
 }
 
 /*
@@ -1141,7 +1155,7 @@ vcard_emul_options(const char *args)
             char type_str[100];
             VCardEmulType type;
             int count, i;
-            VirtualReaderOptions *vreaderOpt = NULL;
+            VirtualReaderOptions *vreaderOpt;
 
             args = strip(args + 5);
             if (*args != '(') {
@@ -1153,8 +1167,8 @@ vcard_emul_options(const char *args)
             NEXT_TOKEN(vname)
             NEXT_TOKEN(type_params)
             type_params_length = MIN(type_params_length, sizeof(type_str)-1);
-            strncpy(type_str, type_params, type_params_length);
-            type_str[type_params_length] = 0;
+            memcpy(type_str, type_params, type_params_length);
+            type_str[type_params_length] = '\0';
             type = vcard_emul_type_from_string(type_str);
 
             NEXT_TOKEN(type_params)
@@ -1165,14 +1179,10 @@ vcard_emul_options(const char *args)
 
             if (opts->vreader_count >= reader_count) {
                 reader_count += READER_STEP;
-                vreaderOpt = realloc(opts->vreader,
-                                reader_count * sizeof(*vreaderOpt));
-                if (vreaderOpt == NULL) {
-                    return opts; /* we're done */
-                }
+                opts->vreader = g_renew(VirtualReaderOptions, opts->vreader,
+                                        reader_count);
             }
-            opts->vreader = vreaderOpt;
-            vreaderOpt = &vreaderOpt[opts->vreader_count];
+            vreaderOpt = &opts->vreader[opts->vreader_count];
             vreaderOpt->name = g_strndup(name, name_length);
             vreaderOpt->vname = g_strndup(vname, vname_length);
             vreaderOpt->card_type = type;
@@ -1180,7 +1190,7 @@ vcard_emul_options(const char *args)
                 g_strndup(type_params, type_params_length);
             count = count_tokens(args, ',', ')') + 1;
             vreaderOpt->cert_count = count;
-            vreaderOpt->cert_name = (char **)g_malloc(count*sizeof(char *));
+            vreaderOpt->cert_name = g_new(char *, count);
             for (i = 0; i < count; i++) {
                 const char *cert = args;
                 args = strpbrk(args, ",)");

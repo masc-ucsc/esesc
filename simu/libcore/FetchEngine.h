@@ -78,9 +78,10 @@ private:
   DInst     **lastd;
   CallbackContainer *cbPending;
 
-  AddrType  missInstPC;
+  Time_t    lastMissTime; // FIXME: maybe we need an array
 
   bool      enableICache;
+  bool      gpu_mimd;
  
 protected:
   //bool processBranch(DInst *dinst, uint16_t n2Fetched);
@@ -88,6 +89,8 @@ protected:
 
   // ******************* Statistics section
   GStatsAvg  avgBranchTime;
+  GStatsAvg  avgBranchTime2;
+  GStatsAvg  avgFetchTime;
   GStatsCntr nDelayInst1;
   GStatsCntr nDelayInst2;
   GStatsCntr nDelayInst3;
@@ -134,22 +137,8 @@ public:
     return true;
   }
 
-  void clearMissInst(DInst * dinst);
+  void clearMissInst(DInst * dinst, Time_t missFetchTime);
   void setMissInst(DInst * dinst);
-    /*
-  void clearMissInst(DInst * dinst) {
-    MSG("UnLocking Dinst ID: %llu,DInst PE:%d, Dinst PC %x\n",dinst->getID(),dinst->getPE(),dinst->getPC());
-    missInst[dinst->getPE()] = false;
-  }
-
-  void setMissInst(DInst * dinst) {
-    MSG("CPU: %d\tLocking Dinst ID: %llu, DInst PE:%d, Dinst PC %x",(int) this->gproc->getId(), dinst->getID(),dinst->getPE(),dinst->getPC());
-    I(dinst->getPE()!=0);
-    I(!missInst[dinst->getPE()]);
-    missInst[dinst->getPE()] = true;
-    lastd = dinst;
-  }
-*/
 };
 
 #endif   // FETCHENGINE_H

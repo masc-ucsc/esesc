@@ -183,11 +183,9 @@ def Generate_info_file(outfileptr)
   local_counter = 0
   #   puts $PTX_hashmap.size
   while (local_counter < $PTX_hashmap.size)
-
     if (($PTX_hashmap[local_counter].line_type == "Kernel") && !($PTX_hashmap[local_counter].line_type == "Function")) then
       $PTX_hashmap[local_counter].line.decodetosesc(outfileptr)
     end
-
     local_counter += 1
   end
 

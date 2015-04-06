@@ -71,10 +71,7 @@ static void glue (audio_init_nb_voices_, TYPE) (struct audio_driver *drv)
 
 static void glue (audio_pcm_hw_free_resources_, TYPE) (HW *hw)
 {
-    if (HWBUF) {
-        g_free (HWBUF);
-    }
-
+    g_free (HWBUF);
     HWBUF = NULL;
 }
 
@@ -92,9 +89,7 @@ static int glue (audio_pcm_hw_alloc_resources_, TYPE) (HW *hw)
 
 static void glue (audio_pcm_sw_free_resources_, TYPE) (SW *sw)
 {
-    if (sw->buf) {
-        g_free (sw->buf);
-    }
+    g_free (sw->buf);
 
     if (sw->rate) {
         st_rate_stop (sw->rate);
@@ -172,10 +167,8 @@ static int glue (audio_pcm_sw_init_, TYPE) (
 static void glue (audio_pcm_sw_fini_, TYPE) (SW *sw)
 {
     glue (audio_pcm_sw_free_resources_, TYPE) (sw);
-    if (sw->name) {
-        g_free (sw->name);
-        sw->name = NULL;
-    }
+    g_free (sw->name);
+    sw->name = NULL;
 }
 
 static void glue (audio_pcm_hw_add_sw_, TYPE) (HW *hw, SW *sw)
@@ -198,9 +191,9 @@ static void glue (audio_pcm_hw_gc_, TYPE) (HW **hwp)
         audio_detach_capture (hw);
 #endif
         QLIST_REMOVE (hw, entries);
+        glue (hw->pcm_ops->fini_, TYPE) (hw);
         glue (s->nb_hw_voices_, TYPE) += 1;
         glue (audio_pcm_hw_free_resources_ ,TYPE) (hw);
-        glue (hw->pcm_ops->fini_, TYPE) (hw);
         g_free (hw);
         *hwp = NULL;
     }
@@ -263,6 +256,8 @@ static HW *glue (audio_pcm_hw_add_new_, TYPE) (struct audsettings *as)
     }
 
     hw->pcm_ops = drv->pcm_ops;
+    hw->ctl_caps = drv->ctl_caps;
+
     QLIST_INIT (&hw->sw_head);
 #ifdef DAC
     QLIST_INIT (&hw->cap_head);
@@ -408,14 +403,14 @@ SW *glue (AUD_open_, TYPE) (
     SW *old_sw = NULL;
 #endif
 
-    ldebug ("open %s, freq %d, nchannels %d, fmt %d\n",
-            name, as->freq, as->nchannels, as->fmt);
-
     if (audio_bug (AUDIO_FUNC, !card || !name || !callback_fn || !as)) {
         dolog ("card=%p name=%p callback_fn=%p as=%p\n",
                card, name, callback_fn, as);
         goto fail;
     }
+
+    ldebug ("open %s, freq %d, nchannels %d, fmt %d\n",
+            name, as->freq, as->nchannels, as->fmt);
 
     if (audio_bug (AUDIO_FUNC, audio_validate_settings (as))) {
         audio_print_settings (as);

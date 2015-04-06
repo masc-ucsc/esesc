@@ -2,8 +2,7 @@
 ESESC: Enhanced Super ESCalar simulator
 Copyright (C) 2009 University of California, Santa Cruz.
 
-Contributed by Jose Renau
-Gabriel Southern
+Contributed by Jose Renau, Sina Hassani
 
 This file is part of ESESC.
 
@@ -29,23 +28,30 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h> 
+#include <netdb.h>
+#include <signal.h>
+#include "../misc/libsuc/transporter.h" 
 
-extern "C" void QEMUReader_goto_sleep(void *env);
-extern "C" void QEMUReader_wakeup_from_sleep(void *env);
-extern "C" int qemuesesc_main(int argc, char **argv, char **envp);
-extern "C" void esesc_set_timing(uint32_t fid);
-
-//Global variables
+//Declaring global variables
 typedef uint32_t FlowID; // from RAWDInst.h
 void *handle;
-int checkpoint = 0;
 int64_t inst_count = 0;
-bool is_parent = true;
+int thread_mode = 0;
+int child_id, portno;
+char host_adr[100];
+int64_t nrabbit = 0;
+int ncheckpoints = 0;
+int nchecks = 0;
+int64_t live_skip = 0;
+bool done_skip = false;
+int force_warmup = 0;
+int genwarm = 0;
 
-//Live ESESC Parameters
-const int64_t nrabbit = 100000000;
-const int ncheckpoints = 10;
+//Declaring functions
+extern "C" void QEMUReader_goto_sleep(void *env);
+extern "C" void QEMUReader_wakeup_from_sleep(void *env);
+extern "C" int64_t qemuesesc_main(int64_t argc, char **argv, char **envp);
+extern "C" void esesc_set_timing(uint32_t fid);
 
 //Defining dynamic functions
 typedef uint64_t (*dyn_QEMUReader_getFid_t)(uint32_t);
@@ -81,32 +87,16 @@ dyn_QEMUReader_finish_t dyn_QEMUReader_finish=0;
 typedef void (*dyn_QEMUReader_setFlowCmd_t)(bool*);
 dyn_QEMUReader_setFlowCmd_t dyn_QEMUReader_setFlowCmd=0;
 
-
-void start_qemu(int argc, char **argv) 
-{
-  char **qargv = (char **) malloc(argc*sizeof(char **));
-
-  qargv = (char **)malloc(argc*sizeof(char*));
-  qargv[0] = (char *) "live";
-  for(int j = 1; j < argc; j++) {
-    qargv[j] = strdup(argv[j]);
-  }
-
-  // Change this to a pthread_create like in QEMUReader::start
-  qemuesesc_main(argc,qargv,0);
-}
-
-
-void load_rabbit()
-{
-  printf("Loading rabbit...\n");
+//This function loads the master rabbit dynamic library
+void load_rabbit () {
+  printf("Live: Loading rabbit\n");
   handle = dlopen("librabbitso.so", RTLD_NOW);
   if (!handle) {
     printf("DLOPEN: %s\n", dlerror());
     exit(EXIT_FAILURE);
   }
 
-  //Initializing dynamci functions
+  //Initializing dynamic functions
   dyn_QEMUReader_getFid          = (dyn_QEMUReader_getFid_t)dlsym(handle, "QEMUReader_getFid");
   dyn_QEMUReader_finish_thread   = (dyn_QEMUReader_finish_thread_t)dlsym(handle, "QEMUReader_finish_thread");
   dyn_QEMUReader_get_time        = (dyn_QEMUReader_get_time_t)dlsym(handle, "QEMUReader_get_time");
@@ -119,22 +109,23 @@ void load_rabbit()
   dyn_QEMUReader_finish          = (dyn_QEMUReader_finish_t)dlsym(handle, "QEMUReader_finish");
   dyn_QEMUReader_setFlowCmd      = (dyn_QEMUReader_setFlowCmd_t)dlsym(handle, "QEMUReader_setFlowCmd");
 
-  checkpoint++;
-  printf("rabbit setup done\n");
+  printf("Live: Rabbit setup done\n");
 }
 
+void unload_rabbit () {
+  dlclose(handle);
+}
 
-void load_esesc()
-{
-
+//This function is used for loading ESESC dynamic library
+void load_esesc () {
   static bool done = false;
   if (done) {
-    printf("+");
+    //printf("+");
     return;
   }
   done = true;
 
-  printf("Loading esesc...\n");
+  //printf("Live: Checkpoint64_t %ld is loading ESESC\n", child_id);
 
   handle = dlopen("libesescso.so", RTLD_NOW);
   if (!handle) {
@@ -155,198 +146,173 @@ void load_esesc()
   dyn_QEMUReader_finish          = (dyn_QEMUReader_finish_t)dlsym(handle, "QEMUReader_finish");
   dyn_QEMUReader_setFlowCmd      = (dyn_QEMUReader_setFlowCmd_t)dlsym(handle, "QEMUReader_setFlowCmd");
 
-  checkpoint++;
-
-  typedef void (*dyn_start_esesc_t)();
+  typedef void (*dyn_start_esesc_t)(char *, int, int, int, int);
   dyn_start_esesc_t dyn_start_esesc = (dyn_start_esesc_t)dlsym(handle, "start_esesc");
   if (dyn_start_esesc==0) {
     printf("DLOPEN no start_esesc: %s\n", dlerror());
     exit(-3);
   }
-  printf("esesc setup done\n");
 
-  (*dyn_start_esesc)(); // FIXME: start_esesc should be a separate thread (qemu thread should wait until this is finished)
+  (*dyn_start_esesc)(host_adr, portno, child_id, force_warmup, genwarm); // FIXME: start_esesc should be a separate thread (qemu thread should wait until this is finished)
 }
 
-void unload_rabbit()
-{
-  dlclose(handle);
+//This function is used to initialize the emulator in order to fork checkpoints
+void create_checkpoints (int64_t argc, char **argv) {
+  char **qargv = (char **) malloc(argc*sizeof(char **));
+  qargv = (char **)malloc(argc*sizeof(char*));
+  qargv[0] = (char *) "live";
+  for(int64_t j = 1; j < argc; j++) {
+    qargv[j] = strdup(argv[j]);
+  }
+
+  nchecks = ncheckpoints + 1;
+  load_rabbit();
+  child_id = 0;
+  qemuesesc_main(argc,qargv,0);
 }
 
+//This function creates a checkpoint64_t making it ready for simulation
+void fork_checkpoint() {
+  if (fork() != 0) {
+    //Parent: initialize new variables and continue rabbit
+    thread_mode = 0;
+    inst_count = 0;
+    child_id++;
+    return;
+  }
+    
+  //Children: create the checkpoint
+  //Send the ready command to NodeJS server
+  Transporter::disconnect();
+  Transporter::connect_to_server(host_adr, portno);
+  Transporter::send_fast("reg_cp", "%d,%d", child_id, getpid());
+  thread_mode = 1;
+  inst_count = 0;
+  bool wait = true;
+  int k;
 
-extern "C" uint32_t QEMUReader_getFid(uint32_t last_fid)
-{
+  //Go to waiting mode
+  while(wait) {
+    Transporter::receive_fast("simulate", "%d,%d,%d", &k, &force_warmup, &genwarm);
+    if(k == 1)
+      exit(0);
+    //On simulation request, create a new process to continue simulation and return to waiting mode
+    signal(SIGCHLD, SIG_IGN);
+    int pid = fork();
+    if(pid == 0) {
+      Transporter::disconnect();
+      wait = false;
+      thread_mode = 2;
+      unload_rabbit();
+      load_esesc();
+    }
+  }
+
+  return;
+}
+
+//Qemu/ESESC interface functions
+extern "C" uint32_t QEMUReader_getFid (uint32_t last_fid) {
   return (*dyn_QEMUReader_getFid)(last_fid);
 }
 
-extern "C" void QEMUReader_finish_thread(uint32_t fid)
-{
+extern "C" void QEMUReader_finish_thread (uint32_t fid) {
   return (*dyn_QEMUReader_finish_thread)(fid);
 }
 
-extern "C" uint64_t QEMUReader_get_time()
-{
+extern "C" uint64_t QEMUReader_get_time () {
   return (*dyn_QEMUReader_get_time)();
 }
 
-extern "C" uint32_t QEMUReader_setnoStats()
-{
+extern "C" uint32_t QEMUReader_setnoStats () {
   return (*dyn_QEMUReader_setnoStats)();
 }
 
-extern "C" FlowID QEMUReader_resumeThreadGPU(FlowID uid) 
-{
+extern "C" FlowID QEMUReader_resumeThreadGPU (FlowID uid) {
   return (*dyn_QEMUReader_resumeThreadGPU)(uid);
 }
 
-extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid) 
-{
+extern "C" FlowID QEMUReader_resumeThread (FlowID uid, FlowID last_fid) {
   return (*dyn_QEMUReader_resumeThread)(uid, last_fid);
 }
 
-extern "C" void QEMUReader_pauseThread(FlowID id) 
-{
+extern "C" void QEMUReader_pauseThread (FlowID id) {
   (*dyn_QEMUReader_pauseThread)(id);
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, uint32_t op, uint64_t icount, void *env) 
-{
-  static int nchecks = ncheckpoints;
+extern "C" void QEMUReader_queue_inst (uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, uint32_t op, uint64_t icount, void *env) {
   (*dyn_QEMUReader_queue_inst)(insn,pc,addr,fid,op,icount,env);
-  if(is_parent) {
-      inst_count += icount;
+  if(!done_skip && inst_count < live_skip) {
+    inst_count += icount;
+    return;
+  }
+  if(!done_skip) {
+    done_skip = true;
+    inst_count = nrabbit;
+    return;
+  }
+  if(thread_mode == 0) {
+    inst_count += icount;
     if(inst_count > nrabbit) {
       nchecks--;
       if (nchecks<=0) {
-        printf("Master Rabbit done\n");
+        //printf("Master Rabbit done\n");
         exit(0);
       }
-      if (fork() != 0) {
-        // parent
-        is_parent = true;
-        inst_count = 0;
-      }else{
-        // children
-        is_parent = false;
-        inst_count = 0; // FIXME
-        unload_rabbit();
-        load_esesc();
-      }
+      fork_checkpoint();
     }
   }
 }
 
-extern "C" void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid)
-{
+extern "C" void QEMUReader_syscall (uint32_t num, uint64_t usecs, uint32_t fid) {
   (*dyn_QEMUReader_syscall)(num,usecs,fid);
 }
 
-extern "C" void QEMUReader_finish(uint32_t fid)
-{
+extern "C" void QEMUReader_finish (uint32_t fid) {
   (*dyn_QEMUReader_finish)(fid);
 }
 
-extern "C" void QEMUReader_setFlowCmd (bool* flowStatus)
-{
+extern "C" void QEMUReader_setFlowCmd (bool* flowStatus) {
   (*dyn_QEMUReader_setFlowCmd)(flowStatus);
 }
 
-int main(int argc, char **argv)
-{
-  int sockfd, portno, n;
-  struct sockaddr_in serv_addr;
-  struct hostent *server;
-  char buffer[256];
-
-  //Qemu Parameters
+//Main function
+int main (int argc, char **argv) {
+  printf("foo");
+  char t;
+  int64_t params[11];
+  int64_t i;
+  //Setting Qemu parameters
   char **qparams;
-  int qparams_argc= 7;
+  int64_t qparams_argc= argc - 3;
   qparams = (char **)malloc(sizeof(char *)*qparams_argc+1);
-  qparams[0] = strdup("live");
-  qparams[1] = strdup("run/launcher");
-  qparams[2] = strdup("--");
-  qparams[3] = strdup("stdin");
-  qparams[4] = strdup("run/crafty.input");
-  qparams[5] = strdup("--");
-  qparams[6] = strdup("crafty");
-  qparams[7] = 0;
-
-  //Pre-loading Rabbit
-  load_rabbit();
-  
-  //Connecting to the TCP server (Running on Node.js)
-  portno = atoi("1111");
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) 
-      perror("ERROR opening socket");
-  server = gethostbyname("localhost");
-  if (server == NULL) {
-      fprintf(stderr,"ERROR, no such host\n");
-      exit(0);
+  qparams[0] = strdup("../main/live");
+  for(i = 1; i < qparams_argc; i++) {
+    qparams[i] = strdup(argv[i + 3]);
   }
-  bzero((char *) &serv_addr, sizeof(serv_addr));
-  serv_addr.sin_family = AF_INET;
-  bcopy((char *)server->h_addr, 
-       (char *)&serv_addr.sin_addr.s_addr,
-       server->h_length);
-  serv_addr.sin_port = htons(portno);
-  if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
-      perror("ERROR connecting");
+  qparams[qparams_argc] = 0;
 
-  //Registering as esesc daemon
-  bzero(buffer,256);
-  strncpy(buffer, "esesc_daemon_register", 22);
-  n = write(sockfd,buffer,strlen(buffer));
-  if (n < 0) 
-         perror("ERROR writing to socket");
-  bzero(buffer,256);
-  n = read(sockfd,buffer,255);
-  if (n < 0) 
-    perror("ERROR reading from socket");
-  if(strcmp(buffer,"esesc_daemon_registered"))
-    perror("Daemon not registered");
-  else
-    printf("ESESC Daemon Registered ... \n");
-  bzero(buffer,256);
+  //Connecting to the TCP server (Running on Node.js)
+  strcpy(host_adr, argv[2]);
+  portno = atoi(argv[3]);
+  Transporter::connect_to_server(host_adr, portno);
+  Transporter::send_fast("reg_daemon", "%d", getpid());
+  Transporter::receive_fast("reg_ack", "");
+  printf("Registered on server\n");
 
-  //Waiting for service
+  //Waiting for command
   do {
     printf("Waiting for request ... \n");
-    bzero(buffer,256);
-    n = read(sockfd,buffer,255);
-    if (n < 0) 
-       perror("ERROR reading from socket");
-    //if(strcmp(buffer,"run"))
-    //{
-      printf("Starting simulation ... \n");
-      start_qemu(qparams_argc, qparams);
-    //}
+    Transporter::receive_fast("config", "%d,%ld,%ld", &ncheckpoints, &nrabbit, &live_skip);
+    if(fork() == 0) {
+      Transporter::disconnect();
+      Transporter::connect_to_server(host_adr, portno);
+      Transporter::send_fast("reg_conf", "%d", getpid());
+      Transporter::receive_fast("reg_ack", "");
+      create_checkpoints(qparams_argc, qparams);
+    }
   } while(1);
 
-  close(sockfd);
+  Transporter::disconnect();
   return 0;
-
-  //load_rabbit();
-  // new interface to say start and for how many instructions (checked by qemureader_queue_inst)
-  // for (1..n checkpoints) 
-  //   run first nB instruction 
-  //   do fork
-  //   child:
-  //     set live_queue_inst = 0
-  //     unload qemuin.so
-  //     load esesc.so (it should not spawn qmeu again)
-  //     set the QEMUReader::started = true to avoid respawning qemu
-  //     set all the live_* methods
-  //     BootLoader::plug(argc, argv);
-  //     call Report::live (delete report file descriptor, and create a socket to nodejs)
-  //     set live_queue_inst = dlsum(...
-  //     BootLoader::boot();
-
-  //esesc_set_timing(0);
-  //start_qemu(2, qparams);
-
-
-  // Change Report::field so that instead of file, it also can report live (to nodejs) if Report::live() was called before 
-  //
-
 }

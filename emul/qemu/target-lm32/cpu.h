@@ -22,19 +22,19 @@
 
 #define TARGET_LONG_BITS 32
 
-#define CPUState struct CPULM32State
+#define CPUArchState struct CPULM32State
 
+#include "config.h"
 #include "qemu-common.h"
-#include "cpu-defs.h"
+#include "exec/cpu-defs.h"
 struct CPULM32State;
-
-#define TARGET_HAS_ICE 1
+typedef struct CPULM32State CPULM32State;
 
 #define ELF_MACHINE EM_LATTICEMICO32
 
 #define NB_MMU_MODES 1
 #define TARGET_PAGE_BITS 12
-static inline int cpu_mmu_index(CPUState *env)
+static inline int cpu_mmu_index(CPULM32State *env)
 {
     return 0;
 }
@@ -147,7 +147,7 @@ enum {
     LM32_FLAG_IGNORE_MSB = 1,
 };
 
-typedef struct CPULM32State {
+struct CPULM32State {
     /* general registers */
     uint32_t regs[32];
 
@@ -161,11 +161,15 @@ typedef struct CPULM32State {
 
     /* debug registers */
     uint32_t dc;        /* debug control */
-    uint32_t bp[4];     /* breakpoint addresses */
-    uint32_t wp[4];     /* watchpoint addresses */
+    uint32_t bp[4];     /* breakpoints */
+    uint32_t wp[4];     /* watchpoints */
+
+    struct CPUBreakpoint *cpu_breakpoint[4];
+    struct CPUWatchpoint *cpu_watchpoint[4];
 
     CPU_COMMON
 
+    /* Fields from here on are preserved across CPU reset. */
     uint32_t eba;       /* exception base address */
     uint32_t deba;      /* debug exception base address */
 
@@ -175,66 +179,64 @@ typedef struct CPULM32State {
     DeviceState *juart_state;
 
     /* processor core features */
-    uint32_t features;
     uint32_t flags;
-    uint8_t num_bps;
-    uint8_t num_wps;
 
-} CPULM32State;
+};
 
+typedef enum {
+    LM32_WP_DISABLED = 0,
+    LM32_WP_READ,
+    LM32_WP_WRITE,
+    LM32_WP_READ_WRITE,
+} lm32_wp_t;
 
-CPUState *cpu_lm32_init(const char *cpu_model);
-void cpu_lm32_list(FILE *f, fprintf_function cpu_fprintf);
-int cpu_lm32_exec(CPUState *s);
-void cpu_lm32_close(CPUState *s);
-void do_interrupt(CPUState *env);
+static inline lm32_wp_t lm32_wp_type(uint32_t dc, int idx)
+{
+    assert(idx < 4);
+    return (dc >> (idx+1)*2) & 0x3;
+}
+
+#include "cpu-qom.h"
+
+LM32CPU *cpu_lm32_init(const char *cpu_model);
+int cpu_lm32_exec(CPULM32State *s);
 /* you can call this signal handler from your SIGBUS and SIGSEGV
    signal handlers to inform the virtual CPU of exceptions. non zero
    is returned if the signal was handled by the virtual CPU.  */
 int cpu_lm32_signal_handler(int host_signum, void *pinfo,
                           void *puc);
+void lm32_cpu_list(FILE *f, fprintf_function cpu_fprintf);
 void lm32_translate_init(void);
-void cpu_lm32_set_phys_msb_ignore(CPUState *env, int value);
+void cpu_lm32_set_phys_msb_ignore(CPULM32State *env, int value);
+void QEMU_NORETURN raise_exception(CPULM32State *env, int index);
+void lm32_debug_excp_handler(CPUState *cs);
+void lm32_breakpoint_insert(CPULM32State *env, int index, target_ulong address);
+void lm32_breakpoint_remove(CPULM32State *env, int index);
+void lm32_watchpoint_insert(CPULM32State *env, int index, target_ulong address,
+        lm32_wp_t wp_type);
+void lm32_watchpoint_remove(CPULM32State *env, int index);
+bool lm32_cpu_do_semihosting(CPUState *cs);
 
-#define cpu_list cpu_lm32_list
-#define cpu_init cpu_lm32_init
+static inline CPULM32State *cpu_init(const char *cpu_model)
+{
+    LM32CPU *cpu = cpu_lm32_init(cpu_model);
+    if (cpu == NULL) {
+        return NULL;
+    }
+    return &cpu->env;
+}
+
+#define cpu_list lm32_cpu_list
 #define cpu_exec cpu_lm32_exec
 #define cpu_gen_code cpu_lm32_gen_code
 #define cpu_signal_handler cpu_lm32_signal_handler
 
-#define CPU_SAVE_VERSION 1
-
-int cpu_lm32_handle_mmu_fault(CPUState *env, target_ulong address, int rw,
+int lm32_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
                               int mmu_idx);
-#define cpu_handle_mmu_fault cpu_lm32_handle_mmu_fault
 
-#if defined(CONFIG_USER_ONLY)
-static inline void cpu_clone_regs(CPUState *env, target_ulong newsp)
-{
-    if (newsp) {
-        env->regs[R_SP] = newsp;
-    }
-    env->regs[R_R1] = 0;
-}
-#endif
+#include "exec/cpu-all.h"
 
-static inline void cpu_set_tls(CPUState *env, target_ulong newtls)
-{
-}
-
-static inline int cpu_interrupts_enabled(CPUState *env)
-{
-    return env->ie & IE_IE;
-}
-
-#include "cpu-all.h"
-
-static inline target_ulong cpu_get_pc(CPUState *env)
-{
-    return env->pc;
-}
-
-static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
+static inline void cpu_get_tb_cpu_state(CPULM32State *env, target_ulong *pc,
                                         target_ulong *cs_base, int *flags)
 {
     *pc = env->pc;
@@ -242,16 +244,6 @@ static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
     *flags = 0;
 }
 
-static inline bool cpu_has_work(CPUState *env)
-{
-    return env->interrupt_request & CPU_INTERRUPT_HARD;
-}
-
-#include "exec-all.h"
-
-static inline void cpu_pc_from_tb(CPUState *env, TranslationBlock *tb)
-{
-    env->pc = tb->pc;
-}
+#include "exec/exec-all.h"
 
 #endif

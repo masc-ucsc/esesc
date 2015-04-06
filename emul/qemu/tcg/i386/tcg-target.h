@@ -21,14 +21,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#ifndef TCG_TARGET_I386 
 #define TCG_TARGET_I386 1
 
-//#define TCG_TARGET_WORDS_BIGENDIAN
+#define TCG_TARGET_INSN_UNIT_SIZE  1
 
-#if TCG_TARGET_REG_BITS == 64
-# define TCG_TARGET_NB_REGS 16
+#ifdef __x86_64__
+# define TCG_TARGET_REG_BITS  64
+# define TCG_TARGET_NB_REGS   16
 #else
-# define TCG_TARGET_NB_REGS 8
+# define TCG_TARGET_REG_BITS  32
+# define TCG_TARGET_NB_REGS    8
 #endif
 
 typedef enum {
@@ -61,13 +64,16 @@ typedef enum {
     TCG_REG_RDI = TCG_REG_EDI,
 } TCGReg;
 
-#define TCG_CT_CONST_S32 0x100
-#define TCG_CT_CONST_U32 0x200
-
 /* used for function call generation */
 #define TCG_REG_CALL_STACK TCG_REG_ESP 
 #define TCG_TARGET_STACK_ALIGN 16
+#if defined(_WIN64)
+#define TCG_TARGET_CALL_STACK_OFFSET 32
+#else
 #define TCG_TARGET_CALL_STACK_OFFSET 0
+#endif
+
+extern bool have_bmi1;
 
 /* optional instructions */
 #define TCG_TARGET_HAS_div2_i32         1
@@ -80,14 +86,22 @@ typedef enum {
 #define TCG_TARGET_HAS_bswap32_i32      1
 #define TCG_TARGET_HAS_neg_i32          1
 #define TCG_TARGET_HAS_not_i32          1
-#define TCG_TARGET_HAS_andc_i32         0
+#define TCG_TARGET_HAS_andc_i32         have_bmi1
 #define TCG_TARGET_HAS_orc_i32          0
 #define TCG_TARGET_HAS_eqv_i32          0
 #define TCG_TARGET_HAS_nand_i32         0
 #define TCG_TARGET_HAS_nor_i32          0
 #define TCG_TARGET_HAS_deposit_i32      1
+#define TCG_TARGET_HAS_movcond_i32      1
+#define TCG_TARGET_HAS_add2_i32         1
+#define TCG_TARGET_HAS_sub2_i32         1
+#define TCG_TARGET_HAS_mulu2_i32        1
+#define TCG_TARGET_HAS_muls2_i32        1
+#define TCG_TARGET_HAS_muluh_i32        0
+#define TCG_TARGET_HAS_mulsh_i32        0
 
 #if TCG_TARGET_REG_BITS == 64
+#define TCG_TARGET_HAS_trunc_shr_i32    0
 #define TCG_TARGET_HAS_div2_i64         1
 #define TCG_TARGET_HAS_rot_i64          1
 #define TCG_TARGET_HAS_ext8s_i64        1
@@ -101,12 +115,19 @@ typedef enum {
 #define TCG_TARGET_HAS_bswap64_i64      1
 #define TCG_TARGET_HAS_neg_i64          1
 #define TCG_TARGET_HAS_not_i64          1
-#define TCG_TARGET_HAS_andc_i64         0
+#define TCG_TARGET_HAS_andc_i64         have_bmi1
 #define TCG_TARGET_HAS_orc_i64          0
 #define TCG_TARGET_HAS_eqv_i64          0
 #define TCG_TARGET_HAS_nand_i64         0
 #define TCG_TARGET_HAS_nor_i64          0
 #define TCG_TARGET_HAS_deposit_i64      1
+#define TCG_TARGET_HAS_movcond_i64      1
+#define TCG_TARGET_HAS_add2_i64         1
+#define TCG_TARGET_HAS_sub2_i64         1
+#define TCG_TARGET_HAS_mulu2_i64        1
+#define TCG_TARGET_HAS_muls2_i64        1
+#define TCG_TARGET_HAS_muluh_i64        0
+#define TCG_TARGET_HAS_mulsh_i64        0
 #endif
 
 #define TCG_TARGET_deposit_i32_valid(ofs, len) \
@@ -114,15 +135,14 @@ typedef enum {
      ((ofs) == 0 && (len) == 16))
 #define TCG_TARGET_deposit_i64_valid    TCG_TARGET_deposit_i32_valid
 
-#define TCG_TARGET_HAS_GUEST_BASE
-
-/* Note: must be synced with dyngen-exec.h */
 #if TCG_TARGET_REG_BITS == 64
 # define TCG_AREG0 TCG_REG_R14
 #else
 # define TCG_AREG0 TCG_REG_EBP
 #endif
 
-static inline void flush_icache_range(unsigned long start, unsigned long stop)
+static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 {
 }
+
+#endif

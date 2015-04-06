@@ -106,8 +106,6 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
 
   sequence_pos = 0;
 
-
-
   const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
 
   freq      = SescConf->getDouble("technology","frequency");
@@ -144,7 +142,7 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
 }
 /* }}} */
 
-void SamplerBase::doWarmupOpAddr(char op, uint64_t addr) {
+void SamplerBase::doWarmupOpAddr(InstOpcode op, uint64_t addr) {
   // {{{1 update cache stats when in warmup mode
 	if(addr==0)
 		return;
@@ -152,10 +150,10 @@ void SamplerBase::doWarmupOpAddr(char op, uint64_t addr) {
   I(mode == EmuWarmup);
 	I(emul->cputype != GPU);
 
-	if ( (op&0x3F) == 1)
-		DL1->ffread(addr);
-	else if ( (op&0x3F) == 2)
-		DL1->ffwrite(addr);
+	if ( op == iLALU_LD)
+		DL1->ffread(addr, NULL);
+	else if (op == iSALU_ST)
+		DL1->ffwrite(addr, NULL);
 }
 // 1}}}
 
@@ -199,7 +197,7 @@ uint64_t SamplerBase::getTime()
 /* time in ns since the beginning {{{1 */
 {
   // FIXME: currently it is per thread 
-  I(phasenInst==0);
+  //I(phasenInst==0);
 
   // FIXME: try to use core stats nInst and clockTicks to get CPI
   double cpi2 = globalClock_Timing->getDouble() / (1+iusage[EmuTiming]->getDouble());
@@ -236,12 +234,13 @@ FlowID SamplerBase::resumeThread(FlowID uid)
 
 void SamplerBase::terminate()
 {
-  progressedTime->sample(getTime());
+  progressedTime->sample(getTime(),true);
   TaskHandler::terminate();
 }
 
 bool SamplerBase::isActive(FlowID fid)
 {
+  //printf("s");
   return TaskHandler::isActive(fid);
 }
 
@@ -263,7 +262,7 @@ void SamplerBase::getGPUCycles(FlowID fid, float ratio) {
 }
 
 bool SamplerBase::allDone() {
-  progressedTime->sample(getTime());
+  progressedTime->sample(getTime(),true);
   for (size_t i=0; i< emul->getNumFlows(); i++) {
     if (!finished[i])
       return false;

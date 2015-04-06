@@ -49,6 +49,7 @@ protected:
   int timeFactor;
   bool fullTiming;
   EmuMode lastMode;
+  //bool endSimSiged;
 
   void allDone();
 public:

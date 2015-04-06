@@ -200,6 +200,7 @@ CacheAssoc<State, Addr_t>::CacheAssoc(int32_t size, int32_t assoc, int32_t blksi
   }
 
   mem     = (Line *)malloc(sizeof(Line)*(numLines + 1));
+  ////read
   for(uint32_t i=0;i<numLines;i++) {
     new(&mem[i]) Line(blksize);
   }
@@ -306,6 +307,8 @@ typename CacheAssoc<State, Addr_t>::Line
     if (policy == RANDOM) {
       lineFree = &theSet[irand];
       irand = (irand + 1) & maskAssoc;
+      if (irand == 0)
+        irand = (irand + 1) & maskAssoc; // Not MRU
     }else{
       I(policy == LRU || policy == LRUp);
       // Get the oldest line possible

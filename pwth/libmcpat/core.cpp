@@ -157,7 +157,6 @@ MemManU::MemManU(ParseXML* XML_interface, int ithCore_, InputParameter* interfac
   clockRate = coredynp.clockRate;
   executionTime = coredynp.executionTime;
 
-
   buildITLB();
   buildDTLB();
 

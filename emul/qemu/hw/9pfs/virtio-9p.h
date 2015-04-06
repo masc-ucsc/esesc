@@ -6,16 +6,14 @@
 #include <sys/time.h>
 #include <utime.h>
 #include <sys/resource.h>
-#include "hw/virtio.h"
+#include <glib.h>
+#include "standard-headers/linux/virtio_9p.h"
+#include "hw/virtio/virtio.h"
+#include "hw/virtio/virtio-9p.h"
 #include "fsdev/file-op-9p.h"
 #include "fsdev/virtio-9p-marshal.h"
-#include "qemu-thread.h"
-#include "qemu-coroutine.h"
-
-
-/* The feature bitmap for virtio 9P */
-/* The mount point is specified in a config variable */
-#define VIRTIO_9P_MOUNT_TAG 0
+#include "qemu/thread.h"
+#include "block/coroutine.h"
 
 enum {
     P9_TLERROR = 6,
@@ -113,10 +111,9 @@ enum p9_proto_version {
 
 #define FID_REFERENCED          0x1
 #define FID_NON_RECLAIMABLE     0x2
-static inline const char *rpath(FsContext *ctx, const char *path, char *buffer)
+static inline char *rpath(FsContext *ctx, const char *path)
 {
-    snprintf(buffer, PATH_MAX, "%s/%s", ctx->fs_root, path);
-    return buffer;
+    return g_strdup_printf("%s/%s", ctx->fs_root, path);
 }
 
 /*
@@ -145,10 +142,6 @@ struct V9fsPDU
  * 1) change user needs to set groups and stuff
  */
 
-/* from Linux's linux/virtio_9p.h */
-
-/* The ID for virtio console */
-#define VIRTIO_ID_9P    9
 #define MAX_REQ         128
 #define MAX_TAG_LEN     32
 
@@ -206,7 +199,7 @@ struct V9fsFidState
 
 typedef struct V9fsState
 {
-    VirtIODevice vdev;
+    VirtIODevice parent_obj;
     VirtQueue *vq;
     V9fsPDU pdus[MAX_REQ];
     QLIST_HEAD(, V9fsPDU) free_list;
@@ -225,6 +218,7 @@ typedef struct V9fsState
     CoRwlock rename_lock;
     int32_t root_fid;
     Error *migration_blocker;
+    V9fsConf fsconf;
 } V9fsState;
 
 typedef struct V9fsStatState {
@@ -276,14 +270,6 @@ typedef struct V9fsWriteState {
     struct iovec *sg;
     int cnt;
 } V9fsWriteState;
-
-struct virtio_9p_config
-{
-    /* number of characters in tag */
-    uint16_t tag_len;
-    /* Variable size tag name */
-    uint8_t tag[0];
-} QEMU_PACKED;
 
 typedef struct V9fsMkState {
     V9fsPDU *pdu;
@@ -389,7 +375,6 @@ static inline uint8_t v9fs_request_cancelled(V9fsPDU *pdu)
 }
 
 extern void handle_9p_output(VirtIODevice *vdev, VirtQueue *vq);
-extern void virtio_9p_set_fd_limit(void);
 extern void v9fs_reclaim_fd(V9fsPDU *pdu);
 extern void v9fs_path_init(V9fsPath *path);
 extern void v9fs_path_free(V9fsPath *path);
@@ -401,5 +386,13 @@ extern int v9fs_name_to_path(V9fsState *s, V9fsPath *dirpath,
     v9fs_marshal(pdu->elem.in_sg, pdu->elem.in_num, offset, 1, fmt, ##args)
 #define pdu_unmarshal(pdu, offset, fmt, args...)  \
     v9fs_unmarshal(pdu->elem.out_sg, pdu->elem.out_num, offset, 1, fmt, ##args)
+
+#define TYPE_VIRTIO_9P "virtio-9p-device"
+#define VIRTIO_9P(obj) \
+        OBJECT_CHECK(V9fsState, (obj), TYPE_VIRTIO_9P)
+
+#define DEFINE_VIRTIO_9P_PROPERTIES(_state, _field)             \
+        DEFINE_PROP_STRING("mount_tag", _state, _field.tag),    \
+        DEFINE_PROP_STRING("fsdev", _state, _field.fsdev_id)
 
 #endif

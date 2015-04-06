@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -51,18 +51,27 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   ,lsq(i)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
   ,clusterManager(gm, this)
-{
+{/*{{{*/
+
+  uint32_t maxwarps = SescConf->getInt("cpuemul", "max_warps_sm", i);
+  IS(MSG("maxwarps = %d",maxwarps));
+
   spaceInInstQueue = InstQueueSize;
-  bzero(RAT,sizeof(DInst*)*LREG_MAX);
 
-  busy = false;
-}
+  RAT = new DInst* [LREG_MAX * maxwarps * 128];
+  bzero(RAT,sizeof(DInst*)*LREG_MAX * maxwarps * 128);
 
-InOrderProcessor::~InOrderProcessor() {
+  busy = false;/*}}}*/
+}/*}}}*/
+
+InOrderProcessor::~InOrderProcessor()
+{/*{{{*/
+  delete RAT;
   // Nothing to do
-}
+}/*}}}*/
 
-void InOrderProcessor::fetch(FlowID fid) {
+void InOrderProcessor::fetch(FlowID fid)
+{/*{{{*/
   // TODO: Move this to GProcessor (same as in OoOProcessor)
   I(eint);
   I(active);
@@ -78,16 +87,17 @@ void InOrderProcessor::fetch(FlowID fid) {
       }
     }
   }
-}
+}/*}}}*/
 
-bool InOrderProcessor::advance_clock(FlowID fid) {
+bool InOrderProcessor::advance_clock(FlowID fid)
+{/*{{{*/
 
   if (!active) {
     // time to remove from the running queue
     //TaskHandler::removeFromRunning(cpu_id);
     return false;
   }
- 
+  //IS(if (cpu_id == 1) MSG("\n**\n@%lld: Processing CPU (%d)",(long long int)globalClock,cpu_id));
   fetch(fid);
 
   if (!busy)
@@ -97,6 +107,7 @@ bool InOrderProcessor::advance_clock(FlowID fid) {
   if( !ROB.empty() ) {
     getStatsFlag = ROB.top()->getStatsFlag();
   }
+  //IS(if (cpu_id == 1) MSG("@%lld: Fetching CPU (%d)",(long long int)globalClock,cpu_id));
   clockTicks.inc(getStatsFlag);
   setWallClock(getStatsFlag);
 
@@ -105,39 +116,80 @@ bool InOrderProcessor::advance_clock(FlowID fid) {
     IBucket *bucket = pipeQ.pipeLine.nextItem();
     if( bucket ) {
       I(!bucket->empty());
-      //      I(bucket->top()->getInst()->getAddr());
-
+      //IS(if (cpu_id == 1) MSG("@%lld: CPU (%d) fetched bucket size is %d ",(long long int)globalClock,cpu_id,bucket->size()));
       spaceInInstQueue -= bucket->size();
       pipeQ.instQueue.push(bucket);
     }else{
+      //IS(if (cpu_id == 1) MSG("@%lld: CPU (%d) Empty Bucket ",(long long int)globalClock,cpu_id));
       noFetch2.inc(getStatsFlag);
     }
   }else{
+    //IS(if (cpu_id == 1) MSG("@%lld: CPU (%d) NO space in InstQueue",(long long int)globalClock,cpu_id));
     noFetch.inc(getStatsFlag);
   }
 
+  //IS(if (cpu_id == 1) MSG("@%lld: Renaming CPU (%d)",(long long int)globalClock,cpu_id));
   // RENAME Stage
   if ( !pipeQ.instQueue.empty() ) {
-    spaceInInstQueue += issue(pipeQ);
+    uint32_t n_insn =  issue(pipeQ);
+    spaceInInstQueue += n_insn;
+    //IS(if (cpu_id == 1) MSG("@%lld: Issuing %d items in pipeline for CPU (%d)",(long long int)globalClock,n_insn, cpu_id));
   }else if (ROB.empty() && rROB.empty()) {
     // Still busy if we have some in-flight requests
     busy = pipeQ.pipeLine.hasOutstandingItems();
+    //IS(if (cpu_id == 1) MSG("@%lld: ROB and rROB are both empty for CPU (%d)",(long long int)globalClock,cpu_id));
+    //IS(if ((cpu_id == 1)&&(busy)) MSG("@%lld: pipeline also has outstanding items CPU (%d)",(long long int)globalClock,cpu_id));
     return true;
+  } else {
+    //IS(if (cpu_id == 1) MSG("@%lld: CPU (%d) PipeQ.instQueue is empty, and either ROB and rROB are empty",(long long int)globalClock,cpu_id));
   }
 
+  //IS(if (cpu_id == 1) MSG("@%lld: Retiring CPU (%d)",(long long int)globalClock,cpu_id));
   retire();
 
   return true;
-}
+}/*}}}*/
 
-StallCause InOrderProcessor::addInst(DInst *dinst) {
+StallCause InOrderProcessor::addInst(DInst *dinst)
+{/*{{{*/
 
   const Instruction *inst = dinst->getInst();
 
-  if(RAT[inst->getSrc1()] != 0 ||
-     RAT[inst->getSrc2()] != 0 ||
-     RAT[inst->getDst1()] != 0 ||
-     RAT[inst->getDst2()] != 0) {
+  if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence) && (inst->getSrc1() != LREG_InvalidOutput)) ||
+     ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence) && (inst->getSrc2() != LREG_InvalidOutput))||
+     ((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
+     ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))){
+#if 0
+    //Useful for debug
+    if (cpu_id == 1 ){
+      MSG("\n-------------------------");
+      string str ="";
+      str.append("\nCONFLICT->");
+      if (RAT[inst->getSrc1()] != 0){
+        str.append("src1, ");
+        MSG(" SRC1 = %d, RAT[entry] = %d",inst->getSrc1(), RAT[inst->getSrc1()] );
+        RAT[inst->getSrc1()]->dump("\nSRC1 in use by:");
+      }
+
+      if (RAT[inst->getSrc2()] != 0){
+        str.append("src2, ");
+        RAT[inst->getSrc2()]->dump("\nSRC2 in use by:");
+      }
+
+      if ((RAT[inst->getDst1()] != 0) && (inst->getDst2() != LREG_InvalidOutput)){
+        str.append("dst1, ");
+        RAT[inst->getDst1()]->dump("\nDST1 in use by:");
+      }
+
+      if ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput)){
+        str.append("dst2, ");
+        RAT[inst->getDst2()]->dump("\nDST2 in use by:");
+      }
+
+      dinst->dump(str.c_str());
+
+    }
+#endif
     return SmallWinStall;
   }
 
@@ -188,9 +240,10 @@ StallCause InOrderProcessor::addInst(DInst *dinst) {
   I(dinst->getCluster());
 
   return NoStall;
-}
+}/*}}}*/
 
-void InOrderProcessor::retire() {
+void InOrderProcessor::retire()
+{/*{{{*/
 
   // Pass all the ready instructions to the rrob
   bool stats = false;
@@ -199,7 +252,7 @@ void InOrderProcessor::retire() {
     stats = dinst->getStatsFlag();
 
     if( !dinst->isExecuted() )
-      break; 
+      break;
 
     bool done = dinst->getClusterResource()->preretire(dinst, false);
     if( !done )
@@ -207,6 +260,18 @@ void InOrderProcessor::retire() {
 
     rROB.push(dinst);
     ROB.pop();
+#if 0
+    FlowID fid = dinst->getFlowId();
+    if (fid == 1){
+    fprintf(stderr,"\nCommitting from ROB , FlowID(%d), dinst->pc = %llx, dinst->addr = %llx, dinst->pe_id = %d, dinst->warp_id = %d",
+          fid,
+          dinst->getPC(),
+          dinst->getAddr(),
+          dinst->getPE(),
+          dinst->getWarpID()
+         );
+    }
+#endif
 
     nCommitted.inc(dinst->getStatsFlag());
   }
@@ -224,8 +289,11 @@ void InOrderProcessor::retire() {
 
     bool done = dinst->getCluster()->retire(dinst, false);
     if( !done ) {
-      //dinst->getInst()->dump("not ret");
+      //dinst->getInst()->dump("");
+      //if ( dinst->getFlowId() == 1 ) dinst->dump("\nCannot Retire...");
       return;
+    } else {
+      //if ( dinst->getFlowId() == 1 ) dinst->dump("\nFinished...");
     }
 
 #if 0
@@ -236,13 +304,26 @@ void InOrderProcessor::retire() {
     }
 #endif
 
+#if 0
+    FlowID fid = dinst->getFlowId();
+    fprintf(stderr,"\nRetiring from rROB , FlowID(%d), dinst->pc = %llx, dinst->addr = %llx, dinst->pe_id = %d, dinst->warp_id = %d",
+          fid,
+          dinst->getPC(),
+          dinst->getAddr(),
+          dinst->getPE(),
+          dinst->getWarpID()
+         );
+
+#endif
+
     dinst->destroy(eint);
     rROB.pop();
   }
 
-}
+}/*}}}*/
 
-void InOrderProcessor::replay(DInst *dinst) {
+void InOrderProcessor::replay(DInst *dinst)
+{/*{{{*/
 
   MSG("Inorder cores do not support replays. Set MemoryReplay = false in the confguration");
 
@@ -251,4 +332,4 @@ void InOrderProcessor::replay(DInst *dinst) {
   nReplayInst.sample(foo, dinst->getStatsFlag());
 
   // FIXME: How do we manage a replay in this processor??
-}
+}/*}}}*/

@@ -90,6 +90,7 @@ protected:
   GStatsCntr *tusage[EmuMax];
   GStatsCntr *iusage[EmuMax];
   GStatsCntr *globalClock_Timing;
+  GStatsCntr *deadClock;
 
   GStats *nCommitted;
   GStatsAvg *ipc;
@@ -188,7 +189,7 @@ public:
 
   virtual bool isActive(FlowID fid) = 0;
 
-  virtual void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env) = 0;
+  virtual void queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest, int dest2, void *env) = 0;
   virtual void getGPUCycles(FlowID fid, float ratio = 1.0) = 0;
   void syscall(uint32_t num, uint64_t usecs, FlowID fid);
 

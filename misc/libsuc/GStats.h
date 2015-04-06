@@ -60,6 +60,9 @@ public:
   int32_t gd;
 
   static void report(const char *str);
+  static void reportBin();
+  static void reportSchema();
+  
   static GStats *getRef(const char *str);
 
   GStats();
@@ -67,7 +70,12 @@ public:
 
   void prepareTrace();
 
-  virtual void reportValue() const =0;
+  virtual void reportValue() const = 0;
+  virtual void reportBinValue() const = 0;
+  virtual void reportScheme() const = 0;
+
+  virtual void flushValue();
+  static void flush();
 
   virtual double getDouble() const {
     MSG("getDouble Not supported by this class %s",name);
@@ -81,6 +89,7 @@ public:
 class GStatsCntr : public GStats {
 private:
   double data;
+
 protected:
 public:
   GStatsCntr(const char *format,...);
@@ -105,6 +114,10 @@ public:
   int64_t getSamples() const;
 
   void reportValue() const;
+  void reportBinValue() const;
+  void reportScheme() const;
+
+  void flushValue();
 };
 
 class GStatsAvg : public GStats {
@@ -119,13 +132,14 @@ public:
   void    reset() { data = 0; nData = 0; };
   double  getDouble() const;
 
-  virtual void sample(const double v, bool en = true) {
-    data  += en ? v : 0;
-    nData += en ? 1 : 0;
-  }
+  virtual void sample(const double v, bool en);
   int64_t getSamples() const;
 
   virtual void reportValue() const;
+  virtual void reportBinValue() const;
+  void reportScheme() const;
+
+  void flushValue();
 };
 
 class GStatsMax : public GStats {
@@ -137,10 +151,14 @@ protected:
 public:
   GStatsMax(const char *format,...);
 
-  void sample(const double v);
+  void sample(const double v, bool en);
   int64_t getSamples() const;
 
   void reportValue() const;
+  void reportBinValue() const;
+  void reportScheme() const;
+
+  void flushValue();
 };
 
 class GStatsHist : public GStats {
@@ -162,6 +180,10 @@ public:
   int64_t getSamples() const;
 
   void reportValue() const;
+  void reportBinValue() const;
+  void reportScheme() const;
+
+  void flushValue();
 };
 
 #endif   // GSTATSD_H

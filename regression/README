@@ -1,0 +1,13 @@
+Written by:      Mohsen Kiskani    June 2nd 2014
+
+The regression test can be done simply by running the following command:
+
+<esesc Dir>/regression/Reg-Test.sh <build Dir> <esesc Dir>
+
+The output will be the test status which will appear in the terminal. 
+Notice that this test should be run after running the gold files and 
+having gold state tables.
+
+
+
+

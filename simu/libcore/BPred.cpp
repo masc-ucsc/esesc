@@ -215,9 +215,11 @@ PredType BPBTB::predict(DInst *dinst, bool doUpdate)
 
   if( predictID == dinst->getAddr() ) {
     nHit.inc(dinst->getStatsFlag());
+    // MSG("hit :%x -> %x",dinst->getPC(), dinst->getAddr());
     return CorrectPrediction;
   }
 
+  //MSG("miss:%x -> %x (%x)",dinst->getPC(), dinst->getAddr(), predictID);
   nMiss.inc(dinst->getStatsFlag());
   return NoBTBPrediction;
 }

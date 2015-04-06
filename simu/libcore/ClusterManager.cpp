@@ -49,7 +49,7 @@ ClusterManager::ClusterManager(GMemorySystem *ms, GProcessor *gproc) {
 
   IN(forall((size_t i=1;i<static_cast<size_t>(iMAX);i++),res[i].empty()));
 
-  const char *coreSection = SescConf->getCharPtr("","cpusimu",gproc->getId());
+  const char *coreSection = SescConf->getCharPtr("","cpusimu",gproc->getID());
   if(coreSection == 0) 
     return;  // No core section, bad conf
 

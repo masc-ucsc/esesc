@@ -43,6 +43,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "MemController.h"
 #include "MarkovPrefetcher.h"
 
+#ifdef ENABLE_CUDA
+#include "GPUXBars.h"
+#endif
+
 
 #include "DrawArch.h"
 extern DrawArch arch;
@@ -86,7 +90,6 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     //mdev = new GHB(this, dev_section, dev_name);
 		I(0);
     devtype = 4;
-
   } else if (!strcasecmp(device_type, "stridePrefetcher")) {
     mdev = new StridePrefetcher(this, dev_section, dev_name);
     devtype = 5;
@@ -102,11 +105,21 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     mdev = new Bus(this, dev_section, dev_name);
     devtype = 8;
   } else if (!strcasecmp(device_type, "tlb")) {
-    mdev = new TLB(this, dev_section, dev_name);
     devtype = 9;
-  } else if (!strcasecmp(device_type, "splitter")) {
-    //mdev = new Splitter(this, dev_section, dev_name);
-		I(0);
+    mdev = new TLB(this, dev_section, dev_name);
+  } 
+#ifdef ENABLE_CUDA
+  else if (!strcasecmp(device_type, "scratchxbar")) {
+    mdev = new ScratchXBAR(this, dev_section, dev_name);
+    devtype = 10;
+  } else if (!strcasecmp(device_type, "scratchunxbar")) {
+    mdev = new ScratchUnXBAR(this, dev_section, dev_name);
+    devtype = 10;
+  } else if (!strcasecmp(device_type, "pecachexbar")) {
+    mdev = new PECacheXBAR(this, dev_section, dev_name);
+    devtype = 10;
+  } else if (!strcasecmp(device_type, "pecacheunxbar")) {
+    mdev = new PECacheUnXBAR(this, dev_section, dev_name);    
     devtype = 10;
   } else if (!strcasecmp(device_type, "memxbar")) {
     mdev = new MemXBar(this, dev_section, dev_name);    
@@ -114,7 +127,9 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
   } else if (!strcasecmp(device_type, "unmemxbar")) {
     mdev = new UnMemXBar(this, dev_section, dev_name);    
     devtype = 12;
-  }  else if (!strcasecmp(device_type, "memcontroller")) {
+  }
+#endif
+  else if (!strcasecmp(device_type, "memcontroller")) {
     mdev = new MemController(this, dev_section, dev_name);
     devtype = 13;
   } else if (!strcasecmp(device_type, "void")) {
@@ -147,11 +162,15 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     case 8://bus
       mystr += "\"[shape=record,sides=5,peripheries=1,color=lightpink,style=filled]";
       break;
-    case 10: //Splitter
+    case 9://tlb
+      mystr += "\"[shape=record,sides=5,peripheries=1,color=lavender,style=filled]";
+      break;
+    case 10: //ScratchXBar //ScratchUnXBar //PECacheXBar //PECacheUnXBar
     case 11: //MemXBar
+    case 12: //MemXBar
       mystr += "\"[shape=record,sides=5,peripheries=1,color=thistle,style=filled]";
       break;
-    case 12: //memcontroller
+    case 13: //memcontroller
       mystr += "\"[shape=record,sides=5,peripheries=1,color=skyblue,style=filled]";
       break;
     default:

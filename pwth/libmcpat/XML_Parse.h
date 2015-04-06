@@ -48,7 +48,7 @@
 
 #ifndef XML_PARSE_H_
 #define XML_PARSE_H_
-//#define CONFIG_STANDALONE 1 
+//#define CONFIG_STANDALONE 1
 
 //#ifdef WIN32
 //#define _CRT_SECURE_NO_DEPRECATE
@@ -400,7 +400,8 @@ typedef struct {
   int fp_issue_width;
   int prediction_width;
   lsq_systemcore LSQ;
-  dcache_systemcore dfilter;
+  dcache_systemcore tinycache_data;
+  dcache_systemcore tinycache_inst;
 }system_cfg_Lane;
 
 typedef struct {
@@ -441,8 +442,9 @@ typedef struct {
   double main_memory_read;
   double main_memory_write;
   //all subnodes at the level of system.core(0-n)
-   lsq_systemcore LSQ;
-  dcache_systemcore dfilter;
+  lsq_systemcore LSQ;
+  dcache_systemcore tinycache_data;
+  dcache_systemcore tinycache_inst;
 }system_Lane;
 
 typedef struct {
@@ -732,13 +734,13 @@ typedef struct root_system_typ{
    system_mem mem;
   system_mc mc;
   float scale_dyn;
-  float scale_lkg; 
+  float scale_lkg;
 } root_system;
 
 class ParseXML
 {
 public:
-  void parse(char* filepath); 
+  void parse(char* filepath);
   void parseEsescConf(const char* section);
   void initialize(vector<uint32_t> *stats_vector, map<string,int> mcpat_map, vector<uint32_t> *cidx, vector<uint32_t> *gidx);
 
@@ -762,11 +764,11 @@ public:
    void getGeneralParams();
    void getCoreParams();
    void getGPUParams();
+   void getmimdGPUParams();
    void getMemParams();
    void getMemoryObj(const char *block, const char *field, FlowID Id);
    void getConfMemObj(std::vector<char *> vPars, FlowID Id);
 };
-
 
 #endif /* XML_PARSE_H_ */
 

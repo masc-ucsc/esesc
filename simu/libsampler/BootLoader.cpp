@@ -1,7 +1,7 @@
 // Contributed by Jose Renau
-//
+//  
 // The ESESC/BSD License
-//
+// 
 // Copyright (c) 2005-2013, Regents of the University of California and 
 // the ESESC Project.
 // All rights reserved.
@@ -33,6 +33,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include <signal.h>
+#include <pthread.h>
 
 #include "BootLoader.h"
 
@@ -61,6 +62,13 @@
 #include "Report.h"
 #include "SescConf.h"
 #include "DrawArch.h"
+#include "NodeInt.h"
+#include "transporter.h"
+
+//live stuff
+pthread_mutex_t mutex_live;
+bool live_qemu_active = true;
+pthread_cond_t cond_live;
 
 extern DrawArch arch;
 
@@ -106,6 +114,15 @@ timeval     BootLoader::stTime;
 PowerModel *BootLoader::pwrmodel;
 bool        BootLoader::doPower;
 
+int64_t BootLoader::checkpoint_id;
+bool BootLoader::is_live = false;
+int BootLoader::live_group = 0;
+int BootLoader::live_group_cntr = 0;
+int64_t BootLoader::sample_count = 0;
+int64_t BootLoader::live_warmup = 0;
+int64_t BootLoader::genwarm = 0;
+bool BootLoader::schema_sent = false;
+
 void BootLoader::check() 
 {
   if (!SescConf->check()) {
@@ -124,9 +141,13 @@ void BootLoader::reportOnTheFly(const char *file) {
 
   tmp = (char *)malloc(strlen(file)+1);
   strcpy(tmp,file);
+ 
+  //live stuff
+  if(is_live)
+    Report::openSocket(checkpoint_id);
 
   Report::openFile(tmp);
-
+  
   SescConf->dump();
 
   report("partial");
@@ -142,6 +163,10 @@ void BootLoader::startReportOnTheFly() {
   tmp = (char *)malloc(strlen(file)+1);
   strcpy(tmp,file);
 
+  //live stuff
+  if(is_live)
+    Report::openSocket(checkpoint_id);
+
   Report::openFile(tmp);
 
   SescConf->dump();
@@ -156,7 +181,6 @@ void BootLoader::stopReportOnTheFly() {
 }
 
 void BootLoader::report(const char *str) {
-
   timeval endTime;
   gettimeofday(&endTime, 0);
   Report::field("OSSim:reportName=%s", str);
@@ -173,6 +197,77 @@ void BootLoader::report(const char *str) {
   GStats::report(str);
 
   Report::close();
+}
+
+void BootLoader::reportSample() {
+  //live stuff check if we are in live mode
+  if (!is_live)
+    return;
+
+  //increase sample index
+  sample_count++;
+  live_group_cntr++;
+  if(live_group_cntr < live_group)
+    return;
+  else
+    live_group_cntr = 0;
+
+  //report sample results to the server
+  /*GStats::report("sample");
+  Report::flushSocket(sample_count);
+  GStats::flush();*/
+
+  //check if schema is sent
+  if(!schema_sent) {
+    GStats::reportSchema();
+    Report::sendSchema();
+    schema_sent = true;
+  }
+
+  Report::setBinField(sample_count);
+  GStats::reportBin();
+  Report::binFlush();
+  GStats::flush();
+
+  //halt qemu
+  pthread_mutex_lock(&mutex_live);
+  live_qemu_active = false;
+  pthread_cond_signal(&cond_live);
+  pthread_mutex_unlock(&mutex_live);
+  //printf("------------- wait signal sent\n");
+
+  //wait for resume command
+  /*
+  char buffer[1024];
+  int64_t cpid, fwu;
+  char cmd;
+  do { 
+    cpid = 0;
+    cmd = ' ';
+    fwu = 0;  
+    bzero(buffer, 1024);
+    NodeInt::read_buffer(buffer, 1024);
+    sscanf(buffer, "%c,%ld,%ld", &cmd, &cpid, &fwu);
+  } while ((cmd != 'i' && cmd != 'k') || cpid != checkpoint_id);
+
+  //if terminate commad, exit;
+  if(cmd == 'k')
+    kill(getpid(),SIGTERM);*/
+
+  //Wait for resume or kill
+  int k, skp;
+  Transporter::receive_fast("continue", "%d,%d", &k, &skp);
+  if(k == 1)
+    kill(getpid(),SIGTERM);
+
+  //resume qemu
+  pthread_mutex_lock(&mutex_live);
+  live_qemu_active = true;
+  pthread_cond_signal(&cond_live);
+  pthread_mutex_unlock(&mutex_live);
+  //printf("------------- resume signal sent\n");
+
+  return;
 }
 
 void BootLoader::plugEmulInterfaces() {
@@ -333,6 +428,14 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   TaskHandler::addSimu(gproc);
 }
 
+void BootLoader::plugSocket(int64_t cpid, int64_t fwu, int64_t gw) {
+  //live stuff
+  checkpoint_id = cpid;
+  sample_count = 0;
+  live_warmup = fwu;
+  genwarm = gw;
+}
+
 void BootLoader::plug(int argc, const char **argv) {
   // Before boot
   SescConf = new SConfig(argc, argv);
@@ -342,6 +445,11 @@ void BootLoader::plug(int argc, const char **argv) {
   TaskHandler::plugBegin();
   plugSimuInterfaces();
   check();
+
+  if(argc > 1 && strcmp(argv[1], "check") == 0) {
+    printf("success\n");
+    exit(0);
+  }
   
   const char *tmp;
   if( getenv("REPORTFILE") ) {
@@ -358,6 +466,12 @@ void BootLoader::plug(int argc, const char **argv) {
     sprintf(reportFile,"esesc_%s.XXXXXX",tmp);
   }
 
+  //live stuff
+  is_live = SescConf->getBool("","live");
+  live_group = SescConf->getBool("","live_group");
+  if(is_live)
+    Report::openSocket(checkpoint_id);
+
   Report::openFile(reportFile);
   
   SescConf->getDouble("technology","frequency"); // Just read it to get it in the dump
@@ -366,6 +480,11 @@ void BootLoader::plug(int argc, const char **argv) {
   plugEmulInterfaces();
   check();
 
+#if GOOGLE_GRAPH_API
+  arch.drawArchHtml("memory-arch.html");
+#else
+  arch.drawArchDot("memory-arch.dot");
+#endif
 
   const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
   doPower = SescConf->getBool(pwrsection,"doPower",0);
@@ -378,11 +497,6 @@ void BootLoader::plug(int argc, const char **argv) {
 
   check();
   TaskHandler::plugEnd();
-#if GOOGLE_GRAPH_API
-  arch.drawArchHtml("memory-arch.html");
-#else
-  arch.drawArchDot("memory-arch.dot");
-#endif
 }
 
 void BootLoader::boot() {

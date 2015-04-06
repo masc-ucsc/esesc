@@ -58,6 +58,7 @@ enum StallCause {
   SmallWinStall,
   SmallROBStall,
   SmallREGStall,
+  DivergeStall,
   OutsLoadsStall,
   OutsStoresStall,
   OutsBranchesStall,

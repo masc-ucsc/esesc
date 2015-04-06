@@ -110,7 +110,7 @@ void OoOProcessor::fetch(FlowID fid)
     if( bucket ) {
       IFID.fetch(bucket, eint, fid);
       if (!bucket->empty()) {
-        avgFetchWidth.sample(bucket->size());
+        avgFetchWidth.sample(bucket->size(), bucket->top()->getStatsFlag());
         busy = true;
       }
     }
@@ -162,7 +162,7 @@ bool OoOProcessor::advance_clock(FlowID fid)
       spaceInInstQueue -= bucket->size();
       pipeQ.instQueue.push(bucket);
 
-      //GMSG(getId()==1,"instqueue insert %p", bucket);
+      //GMSG(getID()==1,"instqueue insert %p", bucket);
     }else{
       noFetch2.inc(getStatsFlag);
     }
@@ -370,7 +370,7 @@ void OoOProcessor::retire_lock_check()
 
   if (last_state == state && active) {
     I(0);
-    MSG("Lock detected in P(%d), flushing pipeline", getId());
+    MSG("Lock detected in P(%d), flushing pipeline", getID());
     if (!rROB.empty()) {
 //      replay(rROB.top());
     }
@@ -486,7 +486,7 @@ void OoOProcessor::dumpROB()
   printf("ROB: (%d)\n",size);
 
   for(uint32_t i=0;i<size;i++) {
-    uint32_t pos = ROB.getIdFromTop(i);
+    uint32_t pos = ROB.getIDFromTop(i);
 
     DInst *dinst = ROB.getData(pos);
     dinst->dump("");
@@ -495,7 +495,7 @@ void OoOProcessor::dumpROB()
   size = rROB.size();
   printf("rROB: (%d)\n",size);
   for(uint32_t i=0;i<size;i++) {
-    uint32_t pos = rROB.getIdFromTop(i);
+    uint32_t pos = rROB.getIDFromTop(i);
 
     DInst *dinst = rROB.getData(pos);
     if (dinst->isReplay())

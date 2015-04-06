@@ -34,17 +34,20 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "BootLoader.h"
 #ifdef ENABLE_NBSD
 #include "MemRequest.h"
-void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, void *_mreq) {
+
+
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *_mreq) {
   MemRequest *mreq = (MemRequest *)_mreq;
 
   //MSG("@%lld snoop %s 0x%lx %d %s",globalClock, mreq->getCurrMem()->getName(), addr, mreq->getAction(), inv?"inv":"wb");
-  mreq->convert2SetStateAck();
+  mreq->convert2SetStateAck(ma_setInvalid, true); // WARNING: if it was a miss, ma_setShared
   mreq->getCurrMem()->doSetStateAck(mreq);
+}
+void meminterface_req_done(void *param, int mesi) {
 }
 #endif
 
 int main(int argc, const char **argv) { 
-
   BootLoader::plug(argc, argv);
   BootLoader::boot();
   BootLoader::report("done");

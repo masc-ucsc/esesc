@@ -40,6 +40,7 @@
 #include "SescConf.h"
 
 bool cuda_go_ahead = false;
+bool MIMDmode      = false;
 std::vector<bool> EmuSampler::done;
 bool EmuSampler::terminated = false;
 uint64_t *EmuSampler::instPrev;
@@ -240,7 +241,7 @@ void EmuSampler::stop()
   calcCPI();
 
   I(!stopJustCalled);
-  I(phasenInst); // There should be something executed (more likely)
+  //I(phasenInst); // There should be something executed (more likely)
   lastPhasenInst    = phasenInst;
   phasenInst        = 0;
   stopJustCalled    = true;
@@ -462,8 +463,8 @@ void EmuSampler::calcCPI()
 
   float newipc = static_cast<float>(instCount)/static_cast<float>(adjustedClock);
   float newuipc = static_cast<float>(uInstCount)/static_cast<float>(adjustedClock);
-  uipc->sample(100*newuipc);
-  ipc->sample(100*newipc);
+  uipc->sample(100*newuipc,true);
+  ipc->sample(100*newipc,true);
 
   //I(newCPI<=4);
   if (newCPI > 5) {

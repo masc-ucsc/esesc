@@ -90,8 +90,10 @@ protected:
   
   MemObj *self_mobj;
 
-  typedef HASH_MAP<const MemObj *, MemObj *, MemObjHashFunc> UPMapType;
+  //typedef HASH_MAP<MemObj *, MemObj *, MemObjHashFunc> UPMapType;
+  typedef HASH_MAP<MemObj *, MemObj *> UPMapType;
   UPMapType up_map;
+
   std::vector<MemObj *> up_node;
   std::vector<MemObj *> down_node;
 
@@ -120,18 +122,19 @@ public:
 
   void scheduleDispPos(    uint32_t pos, MemRequest *mreq    , TimeDelta_t lat=0);
   void scheduleDisp(                     MemRequest *mreq    , TimeDelta_t lat=0);
-	void sendDisp(AddrType addr, bool doStats, TimeDelta_t lat=0);
+	void sendDirtyDisp(AddrType addr, bool doStats, TimeDelta_t lat=0, ExtraParameters* xdata = NULL);
+	void sendCleanDisp(AddrType addr, bool doStats, TimeDelta_t lat=0, ExtraParameters* xdata = NULL);
 
   int32_t sendSetStateOthers(                 MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
   int32_t sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
   int32_t sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
 
-  TimeDelta_t ffread(AddrType addr);
-  TimeDelta_t ffwrite(AddrType addr);
-  TimeDelta_t ffreadPos(uint32_t pos, AddrType addr);
-  TimeDelta_t ffwritePos(uint32_t pos, AddrType addr);
+  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffreadPos(uint32_t pos, AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffwritePos(uint32_t pos, AddrType addr, ExtraParameters* xdata = NULL);
 
-  bool isBusyPos(uint32_t pos, AddrType addr) const;
+  bool isBusyPos(uint32_t pos, AddrType addr, ExtraParameters* xdata = NULL) const;
 
   bool isTopLevel() const { return up_node.empty(); }
 

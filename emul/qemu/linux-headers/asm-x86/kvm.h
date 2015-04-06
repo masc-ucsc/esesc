@@ -9,10 +9,29 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
+#define DE_VECTOR 0
+#define DB_VECTOR 1
+#define BP_VECTOR 3
+#define OF_VECTOR 4
+#define BR_VECTOR 5
+#define UD_VECTOR 6
+#define NM_VECTOR 7
+#define DF_VECTOR 8
+#define TS_VECTOR 10
+#define NP_VECTOR 11
+#define SS_VECTOR 12
+#define GP_VECTOR 13
+#define PF_VECTOR 14
+#define MF_VECTOR 16
+#define AC_VECTOR 17
+#define MC_VECTOR 18
+#define XM_VECTOR 19
+#define VE_VECTOR 20
+
 /* Select x86 specific features in <linux/kvm.h> */
 #define __KVM_HAVE_PIT
 #define __KVM_HAVE_IOAPIC
-#define __KVM_HAVE_DEVICE_ASSIGNMENT
+#define __KVM_HAVE_IRQ_LINE
 #define __KVM_HAVE_MSI
 #define __KVM_HAVE_USER_NMI
 #define __KVM_HAVE_GUEST_DEBUG
@@ -24,6 +43,7 @@
 #define __KVM_HAVE_DEBUGREGS
 #define __KVM_HAVE_XSAVE
 #define __KVM_HAVE_XCRS
+#define __KVM_HAVE_READONLY_MEM
 
 /* Architectural interrupt line count. */
 #define KVM_NR_INTERRUPTS 256
@@ -194,9 +214,9 @@ struct kvm_cpuid_entry2 {
 	__u32 padding[3];
 };
 
-#define KVM_CPUID_FLAG_SIGNIFCANT_INDEX 1
-#define KVM_CPUID_FLAG_STATEFUL_FUNC    2
-#define KVM_CPUID_FLAG_STATE_READ_NEXT  4
+#define KVM_CPUID_FLAG_SIGNIFCANT_INDEX		BIT(0)
+#define KVM_CPUID_FLAG_STATEFUL_FUNC		BIT(1)
+#define KVM_CPUID_FLAG_STATE_READ_NEXT		BIT(2)
 
 /* for KVM_SET_CPUID2 */
 struct kvm_cpuid2 {
@@ -319,6 +339,10 @@ struct kvm_xcrs {
 	__u32 flags;
 	struct kvm_xcr xcrs[KVM_MAX_XCRS];
 	__u64 padding[16];
+};
+
+/* definition of registers in kvm_run */
+struct kvm_sync_regs {
 };
 
 #endif /* _ASM_X86_KVM_H */

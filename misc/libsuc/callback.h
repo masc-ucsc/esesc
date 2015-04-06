@@ -54,6 +54,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 //
 /////////////////////////////////////////////////////////////////////////////
 
+
 class EventScheduler 
   : public TQueue<EventScheduler *, Time_t>::User 
 {
@@ -114,8 +115,16 @@ public:
     }
 #endif
     globalClock++;
+
+    uint32_t cb_per_clock = 0;
     while ((cb = cbQ.nextJob(globalClock)) ) {
       cb->call();
+      cb_per_clock++;
+    }
+
+    if (cb_per_clock == 0) {
+      deadClock++;
+      //MSG("@%lld is a deadClock count is now @%lld",(long long int) globalClock, (long long int) deadClock);
     }
   }
 

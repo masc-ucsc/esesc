@@ -39,11 +39,23 @@
 #include "nanassert.h"
 #include "MemObj.h"
 #include "GStats.h"
+#include "estl.h"
 /* }}} */
 
 class NICECache : public MemObj {
+private:
   // a 100% hit cache, used for debugging or as main memory
   const uint32_t hitDelay;
+  const uint32_t bsize;
+  const uint32_t bsizeLog2;
+
+  bool     coldWarmup;
+
+  std::set<uint32_t>  warmup;
+  uint32_t  warmupStepStart;
+  uint32_t  warmupStep;
+  uint32_t  warmupNext;
+  uint32_t  warmupSlowEvery;
 protected:
 
   // BEGIN Statistics
@@ -80,10 +92,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  TimeDelta_t ffread(AddrType addr);
-  TimeDelta_t ffwrite(AddrType addr);
+  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
 
-	bool isBusy(AddrType addr) const;
+	bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
 };
 
 #endif

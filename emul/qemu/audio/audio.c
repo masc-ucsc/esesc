@@ -23,9 +23,9 @@
  */
 #include "hw/hw.h"
 #include "audio.h"
-#include "monitor.h"
-#include "qemu-timer.h"
-#include "sysemu.h"
+#include "monitor/monitor.h"
+#include "qemu/timer.h"
+#include "sysemu/sysemu.h"
 
 #define AUDIO_CAP "audio"
 #include "audio_int.h"
@@ -95,7 +95,7 @@ static struct {
         }
     },
 
-    .period = { .hertz = 250 },
+    .period = { .hertz = 100 },
     .plive = 0,
     .log_to_monitor = 0,
     .try_poll_in = 1,
@@ -585,17 +585,20 @@ static int audio_pcm_info_eq (struct audio_pcm_info *info, struct audsettings *a
     switch (as->fmt) {
     case AUD_FMT_S8:
         sign = 1;
+        /* fall through */
     case AUD_FMT_U8:
         break;
 
     case AUD_FMT_S16:
         sign = 1;
+        /* fall through */
     case AUD_FMT_U16:
         bits = 16;
         break;
 
     case AUD_FMT_S32:
         sign = 1;
+        /* fall through */
     case AUD_FMT_U32:
         bits = 32;
         break;
@@ -815,6 +818,7 @@ static int audio_attach_capture (HWVoiceOut *hw)
         sw->active = hw->enabled;
         sw->conv = noop_conv;
         sw->ratio = ((int64_t) hw_cap->info.freq << 32) / sw->info.freq;
+        sw->vol = nominal_volume;
         sw->rate = st_rate_start (sw->info.freq, hw_cap->info.freq);
         if (!sw->rate) {
             dolog ("Could not start rate conversion for `%s'\n", SW_NAME (sw));
@@ -824,8 +828,9 @@ static int audio_attach_capture (HWVoiceOut *hw)
         QLIST_INSERT_HEAD (&hw_cap->sw_head, sw, entries);
         QLIST_INSERT_HEAD (&hw->cap_head, sc, entries);
 #ifdef DEBUG_CAPTURE
-        asprintf (&sw->name, "for %p %d,%d,%d",
-                  hw, sw->info.freq, sw->info.bits, sw->info.nchannels);
+        sw->name = g_strdup_printf ("for %p %d,%d,%d",
+                                    hw, sw->info.freq, sw->info.bits,
+                                    sw->info.nchannels);
         dolog ("Added %s active = %d\n", sw->name, sw->active);
 #endif
         if (sw->active) {
@@ -954,7 +959,9 @@ int audio_pcm_sw_read (SWVoiceIn *sw, void *buf, int size)
         total += isamp;
     }
 
-    mixeng_volume (sw->buf, ret, &sw->vol);
+    if (!(hw->ctl_caps & VOICE_VOLUME_CAP)) {
+        mixeng_volume (sw->buf, ret, &sw->vol);
+    }
 
     sw->clip (buf, sw->buf, ret);
     sw->total_hw_samples_acquired += total;
@@ -1038,7 +1045,10 @@ int audio_pcm_sw_write (SWVoiceOut *sw, void *buf, int size)
     swlim = audio_MIN (swlim, samples);
     if (swlim) {
         sw->conv (sw->buf, buf, swlim);
-        mixeng_volume (sw->buf, swlim, &sw->vol);
+
+        if (!(sw->hw->ctl_caps & VOICE_VOLUME_CAP)) {
+            mixeng_volume (sw->buf, swlim, &sw->vol);
+        }
     }
 
     while (swlim) {
@@ -1114,10 +1124,11 @@ static int audio_is_timer_needed (void)
 static void audio_reset_timer (AudioState *s)
 {
     if (audio_is_timer_needed ()) {
-        qemu_mod_timer (s->ts, qemu_get_clock_ns (vm_clock) + 1);
+        timer_mod (s->ts,
+            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + conf.period.ticks);
     }
     else {
-        qemu_del_timer (s->ts);
+        timer_del (s->ts);
     }
 }
 
@@ -1767,10 +1778,12 @@ static void audio_atexit (void)
     HWVoiceOut *hwo = NULL;
     HWVoiceIn *hwi = NULL;
 
-    while ((hwo = audio_pcm_hw_find_any_enabled_out (hwo))) {
+    while ((hwo = audio_pcm_hw_find_any_out (hwo))) {
         SWVoiceCap *sc;
 
-        hwo->pcm_ops->ctl_out (hwo, VOICE_DISABLE);
+        if (hwo->enabled) {
+            hwo->pcm_ops->ctl_out (hwo, VOICE_DISABLE);
+        }
         hwo->pcm_ops->fini_out (hwo);
 
         for (sc = hwo->cap_head.lh_first; sc; sc = sc->entries.le_next) {
@@ -1783,8 +1796,10 @@ static void audio_atexit (void)
         }
     }
 
-    while ((hwi = audio_pcm_hw_find_any_enabled_in (hwi))) {
-        hwi->pcm_ops->ctl_in (hwi, VOICE_DISABLE);
+    while ((hwi = audio_pcm_hw_find_any_in (hwi))) {
+        if (hwi->enabled) {
+            hwi->pcm_ops->ctl_in (hwi, VOICE_DISABLE);
+        }
         hwi->pcm_ops->fini_in (hwi);
     }
 
@@ -1797,8 +1812,7 @@ static const VMStateDescription vmstate_audio = {
     .name = "audio",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
-    .fields      = (VMStateField []) {
+    .fields = (VMStateField[]) {
         VMSTATE_END_OF_LIST()
     }
 };
@@ -1820,7 +1834,7 @@ static void audio_init (void)
     QLIST_INIT (&s->cap_head);
     atexit (audio_atexit);
 
-    s->ts = qemu_new_timer_ns (vm_clock, audio_timer, s);
+    s->ts = timer_new_ns(QEMU_CLOCK_VIRTUAL, audio_timer, s);
     if (!s->ts) {
         hw_error("Could not create audio timer\n");
     }
@@ -2050,17 +2064,29 @@ void AUD_del_capture (CaptureVoiceOut *cap, void *cb_opaque)
 void AUD_set_volume_out (SWVoiceOut *sw, int mute, uint8_t lvol, uint8_t rvol)
 {
     if (sw) {
+        HWVoiceOut *hw = sw->hw;
+
         sw->vol.mute = mute;
         sw->vol.l = nominal_volume.l * lvol / 255;
         sw->vol.r = nominal_volume.r * rvol / 255;
+
+        if (hw->pcm_ops->ctl_out) {
+            hw->pcm_ops->ctl_out (hw, VOICE_VOLUME, sw);
+        }
     }
 }
 
 void AUD_set_volume_in (SWVoiceIn *sw, int mute, uint8_t lvol, uint8_t rvol)
 {
     if (sw) {
+        HWVoiceIn *hw = sw->hw;
+
         sw->vol.mute = mute;
         sw->vol.l = nominal_volume.l * lvol / 255;
         sw->vol.r = nominal_volume.r * rvol / 255;
+
+        if (hw->pcm_ops->ctl_in) {
+            hw->pcm_ops->ctl_in (hw, VOICE_VOLUME, sw);
+        }
     }
 }

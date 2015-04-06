@@ -8,7 +8,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -60,7 +60,7 @@ Resource::Resource(Cluster *cls, PortGeneric *aGen, TimeDelta_t l)
   /* constructor {{{1 */
   : cluster(cls)
   ,gen(aGen)
-  ,gproc(cls->getGProcessor()) 
+  ,gproc(cls->getGProcessor())
   ,lat(l)
   ,usedTime(0)
 {
@@ -75,7 +75,7 @@ Resource::~Resource()
 {
   GMSG(!EventScheduler::empty(), "Resources destroyed with %zu pending instructions"
        ,EventScheduler::size());
-  
+
   if(gen)
     gen->unsubscribe();
 }
@@ -119,7 +119,7 @@ SCOOREMem::SCOOREMem(Cluster *cls, PortGeneric *aGen, StoreSet *ss, TimeDelta_t 
     //,ScooreUpperHierReplays("P(%d)_%s:ScooreUpperHierReplays", id, cad)
   ,enableDcache(SescConf->getBool("cpusimu", "enableDcache", id))
 {
-  
+
   if(vpc) {
     //printf("DEBUG: getting VPC delay\n");
     if(SescConf->checkInt(vpc->getSection(), "hitDelay"))
@@ -149,7 +149,7 @@ FUSCOORELoad::FUSCOORELoad(Cluster *cls, PortGeneric *aGen, StoreSet *ss, TimeDe
   I(vpc);
   //#if SCOORE_LSQ
 #if 0
-  maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getId());
+  maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getID());
   free_entries = maxLoads;
 #endif
 }
@@ -158,10 +158,12 @@ FUSCOORELoad::FUSCOORELoad(Cluster *cls, PortGeneric *aGen, StoreSet *ss, TimeDe
 void FUSCOORELoad::retryvpc(DInst *dinst)
 /* retry vpc request {{{1 */
 {
+  ExtraParameters xdata;
+  xdata.configure(dinst);
 
-  if (!vpc->isBusy(dinst->getAddr())) {
-    MemRequest::sendReqRead(vpc, dinst, dinst->getAddr(), executedCB::create(this, dinst));
-    return; 
+  if (!vpc->isBusy(dinst->getAddr(), &xdata)) {
+    MemRequest::sendReqRead(vpc, dinst->getStatsFlag(), dinst->getAddr(), executedCB::create(this, dinst), &xdata); //FIXME
+    return;
   }
 
   retryvpcCB::schedule(7, this, dinst);
@@ -188,7 +190,7 @@ StallCause FUSCOORELoad::canIssue(DInst *dinst) {
     return OutsLoadsStall;
   }
 #endif
-  
+
 
 #if 0
   if (fixaddr[fixhash(dinst->getAddr())] == dinst->getAddr()) {
@@ -198,7 +200,7 @@ StallCause FUSCOORELoad::canIssue(DInst *dinst) {
   }
 #endif
 
-  //storeset->insert(dinst); 
+  //storeset->insert(dinst);
   //#if SCOORE_LSQ
 #if 0
   free_entries--;
@@ -217,7 +219,7 @@ void FUSCOORELoad::executing(DInst *dinst) {
     Time_t when = gen->nextSlot(dinst->getStatsFlag())+vpcDelay;
     executedCB::scheduleAbs(when, this, dinst);
     return;
-  }    
+  }
   retryvpc(dinst);
 }
 /* }}} */
@@ -314,7 +316,7 @@ void MemReplay::replayManage(DInst* dinst) {
           , lf[i].op, dinst->getInst()->getOpcode()
           , lf[i].data, dinst->getData(), lf[i].id, dinst->getID(), dinst->getID() - lf[i].id, dinst->getConflictStorePC());
 #endif
-    SSID_t newid = storeset->mergeset(lf[i].ssid, dinst->getSSID()); 
+    SSID_t newid = storeset->mergeset(lf[i].ssid, dinst->getSSID());
     lf[i].ssid = newid;
     lf[i].id   = dinst->getID();
     lf[i].pc   = dinst->getPC();
@@ -328,7 +330,7 @@ void MemReplay::replayManage(DInst* dinst) {
     if (dinst->getID() > lf[i].id && dinst->getSSID() != lf[i].ssid) {
 #if DEBUG
       printf("3.merging %d and %d : pc %lx and %lx : addr %lx and %lx : id %lu and %lu (%lu)\n",lf[i].ssid, dinst->getSSID(), lf[i].pc, dinst->getPC(), lf[i].addr, dinst->getAddr(), lf[i].id, dinst->getID(), dinst->getID() - lf[i].id);
-      storeset->mergeset(lf[i].ssid, dinst->getSSID()); 
+      storeset->mergeset(lf[i].ssid, dinst->getSSID());
       if (lf[i].ssid > dinst->getSSID())
         lf[i].ssid = dinst->getSSID();
 #endif
@@ -344,7 +346,7 @@ void MemReplay::replayManage(DInst* dinst) {
 void FUSCOORELoad::executed(DInst* dinst) {
   /* executed {{{1 */
 
-  storeset->remove(dinst); 
+  storeset->remove(dinst);
 
   if(dinst->isReplay())  {
     //gproc->replay(dinst); called in VPC
@@ -361,7 +363,7 @@ bool FUSCOORELoad::preretire(DInst *dinst, bool flushing)
   /* preretire {{{1 */ {
   //printf("DEBUG: calling ScooreLoad::preretire\n");
 
-  if (flushing) { 
+  if (flushing) {
     performed(dinst);
     return true;
   }
@@ -370,12 +372,15 @@ bool FUSCOORELoad::preretire(DInst *dinst, bool flushing)
     performedCB::schedule(DL1Delay, this, dinst);
     return true;
   }
-        
-  if(DL1->isBusy(dinst->getAddr()))
+
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if(DL1->isBusy(dinst->getAddr(),&xdata))
     return false;
-        
-  MemRequest::sendReqRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
-  
+
+  MemRequest::sendReqRead(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst), &xdata); //FIXME
+
   return true;
 }
 /* }}} */
@@ -424,8 +429,8 @@ FUSCOOREStore::FUSCOOREStore(Cluster *cls, PortGeneric *aGen, StoreSet *ss, Time
   I(DL1);
   I(vpc);
   //#if SCOORE_LSQ
-#if 0 
-  maxStores = SescConf->getInt("cpusimu", "maxStores",gproc->getId());
+#if 0
+  maxStores = SescConf->getInt("cpusimu", "maxStores",gproc->getID());
   free_entries = maxStores;
 #endif
 }
@@ -449,7 +454,7 @@ StallCause FUSCOOREStore::canIssue(DInst *dinst) {
 #if 1
   fixaddr[fixhash(dinst->getAddr())] = dinst->getAddr();
 #endif
-  
+
   //storeset->insert(dinst);
   //#if SCOORE_LSQ
 #if 0
@@ -465,15 +470,18 @@ void FUSCOOREStore::retryvpc(DInst *dinst)
 {
   I(dinst->getInst()->isStoreAddress() || dinst->getInst()->isStore());
 
-  if (vpc->isBusy(dinst->getAddr())) {
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if (vpc->isBusy(dinst->getAddr(), &xdata)) {
     retryvpcCB::schedule(3, this, dinst);
     return;
   }
 
   if (dinst->getInst()->isStoreAddress()) {
-    MemRequest::sendReqWritePrefetch(vpc, dinst, dinst->getAddr(), executedCB::create(this,dinst));
+    MemRequest::sendReqWritePrefetch(vpc, dinst->getStatsFlag(), dinst->getAddr(), executedCB::create(this,dinst), &xdata);
   }else{
-    MemRequest::sendReqWrite(vpc, dinst, dinst->getAddr(), performedCB::create(this,dinst));
+    MemRequest::sendReqWrite(vpc, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst), &xdata);
   }
 }
 /* }}} */
@@ -495,7 +503,7 @@ void FUSCOOREStore::executing(DInst *dinst) {
 /* }}} */
 
 void FUSCOOREStore::executed(DInst *dinst) {
-  //printf("DEBUG: calling ScooreStore::executed\n"); 
+  //printf("DEBUG: calling ScooreStore::executed\n");
   /* executed {{{1 */
   if (dinst->getInst()->isStore()) {
     storeset->remove(dinst);
@@ -524,7 +532,10 @@ bool FUSCOOREStore::preretire(DInst *dinst, bool flushing)
     return true;
   }
 
-  if(DL1->isBusy(dinst->getAddr()))
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if(DL1->isBusy(dinst->getAddr(), &xdata))
     return false;
 
   vpc->replayCheckLSQ_removeStore(dinst);
@@ -533,9 +544,11 @@ bool FUSCOOREStore::preretire(DInst *dinst, bool flushing)
 
 	I(0); // FIXME
 //  MemRequest::createVPCWriteUpdate(vpc, dinst); //no callback needed
-  MemRequest::sendReqWrite(vpc, dinst, dinst->getAddr());
 
-  MemRequest::sendReqWrite(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst)); 
+
+  MemRequest::sendReqWrite(vpc, dinst->getStatsFlag(), dinst->getAddr(), NULL, &xdata);
+
+  MemRequest::sendReqWrite(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst), &xdata);
 
   return true;
 }
@@ -587,7 +600,7 @@ FULoad::FULoad(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, TimeDel
   ,freeEntries(size) {
   char cadena[1000];
   sprintf(cadena,"P(%d)_%s", id, cad);
-  enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);  
+  enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
   I(ms);
 }
 /* }}} */
@@ -599,7 +612,7 @@ StallCause FULoad::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsLoadsStall;
   }
-  storeset->insert(dinst); 
+  storeset->insert(dinst);
 
   lsq->insert(dinst);
   freeEntries--;
@@ -635,23 +648,27 @@ void FULoad::executing(DInst *dinst) {
 
 void FULoad::cacheDispatched(DInst *dinst) {
   /* cacheDispatched {{{1 */
- 
+
   I(enableDcache);
   I(!dinst->isLoadForwarded());
 
-  if(DL1->isBusy(dinst->getAddr())) {
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if(DL1->isBusy(dinst->getAddr(), &xdata)) {
     Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
     return;
   }
 
-  MemRequest::sendReqRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
+  //MSG("FULoad 0x%x 0x%x",dinst->getAddr(), dinst->getPC());
+  MemRequest::sendReqRead(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst),&xdata); //FIXME
 }
 /* }}} */
 
 void FULoad::executed(DInst* dinst) {
   /* executed {{{1 */
-  storeset->remove(dinst); 
+  storeset->remove(dinst);
 
   dinst->markExecuted();
   cluster->executed(dinst);
@@ -674,7 +691,7 @@ bool FULoad::retire(DInst *dinst, bool flushing)
 
 #if 0
   // Merging for tradcore
-  if(dinst->isReplay() && !flushing) 
+  if(dinst->isReplay() && !flushing)
     replayManage(dinst);
 #endif
 
@@ -704,7 +721,7 @@ FUStore::FUStore(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, TimeD
 /* }}} */
 
 StallCause FUStore::canIssue(DInst *dinst) {
-  /* canIssue {{{1 */ 
+  /* canIssue {{{1 */
 
   if (dinst->getInst()->isStoreAddress())
     return NoStall;
@@ -713,9 +730,9 @@ StallCause FUStore::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsStoresStall;
   }
-  
+
   storeset->insert(dinst);
-  
+
   lsq->insert(dinst);
 
   freeEntries--;
@@ -740,9 +757,14 @@ void FUStore::executing(DInst *dinst) {
   gen->nextSlot(dinst->getStatsFlag());
 
   if (dinst->getInst()->isStoreAddress()) {
-#if 1
-    if (enableDcache)
-      MemRequest::sendReqWritePrefetch(DL1, dinst, dinst->getAddr(), executedCB::create(this,dinst));
+#if 0
+    if (enableDcache && !DL1->isBusy(dinst->getAddr()) ){
+      ExtraParameters xdata;
+      xdata.configure(dinst);
+
+      MemRequest::sendReqWritePrefetch(DL1, dinst->getStatsFlag(), dinst->getAddr(), executedCB::create(this,dinst), &xdata);
+
+    }
     else
       executed(dinst);
 #else
@@ -783,11 +805,14 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
     return false;
   }
 
-  if(DL1->isBusy(dinst->getAddr()) ) {
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if(DL1->isBusy(dinst->getAddr(), &xdata)){
     return false;
   }
 
-  MemRequest::sendReqWrite(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
+  MemRequest::sendReqWrite(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst), &xdata);
 
   return true;
 }
@@ -831,13 +856,34 @@ StallCause FUGeneric::canIssue(DInst *dinst) {
 
 void FUGeneric::executing(DInst *dinst) {
   /* executing {{{1 */
+  Time_t nlat = gen->nextSlot(dinst->getStatsFlag())+lat;
+#if 0
+  if (dinst->getPC() == 1073741832) {
+    MSG("@%lld Scheduling callback for FID[%d] PE[%d] Warp [%d] pc 1073741832 at @%lld"
+        , (long long int)globalClock
+        , dinst->getFlowId()
+        , dinst->getPE()
+        , dinst->getWarpID()
+        , (long long int) nlat);
+  }
+#endif
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
+  executedCB::scheduleAbs(nlat, this, dinst);
 }
 /* }}} */
 
 void FUGeneric::executed(DInst *dinst) {
   /* executed {{{1 */
+#if 0
+  if (dinst->getPC() == 1073741832) {
+    //MSG("@%lld Scheduling callback for PE[%d] Warp [%d] pc 1073741832 at @%lld",(long long int)globalClock,dinst->getPE(), dinst->getWarpID(), (long long int)gen->nextSlot(dinst->getStatsFlag())+lat);
+    MSG("@%lld marking executed for FID[%d] PE[%d] Warp [%d] pc 1073741832"
+        ,(long long int)globalClock
+        ,dinst->getFlowId()
+        ,dinst->getPE()
+        , dinst->getWarpID());
+  }
+#endif
   dinst->markExecuted();
   cluster->executed(dinst);
 }
@@ -991,12 +1037,12 @@ FURALU::FURALU(Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, bool scooreMemory
 }
 /* }}} */
 
-StallCause FURALU::canIssue(DInst *dinst) 
+StallCause FURALU::canIssue(DInst *dinst)
 /* canIssue {{{1 */
 {
   I(dinst->getPC() != 0xf00df00d); // It used to be a Syspend, but not longer true
 
-  if (dinst->getPC() == 0xdeaddead){ 
+  if (dinst->getPC() == 0xdeaddead){
     // This is the PC for a syscall (QEMUReader::syscall)
     if (blockUntil==0) {
       //LOG("syscall %d executed, with %d delay", dinst->getAddr(), dinst->getData());
@@ -1004,16 +1050,16 @@ StallCause FURALU::canIssue(DInst *dinst)
       blockUntil = globalClock+100;
       return SyscallStall;
     }
-    
+
     //is this where we poweron the GPU threads and then poweroff the QEMU thread?
     if (globalClock >= blockUntil) {
       blockUntil = 0;
       return NoStall;
     }
-    
+
     return SyscallStall;
-  }else if (!dinst->getInst()->hasDstRegister() 
-            && !dinst->getInst()->hasSrc1Register() 
+  }else if (!dinst->getInst()->hasDstRegister()
+            && !dinst->getInst()->hasSrc1Register()
             && !dinst->getInst()->hasSrc2Register()
             && !scooreMemory) {
     if (gproc->isROBEmpty())
@@ -1021,12 +1067,12 @@ StallCause FURALU::canIssue(DInst *dinst)
     memoryBarrier.inc(dinst->getStatsFlag());
     return SyscallStall;
   }
-  
+
   return NoStall;
 }
 /* }}} */
 
-void FURALU::executing(DInst *dinst) 
+void FURALU::executing(DInst *dinst)
 /* executing {{{1 */
 {
   cluster->executing(dinst);
@@ -1036,7 +1082,7 @@ void FURALU::executing(DInst *dinst)
 }
 /* }}} */
 
-void FURALU::executed(DInst *dinst) 
+void FURALU::executed(DInst *dinst)
 /* executed {{{1 */
 {
   dinst->markExecuted();
@@ -1058,7 +1104,7 @@ bool FURALU::retire(DInst *dinst, bool flushing)
 }
 /* }}} */
 
-void FURALU::performed(DInst *dinst) 
+void FURALU::performed(DInst *dinst)
 /* memory operation was globally performed {{{1 */
 {
   dinst->markPerformed();
@@ -1075,7 +1121,7 @@ FULoad_noMemSpec::FULoad_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t 
   ,freeEntries(size) {
   char cadena[1000];
   sprintf(cadena,"P(%d)_%s", id, cad);
-  enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);  
+  enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
   I(ms);
 }
 /* }}} */
@@ -1108,17 +1154,21 @@ void FULoad_noMemSpec::executing(DInst *dinst) {
 
 void FULoad_noMemSpec::cacheDispatched(DInst *dinst) {
   /* cacheDispatched {{{1 */
- 
+
   I(enableDcache);
   I(!dinst->isLoadForwarded());
 
-  if(DL1->isBusy(dinst->getAddr())) {
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if(DL1->isBusy(dinst->getAddr(), &xdata)) {
     Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
     return;
   }
 
-  MemRequest::sendReqRead(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
+  //MSG("\nFULoad_noMemSpec 0x%llx 0x%llx",dinst->getAddr(), dinst->getPC());
+  MemRequest::sendReqRead(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst),&xdata); //FIXME
 }
 /* }}} */
 
@@ -1166,7 +1216,7 @@ FUStore_noMemSpec::FUStore_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_
 /* }}} */
 
 StallCause FUStore_noMemSpec::canIssue(DInst *dinst) {
-  /* canIssue {{{1 */ 
+  /* canIssue {{{1 */
 
   if (dinst->getInst()->isStoreAddress())
     return NoStall;
@@ -1175,7 +1225,7 @@ StallCause FUStore_noMemSpec::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsStoresStall;
   }
-  
+
   freeEntries--;
   return NoStall;
 }
@@ -1187,7 +1237,10 @@ void FUStore_noMemSpec::executing(DInst *dinst) {
   gen->nextSlot(dinst->getStatsFlag());
 
   if (dinst->getInst()->isStoreAddress()) {
-    MemRequest::sendReqWritePrefetch(DL1, dinst, dinst->getAddr(), executedCB::create(this,dinst));
+    ExtraParameters xdata;
+    xdata.configure(dinst);
+
+    MemRequest::sendReqWritePrefetch(DL1, dinst->getStatsFlag(), dinst->getAddr(), executedCB::create(this,dinst), &xdata);
   }else{
     executed(dinst);
   }
@@ -1225,11 +1278,14 @@ bool FUStore_noMemSpec::preretire(DInst *dinst, bool flushing) {
     return false;
   }
 
-  if(DL1->isBusy(dinst->getAddr()) ) {
+  ExtraParameters xdata;
+  xdata.configure(dinst);
+
+  if(DL1->isBusy(dinst->getAddr(), &xdata)) {
     return false;
   }
 
-  MemRequest::sendReqWrite(DL1, dinst, dinst->getAddr(), performedCB::create(this,dinst));
+  MemRequest::sendReqWrite(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst), &xdata);
 
   return true;
 }

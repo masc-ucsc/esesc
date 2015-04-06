@@ -1,4 +1,4 @@
-// This file and its contents exist only until the other diveregence mechanisms are fixed and tested. 
+// This file and its contents exist only until the other diveregence mechanisms are fixed and tested.
 
 #include "GPUThreadManager.h"
 
@@ -13,7 +13,7 @@ extern   uint64_t newqemuid;
 
 extern   uint32_t traceSize;
 extern   bool     unifiedCPUGPUmem;
-extern   bool     istsfifoBlocked;
+extern   bool*     istsfifoBlocked;
 extern   bool     rabbit_threads_executing;
 extern ThreadBlockStatus *block;
 extern div_type branch_div_mech;
@@ -35,6 +35,8 @@ extern uint32_t roundDown(uint32_t numToRound, uint32_t multiple);
 extern uint64_t loopcounter;
 extern uint64_t relaunchcounter;
 
+extern uint64_t memref_interval;
+
 bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid) {
   bool atleast_oneSM_alive                 = false;
   uint64_t threads_in_current_warp_done    = 0;
@@ -48,6 +50,7 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
 
   uint32_t smid                            = 0;
   uint64_t warpid                          = 0;
+  uint64_t localwarpid                     = 0;
   uint64_t glofid                          = 0;
   int64_t  active_thread                   = 0;
   uint32_t trace_currentbbid               = 0;
@@ -61,10 +64,10 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
   traceSize            = kernel->tracesize;
   uint32_t tracestart  = (12 + kernel->predicates);    // Fixed.
   RAWInstType insn     = 0;
-  //AddrType    addr     = 0;
-  //DataType    data     = 0;
-  uint32_t    addr     = 0;
-  uint32_t    data     = 0;
+  AddrType    addr     = 0;
+  DataType    data     = 0;
+  //uint32_t    addr     = 0;
+  //uint32_t    data     = 0;
   uint32_t    pc       = 0;
   char        op       = 0;
   uint64_t    icount   = 1;
@@ -85,15 +88,16 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
       glofid          = mapLocalID(smid);
       memoryInstfound = false;
       changewarpnow   = false;
+      localwarpid = SM[smid].getCurrentLocalWarp();
 
-      if ((SM[smid].smstatus == SMalive) && (SM[smid].timing_warps > 0))  { 
+      if ((SM[smid].smstatus == SMalive) && (SM[smid].timing_warps > 0))  {
         I(SM[smid].timing_warps > 0); //Otherwise the status should be something else
         warpid = SM[smid].getCurrentWarp();
 
         if (SM[smid].warp_status[warpid] == waiting_barrier) {
           uint32_t blockid = SM[smid].warp_block_map[warpid];
           uint32_t compl_th = 0;
-          for (uint32_t w_per_b = 0; w_per_b<block[blockid].warps.size(); w_per_b++) { 
+          for (uint32_t w_per_b = 0; w_per_b<block[blockid].warps.size(); w_per_b++) {
             uint32_t localwid = block[blockid].warps[w_per_b];
             compl_th +=  SM[smid].warp_complete[localwid];
           }
@@ -121,22 +125,22 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
           }
 
         } else if (SM[smid].warp_status[warpid] == waiting_memory){
-          //I(0); // Just to see if we ever reach here. 
+          //I(0); // Just to see if we ever reach here.
           SM[smid].warp_status[warpid] = traceReady;
 
         } else if (SM[smid].warp_status[warpid] == waiting_TSFIFO){
-          //I(0); // Just to see if we ever reach here. 
+          //I(0); // Just to see if we ever reach here.
           SM[smid].warp_status[warpid] = traceReady;
 
         } else if (SM[smid].warp_status[warpid] == relaunchReady){
-          // I(0); // Just to see if we ever reach here. 
+          // I(0); // Just to see if we ever reach here.
           // No more instructions to insert from this warp.
           // Mark the SM as done and wait for the kernel to be respawned for more instructions
           SM[smid].smstatus = SMdone;
 
         } else if (SM[smid].warp_status[warpid] == warpComplete){
-          I(0); //Just to see if we ever reach here. 
-          //Move to the next warp. 
+          I(0); //Just to see if we ever reach here.
+          //Move to the next warp.
           //Not sure if this needs to be there.
         }
 
@@ -157,6 +161,7 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
           for (int32_t pe_id = SM[smid].warp_last_active_pe[warpid]; ((pe_id < (int32_t)numSP) || (start_halfway)) && !(tsfifoblocked); pe_id++) {
             if (warpid < SM[smid].threads_per_pe[pe_id].size()){
 
+              memref_interval += 1;
               if (SM[smid].thread_status_per_pe[pe_id][warpid] == paused_on_a_memaccess){
                 I(0);
                 SM[smid].thread_status_per_pe[pe_id][warpid] = running; //Change it to running or whatever.
@@ -173,6 +178,13 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                 trace_skipinstcount  = h_trace_qemu[(active_thread*traceSize)+2];
                 trace_branchtaken    = h_trace_qemu[(active_thread*traceSize)+3];
                 trace_unifiedBlockID = h_trace_qemu[(active_thread*traceSize)+5];
+                
+                uint32_t mblockid = SM[smid].warp_block_map[warpid];
+                if (trace_unifiedBlockID != mblockid){
+                  I(0);
+                  //MSG("Stored blockid [%d] and traceunifiedblockID[%d] are not the same!!!",mblockid, trace_unifiedBlockID);
+                }
+
 
                 uint32_t numbbinst   = kernel->bb[trace_currentbbid].number_of_insts;
                 uint32_t instoffset  = 0;
@@ -194,12 +206,12 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                     SM[smid].thread_status_per_pe[pe_id][warpid] = paused_on_a_barrier;
 
                     h_trace_qemu[active_thread*traceSize+4]=1;  //  Pause the current thread.
-                    threads_in_current_warp_barrier++;          //Increment the block_barrier_count by one. 
+                    threads_in_current_warp_barrier++;          //Increment the block_barrier_count by one.
                     threads_in_current_warp_done++;             //Incremented when the thread is done, or hits a barrier
                     SM[smid].warp_blocked[warpid]++;
 
                     //  Insert a RALU instruction
-                    //  FIXME-Alamelu: 
+                    //  FIXME-Alamelu:
 
                     uint32_t compl_th = 0;
                     for (uint32_t w_per_b = 0; w_per_b<block[blockid].warps.size(); w_per_b++){
@@ -244,11 +256,13 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                       CUDAMemType memaccesstype;
 
                       if (op == 0) {// ALU ops
-                        addr = 0;
-
+                        addr = GPUReader_encode_rawaddr(0 ,trace_unifiedBlockID, localwarpid, pe_id, false);
+                        addr = (addr & 0x0FFFFFFFFFFFFFFFULL);
                       } else if (op == 3){// Branches
                         if (!(trace_branchtaken)){
-                          addr = 0;//Not Address of h_trace_qemu[(tid*traceSize+0)];
+                          //addr = 0;//Not Address of h_trace_qemu[(tid*traceSize+0)];
+                          addr = GPUReader_encode_rawaddr(0, trace_unifiedBlockID, localwarpid, pe_id, false);
+                          addr = (addr & 0x0FFFFFFFFFFFFFFFULL);
                         } else {
                           if (trace_nextbbid != 0){
                             if (kernel->isDummyBB(trace_nextbbid)){
@@ -264,8 +278,12 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                                 I(0);       //next blocks are all 0!
                                 addr = 0x0; //ERROR
                               }
+                              addr = GPUReader_encode_rawaddr(addr, trace_unifiedBlockID, localwarpid, pe_id, false);
+                              addr = (addr & 0x0FFFFFFFFFFFFFFFULL);
                             } else {
                               addr = kernel->getInst(trace_nextbbid,0)->pc;
+                              addr = GPUReader_encode_rawaddr(addr, trace_unifiedBlockID, localwarpid, pe_id, false);
+                              addr = (addr & 0x0FFFFFFFFFFFFFFFULL);
                             }
                           }
                         }
@@ -274,7 +292,9 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                         memaccesstype = kernel->bb[trace_currentbbid].insts[instoffset].memaccesstype;
 
                         if ((memaccesstype == ParamMem) || (memaccesstype == RegisterMem) || (memaccesstype == ConstantMem) || (memaccesstype == TextureMem)){
-                          addr = 1000; //FIXME: Constant MEM
+                          addr = GPUReader_encode_rawaddr(1000, trace_unifiedBlockID, localwarpid, pe_id, false);
+                          addr = (addr & 0x0FFFFFFFFFFFFFFFULL);
+                          //addr = 1000; //FIXME: Constant MEM
                         } else {
 
                           addr = h_trace_qemu[active_thread*traceSize+tracestart+traceoffset];
@@ -292,36 +312,35 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                                MSG("Store Basic Block %d Inst %d traceoffset = %d", trace_currentbbid, instoffset, traceoffset);
                                }
                                */
-                            addr = GPUReader_translate_d2h(addr);
-                            //if ((active_thread == 0) || (active_thread == 1)) {
+                            addr = GPUReader_encode_rawaddr(addr, trace_unifiedBlockID, localwarpid, pe_id, false);
 #if TRACKGPU_MEMADDR
                             int acctype = 0;
                             if (op == 1){
                               //Global Load
-                              acctype = 0
+                              acctype = 0;
                             } else {
                               //Global Store
-                              acctype = 1
+                              acctype = 1;
                             }
                             if ((pe_id == 1)) {
                               memdata <<active_thread<< ","<<type<<","<< hex << pc <<","<< hex << addr <<endl;
                             }
 #endif
                           } else if (memaccesstype == SharedMem){
-                            //MSG("Shared PC %llx OP %d Addr %llu", pc, op, addr); 
+                            //MSG("Shared PC %llx OP %d Addr %llu", pc, op, addr);
                             //addr = GPUReader_translate_shared(addr, trace_unifiedBlockID, warpid);
-                            addr = GPUReader_translate_shared(addr, trace_unifiedBlockID,0);
-                            //MSG("Shared Addr %llx",addr); 
+                            addr = GPUReader_encode_rawaddr(addr, trace_unifiedBlockID, localwarpid, pe_id, true);
+                            //MSG("Shared Addr %llx",addr);
                             //addr += 1000;
-                            //addr = CUDAKernel::pack_block_ID(addr,trace_unifiedBlockID); 
-                            //if ((active_thread == 0) || (active_thread == 1)) {
+                            //addr = CUDAKernel::pack_block_ID(addr,trace_unifiedBlockID);
 #if TRACKGPU_MEMADDR
+                            int acctype = 0;
                             if (op == 1){
                               //Shared Load
-                              acctype = 2
+                              acctype = 2;
                             } else {
                               //Shared Store
-                              acctype = 3
+                              acctype = 3;
                             }
 
                             if ((pe_id == 1)) {
@@ -336,10 +355,8 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                       }
 
                       icount = 1;
-                      
-                      uint64_t addr_64bit = pe_id;
-                      addr_64bit = addr_64bit << 16 |((SM[smid].getCurrentLocalWarp())*numSP);
-                      addr_64bit = addr_64bit << 32 | addr;
+
+                      uint64_t addr_64bit = addr;
 #if 0
                       if ((op==2) || (op==1)){
                         MSG ("*****************************************************************");
@@ -354,17 +371,19 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                         MSG ("*****************************************************************");
                       }
 #endif
+                      I(localwarpid < max_warps_sm);
                       gsampler->queue(insn,pc,addr_64bit,glofid,op,icount,env);
 
-                      if (istsfifoBlocked){
+                      if (istsfifoBlocked[glofid]){
                         //MSG("\t\t\t TSFIFO[%llu] BLOCKED, (SM[%u], Warp[%u]). Moving to Next SM",glofid,smid,warpid);
                         //MSG("Last Active PE                = %d", (int) pe_id);
                         gsampler->resumeThread(glofid);
-                        istsfifoBlocked                      = false;
+                        istsfifoBlocked[glofid]              = false;
                         SM[smid].warp_status[warpid]         = waiting_TSFIFO;
                         SM[smid].warp_last_active_pe[warpid] = pe_id;
                         pe_id                                = numSP+1;           // move on to the next sm.
                         tsfifoblocked                        = true;
+                        memref_interval -= 1;
                       } else {
                         //if (printnow)
                         //MSG("\t\t\t\t\t\t\t\t\t\tThread %d at SM[%d] PE [%d][%llu] BB [%d] Inst [%d] Trace[%d]",(int)active_thread,(int)smid, (int)pe_id, warpid,trace_currentbbid, instoffset,traceoffset);
@@ -382,7 +401,21 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                           }
                           SM[smid].thread_traceoffset_per_pe[pe_id][warpid]++;
                           //MSG("Memory inst");
-                          memoryInstfound = true;
+                          uint64_t strippedaddr = (addr & 0xF0000000FFFFFFFFULL);
+                          if ((memaccesstype == SharedMem)){
+                            //Add the blockid back for shared addresses
+                            uint64_t bid_mask = map_warpid_to_blockid(smid, warpid);
+                            bid_mask          = (bid_mask << 32);
+                            strippedaddr      = (strippedaddr | bid_mask);
+                          }
+                          if (L1cache.checkAddr(strippedaddr,memref_interval) == false){
+                            memoryInstfound = true;
+                            //MSG("Miss on the L1 cache!!");
+                          } else {
+                            memoryInstfound = false;
+                            //MSG("Hit on the L1 cache!!");
+                          }
+                          memoryInstfound = false;
                         }
 
                         //if all the instructions in the block have been inserted.
@@ -416,7 +449,7 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                       threads_in_current_warp_done++;
                     }
                   } //Not a Barrier Block
-                } 
+                }
               } else {
                 //If thread_status != running or any other status that does not allow you to insert instructions
                 if (likely(SM[smid].thread_status_per_pe[pe_id][warpid] != invalid)){
@@ -450,7 +483,7 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
                 //if (printnow)
                 //MSG("UnMarking SM[%d] warp [%d] as wating_barrier", (int)smid, (int)warpid);
               }
-              changewarpnow   = true; 
+              changewarpnow   = true;
             } else if (threads_in_current_warp_done >= SM[smid].active_sps[warpid]) {
               SM[smid].warp_status[warpid] = relaunchReady;
               SM[smid].smstatus = SMdone;
@@ -468,17 +501,16 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
             SM[smid].smstatus = SMdone;
           } else {
             //MSG("[%d] threads in current warp blocked\n [%d] threads in current warp complete\n [%d] threads in current warp done\n " ,(int)SM[smid].warp_blocked[warpid] ,(int)SM[smid].warp_complete[warpid] ,(int)threads_in_current_warp_done);
-          } 
+          }
 
           if (memoryInstfound || changewarpnow ){
-            //Move to the next warp. 
+            //Move to the next warp.
             //Make sure that the threads in the current warp are paused
             //Switch to the next warp in the warpset which is not "Complete"
             //See if the new warp has instructions to insert. If yes, then good, otherwise mark SMstatus as SMDone, and be ready for relaunch
             //SM[smid].smstatus = SMdone;
 
-            if (memoryInstfound) 
-            {
+            if (memoryInstfound) {
               //MSG("ENCOUNTERED MEMORY INSTRUCTION!!!!!!!! SHOULD BE SWITCHING TO THE NEXT WARP");
               SM[smid].warp_status[warpid] = waiting_memory; // This has to be done at this point, so that all the threads can insert that one instruction
             } else if (changewarpnow ){
@@ -547,13 +579,13 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
         //possiblyturnOFFSM(smid);
       } else if (SM[smid].smstatus == SMcomplete) {
         //MSG("SM[%d] is SMComplete",(int)smid);
-        //Should already be turned off. 
+        //Should already be turned off.
         //possiblyturnOFFSM(smid);
-      } else if (SM[smid].smstatus == SMRabbit) { 
+      } else if (SM[smid].smstatus == SMRabbit) {
         //MSG("SM[%d] is SMRabbit",(int)smid);
         //Nothing for now.
         //possiblyturnOFFSM(smid);
-      } 
+      }
 
       timing_threads_complete += SM[smid].timingthreadsComplete ;
 
@@ -564,7 +596,7 @@ bool GPUThreadManager::Timing_Original(EmuSampler* gsampler, uint32_t* h_trace_q
   gsampler->stop();
 
   //if (printnow)
-  //IS(MSG("Number of Timing threads completed = %llu out of %llu\n\n\n",timing_threads_complete, total_timing_threads)); 
+  //IS(MSG("Number of Timing threads completed = %llu out of %llu\n\n\n",timing_threads_complete, total_timing_threads));
 
   if ((int64_t)timing_threads_complete < total_timing_threads)
     return true;

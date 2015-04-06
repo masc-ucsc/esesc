@@ -182,8 +182,8 @@
 #define TARGET_NR_rt_sigtimedwait		(177)
 #define TARGET_NR_rt_sigqueueinfo		(178)
 #define TARGET_NR_rt_sigsuspend		(179)
-#define TARGET_NR_pread			(180)
-#define TARGET_NR_pwrite			(181)
+#define TARGET_NR_pread64                       (180)
+#define TARGET_NR_pwrite64                      (181)
 #define TARGET_NR_chown			(182)
 #define TARGET_NR_getcwd			(183)
 #define TARGET_NR_capget			(184)
@@ -339,7 +339,7 @@
 #define TARGET_NR_fchmodat			(333)
 #define TARGET_NR_faccessat			(334)
 #define TARGET_NR_pselect6			(335)
-					/* 336 for ppoll */
+#define TARGET_NR_ppoll                         (336)
 #define TARGET_NR_unshare			(337)
 #define TARGET_NR_set_robust_list		(338)
 #define TARGET_NR_get_robust_list		(339)
@@ -350,7 +350,7 @@
 #define TARGET_NR_vmsplice			(343)
 #define TARGET_NR_move_pages			(344)
 #define TARGET_NR_getcpu			(345)
-					/* 346 for epoll_pwait */
+#define TARGET_NR_epoll_pwait                   (346)
 #define TARGET_NR_kexec_load			(347)
 #define TARGET_NR_utimensat			(348)
 #define TARGET_NR_signalfd			(349)
@@ -378,8 +378,12 @@
 #define TARGET_NR_open_by_handle_at            (371)
 #define TARGET_NR_clock_adjtime                (372)
 #define TARGET_NR_syncfs                       (373)
-
-/* Make sure that this number is unique, A change in this number will break all CUDA benchmarks*/
-#define TARGET_NR_cudacall		397
-#define TARGET_NR_esesccall		398
-
+#define TARGET_NR_sendmmsg                     (374)
+#define TARGET_NR_setns                        (375)
+#define TARGET_NR_process_vm_readv             (376)
+#define TARGET_NR_process_vm_writev            (377)
+#define TARGET_NR_kcmp                         (378)
+#define TARGET_NR_finit_module                 (379)
+#ifdef CONFIG_ESESC
+#define TARGET_NR_esesccall                    (398)
+#endif

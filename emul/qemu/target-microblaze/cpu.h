@@ -19,18 +19,20 @@
 #ifndef CPU_MICROBLAZE_H
 #define CPU_MICROBLAZE_H
 
+#include "config.h"
+#include "qemu-common.h"
+
 #define TARGET_LONG_BITS 32
 
-#define CPUState struct CPUMBState
+#define CPUArchState struct CPUMBState
 
-#include "cpu-defs.h"
-#include "softfloat.h"
+#include "exec/cpu-defs.h"
+#include "fpu/softfloat.h"
 struct CPUMBState;
+typedef struct CPUMBState CPUMBState;
 #if !defined(CONFIG_USER_ONLY)
 #include "mmu.h"
 #endif
-
-#define TARGET_HAS_ICE 1
 
 #define ELF_MACHINE	EM_MICROBLAZE
 
@@ -43,6 +45,10 @@ struct CPUMBState;
 
 /* MicroBlaze-specific interrupt pending bits.  */
 #define CPU_INTERRUPT_NMI       CPU_INTERRUPT_TGT_EXT_3
+
+/* Meanings of the MBCPU object's two inbound GPIO lines */
+#define MB_CPU_IRQ 0
+#define MB_CPU_FIR 1
 
 /* Register aliases. R0 - R15 */
 #define R_SP     1
@@ -93,6 +99,7 @@ struct CPUMBState;
 #define          ESR_EC_DIVZERO         5
 #define          ESR_EC_FPU             6
 #define          ESR_EC_PRIVINSN        7
+#define          ESR_EC_STACKPROT       7  /* Same as PRIVINSN.  */
 #define          ESR_EC_DATA_STORAGE    8
 #define          ESR_EC_INSN_STORAGE    9
 #define          ESR_EC_DATA_TLB        10
@@ -225,7 +232,7 @@ struct CPUMBState;
 #define STREAM_CONTROL   (1 << 3)
 #define STREAM_NONBLOCK  (1 << 4)
 
-typedef struct CPUMBState {
+struct CPUMBState {
     uint32_t debug;
     uint32_t btaken;
     uint32_t btarget;
@@ -235,6 +242,13 @@ typedef struct CPUMBState {
     uint32_t regs[33];
     uint32_t sregs[24];
     float_status fp_status;
+    /* Stack protectors. Yes, it's a hw feature.  */
+    uint32_t slr, shr;
+
+    /* lwx/swx reserved address */
+#define RES_ADDR_NONE 0xffffffff /* Use 0xffffffff to indicate no reservation */
+    uint32_t res_addr;
+    uint32_t res_val;
 
     /* Internal flags.  */
 #define IMM_FLAG	4
@@ -243,7 +257,7 @@ typedef struct CPUMBState {
 #define DRTE_FLAG	(1 << 17)
 #define DRTB_FLAG	(1 << 18)
 #define D_FLAG		(1 << 19)  /* Bit in ESR.  */
-/* TB dependent CPUState.  */
+/* TB dependent CPUMBState.  */
 #define IFLAGS_TB_MASK  (D_FLAG | IMM_FLAG | DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)
     uint32_t iflags;
 
@@ -257,12 +271,13 @@ typedef struct CPUMBState {
 #endif
 
     CPU_COMMON
-} CPUMBState;
+};
 
-CPUState *cpu_mb_init(const char *cpu_model);
-int cpu_mb_exec(CPUState *s);
-void cpu_mb_close(CPUState *s);
-void do_interrupt(CPUState *env);
+#include "cpu-qom.h"
+
+void mb_tcg_init(void);
+MicroBlazeCPU *cpu_mb_init(const char *cpu_model);
+int cpu_mb_exec(CPUMBState *s);
 /* you can call this signal handler from your SIGBUS and SIGSEGV
    signal handlers to inform the virtual CPU of exceptions. non zero
    is returned if the signal was handled by the virtual CPU.  */
@@ -282,12 +297,18 @@ enum {
 #define TARGET_PHYS_ADDR_SPACE_BITS 32
 #define TARGET_VIRT_ADDR_SPACE_BITS 32
 
-#define cpu_init cpu_mb_init
+static inline CPUMBState *cpu_init(const char *cpu_model)
+{
+    MicroBlazeCPU *cpu = cpu_mb_init(cpu_model);
+    if (cpu == NULL) {
+        return NULL;
+    }
+    return &cpu->env;
+}
+
 #define cpu_exec cpu_mb_exec
 #define cpu_gen_code cpu_mb_gen_code
 #define cpu_signal_handler cpu_mb_signal_handler
-
-#define CPU_SAVE_VERSION 1
 
 /* MMU modes definitions */
 #define MMU_MODE0_SUFFIX _nommu
@@ -298,7 +319,7 @@ enum {
 #define MMU_USER_IDX    2
 /* See NB_MMU_MODES further up the file.  */
 
-static inline int cpu_mmu_index (CPUState *env)
+static inline int cpu_mmu_index (CPUMBState *env)
 {
         /* Are we in nommu mode?.  */
         if (!(env->sregs[SR_MSR] & MSR_VM))
@@ -309,36 +330,22 @@ static inline int cpu_mmu_index (CPUState *env)
         return MMU_KERNEL_IDX;
 }
 
-int cpu_mb_handle_mmu_fault(CPUState *env, target_ulong address, int rw,
+int mb_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
                             int mmu_idx);
-#define cpu_handle_mmu_fault cpu_mb_handle_mmu_fault
 
-#if defined(CONFIG_USER_ONLY)
-static inline void cpu_clone_regs(CPUState *env, target_ulong newsp)
-{
-    if (newsp)
-        env->regs[R_SP] = newsp;
-    env->regs[3] = 0;
-}
-#endif
-
-static inline void cpu_set_tls(CPUState *env, target_ulong newtls)
-{
-}
-
-static inline int cpu_interrupts_enabled(CPUState *env)
+static inline int cpu_interrupts_enabled(CPUMBState *env)
 {
     return env->sregs[SR_MSR] & MSR_IE;
 }
 
-#include "cpu-all.h"
+#include "exec/cpu-all.h"
 
-static inline target_ulong cpu_get_pc(CPUState *env)
+static inline target_ulong cpu_get_pc(CPUMBState *env)
 {
     return env->sregs[SR_PC];
 }
 
-static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
+static inline void cpu_get_tb_cpu_state(CPUMBState *env, target_ulong *pc,
                                         target_ulong *cs_base, int *flags)
 {
     *pc = env->sregs[SR_PC];
@@ -348,20 +355,11 @@ static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
 }
 
 #if !defined(CONFIG_USER_ONLY)
-void cpu_unassigned_access(CPUState *env1, target_phys_addr_t addr,
-                           int is_write, int is_exec, int is_asi, int size);
+void mb_cpu_unassigned_access(CPUState *cpu, hwaddr addr,
+                              bool is_write, bool is_exec, int is_asi,
+                              unsigned size);
 #endif
 
-static inline bool cpu_has_work(CPUState *env)
-{
-    return env->interrupt_request & (CPU_INTERRUPT_HARD | CPU_INTERRUPT_NMI);
-}
-
-#include "exec-all.h"
-
-static inline void cpu_pc_from_tb(CPUState *env, TranslationBlock *tb)
-{
-    env->sregs[SR_PC] = tb->pc;
-}
+#include "exec/exec-all.h"
 
 #endif

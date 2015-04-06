@@ -21,51 +21,125 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "net/socket.h"
-
 #include "config-host.h"
 
-#include "net.h"
-#include "qemu-char.h"
+#include "net/net.h"
+#include "clients.h"
+#include "monitor/monitor.h"
 #include "qemu-common.h"
-#include "qemu-error.h"
-#include "qemu-option.h"
-#include "qemu_socket.h"
+#include "qemu/error-report.h"
+#include "qemu/option.h"
+#include "qemu/sockets.h"
+#include "qemu/iov.h"
+#include "qemu/main-loop.h"
 
 typedef struct NetSocketState {
-    VLANClientState nc;
+    NetClientState nc;
+    int listen_fd;
     int fd;
     int state; /* 0 = getting length, 1 = getting data */
     unsigned int index;
     unsigned int packet_len;
-    uint8_t buf[4096];
+    unsigned int send_index;      /* number of bytes sent (only SOCK_STREAM) */
+    uint8_t buf[NET_BUFSIZE];
     struct sockaddr_in dgram_dst; /* contains inet host and port destination iff connectionless (SOCK_DGRAM) */
+    IOHandler *send_fn;           /* differs between SOCK_STREAM/SOCK_DGRAM */
+    bool read_poll;               /* waiting to receive data? */
+    bool write_poll;              /* waiting to transmit data? */
 } NetSocketState;
 
-typedef struct NetSocketListenState {
-    VLANState *vlan;
-    char *model;
-    char *name;
-    int fd;
-} NetSocketListenState;
+static void net_socket_accept(void *opaque);
+static void net_socket_writable(void *opaque);
 
-/* XXX: we consider we can send the whole packet without blocking */
-static ssize_t net_socket_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
+/* Only read packets from socket when peer can receive them */
+static int net_socket_can_send(void *opaque)
 {
-    NetSocketState *s = DO_UPCAST(NetSocketState, nc, nc);
-    uint32_t len;
-    len = htonl(size);
+    NetSocketState *s = opaque;
 
-    send_all(s->fd, (const uint8_t *)&len, sizeof(len));
-    return send_all(s->fd, buf, size);
+    return qemu_can_send_packet(&s->nc);
 }
 
-static ssize_t net_socket_receive_dgram(VLANClientState *nc, const uint8_t *buf, size_t size)
+static void net_socket_update_fd_handler(NetSocketState *s)
+{
+    qemu_set_fd_handler2(s->fd,
+                         s->read_poll  ? net_socket_can_send : NULL,
+                         s->read_poll  ? s->send_fn : NULL,
+                         s->write_poll ? net_socket_writable : NULL,
+                         s);
+}
+
+static void net_socket_read_poll(NetSocketState *s, bool enable)
+{
+    s->read_poll = enable;
+    net_socket_update_fd_handler(s);
+}
+
+static void net_socket_write_poll(NetSocketState *s, bool enable)
+{
+    s->write_poll = enable;
+    net_socket_update_fd_handler(s);
+}
+
+static void net_socket_writable(void *opaque)
+{
+    NetSocketState *s = opaque;
+
+    net_socket_write_poll(s, false);
+
+    qemu_flush_queued_packets(&s->nc);
+}
+
+static ssize_t net_socket_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
     NetSocketState *s = DO_UPCAST(NetSocketState, nc, nc);
+    uint32_t len = htonl(size);
+    struct iovec iov[] = {
+        {
+            .iov_base = &len,
+            .iov_len  = sizeof(len),
+        }, {
+            .iov_base = (void *)buf,
+            .iov_len  = size,
+        },
+    };
+    size_t remaining;
+    ssize_t ret;
 
-    return sendto(s->fd, (const void *)buf, size, 0,
-                  (struct sockaddr *)&s->dgram_dst, sizeof(s->dgram_dst));
+    remaining = iov_size(iov, 2) - s->send_index;
+    ret = iov_send(s->fd, iov, 2, s->send_index, remaining);
+
+    if (ret == -1 && errno == EAGAIN) {
+        ret = 0; /* handled further down */
+    }
+    if (ret == -1) {
+        s->send_index = 0;
+        return -errno;
+    }
+    if (ret < (ssize_t)remaining) {
+        s->send_index += ret;
+        net_socket_write_poll(s, true);
+        return 0;
+    }
+    s->send_index = 0;
+    return size;
+}
+
+static ssize_t net_socket_receive_dgram(NetClientState *nc, const uint8_t *buf, size_t size)
+{
+    NetSocketState *s = DO_UPCAST(NetSocketState, nc, nc);
+    ssize_t ret;
+
+    do {
+        ret = qemu_sendto(s->fd, buf, size, 0,
+                          (struct sockaddr *)&s->dgram_dst,
+                          sizeof(s->dgram_dst));
+    } while (ret == -1 && errno == EINTR);
+
+    if (ret == -1 && errno == EAGAIN) {
+        net_socket_write_poll(s, true);
+        return 0;
+    }
+    return ret;
 }
 
 static void net_socket_send(void *opaque)
@@ -73,7 +147,7 @@ static void net_socket_send(void *opaque)
     NetSocketState *s = opaque;
     int size, err;
     unsigned l;
-    uint8_t buf1[4096];
+    uint8_t buf1[NET_BUFSIZE];
     const uint8_t *buf;
 
     size = qemu_recv(s->fd, buf1, sizeof(buf1), 0);
@@ -84,8 +158,21 @@ static void net_socket_send(void *opaque)
     } else if (size == 0) {
         /* end of connection */
     eoc:
-        qemu_set_fd_handler(s->fd, NULL, NULL, NULL);
+        net_socket_read_poll(s, false);
+        net_socket_write_poll(s, false);
+        if (s->listen_fd != -1) {
+            qemu_set_fd_handler(s->listen_fd, net_socket_accept, NULL, s);
+        }
         closesocket(s->fd);
+
+        s->fd = -1;
+        s->state = 0;
+        s->index = 0;
+        s->packet_len = 0;
+        s->nc.link_down = true;
+        memset(s->buf, 0, sizeof(s->buf));
+        memset(s->nc.info_str, 0, sizeof(s->nc.info_str));
+
         return;
     }
     buf = buf1;
@@ -143,7 +230,8 @@ static void net_socket_send_dgram(void *opaque)
         return;
     if (size == 0) {
         /* end of connection */
-        qemu_set_fd_handler(s->fd, NULL, NULL, NULL);
+        net_socket_read_poll(s, false);
+        net_socket_write_poll(s, false);
         return;
     }
     qemu_send_packet(&s->nc, s->buf, size);
@@ -174,9 +262,13 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr, struct in_addr
         return -1;
     }
 
+    /* Allow multiple sockets to bind the same multicast ip and port by setting
+     * SO_REUSEADDR. This is the only situation where SO_REUSEADDR should be set
+     * on windows. Use socket_set_fast_reuse otherwise as it sets SO_REUSEADDR
+     * only on posix systems.
+     */
     val = 1;
-    ret=setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                   (const char *)&val, sizeof(val));
+    ret = qemu_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
     if (ret < 0) {
         perror("setsockopt(SOL_SOCKET, SO_REUSEADDR)");
         goto fail;
@@ -196,8 +288,8 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr, struct in_addr
         imr.imr_interface.s_addr = htonl(INADDR_ANY);
     }
 
-    ret = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                     (const char *)&imr, sizeof(struct ip_mreq));
+    ret = qemu_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                          &imr, sizeof(struct ip_mreq));
     if (ret < 0) {
         perror("setsockopt(IP_ADD_MEMBERSHIP)");
         goto fail;
@@ -205,8 +297,8 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr, struct in_addr
 
     /* Force mcast msgs to loopback (eg. several QEMUs in same host */
     loop = 1;
-    ret=setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP,
-                   (const char *)&loop, sizeof(loop));
+    ret = qemu_setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP,
+                          &loop, sizeof(loop));
     if (ret < 0) {
         perror("setsockopt(SOL_IP, IP_MULTICAST_LOOP)");
         goto fail;
@@ -214,15 +306,15 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr, struct in_addr
 
     /* If a bind address is given, only send packets from that address */
     if (localaddr != NULL) {
-        ret = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF,
-                         (const char *)localaddr, sizeof(*localaddr));
+        ret = qemu_setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF,
+                              localaddr, sizeof(*localaddr));
         if (ret < 0) {
             perror("setsockopt(IP_MULTICAST_IF)");
             goto fail;
         }
     }
 
-    socket_set_nonblock(fd);
+    qemu_set_nonblock(fd);
     return fd;
 fail:
     if (fd >= 0)
@@ -230,29 +322,38 @@ fail:
     return -1;
 }
 
-static void net_socket_cleanup(VLANClientState *nc)
+static void net_socket_cleanup(NetClientState *nc)
 {
     NetSocketState *s = DO_UPCAST(NetSocketState, nc, nc);
-    qemu_set_fd_handler(s->fd, NULL, NULL, NULL);
-    close(s->fd);
+    if (s->fd != -1) {
+        net_socket_read_poll(s, false);
+        net_socket_write_poll(s, false);
+        close(s->fd);
+        s->fd = -1;
+    }
+    if (s->listen_fd != -1) {
+        qemu_set_fd_handler(s->listen_fd, NULL, NULL, NULL);
+        closesocket(s->listen_fd);
+        s->listen_fd = -1;
+    }
 }
 
 static NetClientInfo net_dgram_socket_info = {
-    .type = NET_CLIENT_TYPE_SOCKET,
+    .type = NET_CLIENT_OPTIONS_KIND_SOCKET,
     .size = sizeof(NetSocketState),
     .receive = net_socket_receive_dgram,
     .cleanup = net_socket_cleanup,
 };
 
-static NetSocketState *net_socket_fd_init_dgram(VLANState *vlan,
+static NetSocketState *net_socket_fd_init_dgram(NetClientState *peer,
                                                 const char *model,
                                                 const char *name,
                                                 int fd, int is_connected)
 {
     struct sockaddr_in saddr;
     int newfd;
-    socklen_t saddr_len;
-    VLANClientState *nc;
+    socklen_t saddr_len = sizeof(saddr);
+    NetClientState *nc;
     NetSocketState *s;
 
     /* fd passed: multicast: "learn" dgram_dst address from bound address and save it
@@ -286,21 +387,25 @@ static NetSocketState *net_socket_fd_init_dgram(VLANState *vlan,
         }
     }
 
-    nc = qemu_new_net_client(&net_dgram_socket_info, vlan, NULL, model, name);
-
-    snprintf(nc->info_str, sizeof(nc->info_str),
-            "socket: fd=%d (%s mcast=%s:%d)",
-            fd, is_connected ? "cloned" : "",
-            inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
+    nc = qemu_new_net_client(&net_dgram_socket_info, peer, model, name);
 
     s = DO_UPCAST(NetSocketState, nc, nc);
 
     s->fd = fd;
-
-    qemu_set_fd_handler(s->fd, net_socket_send_dgram, NULL, s);
+    s->listen_fd = -1;
+    s->send_fn = net_socket_send_dgram;
+    net_socket_read_poll(s, true);
 
     /* mcast: save bound address as dst */
-    if (is_connected) s->dgram_dst=saddr;
+    if (is_connected) {
+        s->dgram_dst = saddr;
+        snprintf(nc->info_str, sizeof(nc->info_str),
+                 "socket: fd=%d (cloned mcast=%s:%d)",
+                 fd, inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
+    } else {
+        snprintf(nc->info_str, sizeof(nc->info_str),
+                 "socket: fd=%d", fd);
+    }
 
     return s;
 
@@ -312,31 +417,36 @@ err:
 static void net_socket_connect(void *opaque)
 {
     NetSocketState *s = opaque;
-    qemu_set_fd_handler(s->fd, net_socket_send, NULL, s);
+    s->send_fn = net_socket_send;
+    net_socket_read_poll(s, true);
 }
 
 static NetClientInfo net_socket_info = {
-    .type = NET_CLIENT_TYPE_SOCKET,
+    .type = NET_CLIENT_OPTIONS_KIND_SOCKET,
     .size = sizeof(NetSocketState),
     .receive = net_socket_receive,
     .cleanup = net_socket_cleanup,
 };
 
-static NetSocketState *net_socket_fd_init_stream(VLANState *vlan,
+static NetSocketState *net_socket_fd_init_stream(NetClientState *peer,
                                                  const char *model,
                                                  const char *name,
                                                  int fd, int is_connected)
 {
-    VLANClientState *nc;
+    NetClientState *nc;
     NetSocketState *s;
 
-    nc = qemu_new_net_client(&net_socket_info, vlan, NULL, model, name);
+    nc = qemu_new_net_client(&net_socket_info, peer, model, name);
 
     snprintf(nc->info_str, sizeof(nc->info_str), "socket: fd=%d", fd);
 
     s = DO_UPCAST(NetSocketState, nc, nc);
 
     s->fd = fd;
+    s->listen_fd = -1;
+
+    /* Disable Nagle algorithm on TCP sockets to reduce latency */
+    socket_set_nodelay(fd);
 
     if (is_connected) {
         net_socket_connect(s);
@@ -346,7 +456,7 @@ static NetSocketState *net_socket_fd_init_stream(VLANState *vlan,
     return s;
 }
 
-static NetSocketState *net_socket_fd_init(VLANState *vlan,
+static NetSocketState *net_socket_fd_init(NetClientState *peer,
                                           const char *model, const char *name,
                                           int fd, int is_connected)
 {
@@ -361,91 +471,89 @@ static NetSocketState *net_socket_fd_init(VLANState *vlan,
     }
     switch(so_type) {
     case SOCK_DGRAM:
-        return net_socket_fd_init_dgram(vlan, model, name, fd, is_connected);
+        return net_socket_fd_init_dgram(peer, model, name, fd, is_connected);
     case SOCK_STREAM:
-        return net_socket_fd_init_stream(vlan, model, name, fd, is_connected);
+        return net_socket_fd_init_stream(peer, model, name, fd, is_connected);
     default:
         /* who knows ... this could be a eg. a pty, do warn and continue as stream */
         fprintf(stderr, "qemu: warning: socket type=%d for fd=%d is not SOCK_DGRAM or SOCK_STREAM\n", so_type, fd);
-        return net_socket_fd_init_stream(vlan, model, name, fd, is_connected);
+        return net_socket_fd_init_stream(peer, model, name, fd, is_connected);
     }
     return NULL;
 }
 
 static void net_socket_accept(void *opaque)
 {
-    NetSocketListenState *s = opaque;
-    NetSocketState *s1;
+    NetSocketState *s = opaque;
     struct sockaddr_in saddr;
     socklen_t len;
     int fd;
 
     for(;;) {
         len = sizeof(saddr);
-        fd = qemu_accept(s->fd, (struct sockaddr *)&saddr, &len);
+        fd = qemu_accept(s->listen_fd, (struct sockaddr *)&saddr, &len);
         if (fd < 0 && errno != EINTR) {
             return;
         } else if (fd >= 0) {
+            qemu_set_fd_handler(s->listen_fd, NULL, NULL, NULL);
             break;
         }
     }
-    s1 = net_socket_fd_init(s->vlan, s->model, s->name, fd, 1);
-    if (s1) {
-        snprintf(s1->nc.info_str, sizeof(s1->nc.info_str),
-                 "socket: connection from %s:%d",
-                 inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
-    }
+
+    s->fd = fd;
+    s->nc.link_down = false;
+    net_socket_connect(s);
+    snprintf(s->nc.info_str, sizeof(s->nc.info_str),
+             "socket: connection from %s:%d",
+             inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
 }
 
-static int net_socket_listen_init(VLANState *vlan,
+static int net_socket_listen_init(NetClientState *peer,
                                   const char *model,
                                   const char *name,
                                   const char *host_str)
 {
-    NetSocketListenState *s;
-    int fd, val, ret;
+    NetClientState *nc;
+    NetSocketState *s;
     struct sockaddr_in saddr;
+    int fd, ret;
 
     if (parse_host_port(&saddr, host_str) < 0)
         return -1;
 
-    s = g_malloc0(sizeof(NetSocketListenState));
-
     fd = qemu_socket(PF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
         perror("socket");
-        g_free(s);
         return -1;
     }
-    socket_set_nonblock(fd);
+    qemu_set_nonblock(fd);
 
-    /* allow fast reuse */
-    val = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&val, sizeof(val));
+    socket_set_fast_reuse(fd);
 
     ret = bind(fd, (struct sockaddr *)&saddr, sizeof(saddr));
     if (ret < 0) {
         perror("bind");
-        g_free(s);
         closesocket(fd);
         return -1;
     }
     ret = listen(fd, 0);
     if (ret < 0) {
         perror("listen");
-        g_free(s);
         closesocket(fd);
         return -1;
     }
-    s->vlan = vlan;
-    s->model = g_strdup(model);
-    s->name = name ? g_strdup(name) : NULL;
-    s->fd = fd;
-    qemu_set_fd_handler(fd, net_socket_accept, NULL, s);
+
+    nc = qemu_new_net_client(&net_socket_info, peer, model, name);
+    s = DO_UPCAST(NetSocketState, nc, nc);
+    s->fd = -1;
+    s->listen_fd = fd;
+    s->nc.link_down = true;
+
+    qemu_set_fd_handler(s->listen_fd, net_socket_accept, NULL, s);
     return 0;
 }
 
-static int net_socket_connect_init(VLANState *vlan,
+static int net_socket_connect_init(NetClientState *peer,
                                    const char *model,
                                    const char *name,
                                    const char *host_str)
@@ -462,7 +570,7 @@ static int net_socket_connect_init(VLANState *vlan,
         perror("socket");
         return -1;
     }
-    socket_set_nonblock(fd);
+    qemu_set_nonblock(fd);
 
     connected = 0;
     for(;;) {
@@ -486,7 +594,7 @@ static int net_socket_connect_init(VLANState *vlan,
             break;
         }
     }
-    s = net_socket_fd_init(vlan, model, name, fd, connected);
+    s = net_socket_fd_init(peer, model, name, fd, connected);
     if (!s)
         return -1;
     snprintf(s->nc.info_str, sizeof(s->nc.info_str),
@@ -495,7 +603,7 @@ static int net_socket_connect_init(VLANState *vlan,
     return 0;
 }
 
-static int net_socket_mcast_init(VLANState *vlan,
+static int net_socket_mcast_init(NetClientState *peer,
                                  const char *model,
                                  const char *name,
                                  const char *host_str,
@@ -521,7 +629,7 @@ static int net_socket_mcast_init(VLANState *vlan,
     if (fd < 0)
         return -1;
 
-    s = net_socket_fd_init(vlan, model, name, fd, 0);
+    s = net_socket_fd_init(peer, model, name, fd, 0);
     if (!s)
         return -1;
 
@@ -534,82 +642,125 @@ static int net_socket_mcast_init(VLANState *vlan,
 
 }
 
-int net_init_socket(QemuOpts *opts,
-                    Monitor *mon,
-                    const char *name,
-                    VLANState *vlan)
+static int net_socket_udp_init(NetClientState *peer,
+                                 const char *model,
+                                 const char *name,
+                                 const char *rhost,
+                                 const char *lhost)
 {
-    if (qemu_opt_get(opts, "fd")) {
-        int fd;
+    NetSocketState *s;
+    int fd, ret;
+    struct sockaddr_in laddr, raddr;
 
-        if (qemu_opt_get(opts, "listen") ||
-            qemu_opt_get(opts, "connect") ||
-            qemu_opt_get(opts, "mcast") ||
-            qemu_opt_get(opts, "localaddr")) {
-            error_report("listen=, connect=, mcast= and localaddr= is invalid with fd=");
-            return -1;
-        }
-
-        fd = net_handle_fd_param(mon, qemu_opt_get(opts, "fd"));
-        if (fd == -1) {
-            return -1;
-        }
-
-        if (!net_socket_fd_init(vlan, "socket", name, fd, 1)) {
-            return -1;
-        }
-    } else if (qemu_opt_get(opts, "listen")) {
-        const char *listen;
-
-        if (qemu_opt_get(opts, "fd") ||
-            qemu_opt_get(opts, "connect") ||
-            qemu_opt_get(opts, "mcast") ||
-            qemu_opt_get(opts, "localaddr")) {
-            error_report("fd=, connect=, mcast= and localaddr= is invalid with listen=");
-            return -1;
-        }
-
-        listen = qemu_opt_get(opts, "listen");
-
-        if (net_socket_listen_init(vlan, "socket", name, listen) == -1) {
-            return -1;
-        }
-    } else if (qemu_opt_get(opts, "connect")) {
-        const char *connect;
-
-        if (qemu_opt_get(opts, "fd") ||
-            qemu_opt_get(opts, "listen") ||
-            qemu_opt_get(opts, "mcast") ||
-            qemu_opt_get(opts, "localaddr")) {
-            error_report("fd=, listen=, mcast= and localaddr= is invalid with connect=");
-            return -1;
-        }
-
-        connect = qemu_opt_get(opts, "connect");
-
-        if (net_socket_connect_init(vlan, "socket", name, connect) == -1) {
-            return -1;
-        }
-    } else if (qemu_opt_get(opts, "mcast")) {
-        const char *mcast, *localaddr;
-
-        if (qemu_opt_get(opts, "fd") ||
-            qemu_opt_get(opts, "connect") ||
-            qemu_opt_get(opts, "listen")) {
-            error_report("fd=, connect= and listen= is invalid with mcast=");
-            return -1;
-        }
-
-        mcast = qemu_opt_get(opts, "mcast");
-        localaddr = qemu_opt_get(opts, "localaddr");
-
-        if (net_socket_mcast_init(vlan, "socket", name, mcast, localaddr) == -1) {
-            return -1;
-        }
-    } else {
-        error_report("-socket requires fd=, listen=, connect= or mcast=");
+    if (parse_host_port(&laddr, lhost) < 0) {
         return -1;
     }
 
+    if (parse_host_port(&raddr, rhost) < 0) {
+        return -1;
+    }
+
+    fd = qemu_socket(PF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        perror("socket(PF_INET, SOCK_DGRAM)");
+        return -1;
+    }
+
+    ret = socket_set_fast_reuse(fd);
+    if (ret < 0) {
+        closesocket(fd);
+        return -1;
+    }
+    ret = bind(fd, (struct sockaddr *)&laddr, sizeof(laddr));
+    if (ret < 0) {
+        perror("bind");
+        closesocket(fd);
+        return -1;
+    }
+    qemu_set_nonblock(fd);
+
+    s = net_socket_fd_init(peer, model, name, fd, 0);
+    if (!s) {
+        return -1;
+    }
+
+    s->dgram_dst = raddr;
+
+    snprintf(s->nc.info_str, sizeof(s->nc.info_str),
+             "socket: udp=%s:%d",
+             inet_ntoa(raddr.sin_addr), ntohs(raddr.sin_port));
+    return 0;
+}
+
+int net_init_socket(const NetClientOptions *opts, const char *name,
+                    NetClientState *peer)
+{
+    Error *err = NULL;
+    const NetdevSocketOptions *sock;
+
+    assert(opts->kind == NET_CLIENT_OPTIONS_KIND_SOCKET);
+    sock = opts->socket;
+
+    if (sock->has_fd + sock->has_listen + sock->has_connect + sock->has_mcast +
+        sock->has_udp != 1) {
+        error_report("exactly one of fd=, listen=, connect=, mcast= or udp="
+                     " is required");
+        return -1;
+    }
+
+    if (sock->has_localaddr && !sock->has_mcast && !sock->has_udp) {
+        error_report("localaddr= is only valid with mcast= or udp=");
+        return -1;
+    }
+
+    if (sock->has_fd) {
+        int fd;
+
+        fd = monitor_fd_param(cur_mon, sock->fd, &err);
+        if (fd == -1) {
+            error_report_err(err);
+            return -1;
+        }
+        qemu_set_nonblock(fd);
+        if (!net_socket_fd_init(peer, "socket", name, fd, 1)) {
+            return -1;
+        }
+        return 0;
+    }
+
+    if (sock->has_listen) {
+        if (net_socket_listen_init(peer, "socket", name, sock->listen) == -1) {
+            return -1;
+        }
+        return 0;
+    }
+
+    if (sock->has_connect) {
+        if (net_socket_connect_init(peer, "socket", name, sock->connect) ==
+            -1) {
+            return -1;
+        }
+        return 0;
+    }
+
+    if (sock->has_mcast) {
+        /* if sock->localaddr is missing, it has been initialized to "all bits
+         * zero" */
+        if (net_socket_mcast_init(peer, "socket", name, sock->mcast,
+            sock->localaddr) == -1) {
+            return -1;
+        }
+        return 0;
+    }
+
+    assert(sock->has_udp);
+    if (!sock->has_localaddr) {
+        error_report("localaddr= is mandatory with udp=");
+        return -1;
+    }
+    if (net_socket_udp_init(peer, "socket", name, sock->udp, sock->localaddr) ==
+        -1) {
+        return -1;
+    }
     return 0;
 }

@@ -204,6 +204,7 @@ def reset_global_variables()
   $bb = Hash.new                 # KEY: BBID, VALUE: BB
   $instDecode = Hash.new         # KEY: LINE NUMBER, VALUE: (DECODED) INSTRUCTION
   $addressmap = Hash.new         # KEY: register, Value: Position in the respective array
+  $successors = SortedSet.new
   $shmemmap = Hash.new           # Key: Address, Value: Instructions to store the value into Shmem pointer
   $labels = Hash.new
   $registers = Hash.new					 # Key: register, Value: type
@@ -535,6 +536,131 @@ def generateCFG
   end
 end #End of generateCFG
 
+def printCFG 
+  local_counter_i = @kernel_FIRSTBB
+  while (local_counter_i < @kernel_bb["#{@kernel_FIRSTBB}"].getTotalBBs+@kernel_FIRSTBB)
+    div = @kernel_bb["#{@kernel_FIRSTBB + local_counter_i - 1}"].isDivergent
+    divstr = ""
+    if div
+      divstr = "Divergent"
+    else
+      divstr = "Non Divergent"
+    end
+
+    succ = @kernel_bb["#{@kernel_FIRSTBB + local_counter_i - 1}"].getSucc
+    if succ.size() > 0
+      puts "#{divstr} BB #{local_counter_i} goes to BB #{succ.inspect}"
+    else
+      puts "#{divstr} BB #{local_counter_i} is a terminal BB"
+    end
+    local_counter_i += 1
+  end
+end #End of printCFG 
+
+def map_reconv_bbs
+  puts "***********************************************"
+  lastBB = @kernel_bb["#{@kernel_FIRSTBB}"].getTotalBBs+@kernel_FIRSTBB - 1 
+  node = @kernel_FIRSTBB + lastBB - 1
+  while (node >= @kernel_FIRSTBB )
+
+    succ = @kernel_bb["#{node}"].getSucc
+    pre  = @kernel_bb["#{node}"].getPredec
+    rec  = @kernel_bb["#{node}"].getreconv_node
+
+    if pre.size() > 0
+      #puts "BB #{node} has inlets from #{pre.inspect}"
+    else
+      #Topmost BB
+      #puts "BB #{node} has no inlets"
+    end
+
+    if pre.size() > 1
+      for ubb in pre
+        #Check and see that there if there is a loop
+        if succ.include?(ubb)
+          #puts "#{ubb} is also a successor for #{node}, there is a loop between the two nodes"
+          #puts "Ignoring this edge between #{ubb} and #{node}"
+        else
+          #puts "Setting #{node} as the reconv_node for BB #{ubb}"
+          @kernel_bb["#{ubb}"].setreconv_node(node)
+        end
+      end
+    else 
+      if pre.size() == 1
+        if succ.size() > 0
+          #puts "Setting #{rec[0]} as the reconv_node for BB #{pre[0]}"
+          @kernel_bb["#{pre[0]}"].setreconv_node(rec[0])
+        else
+          #puts "Node #{node} is a terminal node, It has no reconv node"
+          #puts "Setting #{node} as the reconv_node for BB #{pre[0]}"
+          @kernel_bb["#{pre[0]}"].setreconv_node(node)
+        end
+      else
+        #puts "pre.size is 0, No predecessors"
+      end
+      unify_reconv_nodes(node,@kernel_FIRSTBB,lastBB)
+    end
+    node = node - 1
+
+  end
+end #End of map_reconv_bbs
+
+def unify_reconv_nodes(bbid,firstbbid,lastbbid)
+    node = firstbbid + bbid - 1
+    rec  = @kernel_bb["#{node}"].getreconv_node
+    if rec.size() > 1
+      node = firstbbid
+      while (node <= lastbbid) 
+        @kernel_bb["#{node}"].markunvisited
+        node += 1
+      end
+
+      node = rec[0];
+      $successors.clear()
+      succ_set1 = get_path_to_term(firstbbid,node)
+      succ_set1.unshift(node)
+#      puts succ_set1.inspect
+
+      node = firstbbid
+      while (node <= lastbbid) 
+        @kernel_bb["#{node}"].markunvisited
+        node += 1
+      end
+      node = rec[1];
+      $successors.clear()
+      succ_set2 = get_path_to_term(firstbbid,node)
+      succ_set2.unshift(node)
+#      puts succ_set2.inspect
+
+      intersection = succ_set1 & succ_set2
+      #puts "Intersection is #{intersection.inspect()}"
+    
+      node = firstbbid + bbid - 1
+      if intersection.empty?()
+        puts "ERROR!!!!!!!!, How can there be no common node ??"
+      else
+        @kernel_bb["#{node}"].clearreconv_node
+        @kernel_bb["#{node}"].setreconv_node((intersection.to_a())[0])
+        #puts "Reconvergence Node is : #{@kernel_bb["#{node}"].getreconv_node}"
+      end
+    end
+end
+
+def get_path_to_term(firstbb, node)
+  succ = @kernel_bb["#{node}"].getSucc
+  succ.each do |child|
+    if @kernel_bb["#{child}"].isvisited == false
+      @kernel_bb["#{child}"].markvisited()
+      get_path_to_term(firstbb, firstbb+child-1)
+      #puts child
+      $successors.add(child)
+    end
+  end
+
+
+  return $successors.to_a()
+end
+
 def generateLILO(bbid)
   # This function analyzies each basic block and defines the GEN and KILL set for each basic block
   # Generate the Gen Set and the Kill Set for each basic block
@@ -761,6 +887,12 @@ def analyze()
 
   # STEP 2
   generateCFG()
+
+  # STEP 2.1
+  printCFG()
+  
+  # STEP 2.2
+  map_reconv_bbs()
 
   # STEP 3
   local_counter_i = @kernel_FIRSTBB
@@ -2131,6 +2263,22 @@ def decodetosesc(outfileptr)
 
     outfileptr.puts "\n[BB]"
     outfileptr.puts "ID=#{local_counter_i}"
+    
+    div = @kernel_bb["#{@kernel_FIRSTBB + local_counter_i - 1}"].isDivergent
+    if div
+      outfileptr.puts "Divergent=1"
+    else
+      outfileptr.puts "Divergent=0"
+    end
+
+    rec = @kernel_bb["#{@kernel_FIRSTBB + local_counter_i - 1}"].getreconv_node
+    if rec.size > 0
+      outfileptr.puts "Reconv_BB=#{rec[0]}"
+    else
+      outfileptr.puts "Reconv_BB=0"
+    end
+    #outfileptr.puts "Reconv_BB=#{local_counter_i}"
+    
     #outfileptr.puts "Number_insts=#{@kernel_bb["#{local_counter_i}"].getninst}"
     # outfileptr.puts "Label=#{@kernel_bb["#{local_counter_i}"].getBBlabel}"
     #outfileptr.puts "Number_insts=#{lineend-linestart+1}\n"

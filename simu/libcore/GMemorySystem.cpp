@@ -153,7 +153,9 @@ void GMemorySystem::buildMemorySystem() {
 
   IL1 = declareMemoryObj(def_block, "IL1");
   IL1->getRouter()->fillRouteTables();
-	IL1->setCoreID(coreId);
+	IL1->setCoreIL1(coreId);
+  if (strcasecmp(IL1->getDeviceType(),"TLB")==0)
+    IL1->getRouter()->getDownNode()->setCoreIL1(coreId);
 
   if(SescConf->checkCharPtr("cpusimu", "VPC", coreId)) {
 
@@ -166,11 +168,15 @@ void GMemorySystem::buildMemorySystem() {
     }
 
     DL1 = declareMemoryObj(def_block, "DL1");
-		DL1->setCoreID(coreId);
+		DL1->setCoreDL1(coreId);
+    if (strcasecmp(DL1->getDeviceType(),"TLB")==0)
+      DL1->getRouter()->getDownNode()->setCoreDL1(coreId);
   }else{
     DL1 = declareMemoryObj(def_block, "DL1");
     DL1->getRouter()->fillRouteTables();
-		DL1->setCoreID(coreId);
+		DL1->setCoreDL1(coreId);
+    if (strcasecmp(DL1->getDeviceType(),"TLB")==0)
+      DL1->getRouter()->getDownNode()->setCoreDL1(coreId);
   }
 
   if (DL1 && DL1 == vpc) {
@@ -247,7 +253,7 @@ MemObj *GMemorySystem::declareMemoryObj(const char *block, const char *field) {
 }
 
 
-MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars) {
+MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars, char* name_suffix) {
   bool shared = false; // Private by default
   bool privatized = false;
 
@@ -300,10 +306,19 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars) {
     if (!privatized) {
       if (shared)
         device_name = privatizeDeviceName(device_name, 0);
-      else
+      else {
         device_name = privatizeDeviceName(device_name, coreId);
+      }
     }
-      //device_name = privatizeDeviceName(device_name, priv_counter++);
+    //device_name = privatizeDeviceName(device_name, priv_counter++);
+    char *final_dev_name = device_name;
+
+    if (name_suffix != NULL){
+      final_dev_name =new char[strlen(device_name) + strlen(name_suffix)+8];
+      sprintf(final_dev_name,"%s%s",device_name,name_suffix);
+    } 
+    
+    device_name = final_dev_name;
 
     MemObj *memdev = searchMemoryObj(shared, device_descr_section, device_name); 
 
@@ -317,8 +332,8 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars) {
     device_name = buildUniqueName(device_type);
 
   MemObj *newMem = buildMemoryObj(device_type,
-          device_descr_section,
-          device_name);
+      device_descr_section,
+      device_name);
 
   if (newMem) // Would be 0 in known-error mode
     getMemoryObjContainer(shared)->addMemoryObj(device_name, newMem);

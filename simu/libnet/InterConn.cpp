@@ -156,7 +156,8 @@ void InterConnection::dump()
 
 void InterConnection::updateAvgMsgLatency(Time_t launchTime) 
 {
-  msgLatency.sample(globalClock - launchTime);
+  // FIXME: add getstatsflag
+  // msgLatency.sample(globalClock - launchTime);
 }
 
 #if 0

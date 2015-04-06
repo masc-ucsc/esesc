@@ -11,8 +11,9 @@
  */
 #include <sys/socket.h>
 #include <sys/un.h>
-#include "hw/virtio.h"
+#include "hw/virtio/virtio.h"
 #include "virtio-9p.h"
+#include "qemu/error-report.h"
 #include "fsdev/qemu-fsdev.h"
 #include "virtio-9p-proxy.h"
 
@@ -521,7 +522,7 @@ static int v9fs_request(V9fsProxy *proxy, int type,
         }
         break;
     default:
-        error_report("Invalid type %d\n", type);
+        error_report("Invalid type %d", type);
         retval = -EINVAL;
         break;
     }
@@ -1085,7 +1086,8 @@ static int proxy_ioc_getversion(FsContext *fs_ctx, V9fsPath *path,
      * we can get fd for regular files and directories only
      */
     if (!S_ISREG(st_mode) && !S_ISDIR(st_mode)) {
-        return 0;
+        errno = ENOTTY;
+        return -1;
     }
     err = v9fs_request(fs_ctx->private, T_GETVERSION, st_gen, "s", path);
     if (err < 0) {
@@ -1102,14 +1104,15 @@ static int connect_namedsocket(const char *path)
 
     sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        fprintf(stderr, "socket %s\n", strerror(errno));
+        fprintf(stderr, "failed to create socket: %s\n", strerror(errno));
         return -1;
     }
     strcpy(helper.sun_path, path);
     helper.sun_family = AF_UNIX;
     size = strlen(helper.sun_path) + sizeof(helper.sun_family);
     if (connect(sockfd, (struct sockaddr *)&helper, size) < 0) {
-        fprintf(stderr, "socket error\n");
+        fprintf(stderr, "failed to connect to %s: %s\n", path, strerror(errno));
+        close(sockfd);
         return -1;
     }
 
@@ -1152,10 +1155,14 @@ static int proxy_init(FsContext *ctx)
         sock_id = atoi(ctx->fs_root);
         if (sock_id < 0) {
             fprintf(stderr, "socket descriptor not initialized\n");
-            return -1;
         }
     }
+    if (sock_id < 0) {
+        g_free(proxy);
+        return -1;
+    }
     g_free(ctx->fs_root);
+    ctx->fs_root = NULL;
 
     proxy->in_iovec.iov_base  = g_malloc(PROXY_MAX_IO_SZ + PROXY_HDR_SZ);
     proxy->in_iovec.iov_len   = PROXY_MAX_IO_SZ + PROXY_HDR_SZ;

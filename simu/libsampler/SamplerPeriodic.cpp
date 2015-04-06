@@ -98,14 +98,12 @@ SamplerPeriodic::~SamplerPeriodic()
 }
 /* }}} */
 
-void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
-  if(likely(!execute(fid, icount)))
+  if(likely(!execute(fid, 1)))
     return; // QEMU can still send a few additional instructions (emul should stop soon)
-
-  I(insn);
 
   I(!done[fid]);
 
@@ -114,11 +112,11 @@ void SamplerPeriodic::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fi
     if (mode == EmuRabbit || mode == EmuInit)
       return;
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
+      emul->queueInstruction(pc,addr, op ,fid, src1, src2, dest, dest2, env, getStatsFlag());
       return;
     }
     I(mode == EmuWarmup);
-    doWarmupOpAddr(op, addr);
+    doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
     return;
   }
 
@@ -251,8 +249,11 @@ void SamplerPeriodic::nextMode(bool rotate, FlowID fid, EmuMode mod) {
 }
 
 void SamplerPeriodic::doPWTH(FlowID fid) {
+	if (!doPower)
+		return;
+
   uint64_t mytime = 0;
-  if (PerfSampleLeftForTemp == 0){
+  if (PerfSampleLeftForTemp<=0){
 
     mytime   = getTime();
     I(mytime > lastTime);
@@ -265,18 +266,16 @@ void SamplerPeriodic::doPWTH(FlowID fid) {
       return;
     }
 
-    if (doPower) {
-      BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
-      BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
-      if (doTherm) {
-        BootLoader::getPowerModelPtr()->updateSescTherm(ti);  
-      }
-    }
+		BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
+		BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
+		if (doTherm) {
+			BootLoader::getPowerModelPtr()->updateSescTherm(ti);  
+		}
     PerfSampleLeftForTemp = TempToPerfRatio;
     lastTime = mytime;
   }
-  if (PerfSampleLeftForTemp) PerfSampleLeftForTemp--;
 
+	PerfSampleLeftForTemp--;
 }
 
 void SamplerPeriodic::syncTimeAndTimingModes(FlowID fid) {
@@ -325,7 +324,9 @@ void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
 
 	syncTimeAndSamples(fid);
 
-	if (lastMode == EmuTiming) { 
+	if (lastMode == EmuTiming) {
+    BootLoader::reportSample();
+
     if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
       markDone();
       return;
@@ -393,7 +394,7 @@ void SamplerPeriodic::dumpTime() {
 void SamplerPeriodic::dumpThreadProgressedTime(FlowID fid) {
   if (getStatsFlag()) {
     threadProgressedTime = new GStatsMax("P(%d)_progressedTime", fid);
-    threadProgressedTime->sample(getTime());
+    threadProgressedTime->sample(getTime(), true);
   }
 }
 
