@@ -28,6 +28,7 @@ after_script:
   - mkdir run
   - cd run
   - cp ../../esesc/conf/* .
-  - cp ../../esesc/bins/* .
-  - ../main/esesc
+  - cp ../../esesc/bins/mips64/* .
+  - cp ../../esesc/bins/inputs/* .
+  - ../main/esesc < crafty.in
 
