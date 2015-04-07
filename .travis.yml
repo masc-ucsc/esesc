@@ -22,7 +22,7 @@ before_script:
 
 script: 
   - make
-  - make check
+    #- make check
 
 after_script:
   - mkdir run
