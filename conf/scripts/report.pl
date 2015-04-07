@@ -821,6 +821,7 @@ sub showStatReport {
   if($pwr_check > 0){
     my $cpuType = $cf->getConfigEntry(key=>"cpusimu",index=>0);
     foreach my $file (@flist) {
+
       if($cpuType eq "scooreCORE"){
         printf "#table14                 Benchmark:      ROB:      FL2:   VPC-WB:      VPC:     SPECBUFF:      TLB:      Mem_Hier:        Rest:      Instructions:      Clockticks:            filename:\n"
       }else {
@@ -2147,20 +2148,6 @@ sub gpupowerStats {
         $op_SMpower += $mypow;
         $op_SMpower_L += $mypowl;
 
-        $mypow = $cf->getResultField("pwrDynP(${i})_DL1G","v");
-        $mypowl = $cf->getResultField("pwrLkgP(${i})_DL1G","v");
-        #$mypowl = 0;
-        printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
-        $op_SMpower += $mypow;
-        $op_SMpower_L += $mypowl;
-
-
-        $mypow = $cf->getResultField("pwrDynP(${i})_DTLBG","v");
-        $mypowl = $cf->getResultField("pwrLkgP(${i})_IL1G","v");
-        #$mypowl = 0;
-        printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
-        $op_SMpower += $mypow;
-        $op_SMpower_L += $mypowl;
 
         $mypow = $cf->getResultField("pwrDynP(${i})_DTLBG","v");
         $mypowl = $cf->getResultField("pwrLkgP(${i})_IL1G","v");

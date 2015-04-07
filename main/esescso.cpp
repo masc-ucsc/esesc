@@ -76,15 +76,10 @@ static void *simu_thread(void *) {
 extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_warmup, int genwarm) {
   checkpoint_id = cpid;
   //NodeInt::sockfd = sockfd;
-<<<<<<< HEAD
-  Transporter::connect_to_server(host_adr, portno);
-  Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
-=======
 #ifdef ESESC_LIVE
   Transporter::connect_to_server(host_adr, portno);
   Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
 #endif
->>>>>>> github
   printf("-----------------%d %d\n", cpid, getpid());
   // TODO: call a method (new) to set QEMUReader::started = true
   //
