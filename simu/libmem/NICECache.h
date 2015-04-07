@@ -51,7 +51,7 @@ private:
 
   bool     coldWarmup;
 
-  std::set<uint32_t>  warmup;
+  HASH_SET<uint32_t> warmup;
   uint32_t  warmupStepStart;
   uint32_t  warmupStep;
   uint32_t  warmupNext;

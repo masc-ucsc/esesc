@@ -821,7 +821,6 @@ sub showStatReport {
   if($pwr_check > 0){
     my $cpuType = $cf->getConfigEntry(key=>"cpusimu",index=>0);
     foreach my $file (@flist) {
-
       if($cpuType eq "scooreCORE"){
         printf "#table14                 Benchmark:      ROB:      FL2:   VPC-WB:      VPC:     SPECBUFF:      TLB:      Mem_Hier:        Rest:      Instructions:      Clockticks:            filename:\n"
       }else {
@@ -1117,17 +1116,12 @@ sub showStatReport {
     my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
     next unless( $clockTicks > 1 );
 
-    printf "#table9a                            IPC :  uIPC : szFB : szBB : brMiss : brMissTime : wasteRatio : iMissRate\n";
+    printf "#table9a                            IPC : szFB : szBB : brMiss : brMissTime : wasteRatio : iMissRate\n";
     printf "table9a  %26s ", $name;
 
     $nInst = getProcnInst($i);
 
-    my $rawInst = $cf->getResultField("Reader(${i})","rawInst");
-
     # IPC
-    printf " %9.3f ", $rawInst/$clockTicks;
-
-    # uIPC
     printf " %9.3f ", $nInst/$clockTicks;
 
     # szFB
@@ -1498,7 +1492,7 @@ sub instStats {
   printf("-----------------------------------------------------------------------------------------------------------------------------------------\n");
   my $file = shift;
 
-  print "Proc :  rawInst  :   nCommit   :   nInst   :  AALU   :  BALU   :  CALU   :  LALU   :  SALU   :  LD Fwd :    Replay    : Worst Unit  (clk)\n";
+  print "Proc :  nCommit   :   nInst   :  AALU   :  BALU   :  CALU   :  LALU   :  SALU   :  LD Fwd :    Replay    : Worst Unit  (clk)\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
     next unless( $cf->getResultField("P(${i})","clockTicks")>0 );
@@ -1531,11 +1525,8 @@ sub instStats {
     my $nInst = $iAALU + $iBALU + $iCALU + $iSALU + $iLALU;
     my $nFor   = $cf->getResultField("LSQ(${i})","stldForwarding");
 
-    my $rawInst = $cf->getResultField("Reader(${i})","rawInst");
-
     $nInst = 1 if ($nInst == 0);
 
-    printf "%10.0f : " ,$rawInst;
     printf "%10.0f  :" ,getProcnInst($i);
     printf "%10.0f :" ,$nInst;
     printf "  %5.2f%% :",100*$iAALU/$nInst;
@@ -1864,7 +1855,6 @@ sub tradCPUStats {
     my $smtContexts = $cf->getConfigEntry(key =>"smtContexts",section =>$cpuType);
     $smtContexts++ if( $smtContexts == 0 );
 
-    my $rawInst = $cf->getResultField("Reader(${i})","rawInst");
     my $temp    = $cf->getConfigEntry(key=>"issueWidth",section=>$cpuType);
     $issue      = $temp if( $temp < $issue && $temp );
 
@@ -2157,6 +2147,20 @@ sub gpupowerStats {
         $op_SMpower += $mypow;
         $op_SMpower_L += $mypowl;
 
+        $mypow = $cf->getResultField("pwrDynP(${i})_DL1G","v");
+        $mypowl = $cf->getResultField("pwrLkgP(${i})_DL1G","v");
+        #$mypowl = 0;
+        printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+        $op_SMpower += $mypow;
+        $op_SMpower_L += $mypowl;
+
+
+        $mypow = $cf->getResultField("pwrDynP(${i})_DTLBG","v");
+        $mypowl = $cf->getResultField("pwrLkgP(${i})_IL1G","v");
+        #$mypowl = 0;
+        printf "| %- 6.0f,%- 4.0f " ,$mypow,$mypowl;
+        $op_SMpower += $mypow;
+        $op_SMpower_L += $mypowl;
 
         $mypow = $cf->getResultField("pwrDynP(${i})_DTLBG","v");
         $mypowl = $cf->getResultField("pwrLkgP(${i})_IL1G","v");

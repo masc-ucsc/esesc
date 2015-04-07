@@ -41,9 +41,6 @@
 
 ThreadSafeFIFO<RAWDInst> *Reader::tsfifo = NULL;
 EmuDInstQueue            *Reader::ruffer = NULL;
-std::vector<GStatsCntr*>  Reader::rawInst;
-std::vector<GStatsCntr*>  Reader::LD_global;
-std::vector<GStatsCntr*>  Reader::LD_shared;
 
 FlowID Reader::nemul = 0;
 
@@ -55,18 +52,6 @@ Reader::Reader(const char* section)
     nemul =  SescConf->getRecordSize("","cpuemul");
     tsfifo = new ThreadSafeFIFO<RAWDInst>[nemul];
     ruffer = new EmuDInstQueue[nemul];
-    rawInst.resize(nemul);
-
-    for (size_t i=0;i<nemul;i++){
-      rawInst[i] = new GStatsCntr("Reader(%d):rawInst",i);
-    }
-
-    LD_shared.resize(nemul);
-    LD_global.resize(nemul);
-    for (size_t i=0;i<nemul;i++){
-      LD_shared[i] = new GStatsCntr("Reader(%d):LD_shared",i);
-      LD_global[i] = new GStatsCntr("Reader(%d):LD_global",i);
-    }
   }
 
 }

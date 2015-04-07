@@ -9,6 +9,12 @@ cmake_minimum_required(VERSION 2.7)
 #  MESSAGE("  -DENABLE_PEQ=0                Disable Equation based power model Fusupport (default)")
 #ENDIF(ENABLE_PEQ)
 
+IF(ENABLE_LIVE)
+  MESSAGE("  -DESESC_LIVE=1                Enable esesc live sampling support")
+ELSE(ENABLE_LIVE)
+  MESSAGE("  -DESESC_LIVE=0                Disable esesc live compilation (default)")
+ENDIF(ENABLE_LIVE)
+
 IF(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 
   MESSAGE("  -DESESC_QEMU_ISA=armv7        qemu/armv7 ISA")
 ELSE(CMAKE_ESESC_QEMU_ISA MATCHES "armv7") 

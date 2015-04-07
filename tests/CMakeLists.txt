@@ -26,7 +26,7 @@ link_directories(${gtest_BINARY_DIR}/src)
 SET(ALLTESTS cachetest)
 FOREACH(TEST ${ALLTESTS})
   add_executable(${TEST} ${TEST}.cpp)
-  target_link_libraries(${TEST} gtest_main sampler mem core pwrmodel mcpat sesctherm peq emulint suc gtest -lcryptopp) 
+  target_link_libraries(${TEST} gtest_main sampler mem core pwrmodel mcpat sesctherm peq emulint suc gtest) 
 
   add_test(NAME ${TEST} COMMAND ${TEST})
 

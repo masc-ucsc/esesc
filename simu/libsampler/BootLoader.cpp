@@ -63,7 +63,7 @@
 #include "SescConf.h"
 #include "DrawArch.h"
 #include "NodeInt.h"
-#include "transporter.h"
+#include "Transporter.h"
 
 //live stuff
 pthread_mutex_t mutex_live;
@@ -256,7 +256,9 @@ void BootLoader::reportSample() {
 
   //Wait for resume or kill
   int k, skp;
+#ifdef ESESC_LIVE
   Transporter::receive_fast("continue", "%d,%d", &k, &skp);
+#endif
   if(k == 1)
     kill(getpid(),SIGTERM);
 

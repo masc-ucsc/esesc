@@ -48,9 +48,6 @@ protected:
   static FlowID nemul;
   static ThreadSafeFIFO<RAWDInst> *tsfifo;
   static EmuDInstQueue            *ruffer;
-  static std::vector <GStatsCntr*>       rawInst;
-  static std::vector <GStatsCntr*>       LD_global;
-  static std::vector <GStatsCntr*>       LD_shared;
 public:
   Reader(const char* section);
   virtual ~Reader() {

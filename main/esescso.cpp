@@ -38,7 +38,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "QEMUReader.h"
 #include "BootLoader.h"
 #include "NodeInt.h" 
-#include "transporter.h" 
+#include "Transporter.h" 
 #ifdef ENABLE_NBSD
 #include "MemRequest.h"
 void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *_mreq) {
@@ -63,7 +63,9 @@ static void *simu_thread(void *) {
   bzero(buffer,256);
   sprintf(buffer, "k,%ld,%d;", checkpoint_id, getpid());
   NodeInt::write_buffer(buffer, 0);*/
+#ifdef ESESC_LIVE
   Transporter::send_fast("cp_done", "");
+#endif
 
   printf("Live: Sim prcess done (killing itself %ld, %d)\n", checkpoint_id, getpid());
   kill(getpid(),SIGTERM); // suicide time
@@ -74,8 +76,15 @@ static void *simu_thread(void *) {
 extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_warmup, int genwarm) {
   checkpoint_id = cpid;
   //NodeInt::sockfd = sockfd;
+<<<<<<< HEAD
   Transporter::connect_to_server(host_adr, portno);
   Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
+=======
+#ifdef ESESC_LIVE
+  Transporter::connect_to_server(host_adr, portno);
+  Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
+#endif
+>>>>>>> github
   printf("-----------------%d %d\n", cpid, getpid());
   // TODO: call a method (new) to set QEMUReader::started = true
   //

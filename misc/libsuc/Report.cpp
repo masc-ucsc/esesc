@@ -39,7 +39,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "Report.h"
 #include "SescConf.h"
 #include "NodeInt.h"
-#include "transporter.h"
+#include "Transporter.h"
 
 FILE *Report::rfd[MAXREPORTSTACK];
 const char *Report::fns[MAXREPORTSTACK];
@@ -210,9 +210,13 @@ void Report::setBinField(int data) {
 }
 
 void Report::binFlush() {
+#ifdef ESESC_LIVE
   Transporter::send_data("gstats", binReportData, binLength, "gstats");
   binReportData = new unsigned char[MAX_REPORT_BUFFER];
   binLength = 0;
+#else
+  I(0);
+#endif
 }
 
 void Report::scheme(const char * name, const char * sch) {
@@ -222,6 +226,10 @@ void Report::scheme(const char * name, const char * sch) {
 }
 
 void Report::sendSchema() {
+#ifdef ESESC_LIVE
   binReportData = new unsigned char[MAX_REPORT_BUFFER];
   Transporter::send_schema("gstats", schema);
+#else
+  I(0); // Should not be called outside LIVE
+#endif
 }
