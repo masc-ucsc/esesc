@@ -52,7 +52,7 @@ class GXBar: public MemObj {
       bypass_shared
     } bypassMode;
 
-    virtual uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks, const ExtraParameters* xdata = NULL) const{
+    virtual uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const{
       uint32_t numLineBits = log2i(LineSize);
 
       addr = addr >> numLineBits;

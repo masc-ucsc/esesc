@@ -167,21 +167,21 @@ void DummyMemObj::doDisp(MemRequest *req)
 }
 /* }}} */
 
-bool DummyMemObj::isBusy(AddrType addr, ExtraParameters* xdata) const 
+bool DummyMemObj::isBusy(AddrType addr) const 
 // Can it accept more requests {{{1
 {
 	return false;
 }
 // }}}
 
-TimeDelta_t DummyMemObj::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t DummyMemObj::ffread(AddrType addr)
   /* fast forward read {{{1 */
 { 
   return 1;   // 1 cycle does everything :)
 }
 /* }}} */
 
-TimeDelta_t DummyMemObj::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t DummyMemObj::ffwrite(AddrType addr)
   /* fast forward write {{{1 */
 { 
   return 1;   // 1 cycle does everything :)

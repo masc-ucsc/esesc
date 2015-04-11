@@ -40,17 +40,9 @@
 #ifndef ENABLE_NOEMU
 #include "QEMUEmulInterface.h"
 #endif
-#ifdef ENABLE_CUDA
-#include "GPUEmulInterface.h"
-#endif
 
 #include "SamplerSMARTS.h"
 #include "SamplerPeriodic.h"
-
-#ifdef ENABLE_CUDA
-#include "SamplerGPUSim.h"
-#include "SamplerGPUSpacial.h"
-#endif
 
 #include "GProcessor.h"
 #include "OoOProcessor.h"
@@ -255,12 +247,12 @@ void BootLoader::reportSample() {
     kill(getpid(),SIGTERM);*/
 
   //Wait for resume or kill
-  int k, skp;
 #ifdef ESESC_LIVE
+  int k, skp;
   Transporter::receive_fast("continue", "%d,%d", &k, &skp);
-#endif
   if(k == 1)
     kill(getpid(),SIGTERM);
+#endif
 
   //resume qemu
   pthread_mutex_lock(&mutex_live);
@@ -285,10 +277,6 @@ void BootLoader::plugEmulInterfaces() {
   // For now, we will assume the simplistic case where there is one QEMU and one GPU. 
   // (So one object each of classes QEMUEmulInterface and GPUEmulInterface)
   const char* QEMUCPUSection = NULL;
-#ifdef ENABLE_CUDA
-  const char* QEMUGPUSection = NULL;
-  FlowID sharedGPUFid=0;
-#endif
   for(FlowID i=0;i<nemul;i++) {
     const char *section = SescConf->getCharPtr("","cpuemul",i);
     const char *type    = SescConf->getCharPtr(section,"type");
@@ -305,21 +293,6 @@ void BootLoader::plugEmulInterfaces() {
       TaskHandler::FlowIDEmulMapping.push_back(0); // Interface 0 is QEMU
 
       createEmulInterface(QEMUCPUSection, i); // each CPU has it's own Emul/Sampler
-
-#ifdef ENABLE_CUDA
-    }else if(strcasecmp(type,"GPU") == 0 ) {
-      if (QEMUGPUSection == NULL) {
-        QEMUGPUSection = section;
-        sharedGPUFid = i;
-        createEmulInterface(QEMUGPUSection, sharedGPUFid); // GPU shares one Emul/Sampler
-      } else if (strcasecmp(QEMUGPUSection,section)){
-        MSG("ERROR: eSESC supports only a single GPU");
-        MSG("cpuemul[%d] specifies a different section %s",i,section);
-        SescConf->notCorrect();
-        return;
-      }
-      TaskHandler::FlowIDEmulMapping.push_back(1); // Interface 1 is GPU
-#endif
     }else{
       MSG("ERROR: Unknown type %s of section %s, cpuemul [%d]",type,section,i);
       SescConf->notCorrect();
@@ -350,11 +323,6 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
     sampler = new SamplerSMARTS("TASS",sampler_sec,eint, fid);
   }else if(strcasecmp(sampler_type,"time") == 0 ) {
     sampler = new SamplerPeriodic("TBS",sampler_sec,eint, fid);
-#ifdef ENABLE_CUDA
-  }else if(strcasecmp(sampler_type,"GPUSpacial") == 0 ) {
-    I(strcasecmp(sampler_type,"GPUSpacial")==0);
-    sampler = new SamplerGPUSpacial("GPUSpacial",sampler_sec,eint, fid);
-#endif
   }else{
     MSG("ERROR: unknown sampler [%s] type [%s]",sampler_sec,sampler_type);
     SescConf->notCorrect();
@@ -378,11 +346,6 @@ void BootLoader::createEmulInterface(const char *section, FlowID fid)
   if(strcasecmp(type,"QEMU") == 0 ) {
     eint = new QEMUEmulInterface(section);
     TaskHandler::addEmul(eint, fid);
-#ifdef ENABLE_CUDA
-  }else if(strcasecmp(type,"GPU") == 0 ) {
-    eint = new GPUEmulInterface(section);
-    TaskHandler::addEmulShared(eint);
-#endif
   }else{
     MSG("ERROR: unknown cpusim [%s] type [%s]",section,type);
     SescConf->notCorrect();
@@ -412,16 +375,6 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   GProcessor  *gproc = 0;
   if(SescConf->getBool("cpusimu","inorder",cpuid)) {
     gproc =new InOrderProcessor(gms, cpuid);
-#ifdef ENABLE_CUDA
-  } else if(SescConf->checkInt(section,"sp_per_sm")) {
-    if( SescConf->getInt(section,"sp_per_sm") >= 1 ){
-      MSG("SPs per SM in the GPU = %d", SescConf->getInt(section,"sp_per_sm"));
-      gproc = new GPUSMProcessor(gms, cpuid);
-    } else {
-      MSG("Invalid number of sp_per_sm. Exiting...");
-      SescConf->notCorrect();
-    }
-#endif
   } else {
     gproc =new OoOProcessor(gms, cpuid);
   }

@@ -1,7 +1,6 @@
 #ifdef ESESC_LIVE
 #ifndef ESESC_TRANSPORTER_H
 #define ESESC_TRANSPORTER_H
-
 /* 
    ESESC: Enhanced Super ESCalar simulator
    Copyright (C) 2013 University of California, Santa Cruz.

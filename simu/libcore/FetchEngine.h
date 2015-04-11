@@ -52,13 +52,10 @@ class IBucket;
 // A FetchEngine holds only one execution flow. An SMT processor
 // should instantiate several FetchEngines.
 
-class GProcessor;
-
 class FetchEngine {
 private:
 
   GMemorySystem *const gms;
-  GProcessor    *const gproc;
 
   BPredictor   *bpred;
 
@@ -73,15 +70,13 @@ private:
 
   // InstID of the address that generated a misprediction
  
-  uint32_t  numSP;
-  bool      *missInst; // branch missprediction. Stop fetching until solved
-  DInst     **lastd;
-  CallbackContainer *cbPending;
+  bool      missInst; // branch missprediction. Stop fetching until solved
+  DInst     *lastd;
+  CallbackContainer cbPending;
 
   Time_t    lastMissTime; // FIXME: maybe we need an array
 
   bool      enableICache;
-  bool      gpu_mimd;
  
 protected:
   //bool processBranch(DInst *dinst, uint16_t n2Fetched);
@@ -100,7 +95,6 @@ protected:
 
 public:
   FetchEngine(FlowID i
-              ,GProcessor *gproc
               ,GMemorySystem *gms
               ,FetchEngine *fe = 0);
 
@@ -130,11 +124,7 @@ public:
 
 
   bool isBlocked(DInst* inst) const {
-    for (uint32_t i = 0; i < numSP; i++){
-      if (missInst[i] == false)
-        return false;
-    }
-    return true;
+    return missInst;
   }
 
   void clearMissInst(DInst * dinst, Time_t missFetchTime);

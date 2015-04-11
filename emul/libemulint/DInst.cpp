@@ -48,32 +48,10 @@ DInst::DInst()
   pend[2].init(this);
   I(MAX_PENDING_SOURCES==3);
   nDeps = 0;
-#ifdef ENABLE_CUDA
-  pe_id = 0;
-#endif
 }
 
 void DInst::dump(const char *str) {
-#ifdef ENABLE_CUDA
-  fprintf(stderr, "%s:PE:%d WARP:%d %p (%d) %lld %c DInst: pc=0x%llx, addr=0x%llx src1=%d (%d) src2 = %d dest1 =%d dest2 = %d"
-      ,str
-      , (int)getPE()
-      , (int)getWarpID()
-      , this
-      , fid
-      , (long long)ID
-      , keepStats? 't': 'd'
-      , pc
-      , addr
-      , (int)(inst.getSrc1())
-      , inst.getOpcode()
-      , inst.getSrc2()
-      , inst.getDst1()
-      , inst.getDst2()
-      );
-#else
   printf("%s:%p (%d) %lld %c DInst: pc=0x%x, addr=0x%x src1=%d (%d) src2 = %d dest1 =%d dest2 = %d",str, this, fid, (long long)ID, keepStats? 't': 'd', (int)pc,(int)addr,(int)(inst.getSrc1()), inst.getOpcode(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
-#endif
 
   if (performed) {
     fprintf(stderr," performed");
@@ -120,12 +98,6 @@ DInst *DInst::clone() {
   i->inst          = inst;
   i->pc            = pc;
   i->addr          = addr;
-
-#ifdef ENABLE_CUDA
-  i->memaccess = memaccess;
-  i->pe_id = pe_id;
-  i->warp_id = warp_id;
-#endif
   i->keepStats   = keepStats;
 
   i->setup();

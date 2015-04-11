@@ -4750,19 +4750,19 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
       if (ctrl_reg)
         ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RCALL, rs, rt, blink);
       else
-        ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LCALL, rs, rt, blink);
+        ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LCALL, rs, rt<0?0:rt, blink);
     }else if (ctrl_reg && rs == 31) {
       ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RET, rs, rt, LREG_InvalidOutput);
     }else if (bcond_compute == 0) {
       if (ctrl_reg)
         ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RJUMP, rs, rt, LREG_InvalidOutput);
       else
-        ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LJUMP, rs, rt, LREG_InvalidOutput);
+        ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
     }else{
       if (ctrl_reg)
         ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RBRANCH, rs, rt, LREG_InvalidOutput);
       else
-        ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LBRANCH, rs, rt, LREG_InvalidOutput);
+        ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
     }
 #endif
 

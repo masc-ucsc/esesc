@@ -46,7 +46,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #else
 /* GNU C Compiler */
 
-#if 0
+#if __GNUC__ == 4 && __GNUC_MINOR__ < 7
 #include <ext/hash_set>
 #include <ext/hash_map>
 #define HASH_MAP       __gnu_cxx::hash_map
@@ -54,7 +54,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #define HASH_MULTIMAP  __gnu_cxx::hash_multimap
 #define HASH           __gnu_cxx::hash
 #else
-//#include <ext/algorithm>
 #include <boost/functional/hash.hpp>
 #include <boost/utility.hpp>
 #include <boost/unordered_map.hpp>

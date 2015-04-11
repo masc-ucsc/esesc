@@ -30,7 +30,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <netinet/in.h>
 #include <netdb.h>
 #include <signal.h>
-#include "../misc/libsuc/transporter.h" 
+#include "../misc/libsuc/Transporter.h" 
 
 //Declaring global variables
 typedef uint32_t FlowID; // from RAWDInst.h

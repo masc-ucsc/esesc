@@ -43,11 +43,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "MemController.h"
 #include "MarkovPrefetcher.h"
 
-#ifdef ENABLE_CUDA
-#include "GPUXBars.h"
-#endif
-
-
 #include "DrawArch.h"
 extern DrawArch arch;
 
@@ -108,27 +103,6 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     devtype = 9;
     mdev = new TLB(this, dev_section, dev_name);
   } 
-#ifdef ENABLE_CUDA
-  else if (!strcasecmp(device_type, "scratchxbar")) {
-    mdev = new ScratchXBAR(this, dev_section, dev_name);
-    devtype = 10;
-  } else if (!strcasecmp(device_type, "scratchunxbar")) {
-    mdev = new ScratchUnXBAR(this, dev_section, dev_name);
-    devtype = 10;
-  } else if (!strcasecmp(device_type, "pecachexbar")) {
-    mdev = new PECacheXBAR(this, dev_section, dev_name);
-    devtype = 10;
-  } else if (!strcasecmp(device_type, "pecacheunxbar")) {
-    mdev = new PECacheUnXBAR(this, dev_section, dev_name);    
-    devtype = 10;
-  } else if (!strcasecmp(device_type, "memxbar")) {
-    mdev = new MemXBar(this, dev_section, dev_name);    
-    devtype = 11;
-  } else if (!strcasecmp(device_type, "unmemxbar")) {
-    mdev = new UnMemXBar(this, dev_section, dev_name);    
-    devtype = 12;
-  }
-#endif
   else if (!strcasecmp(device_type, "memcontroller")) {
     mdev = new MemController(this, dev_section, dev_name);
     devtype = 13;

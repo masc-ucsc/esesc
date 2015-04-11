@@ -92,7 +92,6 @@ public:
 
 
 class PortUnlimited : public PortGeneric {
-  Time_t lTime;
 public:
   PortUnlimited(const char *name);
   

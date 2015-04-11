@@ -390,9 +390,9 @@ void TaskHandler::terminate()
   for(size_t i = 0; i<allmaps.size();i++) {
     if (!allmaps[i].active)
       continue;
+    allmaps[i].emul->getSampler()->stop();
     allmaps[i].active = false;
   }
-
   
   //GStats::stopAll(1);
 

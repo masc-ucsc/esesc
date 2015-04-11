@@ -40,6 +40,8 @@
 
 
 ThreadSafeFIFO<RAWDInst> *Reader::tsfifo = NULL;
+pthread_mutex_t          *Reader::tsfifo_mutex = NULL;
+volatile int             *Reader::tsfifo_mutex_blocked = 0;
 EmuDInstQueue            *Reader::ruffer = NULL;
 
 FlowID Reader::nemul = 0;
@@ -50,8 +52,20 @@ Reader::Reader(const char* section)
     // Shared through all the objects, but sized with the # cores
     
     nemul =  SescConf->getRecordSize("","cpuemul");
-    tsfifo = new ThreadSafeFIFO<RAWDInst>[nemul];
-    ruffer = new EmuDInstQueue[nemul];
+
+    tsfifo       = new ThreadSafeFIFO<RAWDInst>[nemul];
+
+    tsfifo_mutex = new pthread_mutex_t[nemul];
+    tsfifo_mutex_blocked = new int[nemul];
+    for(int i=0;i<nemul;i++) {
+
+      pthread_mutex_init(&tsfifo_mutex[i], NULL);
+      pthread_mutex_lock(&tsfifo_mutex[i]);
+
+      tsfifo_mutex_blocked[i] = 0;
+    }
+
+    ruffer       = new EmuDInstQueue[nemul];
   }
 
 }

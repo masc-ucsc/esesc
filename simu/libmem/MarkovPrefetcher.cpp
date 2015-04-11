@@ -147,28 +147,28 @@ void MarkovPrefetcher::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool MarkovPrefetcher::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool MarkovPrefetcher::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
   return false;
 }
 /* }}} */
 
-TimeDelta_t MarkovPrefetcher::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MarkovPrefetcher::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
   return delay;
 }
 /* }}} */
 
-TimeDelta_t MarkovPrefetcher::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MarkovPrefetcher::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
   return delay;
 }
 /* }}} */
 
-void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat, ExtraParameters* xdata)
+void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
 {
   uint32_t paddr = prefAddr & defaultMask;
 
@@ -182,7 +182,7 @@ void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat, ExtraParameters* 
   }
 }
 
-void MarkovPrefetcher::insertTable(AddrType addr, ExtraParameters* xdata)
+void MarkovPrefetcher::insertTable(AddrType addr)
 {
   static int flag_first = false;
   int i, j;

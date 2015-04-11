@@ -220,10 +220,10 @@ void InputParameter::serialize(Archive & ar, unsigned int version) {
   ar & specific_tag;
   ar & tag_w;
   ar & access_mode;
-  ar & obj_func_dyn_energy;
-  ar & obj_func_dyn_power;
-  ar & obj_func_leak_power;
-  ar & obj_func_cycle_t;
+  //ar & obj_func_dyn_energy;
+  //ar & obj_func_dyn_power;
+  //ar & obj_func_leak_power;
+  //ar & obj_func_cycle_t;
   ar & F_sz_nm;
   ar & F_sz_um;
   ar & num_rw_ports;

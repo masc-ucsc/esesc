@@ -43,10 +43,12 @@ static void* thread(void *num)
       token = data[l];
       if (token) {
          int i;
+         fprintf(stderr,"start s%d...\n",l);
          for(i=0;i<ASIZE;i++) {
 		 shared_rdwr[i] += shared_rd[i] + token;
          }
          data[r] = token - 1;
+         fprintf(stderr,"...s%d done\n",l);
          pthread_mutex_unlock(mutex + r);
       } else {
          printf("%i\n", l+1);

@@ -715,7 +715,7 @@ void solve(uca_org_t *fin_res)
   char fadr[140];
   bool is_live = SescConf->getBool("","live");
 
-  if (is_live) {
+  if (1 == 1 || is_live) {
     //Create hash from input data
     //char *raw = (char *)g_ip;
     stringstream sgip;
@@ -730,7 +730,7 @@ void solve(uca_org_t *fin_res)
       boost::archive::text_iarchive ia(ifs);
       ia >> fin_res;
       ifs.close();
-      //printf("%lf\n", fin_res->area);
+      printf("%lf\n", fin_res->area);
       return;
     } else {
       printf("\npwmiss\n");
@@ -931,7 +931,7 @@ void solve(uca_org_t *fin_res)
   delete t_min;
 
 #if NEW_BOOST
-  if(is_live) {
+  if(1 == 1 || is_live) {
     std::ofstream ofs(fadr);
     boost::archive::text_oarchive oa(ofs);
     oa << fin_res;

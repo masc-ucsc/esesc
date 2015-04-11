@@ -43,9 +43,6 @@
 #include "RAWDInst.h"
 #include "callback.h"
 #include "Snippets.h"
-#ifdef ENABLE_CUDA
-#include "CUDAInstruction.h"
-#endif
 
 typedef int32_t SSID_t;
 
@@ -121,13 +118,6 @@ private:
 
   bool keepStats;
 
-#ifdef ENABLE_CUDA
-  CUDAMemType memaccess;
-  uint32_t pe_id;
-  uint32_t warp_id;
-  uint32_t block_id;
-#endif
-
   // END Boolean flags
 
   // BEGIN Time counters
@@ -176,9 +166,6 @@ private:
     executed      = false;
     replay        = false;
     performed     = false;
-#ifdef ENABLE_CUDA
-    memaccess   = GlobalMem;
-#endif
     fetchTime = 0;
 #ifdef DINST_PARENT
     pend[0].setParentDInst(0);
@@ -440,100 +427,6 @@ public:
   void setmreq_id(uint64_t _mreq_id) { mreq_id = _mreq_id; }
 #endif
 
-#ifdef ENABLE_CUDA
-  bool isGlobalAddress() const {
-    return (memaccess==GlobalMem);
-  }
-
-  bool isParamAddress() const {
-    return (memaccess==ParamMem);
-  }
-
-  bool isLocalAddress() const {
-    return (memaccess==LocalMem);
-  }
-
-  bool isConstantAddress() const {
-    return (memaccess==ConstantMem);
-  }
-
-  bool isTextureAddress() const {
-    return (memaccess==TextureMem);
-  }
-
-  bool isSharedAddress(){
-    return (memaccess==SharedMem);
-  }
-
-  void setcudastats(RAWDInst *rinst, uint32_t l_peid, uint32_t l_warpid,  uint32_t l_blockid){
-    memaccess            = rinst->getMemaccesstype();
-    warp_id              = l_warpid;
-    pe_id                = l_peid;
-    block_id             = l_blockid;
-    correctCudaAddr();
-  }
-
-
-  void correctCudaAddr(){
-
-    //Remove all the extra information that is passed on in the address, (pe_id , warpid)
-    addr = (addr & 0xF0000000FFFFFFFFULL);
-
-    if (memaccess == SharedMem){
-      //Add the block ID to the address.
-      uint64_t bid_mask = block_id;
-      bid_mask          = (bid_mask << 32);
-      addr              = (addr | bid_mask);
-
-      //MSG("DINST: Shared mem address %llx processed",addr);
-    } else  if (memaccess == GlobalMem ){
-      //MSG("DINST: Global mem address %llx processed",addr);
-    } else {
-      //MSG("DINST: Clearing extra information in address %llx",addr);
-    }
-
-
-  }
-
-  void setPE(uint64_t local_addr){
-    uint32_t peid_warpid = (local_addr >> 32);
-    pe_id       = ((peid_warpid >> 16) & 0x0000FFFF);
-  }
-
-  CUDAMemType getCudaMemType() {
-    return memaccess;
-  }
-
-  void markAddressLocal(FlowID fid){
-    memaccess = LocalMem;
-  }
-#endif
-
-  uint32_t getPE() const {
-#ifdef ENABLE_CUDA
-    return pe_id;
-#else
-    return 0;
-#endif
-  }
-
-
-  uint32_t getWarpID() const {
-#ifdef ENABLE_CUDA
-    return warp_id;
-#else
-    return 0;
-#endif
-  }
-
-  uint32_t getBlockID() const {
-#ifdef ENABLE_CUDA
-    return block_id;
-#else
-    return 0;
-#endif
-  }
-
 };
 
 class Hash4DInst {
@@ -542,28 +435,6 @@ class Hash4DInst {
     return (size_t)(dinst);
   }
 };
-
-
-class ExtraParameters {
-  public:
-  bool sharedAddr;
-  AddrType pe_id;
-  AddrType warp_id;
-#ifdef ENABLE_CUDA
-  CUDAMemType memaccess;
-#endif
-
-  void configure(DInst* dinst){
-#ifdef ENABLE_CUDA
-  sharedAddr = dinst->isSharedAddress();
-  memaccess  = dinst->getCudaMemType();
-  pe_id      = dinst->getPE();
-  warp_id    = dinst->getWarpID();
-#endif
-  }
-
-};
-
 
 
 #endif   // DINST_H

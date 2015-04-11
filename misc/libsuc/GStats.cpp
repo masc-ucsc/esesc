@@ -345,7 +345,7 @@ void GStatsHist::reportScheme() const
 {
   for(Histogram::const_iterator it=H.begin();it!=H.end();it++) {
     char nm[100];
-    sprintf(nm, "%s(%lu)", name, it->first);
+    sprintf(nm, "%s(%u)", name, it->first);
     Report::scheme(nm, "8");
   }
   Report::scheme(name, "{\"max\":8,\"v\":8,\"n\":8}");

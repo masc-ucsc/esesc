@@ -90,7 +90,7 @@ void UnMemXBar::doReqAck(MemRequest *mreq)
 {
   I(!mreq->isHomeNode());
 
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));  
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);
   router->scheduleReqAckPos(pos, mreq);
 }
 /* }}} */
@@ -98,7 +98,7 @@ void UnMemXBar::doReqAck(MemRequest *mreq)
 void UnMemXBar::doSetState(MemRequest *mreq)
   /* setState (up) {{{1 */
 {  
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
   router->scheduleSetStatePos(pos, mreq);
 }
 /* }}} */
@@ -117,21 +117,21 @@ void UnMemXBar::doDisp(MemRequest *mreq)
 }
 /* }}} */
 
-bool UnMemXBar::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool UnMemXBar::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  return router->isBusyPos(0, addr,xdata);
+  return router->isBusyPos(0, addr);
 }
 /* }}} */
 
-TimeDelta_t UnMemXBar::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t UnMemXBar::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
   return router->ffread(addr);
 }
 /* }}} */
 
-TimeDelta_t UnMemXBar::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t UnMemXBar::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
   return router->ffwrite(addr);

@@ -67,7 +67,7 @@ protected:
   void syncTimeAndSamples(FlowID fid);
   void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
 
-  void updateCPI();
+  void updateCPI(FlowID id);
   void updateCPIHist();
   void insertNewCPI();
   void computeEstCPI();

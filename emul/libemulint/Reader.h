@@ -35,6 +35,8 @@
 #ifndef READER_H
 #define READER_H
 
+#include <pthread.h>
+
 #include "Instruction.h"
 #include "ThreadSafeFIFO.h"
 #include "DInst.h"
@@ -47,6 +49,8 @@ private:
 protected:
   static FlowID nemul;
   static ThreadSafeFIFO<RAWDInst> *tsfifo;
+  static pthread_mutex_t          *tsfifo_mutex; 
+  static volatile int             *tsfifo_mutex_blocked; 
   static EmuDInstQueue            *ruffer;
 public:
   Reader(const char* section);

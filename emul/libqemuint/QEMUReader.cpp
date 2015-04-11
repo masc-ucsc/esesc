@@ -75,8 +75,7 @@ bool QEMUReader::started = false;
 QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint_)
   /* constructor {{{1 */
   : Reader(section),
-    qemuargs(qargs),
-    eint(eint_) {
+    qemuargs(qargs) {
 
 
   numFlows = 0;
@@ -152,14 +151,8 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op
   uint64_t conta=0;
 
   if (tsfifo[fid].full()) {
-    while(tsfifo[fid].full()) {
-      conta++;
-      if (conta> 100000) {
-        struct timespec ts = {0,100000};
-        nanosleep(&ts, 0);
-        conta = 0;
-      }
-    }
+    tsfifo_mutex_blocked[fid] = 1;
+    pthread_mutex_lock(&tsfifo_mutex[fid]);
   }
 
   RAWDInst *rinst = tsfifo[fid].getTailRef();
@@ -181,24 +174,22 @@ void QEMUReader::syscall(uint32_t num, Time_t time, FlowID fid)
 
   tsfifo[fid].push();
 }
+// }}}
 
 uint32_t QEMUReader::wait_until_FIFO_full(FlowID fid)
+  // active wait for fifo full before read {{{1
 {
+  MSG("checking %d is %s",fid,tsfifo[fid].full()?"FULL":"Not FULL");
   while(!tsfifo[fid].full()) {
     pthread_yield();
     if (qsamplerlist[fid]->isActive(fid) == false)
       return 0;
-    if (!tsfifo[fid].full()) {
-      pthread_yield();
-      //qsampler->pauseThread(fid); // Too slow, get it out for until the FIFO is full
-      // Very infrequent situation unless it is time to power down
-      if (tsfifo[fid].empty()){
-        return 0;
-      }
-    }
   }
+  MSG("done %d is %s",fid,tsfifo[fid].full()?"FULL":"Not FULL");
+  pthread_mutex_unlock(&tsfifo_mutex[fid]);
   return 1;
 }
+// }}}
 
 DInst *QEMUReader::executeHead(FlowID fid)
 /* speculative advance of execution {{{1 */
@@ -213,9 +204,11 @@ DInst *QEMUReader::executeHead(FlowID fid)
   int conta = 0;
   while(!tsfifo[fid].full()) {
     
-    pthread_yield();
-
     // FIXME: thead cond between push and pop (queue an executeHead)
+    if (tsfifo_mutex_blocked[fid]) {
+      tsfifo_mutex_blocked[fid] = 0;
+      pthread_mutex_unlock(&tsfifo_mutex[fid]);
+    }
 
     //live stuff
     pthread_mutex_lock(&mutex_live);
@@ -229,9 +222,9 @@ DInst *QEMUReader::executeHead(FlowID fid)
 
     if (qsamplerlist[fid]->isActive(fid) == false)
       return 0;
-    if (conta++>100) {
+
+    if (conta++>100)
       return 0;
-    }
   }
 
   for(int i=32;i<tsfifo[fid].size();i++) {
@@ -242,6 +235,11 @@ DInst *QEMUReader::executeHead(FlowID fid)
 
     ruffer[fid].add();
     tsfifo[fid].pop();
+  }
+
+  if (tsfifo_mutex_blocked[fid]) {
+    tsfifo_mutex_blocked[fid] = 0;
+    pthread_mutex_unlock(&tsfifo_mutex[fid]);
   }
 
   if (ruffer[fid].empty())

@@ -43,8 +43,7 @@
 #include "GProcessor.h"
 
 DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName)
-  :gproc(gp)
-  ,srcCluster(aCluster)
+  :srcCluster(aCluster)
   ,Id(gp->getID())
   ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getID()))
   ,WakeUpDelay(SescConf->getInt(clusterName, "wakeupDelay"))

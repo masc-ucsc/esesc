@@ -217,7 +217,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 			}else if (l->getSharingCount() == 1) {
 				invOne.inc(doStats);
 
-				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats, &(mreq->getExtraParams()));
+				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
         trackAddress(inv_req);
 				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), inv_req, ma_setInvalid, inOrderUpMessage(1));
         if (i==0)
@@ -226,7 +226,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
         // FIXME: optimize directory for 2 or more
 				invAll.inc(doStats);
 
-				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats, &(mreq->getExtraParams()));
+				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
         trackAddress(inv_req);
 				int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage(1));
         if (i==0)
@@ -235,7 +235,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 		}else{
 			invAll.inc(doStats);
 
-			MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats, &(mreq->getExtraParams()));
+			MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
       int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage(1));
 
       if (i==0)
@@ -246,10 +246,10 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
   displacedSend.inc(doStats);
 
   if (l->needsDisp()) {
-    router->sendDirtyDisp(naddr, mreq->getStatsFlag(),1, &(mreq->getExtraParams()));
+    router->sendDirtyDisp(naddr, mreq->getStatsFlag(),1);
 		writeBack.inc();
   }else{
-    router->sendCleanDisp(naddr, mreq->getStatsFlag(),1, &(mreq->getExtraParams()));
+    router->sendCleanDisp(naddr, mreq->getStatsFlag(),1);
   }
 
   l->clearSharing();
@@ -288,12 +288,6 @@ void CCache::mustForwardReqDown(MemRequest *mreq, bool miss)
   }
 
   I(!mreq->isRetrying());
-
-#if 0
-  if (router->isBusyPos(0, mreq->getAddr()), &(mreq->getExtraParams())) {
-    I(0); // Implement some eviction buffer constraint
-  }
-#endif
 
   router->scheduleReq(mreq, 1);
 }
@@ -916,19 +910,14 @@ void CCache::disp(MemRequest *mreq)
 }
 // }}}
 
-bool CCache::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool CCache::isBusy(AddrType addr) const
 /* check if CCache can accept more writes {{{1 */
 {
-  if(port->isBusy(addr,xdata))
+  if(port->isBusy(addr))
     return true;
 
   if (!mshr->canAccept(addr))
     return true;
-
-#if 0
-  if (router->isBusyPos(0,addr), &(mreq->getExtraParams())) // go down, not needed with PortManager
-    return true;
-#endif
 
   return false;
 }
@@ -942,7 +931,7 @@ void CCache::dump() const
 }
 // }}}
 
-TimeDelta_t CCache::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t CCache::ffread(AddrType addr)
 /* can accept reads? {{{1 */
 {
   AddrType addr_r=0;
@@ -954,11 +943,11 @@ TimeDelta_t CCache::ffread(AddrType addr, ExtraParameters* xdata)
   l = cacheBank->fillLine(addr, addr_r);
   l->setExclusive(); // WARNING, can create random inconsistencies (no inv others)
 
-  return router->ffread(addr, xdata) + 1;
+  return router->ffread(addr) + 1;
 }
 // }}}
 
-TimeDelta_t CCache::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t CCache::ffwrite(AddrType addr)
 /* can accept writes? {{{1 */
 {
   AddrType addr_r=0;
@@ -973,7 +962,7 @@ TimeDelta_t CCache::ffwrite(AddrType addr, ExtraParameters* xdata)
 	else
 		l->setExclusive(); 
 
-  return router->ffwrite(addr,xdata) + 1;
+  return router->ffwrite(addr) + 1;
 }
 // }}}
 

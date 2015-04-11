@@ -192,11 +192,10 @@ class GProcessor {
 
       lastWallClock = globalClock;
       wallClock->inc(en);
-
     }
 
     void trackactivity(){
-      if ((activeclock_end == (lastWallClock-1))){
+      if (activeclock_end == (lastWallClock-1)){
       } else {
         if (activeclock_start != activeclock_end) {
         //MSG("\nCPU[%d]\t%lld\t%lld\n"
@@ -220,9 +219,6 @@ class GProcessor {
 
     StoreSet *getSS() { return &storeset; }
 
-#ifdef ENABLE_CUDA
-    float getTurboRatioGPU() { return EmuSampler::getTurboRatioGPU(); };
-#endif
     float getTurboRatio() { return EmuSampler::getTurboRatio(); };
 
 };

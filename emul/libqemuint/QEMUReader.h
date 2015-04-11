@@ -48,7 +48,6 @@ private:
   FlowID            numAllFlows;
   static bool       started;
   QEMUArgs         *qemuargs;
-  EmulInterface    *eint;
 
 public:
 	static void setStarted() {

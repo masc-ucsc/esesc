@@ -84,8 +84,8 @@ public:
   MRouter *getRouter()           { return router;  }
   
   // Interface for fast-forward (no BW, just warmup caches)
-  virtual TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata) = 0;
-  virtual TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata) = 0;
+  virtual TimeDelta_t ffread(AddrType addr) = 0;
+  virtual TimeDelta_t ffwrite(AddrType addr) = 0;
 
   // DOWN
   virtual void req(MemRequest *req) = 0;
@@ -104,7 +104,7 @@ public:
   virtual void doReqAck(MemRequest *req) = 0;
   virtual void doSetState(MemRequest *req) = 0;
 
-	virtual bool isBusy(AddrType addr, ExtraParameters* xdata) const = 0;
+	virtual bool isBusy(AddrType addr) const = 0;
   
   // Print stats
   virtual void dump() const;
@@ -143,10 +143,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata);
-  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata);
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
 
-	bool isBusy(AddrType addr, ExtraParameters* xdata) const;
+	bool isBusy(AddrType addr) const;
 };
 
 #endif // MEMOBJ_H

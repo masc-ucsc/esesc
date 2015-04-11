@@ -37,6 +37,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <math.h>
+
 #include "SescConf.h"
 
 #include "OoOProcessor.h"
@@ -52,7 +54,7 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   /* constructor {{{1 */
   :GOoOProcessor(gm, i)
   ,MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay",i))
-  ,IFID(i, this, gm)
+  ,IFID(i, gm)
   ,pipeQ(i)
   ,lsq(i)
   ,retire_lock_checkCB(this)

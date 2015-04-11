@@ -138,7 +138,7 @@ void PortManagerBanked::reqRetire(MemRequest *mreq)
   I(curRequests>=0);
 }
 
-bool PortManagerBanked::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool PortManagerBanked::isBusy(AddrType addr) const
 {
   if(curRequests >= maxRequests)
     return true;

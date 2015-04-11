@@ -145,8 +145,7 @@ void TLB::doReq(MemRequest *mreq)
         lowerCache,
         mreq->getStatsFlag(),
         calcPage1Addr(mreq->getAddr()),
-        readPage1CB::create(this,mreq),
-        &(mreq->getExtraParams())
+        readPage1CB::create(this,mreq)
         );
   }
 
@@ -195,7 +194,7 @@ void TLB::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool TLB::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool TLB::isBusy(AddrType addr) const
 /* accept requests if no pending misses {{{1 */
 {
   if(pending.empty())
@@ -211,8 +210,7 @@ void TLB::readPage1(MemRequest *mreq)
       lowerCache,
       mreq->getStatsFlag(),
       calcPage2Addr(mreq->getAddr()),
-      readPage2CB::create(this,mreq),
-      &(mreq->getExtraParams())
+      readPage2CB::create(this,mreq)
       );
 }
 
@@ -222,8 +220,7 @@ void TLB::readPage2(MemRequest *mreq)
       lowerCache,
       mreq->getStatsFlag(),
       calcPage3Addr(mreq->getAddr()),
-      readPage3CB::create(this,mreq),
-      &(mreq->getExtraParams())
+      readPage3CB::create(this,mreq)
       );
 }
 
@@ -244,7 +241,7 @@ void TLB::readPage3(MemRequest *mreq)
   tlbBank->fillLine(mreq->getAddr());
   TimeDelta_t lat = 0;
   if (lowerTLB)
-    lat += lowerTLB->ffread(mreq->getAddr(),&(mreq->getExtraParams())); // Fill the L2 too
+    lat += lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
 
   I(!pending.empty());
   I(pending.front() == mreq);
@@ -256,14 +253,14 @@ void TLB::readPage3(MemRequest *mreq)
   wakeupNext();
 }
 
-TimeDelta_t TLB::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t TLB::ffread(AddrType addr)
   // {{{1 rabbit read
 { 
   if (tlbBank->readLine(addr))
     return delay;   // done!
 
   if (lowerTLB)
-    lowerTLB->ffread(addr, xdata);
+    lowerTLB->ffread(addr);
  
   tlbBank->fillLine(addr);
   if (lowerCache)
@@ -272,14 +269,14 @@ TimeDelta_t TLB::ffread(AddrType addr, ExtraParameters* xdata)
 }
 // 1}}}
 
-TimeDelta_t TLB::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t TLB::ffwrite(AddrType addr)
   // {{{1 rabbit write
 { 
   if (tlbBank->readLine(addr))
     return delay;   // done!
 
   if (lowerTLB)
-    lowerTLB->ffwrite(addr, xdata);
+    lowerTLB->ffwrite(addr);
  
   tlbBank->fillLine(addr);
   if (lowerCache)

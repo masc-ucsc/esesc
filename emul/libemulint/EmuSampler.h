@@ -116,10 +116,6 @@ protected:
   uint32_t numFlow;
 
   static float turboRatio;
-#ifdef ENABLE_CUDA
-  static float turboRatioGPU;
-//  static uint32_t throtting;
-#endif
 public:
   uint64_t totalnInst; // total # instructions
   EmuMode getMode() const { return mode;}
@@ -161,10 +157,6 @@ public:
 
   static void setTurboRatio(float turbor) { turboRatio = turbor; };
   static float getTurboRatio() { return turboRatio; };
-#ifdef ENABLE_CUDA
-  static void setTurboRatioGPU(float turbor) { turboRatioGPU = turbor; };
-  static float getTurboRatioGPU() { return turboRatioGPU; };
-#endif
 
   uint64_t getTotalnInst() const { return totalnInst; }
 

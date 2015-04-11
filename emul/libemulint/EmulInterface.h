@@ -90,9 +90,6 @@ class EmulInterface {
 
   // Called from qemu/gpu thread
   virtual void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, void *env, bool keepStats = false) = 0;
-#ifdef ENABLE_CUDA
-  virtual uint32_t getKernelId() = 0;
-#endif
   virtual void syscall(uint32_t num, Time_t time, FlowID fid) = 0;
 
   virtual void start()=0;

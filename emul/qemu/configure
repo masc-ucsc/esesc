@@ -1195,8 +1195,8 @@ case "$cpu" in
            cc_i386='$(CC) -m32'
            ;;
     x86_64)
-           CPU_CFLAGS="-m64"
-           LDFLAGS="-m64 $LDFLAGS"
+           CPU_CFLAGS="-m64 -fPIC"
+           LDFLAGS="-m64 -fPIC $LDFLAGS"
            cc_i386='$(CC) -m32'
            ;;
     x32)

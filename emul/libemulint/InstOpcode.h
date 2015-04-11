@@ -497,39 +497,6 @@ enum RegType {
 
   LREG_SCLAST=86,
   // This is the end of the RAT for SCOORE
- 
-  // Cuda Special Registers
-  LREG_CUDA_TID = 128,
-  LREG_CUDA_NTID,
-  LREG_CUDA_LNID,
-  LREG_CUDA_WRPID,
-  LREG_CUDA_NWRPID,
-  LREG_CUDA_CTAID,
-  LREG_CUDA_NCTAID,
-  LREG_CUDA_SMID,
-  LREG_CUDA_NSMID,
-  LREG_CUDA_GRIDID,
-  LREG_CUDA_LNMSK_EQ,
-  LREG_CUDA_LNMSK_LT,
-  LREG_CUDA_LNMSK_LE,
-  LREG_CUDA_LNMSK_GT,
-  LREG_CUDA_LNMSK_GE,
-  LREG_CUDA_CLK,
-  LREG_CUDA_CLK64,
-  LREG_CUDA_PM0,
-  LREG_CUDA_PM1,
-  LREG_CUDA_PM2,
-  LREG_CUDA_PM3,
-  LREG_CUDA_BAR,  //Destination for any barrier instruction //149 Do we need this?
-  LREG_CUDA_PARAM,//Destination for any constants (e.g. inputs to a function)  //150 Do we need this?
-  LREG_CUDA_CONSTANT,//Destination for any constants (e.g. inputs to a function) //151 Do we need this?
-  LREG_CUDA_TEXTURE,//Destination for any constants (e.g. inputs to a function) //152  Do we need this?
-  
-  LREG_CUDAINTSTART = 160,
-  LREG_CUDAINT2START = 512 + LREG_CUDAINTSTART ,
-  LREG_CUDAINT3START = 512 + LREG_CUDAINT2START ,
-  LREG_CUDAFPSTART = 16+LREG_CUDAINT3START,
-  LREG_CUDAEND   = 512+LREG_CUDAFPSTART,
 
   LREG_INVALID, // For debug reasons, nobody should use this ID
   LREG_InvalidOutput, // To optimize the RAT code, nobody can read this one, but they can write

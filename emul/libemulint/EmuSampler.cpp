@@ -50,9 +50,6 @@ uint64_t *EmuSampler::fticksPrev;
 uint64_t __thread EmuSampler::local_icount=0; // private per thread
 
 float EmuSampler::turboRatio = 1.0;
-#ifdef ENABLE_CUDA
-float EmuSampler::turboRatioGPU = 1.0;
-#endif
  
 EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   /* EmuSampler constructor  */
@@ -200,8 +197,8 @@ void EmuSampler::beginTiming(EmuMode mod)
 void EmuSampler::stop()
   /* stop a given mode, and assign statistics  */
 { 
-  if (terminated)
-    return;
+//  if (terminated)
+//    return;
 
   if (totalnInst >= cuda_inst_skip)
     cuda_go_ahead = true;
@@ -219,10 +216,6 @@ void EmuSampler::stop()
   usecs *= 1000000;
   usecs += (endTime.tv_nsec - startTime.tv_nsec)/1000;
   tusage[mode]->add(usecs);
-#ifdef ENABLE_CUDA
-  //AtomicAdd(&phasenInst, icount); FIXME:
-  //iusage[mode]->add(phasenInst);
-#endif
   iusage[mode]->add(phasenInst);
 
   //get the globalClock_Timing, it includes idle clock as well
@@ -357,7 +350,6 @@ void EmuSampler::markDone()
 /* indicate the sampler that a flow is done for good  */
 {
   uint32_t endfid = emul->getNumEmuls() - 1;
-  //stop();
   I(!stopJustCalled || endfid==0); 
 
   I(done.size() > endfid);
@@ -368,7 +360,6 @@ void EmuSampler::markDone()
   phasenInst = 0;
 //  mode       = EmuInit;
   terminate();
-  terminated = true;
 }
 /*  */
 

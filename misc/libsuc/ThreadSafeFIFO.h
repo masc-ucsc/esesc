@@ -13,20 +13,20 @@
 template<class Type>
 class ThreadSafeFIFO {
   private:
-    typedef uint8_t IndexType;
+    typedef uint16_t IndexType;
     volatile IndexType tail;
     volatile IndexType head;
-    Type array[256];
+    Type array[65536];
 
   public:
-    uint16_t size() const { return 237; }
+    uint16_t size() const { return 4000; }
     uint16_t realsize() const{
 
       if (head == tail)
         return 0;
 
       if (head > tail){
-        return (256-(head-tail-1));
+        return (4000-(head-tail-1));
         //return ((head-tail-1));
       }
       return (tail-head-1);
@@ -51,7 +51,7 @@ class ThreadSafeFIFO {
     bool full() const {
       if ((tail+2) == head)
         return true;
-      IndexType nextTail = tail + 1; // Give some space
+      IndexType nextTail = (tail + 1); // Give some space
       return (nextTail == head);
     }
     bool empty() {

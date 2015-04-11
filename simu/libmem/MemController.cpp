@@ -144,21 +144,21 @@ void MemController::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool MemController::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool MemController::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
   return false;
 }
 /* }}} */
 
-TimeDelta_t MemController::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MemController::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
   return delay + RowAccessLatency;
 }
 /* }}} */
 
-TimeDelta_t MemController::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MemController::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
   return delay + RowAccessLatency;

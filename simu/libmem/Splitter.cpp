@@ -122,14 +122,6 @@ void Splitter::read(MemRequest *mreq)
     mreq->ack();
     return;
   }
-#ifdef ENABLE_CUDA
-  if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
-    //routerLeft->fwdBusRead(mreq, when-globalClock); 
-    router->fwdBusReadPos(1,mreq, when-globalClock);
-    return;
-  }
-#endif
 
   router->fwdBusRead(mreq); 
 }
@@ -143,14 +135,6 @@ void Splitter::write(MemRequest *mreq)
     mreq->ack();
     return;
   }
-#ifdef ENABLE_CUDA
-  if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
-    //routerLeft->fwdBusRead(mreq, when-globalClock); 
-    router->fwdBusReadPos(1, mreq, when-globalClock);
-    return;
-  }
-#endif
   router->fwdBusRead(mreq); 
 }
 /* }}} */
@@ -169,14 +153,6 @@ void Splitter::busRead(MemRequest *mreq)
     mreq->ack();
     return;
   }
-#ifdef ENABLE_CUDA
-  if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
-    //routerLeft->fwdBusRead(mreq, when-globalClock); 
-    router->fwdBusReadPos(1, mreq, when-globalClock); 
-    return;
-  }
-#endif
   router->fwdBusRead(mreq); 
 }
 
@@ -194,13 +170,6 @@ void Splitter::pushDown(MemRequest *mreq)
     return;
   }
 
-#ifdef ENABLE_CUDA
-  if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
-    router->fwdPushDownPos(1, mreq, when-globalClock);
-    return;
-  }
-#endif
   router->fwdPushDown(mreq); 
 }
 
@@ -218,14 +187,6 @@ void Splitter::pushUp(MemRequest *mreq)
     return;
   }
 
-#ifdef ENABLE_CUDA
-  if(mreq->isSharedAddress()){ 
-    Time_t when = scratchPort[(mreq->getAddr()>>3)&numBankMask]->nextSlot(mreq->getStatsFlag());
-    //router->fwdPushUpPos(1,mreq, when-globalClock); // Note, you don't need a pos here, because the splitter sends both shared and global addresses to the same upper level.
-    router->fwdPushUp(mreq, when-globalClock); 
-    return;
-  }
-#endif
   router->fwdPushUp(mreq); 
 }
 /* }}} */
@@ -240,11 +201,6 @@ void Splitter::invalidate(MemRequest *mreq)
 bool Splitter::canAcceptRead(DInst *dinst) const
 /* always can accept writes {{{1 */
 {
-#ifdef ENABLE_CUDA
-  if(dinst->isSharedAddress())
-    return true;
-#endif
-
   return lower_level->canAcceptRead(dinst);
 }
 /* }}} */
@@ -252,10 +208,6 @@ bool Splitter::canAcceptRead(DInst *dinst) const
 bool Splitter::canAcceptWrite(DInst *dinst) const
 /* always can accept reads {{{1 */
 {
-#ifdef ENABLE_CUDA
-  if(dinst->isSharedAddress())
-    return true;
-#endif
 
   return lower_level->canAcceptWrite(dinst);
 }

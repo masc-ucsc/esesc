@@ -154,21 +154,21 @@ void Bus::doSetStateAck(MemRequest *mreq)
 }
 /* }}} */
 
-bool Bus::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool Bus::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
   return false;
 }
 /* }}} */
 
-TimeDelta_t Bus::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t Bus::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
   return delay;
 }
 /* }}} */
 
-TimeDelta_t Bus::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t Bus::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
   return delay;

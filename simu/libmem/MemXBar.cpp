@@ -117,7 +117,7 @@ void MemXBar::doReq(MemRequest *mreq)
     return;
   } 
 
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));  
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);
   XBar_rw_req[pos]->inc(mreq->getStatsFlag());
   router->scheduleReqPos(pos, mreq);
 }
@@ -145,7 +145,7 @@ void MemXBar::doSetState(MemRequest *mreq)
 void MemXBar::doSetStateAck(MemRequest *mreq)
   /* setStateAck (down) {{{1 */
 {
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
   router->scheduleSetStateAckPos(pos, mreq);
 	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
 	// I(0); 
@@ -155,33 +155,33 @@ void MemXBar::doSetStateAck(MemRequest *mreq)
 void MemXBar::doDisp(MemRequest *mreq)
   /* disp (down) {{{1 */
 {
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks,&(mreq->getExtraParams()));
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
   router->scheduleDispPos(pos, mreq);
 	// I(0); 
 	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
 }
 /* }}} */
 
-bool MemXBar::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool MemXBar::isBusy(AddrType addr) const
 /* always can accept writes {{{1 */
 {
-  uint32_t pos = addrHash(addr,LineSize,Modfactor,numLowerLevelBanks,xdata);
-  return router->isBusyPos(pos, addr,xdata);
+  uint32_t pos = addrHash(addr,LineSize,Modfactor,numLowerLevelBanks);
+  return router->isBusyPos(pos, addr);
 }
 /* }}} */
 
-TimeDelta_t MemXBar::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MemXBar::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 
-  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks, xdata);
+  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
   return router->ffreadPos(pos, addr);
 }
 /* }}} */
 
-TimeDelta_t MemXBar::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MemXBar::ffwrite(AddrType addr)
   /* fast forward writes {{{1 */
 { 
-  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks, xdata);
+  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
   return router->ffwritePos(pos, addr);
 }
 /* }}} */

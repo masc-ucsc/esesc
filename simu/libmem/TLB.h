@@ -161,10 +161,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
-  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
 
-	bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
+	bool isBusy(AddrType addr) const;
 
   //TLB specific
   void readPage1(MemRequest *mreq);

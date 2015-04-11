@@ -254,6 +254,7 @@ string Transporter::buffer_pull(char type, string message) {
       }
     }
   }
+  return "error";
 }
 
 void Transporter::renew_key() {

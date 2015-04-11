@@ -1,3 +1,6 @@
+#ifndef SOCKEDBUFFER_H
+#define SOCKEDBUFFER_H
+
 // Contributed by Jose Renau
 //
 // The ESESC/BSD License
@@ -43,3 +46,7 @@ public:
   void add(const char *s);
   void flush(char *cpid);
 };
+
+
+#endif
+

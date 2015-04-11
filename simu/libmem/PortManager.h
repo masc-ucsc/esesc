@@ -31,7 +31,7 @@ public:
   virtual void setStateAck(MemRequest *mreq) = 0;
   virtual void disp(MemRequest *mreq       ) = 0;
 
-  virtual bool isBusy(AddrType addr, ExtraParameters* xdata) const = 0;
+  virtual bool isBusy(AddrType addr) const = 0;
 
   static PortManager *create(const char *section, MemObj *mobj);
 };
@@ -80,7 +80,7 @@ public:
   void setStateAck(MemRequest *mreq);
   void disp(MemRequest *mreq       );
 
-  bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
+  bool isBusy(AddrType addr) const;
 
 };
 

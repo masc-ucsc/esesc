@@ -180,12 +180,12 @@ public:
 
   void doSetState(MemRequest *mreq);
   void doSetStateAck(MemRequest *mreq);
-  bool isBusy(AddrType addr, ExtraParameters* xdata = NULL) const;
-  TimeDelta_t ffread(AddrType addr, ExtraParameters* xdata = NULL);
-  TimeDelta_t ffwrite(AddrType addr, ExtraParameters* xdata = NULL);
-  void prefetch(AddrType prefAddr, Time_t lat, ExtraParameters* xdata = NULL);
-  void insertTable(AddrType addr, ExtraParameters* xdata = NULL);
-  void TESTinsertTable(AddrType addr, ExtraParameters* xdata = NULL);
+  bool isBusy(AddrType addr) const;
+  TimeDelta_t ffread(AddrType addr);
+  TimeDelta_t ffwrite(AddrType addr);
+  void prefetch(AddrType prefAddr, Time_t lat);
+  void insertTable(AddrType addr);
+  void TESTinsertTable(AddrType addr);
 
 
   Time_t nextBuffSlot() {

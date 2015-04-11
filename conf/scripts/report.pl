@@ -1819,12 +1819,7 @@ sub tradCPUStats {
   for(my $i=0;$i<$nCPUs;$i++) {
 
     my $sampler     = @Processors[$i]->[0];
-    my $globalClock = 0;
-    if ($sampler == 0){
-      $globalClock = $cf->getResultField("S(0)","globalClock_Timing")+1;
-    } else {
-      $globalClock = $cf->getResultField("S(${sampler})","globalClock_Timing")+1;
-    }
+    my $globalClock = $cf->getResultField("OS","wallClock")+1;
 
     if ($globalClock > $globalc_max) {
       $globalc_max = $globalClock;

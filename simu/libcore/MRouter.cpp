@@ -295,18 +295,18 @@ void MRouter::scheduleDisp(MemRequest *mreq, TimeDelta_t lat)
 }
 /* }}} */
 
-void MRouter::sendDirtyDisp(AddrType addr, bool doStats, TimeDelta_t lat, ExtraParameters* xdata)
+void MRouter::sendDirtyDisp(AddrType addr, bool doStats, TimeDelta_t lat)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()==1);
-  MemRequest::sendDirtyDisp(down_node[0], self_mobj, addr, doStats, xdata);
+  MemRequest::sendDirtyDisp(down_node[0], self_mobj, addr, doStats);
 }
 /* }}} */
-void MRouter::sendCleanDisp(AddrType addr, bool doStats, TimeDelta_t lat, ExtraParameters* xdata)
+void MRouter::sendCleanDisp(AddrType addr, bool doStats, TimeDelta_t lat)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()==1);
-  MemRequest::sendCleanDisp(down_node[0], self_mobj, addr, doStats, xdata);
+  MemRequest::sendCleanDisp(down_node[0], self_mobj, addr, doStats);
 }
 /* }}} */
 
@@ -335,7 +335,7 @@ int32_t MRouter::sendSetStateOthers(MemRequest *mreq, MsgAction ma, TimeDelta_t 
       I(0);
     }
 
-    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats, &(mreq->getExtraParams()));
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
     breq->addPendingSetStateAck(mreq);
 
     breq->startSetState(up_node[i], lat);
@@ -361,7 +361,7 @@ int32_t MRouter::sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction
   }
 
 
-  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats, &(mreq->getExtraParams()));
+  MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
   breq->addPendingSetStateAck(mreq);
 
   breq->startSetState(up_node[pos], lat);
@@ -386,7 +386,7 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
   I(mreq->isSetState());
   int32_t conta = 0;
   for(size_t i=0;i<up_node.size();i++) {
-    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats, &(mreq->getExtraParams()));
+    MemRequest *breq = MemRequest::createSetState(self_mobj, mreq->getCreator(), ma, addr, doStats);
     breq->addPendingSetStateAck(mreq);
 
     breq->startSetState(up_node[i], lat);
@@ -397,41 +397,41 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MRouter::ffread(AddrType addr)
   /* propagate the read to the lower level {{{1 */
 {
-  return down_node[0]->ffread(addr,xdata);
+  return down_node[0]->ffread(addr);
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MRouter::ffwrite(AddrType addr)
   /* propagate the read to the lower level {{{1 */
 {
-  return down_node[0]->ffwrite(addr,xdata);
+  return down_node[0]->ffwrite(addr);
 }
 /* }}} */
 
-TimeDelta_t MRouter::ffreadPos(uint32_t pos, AddrType addr, ExtraParameters* xdata)
-  /* propagate the read to the lower level {{{1 */
-{
-  I(pos<down_node.size());
-  return down_node[pos]->ffread(addr,xdata);
-}
-/* }}} */
-
-TimeDelta_t MRouter::ffwritePos(uint32_t pos ,AddrType addr, ExtraParameters* xdata)
+TimeDelta_t MRouter::ffreadPos(uint32_t pos, AddrType addr)
   /* propagate the read to the lower level {{{1 */
 {
   I(pos<down_node.size());
-  return down_node[pos]->ffwrite(addr,xdata);
+  return down_node[pos]->ffread(addr);
 }
 /* }}} */
 
-bool MRouter::isBusyPos(uint32_t pos, AddrType addr, ExtraParameters* xdata) const
+TimeDelta_t MRouter::ffwritePos(uint32_t pos ,AddrType addr)
+  /* propagate the read to the lower level {{{1 */
+{
+  I(pos<down_node.size());
+  return down_node[pos]->ffwrite(addr);
+}
+/* }}} */
+
+bool MRouter::isBusyPos(uint32_t pos, AddrType addr) const
   /* propagate the isBusy {{{1 */
 {
   I(pos<down_node.size());
-  return down_node[pos]->isBusy(addr,xdata);
+  return down_node[pos]->isBusy(addr);
 }
 /* }}} */
 

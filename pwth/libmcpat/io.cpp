@@ -989,11 +989,6 @@ bool InputParameter::error_checking()
     EWP  = 0;
     NSER = 0;
   }
-  else if ((RWP < 0) || (EWP < 0) || (ERP < 0))
-  {
-    cerr << "Ports must >=0" << endl;
-    return false;
-  }
   else if (RWP > 2)
   {
     cerr << "Maximum of 2 read/write ports" << endl;

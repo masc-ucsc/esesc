@@ -46,7 +46,6 @@ class Cluster;
 
 class DepWindow {
 private:
-  GProcessor *gproc;
   Cluster    *srcCluster;
 
   const int32_t Id;

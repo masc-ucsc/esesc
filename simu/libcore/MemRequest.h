@@ -74,8 +74,6 @@ private:
 		mt_disp
 	};
 
-  ExtraParameters parameters;
-
 #ifdef DEBUG_CALLPATH
   class CallEdge {
   public:
@@ -90,9 +88,6 @@ private:
 
   /* Local variables {{{1 */
   AddrType     addr;
-#ifdef SCOORE_VPC
-  AddrType     pc; //for VPC updates
-#endif
   DataType     data;
   MsgType      mt;
   MsgAction    ma;
@@ -116,9 +111,6 @@ private:
 
   Time_t        startClock;
 
-#ifdef SCOORE_VPC
-  bool          vpc_update;
-#endif
   bool          retrying;
   bool          needsDisp; // Once set, it keeps the value
   bool          doStats;
@@ -206,34 +198,25 @@ protected:
   void redoDispAbs(Time_t    when) { redoDispCB.scheduleAbs(when); }
   void startDispAbs(MemObj *m, Time_t    when)      { setNextHop(m); startDispCB.scheduleAbs(when); }
 
-  static void sendReqVPCWriteUpdate(MemObj *m, bool doStats, AddrType addr, ExtraParameters* xdata = NULL) {
+  static void sendReqVPCWriteUpdate(MemObj *m, bool doStats, AddrType addr) {
     MemRequest *mreq = create(m,addr,doStats, 0);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_req;
     mreq->ma         = ma_VPCWU;
 		m->req(mreq);
   }
-  static MemRequest *createReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0, ExtraParameters* xdata = NULL) {
+  static MemRequest *createReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr, doStats, cb);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
     return mreq;
   }
 
-  static void sendReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0, ExtraParameters* xdata = NULL
+  static void sendReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
 #ifdef ENABLE_NBSD
       ,void *param=0
 #endif
       ) {
     MemRequest *mreq = create(m,addr, doStats, cb);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
 #ifdef ENABLE_NBSD
@@ -242,15 +225,12 @@ protected:
 		m->req(mreq);
   }
 
-  static void sendReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0, ExtraParameters* xdata = NULL
+  static void sendReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
 #ifdef ENABLE_NBSD
       ,void *param=0
 #endif
       ) {
     MemRequest *mreq = create(m,addr,doStats, cb);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; // For writes, only MO are valid states
 #ifdef ENABLE_NBSD
@@ -258,11 +238,8 @@ protected:
 #endif
 		m->req(mreq);
   }
-  static void sendReqWritePrefetch(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0, ExtraParameters* xdata = NULL) {
+  static void sendReqWritePrefetch(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr,doStats, cb);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty;
 		m->req(mreq);
@@ -299,22 +276,16 @@ protected:
     needsDisp = _needsDisp;
   }
 
-  static void sendDirtyDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats, ExtraParameters* xdata = NULL) {
+  static void sendDirtyDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats) {
     MemRequest *mreq = create(m,addr,doStats, 0);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setDirty;
     I(creator);
     mreq->creatorObj = creator;
 		m->disp(mreq);
   }
-  static void sendCleanDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats, ExtraParameters* xdata = NULL) {
+  static void sendCleanDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats) {
     MemRequest *mreq = create(m,addr,doStats, 0);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setValid;
     I(creator);
@@ -322,11 +293,8 @@ protected:
 		m->disp(mreq);
   }
 
-  static MemRequest *createSetState(MemObj *m, MemObj *creator, MsgAction ma, AddrType naddr, bool doStats, ExtraParameters* xdata = NULL) {
+  static MemRequest *createSetState(MemObj *m, MemObj *creator, MsgAction ma, AddrType naddr, bool doStats) {
     MemRequest *mreq = create(m,naddr,doStats, 0);
-#ifdef ENABLE_CUDA
-    mreq->setExtraParams(xdata);
-#endif
     mreq->mt         = mt_setState;
     mreq->ma         = ma;
     I(creator);
@@ -398,46 +366,6 @@ protected:
 
   AddrType getAddr() const { return addr; }
   DataType getData() const { return data; }
-#ifdef SCOORE_VPC
-  AddrType getPC()   const { return pc; }
-#endif
-
-  ExtraParameters& getExtraParams(){
-    return parameters;
-  }
-
-  void setExtraParams(ExtraParameters* xdata){
-    I(xdata != NULL);
-    if (xdata != NULL){
-#ifdef ENABLE_CUDA
-      parameters.sharedAddr = xdata->sharedAddr;
-      parameters.pe_id      = xdata->pe_id;
-      parameters.warp_id    = xdata->warp_id;
-      parameters.memaccess  = xdata->memaccess;
-#endif
-    } else {
-#ifdef ENABLE_CUDA
-      parameters.sharedAddr = false;
-      parameters.pe_id      = 0;
-      parameters.warp_id    = 0;
-      parameters.memaccess  = GlobalMem;
-#endif
-    }
-  }
-
-#ifdef ENABLE_CUDA
-  bool isSharedAddress() const {
-    return parameters.sharedAddr;
-  }
-
-  AddrType get_peID() const{
-    return parameters.pe_id;
-  }
-
-  AddrType get_warpID() const{
-    return parameters.warp_id;
-  }
-#endif
 
   bool getStatsFlag() const { return doStats; }
   bool isRetrying() const { return retrying; }

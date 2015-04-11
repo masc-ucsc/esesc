@@ -43,18 +43,15 @@
 #include "MemObj.h"
 #include "MemRequest.h"
 #include "GMemorySystem.h"
-//#include "GProcessor.h"
 
 #include "Pipeline.h"
 extern bool MIMDmode;
 
 
 FetchEngine::FetchEngine(FlowID id
-  ,GProcessor *gproc_
   ,GMemorySystem *gms_
   ,FetchEngine *fe)
   :gms(gms_)
-  ,gproc(gproc_)
   ,avgBranchTime("P(%d)_FetchEngine_avgBranchTime", id)
   ,avgBranchTime2("P(%d)_FetchEngine_avgBranchTime2", id)
   ,avgFetchTime("P(%d)_FetchEngine_avgFetchTime", id)
@@ -93,23 +90,8 @@ FetchEngine::FetchEngine(FlowID id
 
   BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
 
-  //Supporting multiple SPs (processing elements) in the processor
-  gpu_mimd = true;
-  if(SescConf->checkInt("cpusimu", "sp_per_sm", id)) {
-    numSP = SescConf->getInt("cpusimu", "sp_per_sm", id);
-    gpu_mimd = false;
-  } else {
-    // What about an SMT-like processor?
-    numSP = 1;
-  }
-
-  missInst  = new bool[numSP];
-  lastd     = new DInst* [numSP];
-  cbPending = new CallbackContainer[numSP];
-
-  for (uint32_t i = 0; i < numSP; i++){
-    missInst[i]      = false;
-  }
+  lastd     = 0;
+  missInst  = false;
 
   // Get some icache L1 parameters
   enableICache = SescConf->getBool("cpusimu","enableICache", id);
@@ -143,11 +125,6 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_d
   const Instruction *inst = dinst->getInst();
   Time_t missFetchTime=0;
 
-  uint32_t tmp_peid_new = 0;
-  if (gpu_mimd == false) {
-    tmp_peid_new = dinst->getPE();
-  }
-
   I(dinst->getInst()->isControl()); // getAddr is target only for br/jmp
   PredType prediction     = bpred->predict(dinst, true);
 
@@ -165,7 +142,7 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_d
 
       if( maxBB <= 1 ) {
         // No instructions fetched (stall)
-        if (!missInst[tmp_peid_new]) {
+        if (!missInst) {
           nDelayInst2.add(n2Fetched, dinst->getStatsFlag());
           //I(0);
           return true;
@@ -177,7 +154,7 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_d
     return false;
   }
 
-  I(!missInst[tmp_peid_new]);
+  I(!missInst);
   I(missFetchTime==0);
 
   missFetchTime = globalClock;
@@ -208,13 +185,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
   bool getStatsFlag = false;
 
   if (oldinst) {
-    uint32_t tmp_peid_old = 0;
-    if (gpu_mimd == false) {
-      tmp_peid_old = oldinst->getPE();
-    }
-    if (missInst[tmp_peid_old]) {
-      if (lastd[tmp_peid_old] != oldinst) {
-        cbPending[tmp_peid_old].add(realfetchCB::create(this,bucket,eint,fid,oldinst,n2Fetched,tempmaxbb));
+    if (missInst) {
+      if (lastd != oldinst) {
+        cbPending.add(realfetchCB::create(this,bucket,eint,fid,oldinst,n2Fetched,tempmaxbb));
       }else{
         I(0);
       }
@@ -251,14 +224,10 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
       */
       getStatsFlag |= dinst->getStatsFlag();
 
-      uint32_t tmp_peid_new = 0;
-      if (gpu_mimd == false) {
-        tmp_peid_new = dinst->getPE();
-      }
-      if (missInst[tmp_peid_new]) {
-        I(lastd[tmp_peid_new] != dinst);
+      if (missInst) {
+        I(lastd != dinst);
 //        MSG("\nOops! FID: %d PE: %d is locked now..Adding DInst ID %d to a list of callback[%d]", (int) fid, (int) dinst->getPE(), (int) dinst->getID(),(int) dinst->getPE());
-        cbPending[tmp_peid_new].add(realfetchCB::create(this,bucket,eint,fid,dinst,n2Fetched,tempmaxbb));
+        cbPending.add(realfetchCB::create(this,bucket,eint,fid,dinst,n2Fetched,tempmaxbb));
         return;
       }
 
@@ -270,7 +239,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
         if (stall_fetch) {
           break;
         }
-        I(!missInst[tmp_peid_new]);
+        I(!missInst);
       }
 
       // Fetch uses getHead, ROB retires getTail
@@ -282,9 +251,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
   nFetched.add(tmp, getStatsFlag);
 
   if(enableICache && !bucket->empty()) {
-    ExtraParameters xdata;
-    xdata.configure(bucket->top());
-    MemRequest::sendReqRead(gms->getIL1(), bucket->top()->getStatsFlag(), bucket->top()->getPC(), &(bucket->markFetchedCB), &xdata);
+    MemRequest::sendReqRead(gms->getIL1(), bucket->top()->getStatsFlag(), bucket->top()->getPC(), &(bucket->markFetchedCB));
   }else{
     bucket->markFetchedCB.schedule(IL1HitDelay);
 #if 0
@@ -347,29 +314,18 @@ void FetchEngine::unBlockFetch(DInst* dinst, Time_t missFetchTime) {
 
 void FetchEngine::clearMissInst(DInst * dinst, Time_t missFetchTime){
 
-  uint32_t tmp_peid_new = 0;
-  if (gpu_mimd == false) {
-    tmp_peid_new = dinst->getPE();
-  }
-
   //MSG("\t\t\t\t\tCPU: %d\tU:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getID(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
-  missInst[tmp_peid_new] = false;
+  missInst = false;
 
-  I(lastd[tmp_peid_new] == dinst);
-  //cbPending[].call();
-  cbPending[tmp_peid_new].mycall();
+  I(lastd == dinst);
+  cbPending.mycall();
 }
 
 void FetchEngine::setMissInst(DInst * dinst) {
   //MSG("CPU: %d\tL:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getID(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
 
-  uint32_t tmp_peid_new = 0;
-  if (gpu_mimd == false) {
-    tmp_peid_new = dinst->getPE();
-  }
-
-  I(!missInst[tmp_peid_new]);
-  missInst[tmp_peid_new] = true;
-  lastd[tmp_peid_new] = dinst;
+  I(!missInst);
+  missInst = true;
+  lastd = dinst;
 }
 

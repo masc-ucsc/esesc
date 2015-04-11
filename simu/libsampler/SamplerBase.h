@@ -129,10 +129,10 @@ public:
   void setRabbit();
   void setTiming();
 
-  virtual void updateCPI() { I(0); };
+  virtual void updateCPI(FlowID id) { I(0); };
   virtual void updateCPIHist() { I(0); };
   virtual void loadPredCPI() { I(0); };
-  virtual void doPWTH() { I(0); };
+  virtual void doPWTH(FlowID id) { I(0); };
 
   void pauseThread(FlowID fid);
   FlowID resumeThread(FlowID uid, FlowID last_fid);

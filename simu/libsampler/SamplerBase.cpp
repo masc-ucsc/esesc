@@ -151,9 +151,9 @@ void SamplerBase::doWarmupOpAddr(InstOpcode op, uint64_t addr) {
 	I(emul->cputype != GPU);
 
 	if ( op == iLALU_LD)
-		DL1->ffread(addr, NULL);
+		DL1->ffread(addr);
 	else if (op == iSALU_ST)
-		DL1->ffwrite(addr, NULL);
+		DL1->ffwrite(addr);
 }
 // 1}}}
 
@@ -236,6 +236,7 @@ void SamplerBase::terminate()
 {
   progressedTime->sample(getTime(),true);
   TaskHandler::terminate();
+  terminated = true;
 }
 
 bool SamplerBase::isActive(FlowID fid)

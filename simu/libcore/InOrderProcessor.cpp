@@ -46,7 +46,7 @@
 
 InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   :GProcessor(gm, i, 1)
-  ,IFID(i, this, gm)
+  ,IFID(i, gm)
   ,pipeQ(i)
   ,lsq(i)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))

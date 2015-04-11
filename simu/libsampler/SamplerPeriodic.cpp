@@ -134,7 +134,7 @@ void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int
 }
 /* }}} */
 
-void SamplerPeriodic::updateCPI()
+void SamplerPeriodic::updateCPI(FlowID fid)
   /* extract cpi of last sample interval {{{1 */
 {
   if(lastMode != EmuTiming)
@@ -221,14 +221,14 @@ void SamplerPeriodic::nextMode(bool rotate, FlowID fid, EmuMode mod) {
       case EmuRabbit:
         if (totalnInstForcedDetail <= nInstRabbit){
           setNextSwitch(getNextSwitch() + static_cast<uint64_t>(nInstRabbit*intervalRatio));
-          setNextSwitch(getNextSwitch() - (next2EmuTiming == EmuRabbit) ? totalnInstForcedDetail : 0);
+          setNextSwitch(getNextSwitch() - ((next2EmuTiming == EmuRabbit) ? totalnInstForcedDetail : 0));
         }
         sequence_pos = 3;
         break;
       case EmuWarmup:
         if (totalnInstForcedDetail <= nInstWarmup){
           setNextSwitch(getNextSwitch() + static_cast<uint64_t>(nInstWarmup*intervalRatio));
-          setNextSwitch(getNextSwitch() - (next2EmuTiming == EmuWarmup) ? totalnInstForcedDetail : 0);
+          setNextSwitch(getNextSwitch() - ((next2EmuTiming == EmuWarmup) ? totalnInstForcedDetail : 0));
         }
         sequence_pos = 0;
         break;
@@ -347,13 +347,13 @@ void SamplerPeriodic::updateIntervalRatio() {
 
 void SamplerPeriodic::syncTimeAndWaitForOthers(FlowID fid) {
   nextMode(SET_MODE, fid, EmuDetail);
-  updateCPI();
+  updateCPI(fid);
   dsync->inc();
 }
 
 void SamplerPeriodic::syncTimeAndContinue(FlowID fid) {
   nextMode(ROTATE, fid);
-  updateCPI();
+  updateCPI(fid);
 }
 
 void SamplerPeriodic::syncTimeAndFinishWaitingForOthers(FlowID fid) {

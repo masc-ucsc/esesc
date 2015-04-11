@@ -160,21 +160,21 @@ void NICECache::doDisp(MemRequest *req)
 }
 /* }}} */
 
-bool NICECache::isBusy(AddrType addr, ExtraParameters* xdata) const
+bool NICECache::isBusy(AddrType addr) const
   /* can accept reads? {{{1 */
 {
   return false;
 }
 /* }}} */
 
-TimeDelta_t NICECache::ffread(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t NICECache::ffread(AddrType addr)
   /* warmup fast forward read {{{1 */
 {
   return 1;
 }
 /* }}} */
 
-TimeDelta_t NICECache::ffwrite(AddrType addr, ExtraParameters* xdata)
+TimeDelta_t NICECache::ffwrite(AddrType addr)
   /* warmup fast forward writed {{{1 */
 {
   return 1;

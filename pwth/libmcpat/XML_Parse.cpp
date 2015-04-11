@@ -47,6 +47,7 @@
  ***************************************************************************/
 
 
+#include <math.h>
 #include <stdio.h>
 #include "xmlParser.h"
 #include <string>

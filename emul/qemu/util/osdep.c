@@ -436,6 +436,7 @@ int socket_init(void)
     return 0;
 }
 
+#if 0
 #if !GLIB_CHECK_VERSION(2, 31, 0)
 /* Ensure that glib is running in multi-threaded mode
  * Old versions of glib require explicit initialization.  Failure to do
@@ -449,6 +450,7 @@ static void __attribute__((constructor)) thread_init(void)
        g_thread_init(NULL);
     }
 }
+#endif
 #endif
 
 #ifndef CONFIG_IOVEC
