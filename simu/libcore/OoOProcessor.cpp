@@ -54,9 +54,10 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   /* constructor {{{1 */
   :GOoOProcessor(gm, i)
   ,MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay",i))
+  ,RetireDelay(SescConf->getInt("cpusimu", "RetireDelay",i))
   ,IFID(i, gm)
   ,pipeQ(i)
-  ,lsq(i)
+  ,lsq(i, SescConf->checkInt("cpusimu", "maxLSQ",i)?SescConf->getInt("cpusimu", "maxLSQ",i):32768) // 32K (unlimited or fix)
   ,retire_lock_checkCB(this)
   ,clusterManager(gm, this)
   ,avgFetchWidth("P(%d)_avgFetchWidth",i)
@@ -342,10 +343,14 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
   dinst->getCluster()->addInst(dinst);
 
+  I(!dinst->isExecuted()); // NO 0 lat instructions (conf may allow it)
+
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
 
   I(dinst->getCluster());
+
+  dinst->markRenamed();
 
   return NoStall;
 }
@@ -417,8 +422,10 @@ void OoOProcessor::retire()
   for(uint16_t i=0 ; i<RetireWidth && !rROB.empty() ; i++) {
     DInst *dinst = rROB.top();
 
-    if (!dinst->isExecuted())
+    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock)
       break;
+
+    I(dinst->isExecuted());
     
     GI(!flushing, dinst->isExecuted());
     I(dinst->getCluster());
@@ -438,7 +445,23 @@ void OoOProcessor::retire()
       nCommitted.inc(dinst->getStatsFlag());
     }
 
-    //dinst->dump("destroy");
+#if ESESC_TRACE
+    MSG("TR %8llx R%-2d=R%-2d op=%-2d R%-2d   %lld %lld %lld %lld"
+        ,dinst->getPC()
+        ,dinst->getInst()->getDst1()
+        ,dinst->getInst()->getSrc1()
+        ,dinst->getInst()->getOpcode()
+        ,dinst->getInst()->getSrc2()
+        ,dinst->getFetchTime()
+        ,dinst->getWakeUpTime()
+        ,dinst->getExecutedTime()
+        ,globalClock);
+#endif
+
+#if 0
+    dinst->dump("RT ");
+    fprintf(stderr,"\n");
+#endif
     dinst->destroy(eint);
 
     if (last_serialized == dinst)

@@ -197,10 +197,16 @@ void TLB::doSetStateAck(MemRequest *mreq)
 bool TLB::isBusy(AddrType addr) const
 /* accept requests if no pending misses {{{1 */
 {
-  if(pending.empty())
-    return curRequests >= maxRequests;
+  if(!pending.empty())
+    return true;
 
-  return true;
+  if (curRequests >= maxRequests)
+    return true;
+
+  if (lowerCache==0)
+    return false;
+
+  return lowerCache->isBusy(addr);
 }
 /* }}} */
 

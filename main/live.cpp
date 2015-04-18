@@ -27,6 +27,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <signal.h>
@@ -46,6 +48,7 @@ int64_t live_skip = 0;
 bool done_skip = false;
 int force_warmup = 0;
 int genwarm = 0;
+int64_t foo_inst = 0;
 
 //Declaring functions
 extern "C" void QEMUReader_goto_sleep(void *env);
@@ -75,7 +78,7 @@ dyn_QEMUReader_resumeThread_t dyn_QEMUReader_resumeThread=0;
 typedef void (*dyn_QEMUReader_pauseThread_t)(FlowID);
 dyn_QEMUReader_pauseThread_t dyn_QEMUReader_pauseThread=0;
 
-typedef void (*dyn_QEMUReader_queue_inst_t)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t, void *);
+typedef void (*dyn_QEMUReader_queue_inst_t)(uint64_t, uint64_t, uint16_t, uint16_t, uint16_t, uint16_t, uint16_t, void *);
 dyn_QEMUReader_queue_inst_t dyn_QEMUReader_queue_inst=0;
 
 typedef void (*dyn_QEMUReader_syscall_t)(uint32_t, uint64_t, uint32_t);
@@ -173,6 +176,30 @@ void create_checkpoints (int64_t argc, char **argv) {
 
 //This function creates a checkpoint64_t making it ready for simulation
 void fork_checkpoint() {
+  //find file descriptors being used
+  char name[100][1024];
+  int fd[100];
+  int pos[100];
+  int len;
+  int fcnt = 0;
+  for(int i = 3; i < 100; i++) {
+    char lname[100];
+    sprintf(lname, "/proc/self/fd/%d", i);
+    if ((len = readlink(lname, name[fcnt], 1000)) != -1) {
+      string sname = name[fcnt];
+      if(sname.compare(0, 6, "socket") != 0) {
+        name[fcnt][len] = '\0';
+        int val= fcntl(i, F_GETFL, 0);
+        int accmode = val & O_ACCMODE;
+        if(accmode == 0) { // RDONLY has zero mask
+          fd[fcnt] = i;
+          pos[fcnt] = lseek(fd[fcnt], 0, SEEK_CUR);
+          fcnt ++;
+        }
+      }
+    }
+  }
+
   if (fork() != 0) {
     //Parent: initialize new variables and continue rabbit
     thread_mode = 0;
@@ -182,6 +209,7 @@ void fork_checkpoint() {
   }
     
   //Children: create the checkpoint
+
   //Send the ready command to NodeJS server
   Transporter::disconnect();
   Transporter::connect_to_server(host_adr, portno);
@@ -200,6 +228,15 @@ void fork_checkpoint() {
     signal(SIGCHLD, SIG_IGN);
     int pid = fork();
     if(pid == 0) {
+      //Set the file descriptors to correct position
+      for(int i = 0; i < fcnt; i++) {
+        close(fd[i]);
+        fd[i] = open(name[i], O_RDONLY);
+        lseek(fd[i], pos[i], SEEK_SET);
+        int foo = lseek(fd[i], 0, SEEK_CUR);
+        printf("resync fd=%d seek=%d %s\n", fd[i], foo, name[i]);
+      }
+
       Transporter::disconnect();
       wait = false;
       thread_mode = 2;
@@ -207,8 +244,6 @@ void fork_checkpoint() {
       load_esesc();
     }
   }
-
-  return;
 }
 
 //Qemu/ESESC interface functions
@@ -240,23 +275,26 @@ extern "C" void QEMUReader_pauseThread (FlowID id) {
   (*dyn_QEMUReader_pauseThread)(id);
 }
 
-extern "C" void QEMUReader_queue_inst (uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, uint32_t op, uint64_t icount, void *env) {
-  (*dyn_QEMUReader_queue_inst)(insn,pc,addr,fid,op,icount,env);
-  if(!done_skip && inst_count < live_skip) {
-    inst_count += icount;
-    return;
-  }
+extern "C" void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env) {
+  (*dyn_QEMUReader_queue_inst)(pc, addr, fid, op, src1, src2, dest, env);
+  foo_inst++;
+  //Check for initial skip (if any)
   if(!done_skip) {
-    done_skip = true;
-    inst_count = nrabbit;
-    return;
+    if(inst_count < live_skip) {
+      inst_count += 1;
+      return;
+    } else {
+      done_skip = true;
+      inst_count = nrabbit;
+      return;
+    }
   }
+
   if(thread_mode == 0) {
-    inst_count += icount;
+    inst_count += 1;
     if(inst_count > nrabbit) {
       nchecks--;
       if (nchecks<=0) {
-        //printf("Master Rabbit done\n");
         exit(0);
       }
       fork_checkpoint();
@@ -278,7 +316,6 @@ extern "C" void QEMUReader_setFlowCmd (bool* flowStatus) {
 
 //Main function
 int main (int argc, char **argv) {
-  printf("foo");
   char t;
   int64_t params[11];
   int64_t i;

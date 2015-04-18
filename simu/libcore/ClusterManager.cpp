@@ -75,6 +75,8 @@ ClusterManager::ClusterManager(GMemorySystem *ms, GProcessor *gproc) {
     scheduler = new RoundRobinClusterScheduler(res);
   }else if (strcasecmp(clusterScheduler,"LRU")== 0) {
     scheduler = new LRUClusterScheduler(res);
+  }else if (strcasecmp(clusterScheduler,"Use")== 0) {
+    scheduler = new UseClusterScheduler(res);
   }else{
     MSG("ERROR: Invalid clusterScheduler [%s]",clusterScheduler);
     SescConf->notCorrect();

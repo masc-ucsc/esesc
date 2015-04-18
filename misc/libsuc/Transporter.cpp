@@ -58,20 +58,20 @@ void Transporter::connect_to_server(char * h, int pn) {
   serv_addr.sin_port = htons(portno);
   if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
     perror("ERROR connecting");
-
   //encryption
-  ifstream in("key");
-  string keys((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
-  ifstream in2("iv");
-  string ivs((istreambuf_iterator<char>(in2)), istreambuf_iterator<char>());
-  ifstream in3("passkey");
-  string passkey((istreambuf_iterator<char>(in3)), istreambuf_iterator<char>());
-
+  //ifstream in("key");
+  //string keys((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
+  string keys(":sx0K2-&94l+cv**");
+  //ifstream in2("iv");
+  //string ivs((istreambuf_iterator<char>(in2)), istreambuf_iterator<char>());
+  string ivs("0sd+3jj*)__sdf&1");
+  //ifstream in3("passkey");
+  //string passkey((istreambuf_iterator<char>(in3)), istreambuf_iterator<char>());
+  string passkey("Llkd8fv93nBB83209ucdvy8cbnNYT^^^12-++049dc78vn234bJMZx54r12l2349");
   for(int i = 0; i < CryptoPP::AES::DEFAULT_KEYLENGTH; i++)
     key[i] = (unsigned char)keys.at(i);
   for(int i = 0; i < CryptoPP::AES::BLOCKSIZE; i++)
     iv[i] = (unsigned char)ivs.at(i);
-
   //registration
   send_string("passkey", passkey);
   string dontcare = receive('r', "registered");

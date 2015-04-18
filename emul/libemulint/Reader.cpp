@@ -40,8 +40,10 @@
 
 
 ThreadSafeFIFO<RAWDInst> *Reader::tsfifo = NULL;
-pthread_mutex_t          *Reader::tsfifo_mutex = NULL;
-volatile int             *Reader::tsfifo_mutex_blocked = 0;
+pthread_mutex_t          *Reader::tsfifo_snd_mutex = NULL;
+volatile int             *Reader::tsfifo_snd_mutex_blocked = 0;
+pthread_mutex_t          Reader::tsfifo_rcv_mutex;
+volatile int             Reader::tsfifo_rcv_mutex_blocked;
 EmuDInstQueue            *Reader::ruffer = NULL;
 
 FlowID Reader::nemul = 0;
@@ -55,15 +57,19 @@ Reader::Reader(const char* section)
 
     tsfifo       = new ThreadSafeFIFO<RAWDInst>[nemul];
 
-    tsfifo_mutex = new pthread_mutex_t[nemul];
-    tsfifo_mutex_blocked = new int[nemul];
+    // On thread for each tsfifo sender
+    tsfifo_snd_mutex = new pthread_mutex_t[nemul];
+    tsfifo_snd_mutex_blocked = new int[nemul];
     for(int i=0;i<nemul;i++) {
-
-      pthread_mutex_init(&tsfifo_mutex[i], NULL);
-      pthread_mutex_lock(&tsfifo_mutex[i]);
-
-      tsfifo_mutex_blocked[i] = 0;
+      pthread_mutex_init(&tsfifo_snd_mutex[i], NULL);
+      pthread_mutex_lock(&tsfifo_snd_mutex[i]);
+      tsfifo_snd_mutex_blocked[i] = 0;
     }
+
+    // Receive has only 1 thread (ESESC SIMU Thread)
+    tsfifo_rcv_mutex_blocked = 0;
+    pthread_mutex_init(&tsfifo_rcv_mutex, NULL);
+    pthread_mutex_lock(&tsfifo_rcv_mutex);
 
     ruffer       = new EmuDInstQueue[nemul];
   }

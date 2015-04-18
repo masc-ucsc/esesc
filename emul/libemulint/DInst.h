@@ -53,9 +53,8 @@ class Cluster;
 class Resource;
 class EmulInterface;
 
+//#define ESESC_TRACE 1
 
-
-// FIXME: do a nice class. Not so public
 class DInstNext {
  private:
   DInst *dinst;
@@ -110,19 +109,22 @@ private:
 
   // BEGIN Boolean flags
   bool loadForwarded;
+  bool renamed;
   bool issued;
   bool executed;
   bool replay;
 
   bool performed;
 
+  bool interCluster;
   bool keepStats;
 
   // END Boolean flags
 
-  // BEGIN Time counters
+#ifdef ESESC_TRACE
   Time_t wakeUpTime;
-  // END Time counters
+#endif
+  Time_t executedTime;
 
   SSID_t       SSID;
   AddrType     conflictStorePC;
@@ -149,7 +151,6 @@ private:
 #ifdef DEBUG
     mreq_id       = 0;
 #endif
-    wakeUpTime    = 0;
     first         = 0;
 
     cluster         = 0;
@@ -162,11 +163,17 @@ private:
     conflictStorePC = 0;
 
     loadForwarded = false;
+    renamed       = false;
     issued        = false;
     executed      = false;
     replay        = false;
     performed     = false;
+    interCluster  = false;
     fetchTime = 0;
+#ifdef ESESC_TRACE
+    wakeUpTime    = 0;
+#endif
+    executedTime  = 0;
 #ifdef DINST_PARENT
     pend[0].setParentDInst(0);
     pend[1].setParentDInst(0);
@@ -259,14 +266,14 @@ public:
   }
 #endif
 
-#if 0
-  void setFetch(FetchEngine *fe) {
-    fetch = fe;
-  }
-#else
-
   void lockFetch(FetchEngine *fe) {
+    I(fetch==0);
     fetch     = fe;
+    fetchTime = globalClock;
+  }
+
+  void setFetchTime() {
+    I(fetch==0);
     fetchTime = globalClock;
   }
 
@@ -276,7 +283,6 @@ public:
   Time_t getFetchTime() const {
     return fetchTime;
   }
-#endif
 
   DInst *getNextPending() {
     I(first);
@@ -298,6 +304,8 @@ public:
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
 
+    I(!executed);
+    I(!d->executed);
     DInstNext *n = &d->pend[0];
     I(!n->isUsed);
     n->isUsed = true;
@@ -316,6 +324,9 @@ public:
   void addSrc2(DInst * d) {
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
+    I(!executed);
+    I(!d->executed);
+
     DInstNext *n = &d->pend[1];
     I(!n->isUsed);
     n->isUsed = true;
@@ -334,6 +345,9 @@ public:
   void addSrc3(DInst * d) {
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
+    I(!executed);
+    I(!d->executed);
+
     DInstNext *n = &d->pend[2];
     I(!n->isUsed);
     n->isUsed = true;
@@ -380,7 +394,18 @@ public:
     loadForwarded=true;
   }
 
+  bool hasInterCluster() const { return interCluster; }
+  void markInterCluster() {
+    interCluster = true;
+  }
+
   bool isIssued() const { return issued; }
+
+  void markRenamed() {
+    I(!renamed);
+    renamed = true;
+  }
+  bool isRenamed() const { return renamed; }
 
   void markIssued() {
     I(!issued);
@@ -393,6 +418,7 @@ public:
     I(issued);
     I(!executed);
     executed = true;
+    executedTime = globalClock;
   }
 
   bool isReplay() const { return replay; }
@@ -413,12 +439,17 @@ public:
     performed = true;
   }
 
+#ifdef ESESC_TRACE
   void setWakeUpTime(Time_t t)  {
     //I(wakeUpTime <= t || t == 0);
     wakeUpTime = t;
   }
 
   Time_t getWakeUpTime() const { return wakeUpTime; }
+#else
+  void setWakeUpTime(Time_t t)  { }
+#endif
+  Time_t getExecutedTime() const { return executedTime; }
 
   Time_t getID() const { return ID; }
 

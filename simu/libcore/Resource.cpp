@@ -81,13 +81,6 @@ Resource::~Resource()
 }
 /* }}} */
 
-void Resource::select(DInst *dinst)
-/* callback entry point for select {{{1 */
-{
-  cluster->select(dinst);
-}
-/* }}} */
-
 /***********************************************/
 
 MemResource::MemResource(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad)
@@ -101,11 +94,12 @@ MemResource::MemResource(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *s
 }
 /* }}} */
 
-MemResource_noMemSpec::MemResource_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad)
+MemResource_noMemSpec::MemResource_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad)
   /* constructor {{{1 */
   : Resource(cls, aGen, l)
   ,DL1(ms->getDL1())
   ,memorySystem(ms)
+  ,lsq(_lsq)
 {
 }
 
@@ -351,7 +345,6 @@ void FUSCOORELoad::executed(DInst* dinst) {
     //replayManage(dinst);
   }
 
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -500,7 +493,6 @@ void FUSCOOREStore::executed(DInst *dinst) {
     storeset->remove(dinst);
   }
 
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -600,9 +592,13 @@ StallCause FULoad::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsLoadsStall;
   }
+  if( !lsq->hasFreeEntries() ) {
+    return OutsLoadsStall;
+  }
   storeset->insert(dinst);
 
   lsq->insert(dinst);
+  lsq->decFreeEntries();
   freeEntries--;
   return NoStall;
 }
@@ -655,7 +651,6 @@ void FULoad::executed(DInst* dinst) {
   /* executed {{{1 */
   storeset->remove(dinst);
 
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -670,6 +665,7 @@ bool FULoad::preretire(DInst *dinst, bool flushing)
 bool FULoad::retire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
+  lsq->incFreeEntries();
   freeEntries++;
 
   lsq->remove(dinst);
@@ -715,12 +711,15 @@ StallCause FUStore::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsStoresStall;
   }
+  if (!lsq->hasFreeEntries())
+    return OutsStoresStall;
 
   storeset->insert(dinst);
 
   lsq->insert(dinst);
-
+  lsq->decFreeEntries();
   freeEntries--;
+
 
   return NoStall;
 }
@@ -762,7 +761,6 @@ void FUStore::executed(DInst *dinst) {
   if (dinst->getInst()->isStore())
     storeset->remove(dinst);
 
-  dinst->markExecuted();
   cluster->executed(dinst);
   // We have data&address, the LSQ can be populated
 }
@@ -810,6 +808,7 @@ bool FUStore::retire(DInst *dinst, bool flushing) {
     return false;
 
   lsq->remove(dinst);
+  lsq->incFreeEntries();
   freeEntries++;
 
   return true;
@@ -861,7 +860,6 @@ void FUGeneric::executed(DInst *dinst) {
         , dinst->getWarpID());
   }
 #endif
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -911,7 +909,6 @@ void FUFuze::executing(DInst *dinst) {
 
 void FUFuze::executed(DInst *dinst) {
   /* executed {{{1 */
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -967,13 +964,10 @@ void FUBranch::executing(DInst *dinst) {
 
 void FUBranch::executed(DInst *dinst) {
   /* executed {{{1 */
-  dinst->markExecuted();
   cluster->executed(dinst);
 
   if (dinst->getFetch()) {
     (dinst->getFetch())->unBlockFetch(dinst, dinst->getFetchTime());
-    //IS(dinst->setFetch(0));
-    IS(dinst->lockFetch(0));
   }
 
   // NOTE: assuming that once the branch is executed the entry can be recycled
@@ -1062,7 +1056,6 @@ void FURALU::executing(DInst *dinst)
 void FURALU::executed(DInst *dinst)
 /* executed {{{1 */
 {
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -1091,9 +1084,9 @@ void FURALU::performed(DInst *dinst)
 
 /*********UNITS WITH NO MEMORY SPECULATION NEXT********************/
 
-FULoad_noMemSpec::FULoad_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
+FULoad_noMemSpec::FULoad_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
   /* Constructor {{{1 */
-  : MemResource_noMemSpec(cls, aGen, l, ms, id, cad)
+  : MemResource_noMemSpec(cls, aGen, _lsq, l, ms, id, cad)
   ,LSDelay(lsdelay)
   ,freeEntries(size) {
   char cadena[1000];
@@ -1109,6 +1102,10 @@ StallCause FULoad_noMemSpec::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsLoadsStall;
   }
+  if( !lsq->hasFreeEntries() )
+    return OutsLoadsStall;
+
+  lsq->decFreeEntries();
   freeEntries--;
   return NoStall;
 }
@@ -1148,7 +1145,6 @@ void FULoad_noMemSpec::cacheDispatched(DInst *dinst) {
 
 void FULoad_noMemSpec::executed(DInst* dinst) {
   /* executed {{{1 */
-  dinst->markExecuted();
   cluster->executed(dinst);
 }
 /* }}} */
@@ -1163,6 +1159,7 @@ bool FULoad_noMemSpec::preretire(DInst *dinst, bool flushing)
 bool FULoad_noMemSpec::retire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
+  lsq->incFreeEntries();
   freeEntries++;
   return true;
 }
@@ -1181,9 +1178,9 @@ void FULoad_noMemSpec::performed(DInst *dinst) {
 
 /***********************************************/
 
-FUStore_noMemSpec::FUStore_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
+FUStore_noMemSpec::FUStore_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
   /* constructor {{{1 */
-  : MemResource_noMemSpec(cls, aGen, l, ms, id, cad)
+  : MemResource_noMemSpec(cls, aGen, _lsq, l, ms, id, cad)
   ,freeEntries(size) {
   enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
 }
@@ -1199,7 +1196,10 @@ StallCause FUStore_noMemSpec::canIssue(DInst *dinst) {
     I(freeEntries == 0); // Can't be negative
     return OutsStoresStall;
   }
+  if( !lsq->hasFreeEntries() )
+    return OutsStoresStall;
 
+  lsq->decFreeEntries();
   freeEntries--;
   return NoStall;
 }
@@ -1220,7 +1220,6 @@ void FUStore_noMemSpec::executing(DInst *dinst) {
 
 void FUStore_noMemSpec::executed(DInst *dinst) {
   /* executed {{{1 */
-  dinst->markExecuted();
   cluster->executed(dinst);
   // We have data&address, the LSQ can be populated
 }
@@ -1266,7 +1265,10 @@ bool FUStore_noMemSpec::retire(DInst *dinst, bool flushing) {
 
   if(!dinst->isPerformed())
     return false;
+
+  lsq->incFreeEntries();
   freeEntries++;
+
   return true;
 }
 /* }}} */

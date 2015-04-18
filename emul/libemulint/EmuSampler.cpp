@@ -402,6 +402,9 @@ void EmuSampler::calcCPI()
   if (mode != EmuTiming)
     return;
 
+  if (terminated)
+    return;
+
   I(calcCPIJustCalled == false); 
   I(!stopJustCalled);
   calcCPIJustCalled = true;

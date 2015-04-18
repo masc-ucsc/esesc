@@ -55,7 +55,7 @@ extern "C" uint32_t QEMUReader_setnoStats()
   return 0;
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, uint32_t op, uint64_t icount, void *env) 
+extern "C" void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env) 
 {
   // call (*live_queue_inst)(insn,pc,addr,fid,op,icount,env)
   //

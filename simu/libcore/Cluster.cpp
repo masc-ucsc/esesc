@@ -172,7 +172,7 @@ void Cluster::buildUnit(const char *clusterName
             maxLoads = 256*1024;
 
           if(noMemSpec){        
-            r = new FULoad_noMemSpec(cluster, gen, ldstdelay, lat, ms, maxLoads, gproc->getID(), "nonspecld");
+            r = new FULoad_noMemSpec(cluster, gen, gproc->getLSQ(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "nonspecld");
           }else{
             r = new FULoad(cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "specld");
           }
@@ -194,7 +194,7 @@ void Cluster::buildUnit(const char *clusterName
             maxStores = 256*1024;
 
           if(noMemSpec){
-            r = new FUStore_noMemSpec(cluster, gen, lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
+            r = new FUStore_noMemSpec(cluster, gen, gproc->getLSQ(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
           }else{
             r = new FUStore(cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
           }
@@ -290,15 +290,12 @@ void Cluster::addInst(DInst *dinst) {
 
 void ExecutingCluster::executing(DInst *dinst) {
 
-  window.wakeUpDeps(dinst);
-  dinst->clearRATEntry(); 
   delEntry();
 }
 
 void ExecutingCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
-  dinst->clearRATEntry(); 
 }
 
 bool ExecutingCluster::retire(DInst *dinst, bool reply) {
@@ -307,8 +304,6 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 
   if( !done )
     return false;
-
-  dinst->clearRATEntry(); 
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
 
@@ -324,14 +319,13 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 
 void ExecutedCluster::executing(DInst *dinst) {
 
-  window.wakeUpDeps(dinst);
 }
 
 void ExecutedCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
+  I(!dinst->hasPending());
 
-  dinst->clearRATEntry(); 
   delEntry();
 }
 
@@ -340,7 +334,6 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
   bool done  = dinst->getClusterResource()->retire(dinst, reply);
   if( !done )
     return false;
-  dinst->clearRATEntry(); 
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
   if( hasDest )
@@ -355,7 +348,6 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
 
 void RetiredCluster::executing(DInst *dinst) {
 
-  window.wakeUpDeps(dinst);
 }
 
 void RetiredCluster::executed(DInst *dinst) {
@@ -368,7 +360,6 @@ bool RetiredCluster::retire(DInst *dinst, bool reply) {
   bool done = dinst->getClusterResource()->retire(dinst, reply);
   if( !done )
     return false;
-  dinst->clearRATEntry(); 
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
 

@@ -48,7 +48,7 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   :GProcessor(gm, i, 1)
   ,IFID(i, gm)
   ,pipeQ(i)
-  ,lsq(i)
+  ,lsq(i,32768)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
   ,clusterManager(gm, this)
 {/*{{{*/
@@ -238,6 +238,7 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
   RAT[inst->getDst2()] = dinst;
 
   I(dinst->getCluster());
+  dinst->markRenamed();
 
   return NoStall;
 }/*}}}*/

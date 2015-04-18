@@ -58,6 +58,7 @@ private:
   GMemorySystem *const gms;
 
   BPredictor   *bpred;
+  BPredictor   *bpred2; // 2nd level predictor
 
   uint16_t      FetchWidth;
 

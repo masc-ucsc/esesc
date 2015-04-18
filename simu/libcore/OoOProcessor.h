@@ -70,6 +70,7 @@ private:
   };
   
   const bool MemoryReplay;
+  const int32_t RetireDelay;
   
   FetchEngine IFID;
   PipeQueue   pipeQ;

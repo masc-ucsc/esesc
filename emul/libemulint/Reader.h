@@ -49,8 +49,10 @@ private:
 protected:
   static FlowID nemul;
   static ThreadSafeFIFO<RAWDInst> *tsfifo;
-  static pthread_mutex_t          *tsfifo_mutex; 
-  static volatile int             *tsfifo_mutex_blocked; 
+  static pthread_mutex_t          *tsfifo_snd_mutex; 
+  static volatile int             *tsfifo_snd_mutex_blocked; 
+  static pthread_mutex_t          tsfifo_rcv_mutex; 
+  static volatile int             tsfifo_rcv_mutex_blocked; 
   static EmuDInstQueue            *ruffer;
 public:
   Reader(const char* section);

@@ -95,9 +95,6 @@ PortManagerBanked::PortManagerBanked(const char *section, MemObj *_mobj)
 
 Time_t PortManagerBanked::nextBankSlot(AddrType addr, bool en) 
 { 
-  if (numBanksMask == 0)
-    return bkPort[0]->nextSlot(en); 
-
   int32_t bank = (addr>>bankShift) & numBanksMask;
 
   return bkPort[bank]->nextSlot(en); 
@@ -105,9 +102,6 @@ Time_t PortManagerBanked::nextBankSlot(AddrType addr, bool en)
 
 Time_t PortManagerBanked::calcNextBankSlot(AddrType addr) 
 { 
-  if (numBanksMask == 0)
-    return bkPort[0]->calcNextSlot(); 
-
   int32_t bank = (addr>>bankShift) & numBanksMask;
 
   return bkPort[bank]->calcNextSlot(); 
@@ -115,21 +109,18 @@ Time_t PortManagerBanked::calcNextBankSlot(AddrType addr)
 
 void PortManagerBanked::nextBankSlotUntil(AddrType addr, Time_t until, bool en) 
 { 
-  uint32_t bank;
+  uint32_t bank = (addr>>bankShift) & numBanksMask;
 
-  if (numBanksMask == 0)
-    bank = 0;
-  else
-    bank = (addr>>bankShift) & numBanksMask;
-
-  while(bkPort[bank]->calcNextSlot() < until) {
-    bkPort[bank]->nextSlot(en); 
-  }
+  bkPort[bank]->occupyUntil(until); 
 }
 
 Time_t PortManagerBanked::reqDone(MemRequest *mreq)
 {
-  return sendFillPort->nextSlot(mreq->getStatsFlag())+dataDelay;
+  Time_t when=sendFillPort->nextSlot(mreq->getStatsFlag())+dataDelay;
+
+  // TRACE MSG("%5lld @%lld %-8s done %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
+
+  return when;
 }
 
 void PortManagerBanked::reqRetire(MemRequest *mreq)
@@ -153,6 +144,8 @@ void PortManagerBanked::req(MemRequest *mreq)
 
   if (!mreq->isRetrying())
     curRequests++;
+
+  // TRACE MSG("%5lld @%lld %-8s req  %12llx curReq=%d",mreq->getID(),globalClock,mobj->getName(),mreq->getAddr(),curRequests);
 
 	mreq->redoReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+tagDelay);
 }

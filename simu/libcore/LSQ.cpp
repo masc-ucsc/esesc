@@ -25,9 +25,9 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "SescConf.h"
 /* }}} */
 
-LSQFull::LSQFull(const int32_t id)
+LSQFull::LSQFull(const int32_t id, int32_t size)
   /* constructor {{{1 */
-  :LSQ()
+  :LSQ(size)
   ,stldForwarding("P(%d):stldForwarding", id)
 {
 }
@@ -120,9 +120,9 @@ void LSQFull::remove(DInst *dinst)
 }
 /* }}} */
 
-LSQNone::LSQNone(const int32_t id)
+LSQNone::LSQNone(const int32_t id, int32_t size)
   /* constructor {{{1 */
-  :LSQ() {
+  :LSQ(size) {
 }
 /* }}} */
 
@@ -145,9 +145,9 @@ void LSQNone::remove(DInst *dinst)
 }
 /* }}} */
 
-LSQVPC::LSQVPC()
+LSQVPC::LSQVPC(int32_t size)
   /* constructor {{{1 */
-  :LSQ() 
+  :LSQ(size) 
   ,LSQVPC_replays("LSQVPC_replays")  
 {
 }

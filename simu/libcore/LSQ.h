@@ -36,7 +36,11 @@ class LSQ {
 private:
 protected:
 
-  LSQ() {}
+  int32_t freeEntries;
+
+  LSQ(int32_t size) {
+    freeEntries = size;
+  }
 
   virtual ~LSQ() { }
 
@@ -45,6 +49,15 @@ public:
   virtual void insert(DInst *dinst)      = 0;
   virtual DInst *executing(DInst *dinst) = 0;
   virtual void remove(DInst *dinst)      = 0;
+
+  void incFreeEntries() {
+    freeEntries++;
+  }
+  void decFreeEntries() {
+    freeEntries--;
+  }
+  int32_t hasFreeEntries() const { return freeEntries>0; }
+
 };
 
 class LSQFull : public LSQ {
@@ -67,7 +80,7 @@ private:
   }
 
 public:
-  LSQFull(const int32_t id);
+  LSQFull(const int32_t id, int32_t size);
   ~LSQFull() { }
 
   void insert(DInst *dinst);
@@ -79,7 +92,7 @@ class LSQNone : public LSQ {
 private:
 
 public:
-  LSQNone(const int32_t id);
+  LSQNone(const int32_t id, int32_t size);
   ~LSQNone() { }
 
   void insert(DInst *dinst);
@@ -98,7 +111,7 @@ private:
   }
 
 public:
-  LSQVPC();
+  LSQVPC(int32_t size);
   ~LSQVPC() { }
 
   void insert(DInst *dinst);

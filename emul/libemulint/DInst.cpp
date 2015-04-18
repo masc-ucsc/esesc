@@ -51,7 +51,7 @@ DInst::DInst()
 }
 
 void DInst::dump(const char *str) {
-  printf("%s:%p (%d) %lld %c DInst: pc=0x%x, addr=0x%x src1=%d (%d) src2 = %d dest1 =%d dest2 = %d",str, this, fid, (long long)ID, keepStats? 't': 'd', (int)pc,(int)addr,(int)(inst.getSrc1()), inst.getOpcode(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
+  fprintf(stderr,"%s:%p (%d) %lld %c DInst: pc=0x%x, addr=0x%x src1=%d (%d) src2 = %d dest1 =%d dest2 = %d",str, this, fid, (long long)ID, keepStats? 't': 'd', (int)pc,(int)addr,(int)(inst.getSrc1()), inst.getOpcode(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
 
   if (performed) {
     fprintf(stderr," performed");
@@ -125,7 +125,6 @@ void DInst::scrap(EmulInterface *eint) {
 void DInst::destroy(EmulInterface *eint) {
   I(nDeps == 0);   // No deps src
 
-  I(!fetch); // if it block the fetch engine. it is unblocked again
   I(issued);
   I(executed);
 

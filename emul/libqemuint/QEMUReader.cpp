@@ -51,6 +51,8 @@ extern pthread_mutex_t mutex_live;
 extern bool live_qemu_active;
 extern pthread_cond_t cond_live;
 
+pthread_mutex_t mutex_ctrl;
+
 #if 0
 void *QEMUReader::getSharedMemory(size_t size) 
 /* Allocate a shared memory region {{{1 */
@@ -102,6 +104,8 @@ void QEMUReader::start()
   if (started)
     return;
 
+  pthread_mutex_init(&mutex_ctrl,0);
+
   started = true;
 
 #if 1
@@ -150,9 +154,35 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op
 {
   uint64_t conta=0;
 
-  if (tsfifo[fid].full()) {
-    tsfifo_mutex_blocked[fid] = 1;
-    pthread_mutex_lock(&tsfifo_mutex[fid]);
+  I(src1<LREG_MAX);
+  I(src2<LREG_MAX);
+  I(dest<LREG_MAX);
+  I(dest2<LREG_MAX);
+
+  while (tsfifo[fid].full()) {
+    pthread_mutex_lock(&mutex_ctrl); // BEGIN
+
+#if 0
+    if (tsfifo_rcv_mutex_blocked) {
+      tsfifo_rcv_mutex_blocked = 0;
+      pthread_mutex_unlock(&tsfifo_rcv_mutex);
+      //MSG("1.alarmto rcv%d",fid);
+    }
+#endif
+
+    bool doblock = false;
+    if (tsfifo_snd_mutex_blocked[fid] == 0) {
+      tsfifo_snd_mutex_blocked[fid] = 1;
+      doblock = true;
+    }
+    pthread_mutex_unlock(&mutex_ctrl); // END
+
+    //MSG("2.sleep  snd%d",fid);
+    if (doblock)
+      pthread_mutex_lock(&tsfifo_snd_mutex[fid]);
+    else
+      MSG("INTERESTING");
+    //MSG("2.wakeup snd%d",fid);
   }
 
   RAWDInst *rinst = tsfifo[fid].getTailRef();
@@ -179,14 +209,8 @@ void QEMUReader::syscall(uint32_t num, Time_t time, FlowID fid)
 uint32_t QEMUReader::wait_until_FIFO_full(FlowID fid)
   // active wait for fifo full before read {{{1
 {
-  MSG("checking %d is %s",fid,tsfifo[fid].full()?"FULL":"Not FULL");
-  while(!tsfifo[fid].full()) {
-    pthread_yield();
-    if (qsamplerlist[fid]->isActive(fid) == false)
-      return 0;
-  }
-  MSG("done %d is %s",fid,tsfifo[fid].full()?"FULL":"Not FULL");
-  pthread_mutex_unlock(&tsfifo_mutex[fid]);
+  MSG("OOPS");
+  I(0);
   return 1;
 }
 // }}}
@@ -201,30 +225,47 @@ DInst *QEMUReader::executeHead(FlowID fid)
     return dinst;
   }
 
+
   int conta = 0;
   while(!tsfifo[fid].full()) {
     
-    // FIXME: thead cond between push and pop (queue an executeHead)
-    if (tsfifo_mutex_blocked[fid]) {
-      tsfifo_mutex_blocked[fid] = 0;
-      pthread_mutex_unlock(&tsfifo_mutex[fid]);
+    pthread_mutex_lock(&mutex_ctrl); // BEGIN
+
+    if (tsfifo_snd_mutex_blocked[fid]) {
+      tsfifo_snd_mutex_blocked[fid] = 0;
+      pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
+      //MSG("2.alarmt snd%d",fid);
+    }
+#if 0
+    if (tsfifo_rcv_mutex_blocked == 0) {
+      tsfifo_rcv_mutex_blocked = 1;
+      pthread_mutex_unlock(&mutex_ctrl); // END
+
+      //MSG("1.sleep  rcv%d",fid);
+      pthread_mutex_lock(&tsfifo_rcv_mutex);
+      //MSG("1.wakeup rcv%d",fid);
+    }else{
+      pthread_mutex_unlock(&mutex_ctrl); // END
+    }
+#else
+    pthread_mutex_unlock(&mutex_ctrl); // END
+#endif
+
+    if (qsamplerlist[fid]->isActive(fid) == false) {
+      MSG("DOWN");
+      return 0;
     }
 
-    //live stuff
-    pthread_mutex_lock(&mutex_live);
     if (!live_qemu_active) {
-      //printf("------------- wait signal received\n");
+      pthread_mutex_lock(&mutex_live);
       pthread_cond_wait(&cond_live, &mutex_live);
-      //printf("------------- resume signal received\n");
+      pthread_mutex_unlock(&mutex_live);
     }
-    pthread_mutex_unlock(&mutex_live);
-    //printf("@%d",fid); fflush(stdout);
 
-    if (qsamplerlist[fid]->isActive(fid) == false)
+    if (conta++>100) {
+      //printf("+%d",fid);
       return 0;
-
-    if (conta++>100)
-      return 0;
+    }
   }
 
   for(int i=32;i<tsfifo[fid].size();i++) {
@@ -237,9 +278,9 @@ DInst *QEMUReader::executeHead(FlowID fid)
     tsfifo[fid].pop();
   }
 
-  if (tsfifo_mutex_blocked[fid]) {
-    tsfifo_mutex_blocked[fid] = 0;
-    pthread_mutex_unlock(&tsfifo_mutex[fid]);
+  if (tsfifo_snd_mutex_blocked[fid]) {
+    tsfifo_snd_mutex_blocked[fid] = 0;
+    pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
   }
 
   if (ruffer[fid].empty())

@@ -1582,7 +1582,7 @@ sub instStats {
 sub branchStats {
   my $file = shift;
 
-  print "Proc : Avg.Time :  BPType           :  Total  :         RAS        :  BPred  :         BTB         :  BTAC   : WasteRatio";
+  print "Proc : Avg.Time :  BPType           :  Total  :          RAS        :  BPred  :         BTB         :  BTAC   : WasteRatio";
   my $preType = $cf->getConfigEntry(key=>"preType");
   if( $preType > 0 ) {
     print "         " . $preType;
@@ -1660,7 +1660,7 @@ sub branchStats {
 
       $nBTAC += $cf->getResultField("P(${id})_FetchEngine","nBTAC");
     }
-    printf "%6.2f%% :",100*$nBTAC/$nBranches;
+    printf "%7.2f%% :",100*$nBTAC/$nBranches;
 ################
     printf "%7.2f%% ",100*($avgBranchTime)/($avgBranchTime+$avgFetchTime+1);
 

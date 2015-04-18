@@ -81,14 +81,28 @@ FetchEngine::FetchEngine(FlowID id
   const char *bpredSection = SescConf->getCharPtr("cpusimu","bpred",id);
 
   if( fe )
-    bpred = new BPredictor(id, FetchWidth, bpredSection, fe->bpred);
+    bpred = new BPredictor(id, FetchWidth, bpredSection, "", fe->bpred);
   else
-    bpred = new BPredictor(id, FetchWidth, bpredSection);
+    bpred = new BPredictor(id, FetchWidth, bpredSection, "");
 
   SescConf->isInt(bpredSection, "BTACDelay");
   SescConf->isBetween(bpredSection, "BTACDelay", 0, 1024);
 
   BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
+
+  if (BTACDelay!=0) {
+    if (SescConf->checkCharPtr("cpusimu","bpred2",id)) {
+      bpredSection = SescConf->getCharPtr("cpusimu","bpred2",id);
+      if( fe )
+        bpred2 = new BPredictor(id, FetchWidth, bpredSection, "2", fe->bpred2);
+      else
+        bpred2 = new BPredictor(id, FetchWidth, bpredSection, "2");
+    }else{
+      bpred2 = 0;
+    }
+  }else{
+    bpred2 = 0;
+  }
 
   lastd     = 0;
   missInst  = false;
@@ -164,16 +178,21 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_d
   Time_t n = (globalClock-lastMissTime);
   avgFetchTime.sample(n, dinst->getStatsFlag());
 
-
   if( BTACDelay ) {
     if( prediction == NoBTBPrediction && inst->doesJump2Label() ) {
       nBTAC.inc(dinst->getStatsFlag());
       unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
+    }else if( prediction == NoBTBPrediction && bpred2) {
+      nBTAC.inc(dinst->getStatsFlag());
+      if (bpred2->predict2(dinst, true) == CorrectPrediction)
+        unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
+      else
+        dinst->lockFetch(this);
     }else{
-      dinst->lockFetch(this); // blocked fetch (awaked in Resources)
+      dinst->lockFetch(this);
     }
   }else{
-    dinst->lockFetch(this); // blocked fetch (awaked in Resources)
+    dinst->lockFetch(this);
   }
 
   return true;
@@ -198,17 +217,35 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
       processBranch(oldinst, n2Fetched,&tempmaxbb);
     }
 
-   bucket->push(oldinst);
-   n2Fetched--;
+    oldinst->setFetchTime();
+    bucket->push(oldinst);
+    n2Fetched--;
 
   } else {
     do {
-      DInst *dinst = eint->executeHead(fid);
+      DInst *dinst = 0;
+      dinst = eint->executeHead(fid);
       if (dinst == 0) {
         //if (fid)
-          //I(0);
+        //I(0);
         break;
       }
+#if 0
+      if (!dinst->getStatsFlag()) {
+        if (dinst->getInst()->isLoad()) {
+          MemRequest::sendReqRead(gms->getDL1(), false, dinst->getAddr());
+          dinst->scrap(eint);
+          dinst = 0;
+        } else if (dinst->getInst()->isStore()) {
+          MemRequest::sendReqWrite(gms->getDL1(), false, dinst->getAddr());
+          dinst->scrap(eint);
+          dinst = 0;
+        }
+      }
+      if (dinst == 0)
+        break;
+#endif
+
       /*
       MSG("\nRealfetching from Reader, FlowID(%d), dinst->pc = %llx, dinst->addr = %llx, dinst->pe_id = %d, dinst->warp_id = %d",
           fid,
@@ -231,6 +268,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
         return;
       }
 
+      dinst->setFetchTime();
       bucket->push(dinst);
       n2Fetched--;
 

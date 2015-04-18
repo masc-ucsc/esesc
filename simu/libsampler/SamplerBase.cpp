@@ -150,10 +150,12 @@ void SamplerBase::doWarmupOpAddr(InstOpcode op, uint64_t addr) {
   I(mode == EmuWarmup);
 	I(emul->cputype != GPU);
 
+#if 0
 	if ( op == iLALU_LD)
 		DL1->ffread(addr);
 	else if (op == iSALU_ST)
 		DL1->ffwrite(addr);
+#endif
 }
 // 1}}}
 

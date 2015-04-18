@@ -16,10 +16,11 @@ class ThreadSafeFIFO {
     typedef uint16_t IndexType;
     volatile IndexType tail;
     volatile IndexType head;
-    Type array[65536];
+    Type array[4096];
 
   public:
-    uint16_t size() const { return 4000; }
+    uint16_t size() const { return 2048; }
+#if 0
     uint16_t realsize() const{
 
       if (head == tail)
@@ -31,6 +32,7 @@ class ThreadSafeFIFO {
       }
       return (tail-head-1);
     }
+#endif
 
     ThreadSafeFIFO() :
       tail(0), head(0) {
@@ -40,18 +42,20 @@ class ThreadSafeFIFO {
     Type *getTailRef() {
       return &array[tail];
     }
+
     void push() {
-      // Without object !!?? (Trick if the getTailRef was correctly used to save a memcpy
-      AtomicAdd(&tail,static_cast<IndexType>(1));
+      //AtomicAdd(&tail,static_cast<IndexType>(1));
+      tail = (tail + 1) & 4095;
     };
     void push(const Type *item_) {
       array[tail] = *item_;
-      AtomicAdd(&tail,static_cast<IndexType>(1));
+      push();
     };
+
     bool full() const {
-      if ((tail+2) == head)
+      if (((tail+2)&4095) == head)
         return true;
-      IndexType nextTail = (tail + 1); // Give some space
+      IndexType nextTail = ((tail + 1) & 4095); // Give some space
       return (nextTail == head);
     }
     bool empty() {
@@ -59,17 +63,19 @@ class ThreadSafeFIFO {
     }
 
     void pop() {
-      AtomicAdd(&head,static_cast<IndexType>(1));
+      //AtomicAdd(&head,static_cast<IndexType>(1));
+      head = (head + 1) & 4095;
     };
     Type *getHeadRef() {
       return &array[head];
     }
     Type *getNextHeadRef() {
-      return &array[static_cast<IndexType> (head+1)];
+      return &array[static_cast<IndexType>((head+1) & 4095)];
     }
     void pop(Type *obj) {
       *obj = array[head];
-      AtomicAdd(&head,static_cast<IndexType>(1));
+      //AtomicAdd(&head,static_cast<IndexType>(1));
+      head = (head + 1) & 4095;
     };
 
 };

@@ -48,10 +48,10 @@
  * BPred
  */
 
-BPred::BPred(int32_t i, int32_t fetchWidth, const char *sec, const char *name)
+BPred::BPred(int32_t i, int32_t fetchWidth, const char *sec, const char *sname, const char *name)
   :id(i)
-  ,nHit("P(%d)_BPRED_%s:nHit",i,name)
-  ,nMiss("P(%d)_BPRED_%s:nMiss",i,name)
+  ,nHit("P(%d)_BPred%s_%s:nHit",i,sname, name)
+  ,nMiss("P(%d)_BPred%s_%s:nMiss",i,sname, name)
 {
   // bpred4CycleAddrShift
   if (SescConf->checkInt(sec, "bpred4Cycle")) {
@@ -72,8 +72,8 @@ BPred::~BPred() {
 /*****************************************
  * RAS
  */
-BPRas::BPRas(int32_t i, int32_t fetchWidth, const char *section)
-  :BPred(i, fetchWidth, section,"RAS")
+BPRas::BPRas(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname, "RAS")
    ,RasSize(SescConf->getInt(section,"rasSize"))
 {
   // Constraints
@@ -104,6 +104,7 @@ PredType BPRas::predict(DInst *dinst, bool doUpdate)
   // tables when predict is called. The update only actualizes the statistics.
 
   if(dinst->getInst()->isFuncRet()) {
+
     if(stack == 0)
       return CorrectPrediction;
 
@@ -113,15 +114,20 @@ PredType BPRas::predict(DInst *dinst, bool doUpdate)
         index = RasSize-1;
     }
 
-    if( (stack[index]&~1) == (dinst->getAddr()&~1) ) {
+    if( stack[index] == dinst->getAddr() || (stack[index]+4) == dinst->getAddr() ) {
+
+      //MSG("RET  %llx -> %llx  (stack=%llx) good",dinst->getPC(),dinst->getAddr(), stack[index]);
       return CorrectPrediction;
     }
+    //MSG("RET  %llx -> %llx  (stack=%llx) miss",dinst->getPC(),dinst->getAddr(), stack[index]);
 
     return MissPrediction;
   } else if(dinst->getInst()->isFuncCall() && stack) {
 
+    //MSG("CALL %llx -> %llx  (stack=%llx)",dinst->getPC(),dinst->getAddr(), stack[index]);
+
     if (doUpdate) {
-      stack[index] = dinst->getPC()+4; // Assume always delay slot for function calls
+      stack[index] = dinst->getPC()+4; 
       index++;
 
       if( index >= RasSize )
@@ -135,8 +141,8 @@ PredType BPRas::predict(DInst *dinst, bool doUpdate)
 /*****************************************
  * BTB
  */
-BPBTB::BPBTB(int32_t i, int32_t fetchWidth,const char *section, const char *name)
-  :BPred(i, fetchWidth, section, name ? name : "BTB")
+BPBTB::BPBTB(int32_t i, int32_t fetchWidth,const char *section, const char *sname, const char *name)
+  :BPred(i, fetchWidth, section, sname, name ? name : "BTB")
 {
   if( SescConf->getInt(section,"btbSize") == 0 ) {
     // Oracle
@@ -144,7 +150,7 @@ BPBTB::BPBTB(int32_t i, int32_t fetchWidth,const char *section, const char *name
     return;
   }
 
-  data = BTBCache::create(section,"btb","P(%d)_BPRED_BTB:",i);
+  data = BTBCache::create(section,"btb","P(%d)_BPred%s_BTB:",i, sname);
   I(data);
 }
 
@@ -280,9 +286,9 @@ PredType  BPNotTakenEnhanced::predict(DInst *dinst, bool doUpdate) {
  * BP2bit
  */
 
-BP2bit::BP2bit(int32_t i, int32_t fetchWidth, const char *section)
-  :BPred(i, fetchWidth, section, "2bit")
-  ,btb(  i, fetchWidth, section)
+BP2bit::BP2bit(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname, "2bit")
+  ,btb(  i, fetchWidth, section, sname)
   ,table(section
          ,SescConf->getInt(section,"size")
          ,SescConf->getInt(section,"bits"))
@@ -323,9 +329,9 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate)
  * BP2level
  */
 
-BP2level::BP2level(int32_t i, int32_t fetchWidth, const char *section)
-  :BPred(i, fetchWidth, section,"2level")
-   ,btb( i, fetchWidth, section)
+BP2level::BP2level(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname,"2level")
+   ,btb( i, fetchWidth, section, sname)
    ,l1Size(SescConf->getInt(section,"l1Size"))
    ,l1SizeMask(l1Size - 1)
    ,historySize(SescConf->getInt(section,"historySize"))
@@ -393,9 +399,9 @@ PredType BP2level::predict(DInst *dinst, bool doUpdate)
  * BPHybid
  */
 
-BPHybrid::BPHybrid(int32_t i, int32_t fetchWidth, const char *section)
-  :BPred(i, fetchWidth, section,"Hybrid")
-  ,btb(  i, fetchWidth, section)
+BPHybrid::BPHybrid(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname,"Hybrid")
+  ,btb(  i, fetchWidth, section, sname)
    ,historySize(SescConf->getInt(section,"historySize"))
    ,historyMask((1 << historySize) - 1)
    ,globalTable(section
@@ -493,9 +499,9 @@ PredType BPHybrid::predict(DInst *dinst, bool doUpdate)
  * A. Seznec, S. Felix, V. Krishnan, Y. Sazeides
  */
 
-BP2BcgSkew::BP2BcgSkew(int32_t i, int32_t fetchWidth, const char *section)
-  : BPred(i, fetchWidth, section,"2BcgSkew")
-  ,btb(   i, fetchWidth, section)
+BP2BcgSkew::BP2BcgSkew(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+  : BPred(i, fetchWidth, section, sname,"2BcgSkew")
+  ,btb(   i, fetchWidth, section, sname)
   ,BIM(section,SescConf->getInt(section,"BIMSize"))
   ,G0(section,SescConf->getInt(section,"G0Size"))
   ,G0HistorySize(SescConf->getInt(section,"G0HistorySize"))
@@ -642,9 +648,9 @@ PredType BP2BcgSkew::predict(DInst *dinst, bool doUpdate)
  *
  */
 
-BPyags::BPyags(int32_t i, int32_t fetchWidth, const char *section)
-  :BPred(i, fetchWidth, section, "yags")
-  ,btb(  i, fetchWidth, section)
+BPyags::BPyags(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname, "yags")
+  ,btb(  i, fetchWidth, section, sname)
   ,historySize(24)
   ,historyMask((1 << 24) - 1)
   ,table(section
@@ -775,9 +781,9 @@ PredType BPyags::predict(DInst *dinst,bool doUpdate)
  * 
  */
  
-BPOgehl::BPOgehl(int32_t i, int32_t fetchWidth,const char *section)
-  :BPred(i, fetchWidth, section, "ogehl")
-  ,btb(  i, fetchWidth, section)
+BPOgehl::BPOgehl(int32_t i, int32_t fetchWidth,const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname, "ogehl")
+  ,btb(  i, fetchWidth, section, sname)
   ,mtables(SescConf->getInt(section,"mtables"))
   ,glength(SescConf->getInt(section,"glength"))
   ,nentry(3)
@@ -1007,9 +1013,9 @@ int32_t BPOgehl::geoidx(long long Add, long long *histo, int32_t m, int32_t func
  */
 
 #if 1
-BPSOgehl::BPSOgehl(int32_t i, int32_t fetchWidth,const char *section)
-  :BPred(i, fetchWidth, section, "sogehl")
-  ,btb(  i, fetchWidth, section)
+BPSOgehl::BPSOgehl(int32_t i, int32_t fetchWidth,const char *section, const char *sname)
+  :BPred(i, fetchWidth, section, sname, "sogehl")
+  ,btb(  i, fetchWidth, section, sname)
   ,mtables(SescConf->getInt(section,"mtables"))
   ,glength(SescConf->getInt(section,"glength"))
   ,AddWidth(log2i(SescConf->getInt(section,"tsize")))
@@ -1180,7 +1186,7 @@ uint32_t BPSOgehl::geoidx2(long long Add, int32_t m)
  */
 
 
-BPred *BPredictor::getBPred(int32_t id, int32_t fetchWidth, const char *sec)
+BPred *BPredictor::getBPred(int32_t id, int32_t fetchWidth, const char *sec, const char *sname)
 {
   BPred *pred=0;
   
@@ -1188,27 +1194,27 @@ BPred *BPredictor::getBPred(int32_t id, int32_t fetchWidth, const char *sec)
 
   // Normal Predictor
   if (strcasecmp(type, "oracle") == 0) {
-    pred = new BPOracle(id, fetchWidth, sec);
+    pred = new BPOracle(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "NotTaken") == 0) {
-    pred = new BPNotTaken(id, fetchWidth, sec);
+    pred = new BPNotTaken(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "NotTakenEnhanced") == 0) {
-    pred = new BPNotTakenEnhanced(id, fetchWidth, sec);
+    pred = new BPNotTakenEnhanced(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "Taken") == 0) {
-    pred = new BPTaken(id, fetchWidth, sec);
+    pred = new BPTaken(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "2bit") == 0) {
-    pred = new BP2bit(id, fetchWidth, sec);
+    pred = new BP2bit(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "2level") == 0) {
-    pred = new BP2level(id, fetchWidth, sec);
+    pred = new BP2level(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "2BcgSkew") == 0) {
-    pred = new BP2BcgSkew(id, fetchWidth, sec);
+    pred = new BP2BcgSkew(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "Hybrid") == 0) {
-    pred = new BPHybrid(id, fetchWidth, sec);
+    pred = new BPHybrid(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "yags") == 0) {
-    pred = new BPyags(id, fetchWidth, sec);
+    pred = new BPyags(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "ogehl") == 0) {
-    pred = new BPOgehl(id, fetchWidth, sec);
+    pred = new BPOgehl(id, fetchWidth, sec, sname);
   } else if (strcasecmp(type, "sogehl") == 0) {
-    pred = new BPSOgehl(id, fetchWidth, sec);
+    pred = new BPSOgehl(id, fetchWidth, sec, sname);
   } else {
     MSG("BPredictor::BPredictor Invalid branch predictor type [%s] in section [%s]", type,sec);
     SescConf->notCorrect();
@@ -1219,13 +1225,13 @@ BPred *BPredictor::getBPred(int32_t id, int32_t fetchWidth, const char *sec)
   return pred;
 }
 
-BPredictor::BPredictor(int32_t i, int32_t fetchWidth, const char *sec, BPredictor *bpred)
+BPredictor::BPredictor(int32_t i, int32_t fetchWidth, const char *sec, const char *sname, BPredictor *bpred)
   :id(i)
   ,SMTcopy(bpred != 0)
-  ,ras(i, fetchWidth, sec)
-  ,nBranches("P(%d)_BPred:nBranches", i)
-  ,nTaken("P(%d)_BPred:nTaken", i)
-  ,nMiss("P(%d)_BPred:nMiss", i)
+  ,ras(i, fetchWidth, sec, sname)
+  ,nBranches("P(%d)_BPred%s:nBranches", i, sname)
+  ,nTaken("P(%d)_BPred%s:nTaken", i, sname)
+  ,nMiss("P(%d)_BPred%s:nMiss", i, sname)
   ,section(strdup(sec ? sec : "null" ))
 {
 
@@ -1233,7 +1239,7 @@ BPredictor::BPredictor(int32_t i, int32_t fetchWidth, const char *sec, BPredicto
   if (bpred)
     pred = bpred->pred;
   else
-    pred = getBPred(id, fetchWidth, section);
+    pred = getBPred(id, fetchWidth, section, sname);
 }
 
 BPredictor::~BPredictor()

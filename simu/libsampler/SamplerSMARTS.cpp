@@ -80,7 +80,6 @@ SamplerSMARTS::~SamplerSMARTS()
 void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *env)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
-
   I(fid < emul->getNumEmuls());
   if(likely(!execute(fid, 1)))
     return; // QEMU can still send a few additional instructions (emul should stop soon)
@@ -98,7 +97,9 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
     }
 
     I(mode == EmuWarmup);
-		doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
+    if ( op == iLALU_LD || op == iSALU_ST)
+      emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, env, false);
+		//doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
     return;
   }
 
@@ -157,8 +158,6 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
 }
 /* }}} */
 
-
-
 void SamplerSMARTS::updateCPI(FlowID fid){
   //extract cpi of last sample interval 
  
@@ -166,7 +165,6 @@ void SamplerSMARTS::updateCPI(FlowID fid){
   return; 
 
 }
-
 
 void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
   if (rotate){
@@ -176,8 +174,8 @@ void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
     //If in live mode and warmup is to be forced
     if(BootLoader::genwarm > 0 && next_mode == EmuTiming) {
       BootLoader::genwarm--;
-      setMode(EmuWarmup, fid);
-      //setMode(EmuRabbit, fid);
+      //setMode(EmuWarmup, fid);
+      setMode(EmuDetail, fid);
     } else if(BootLoader::live_warmup > 0 && next_mode == EmuTiming) {
       BootLoader::live_warmup--;
       BootLoader::sample_count++;
