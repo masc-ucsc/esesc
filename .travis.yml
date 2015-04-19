@@ -31,4 +31,5 @@ after_script:
   - cp ../../esesc/bins/mips64/* .
   - cp ../../esesc/bins/inputs/* .
   - ../main/esesc < crafty.in
+  - ../../esesc/conf/scripts/report.pl -last
 
