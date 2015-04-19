@@ -254,9 +254,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
           dinst->getPE(),
           dinst->getWarpID()
          );
-
-      if (dinst->getWarpID() == 25){
-        I(0);
       }
       */
       getStatsFlag |= dinst->getStatsFlag();
