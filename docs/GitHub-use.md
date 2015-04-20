@@ -59,7 +59,7 @@ Modify your `.git/config` file to contain the following configuration:
       fetch = +refs/heads/*:refs/remotes/origin/*
     [remote "github"]
       url = https://github.com/masc-ucsc/esesc.git
-      fetch = +refs/heads/master:refs/remotes/origin/github_master
+      fetch = +refs/heads/master:refs/remotes/github/github_master
     [branch "master"]
       remote = origin
       merge = refs/heads/master
