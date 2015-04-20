@@ -70,6 +70,11 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
 void NICECache::doReq(MemRequest *mreq)
   /* read (down) {{{1 */
 {
+  TimeDelta_t hdelay = hitDelay;
+
+  if (mreq->isWarmup())
+    hdelay = 1;
+
   readHit.inc(mreq->getStatsFlag());
 
 	if (mreq->isHomeNode()) {
@@ -87,15 +92,12 @@ void NICECache::doReq(MemRequest *mreq)
           warmupStepStart = warmupStepStart<<1;
           warmupStep      = warmupStepStart;
         }
-        lat = hitDelay;
       }else{
-        lat = 1;
+        hdelay = 1;
       }
       warmup.insert(mreq->getAddr()>>bsizeLog2);
-      mreq->ack(lat);
-    }else{
-      mreq->ack(hitDelay);
     }
+    mreq->ack(hdelay);
 		return;
 	}
 	if (mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive) {
@@ -120,15 +122,11 @@ void NICECache::doReq(MemRequest *mreq)
         warmupStepStart = warmupStepStart<<1;
         warmupStep      = warmupStepStart;
       }
-      lat = hitDelay;
     }else{
-      lat = 1;
-      //MSG("%lld 0x%llx",globalClock, (long long)mreq->getAddr()>>bsizeLog2);
+      hdelay = 1;
     }
-    router->scheduleReqAck(mreq, lat);
-  }else{
-    router->scheduleReqAck(mreq, hitDelay);
   }
+  router->scheduleReqAck(mreq, hdelay);
 }
 /* }}} */
 

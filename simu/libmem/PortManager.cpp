@@ -116,9 +116,13 @@ void PortManagerBanked::nextBankSlotUntil(AddrType addr, Time_t until, bool en)
 
 Time_t PortManagerBanked::reqDone(MemRequest *mreq)
 {
+  if (mreq->isWarmup())
+    return globalClock+1;
+
   Time_t when=sendFillPort->nextSlot(mreq->getStatsFlag())+dataDelay;
 
-  // TRACE MSG("%5lld @%lld %-8s done %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
+  // TRACE 
+  //MSG("%5lld @%lld %-8s done %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
 
   return when;
 }
@@ -140,14 +144,18 @@ bool PortManagerBanked::isBusy(AddrType addr) const
 void PortManagerBanked::req(MemRequest *mreq)
 /* main processor read entry point {{{1 */
 {
-	I(curRequests<=maxRequests);
+	//I(curRequests<=maxRequests && !mreq->isWarmup());
 
   if (!mreq->isRetrying())
     curRequests++;
 
-  // TRACE MSG("%5lld @%lld %-8s req  %12llx curReq=%d",mreq->getID(),globalClock,mobj->getName(),mreq->getAddr(),curRequests);
+  // TRACE 
+  //MSG("%5lld @%lld %-8s req  %12llx curReq=%d",mreq->getID(),globalClock,mobj->getName(),mreq->getAddr(),curRequests);
 
-	mreq->redoReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+tagDelay);
+  if (mreq->isWarmup())
+    mreq->redoReqAbs(globalClock+1);
+  else
+    mreq->redoReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+tagDelay);
 }
 // }}}
 
@@ -187,7 +195,12 @@ void PortManagerBanked::blockFill(MemRequest *mreq)
 void PortManagerBanked::reqAck(MemRequest *mreq)
 /* request Ack {{{1 */
 {
-  Time_t until = snoopFillBankUse(mreq);
+  Time_t until;
+
+  if (mreq->isWarmup())
+    until = globalClock+1;
+  else
+    until = snoopFillBankUse(mreq);
 
 	blockTime =0;
 
@@ -199,14 +212,12 @@ void PortManagerBanked::setState(MemRequest *mreq)
 /* set state {{{1 */
 {
 	mreq->redoSetStateAbs(globalClock+1);
-	//mreq->redoSetStateAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+1);
 }
 // }}}
 
 void PortManagerBanked::setStateAck(MemRequest *mreq)
 /* set state ack {{{1 */
 {
-	//mreq->redoSetStateAckAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+1);
 	mreq->redoSetStateAckAbs(globalClock+1);
 }
 // }}}

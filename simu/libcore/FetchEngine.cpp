@@ -230,20 +230,27 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
         //I(0);
         break;
       }
-#if 0
-      if (!dinst->getStatsFlag()) {
+#if 1
+      if (!dinst->getStatsFlag() && dinst->getPC() == 0) {
         if (dinst->getInst()->isLoad()) {
-          MemRequest::sendReqRead(gms->getDL1(), false, dinst->getAddr());
+          MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());
           dinst->scrap(eint);
           dinst = 0;
         } else if (dinst->getInst()->isStore()) {
-          MemRequest::sendReqWrite(gms->getDL1(), false, dinst->getAddr());
+          MemRequest::sendReqWriteWarmup(gms->getDL1(), dinst->getAddr());
           dinst->scrap(eint);
           dinst = 0;
         }
       }
-      if (dinst == 0)
-        break;
+      if (dinst == 0) {
+        EventScheduler::advanceClock();
+        EventScheduler::advanceClock();
+        EventScheduler::advanceClock();
+        EventScheduler::advanceClock();
+        EventScheduler::advanceClock();
+        EventScheduler::advanceClock();
+        continue;
+      }
 #endif
 
       /*

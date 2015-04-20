@@ -169,6 +169,7 @@ private:
     replay        = false;
     performed     = false;
     interCluster  = false;
+
     fetchTime = 0;
 #ifdef ESESC_TRACE
     wakeUpTime    = 0;

@@ -93,25 +93,6 @@ void TaskHandler::report(const char *str) {
 void TaskHandler::addEmul(EmulInterface *eint, FlowID fid) {
   /* add a new emulator to the system {{{1 */
 
-
-  /* Commented out by Alamelu, who thinks this does not support 
-     interleaving
-
-
-  // By default, all the threads are active. If there are no
-  // instructions, blui.poweroff would be called when advance_clock is
-  // called the first time
-  int num_flows = eint->getNumFlows();
-
-  // Set the starting offset for the EmulInterface
-  //eint->setFirstFlow(emulas.size()); //FIXME : Will not work when we have a GPU (A GPU has 1 interface, many flows);
-
-  for(int i=0;i<num_flows;i++) {// FIXME: Do we need to keep eint per flow? For CPU we only have one eint.
-  emulas.push_back(eint);
-  }
-
-   */
-
   FlowID nemul = SescConf->getRecordSize("","cpuemul");
 
   if (emulas.empty()){
@@ -124,41 +105,11 @@ void TaskHandler::addEmul(EmulInterface *eint, FlowID fid) {
 
   emulas.erase (emulas.begin()+fid);
   emulas.insert(emulas.begin()+fid, eint);
-    
-  
-
-  /*
-  // IF DEBUG
-  for(FlowID i=0;i<nemul;i++)
-  {
-    if (emulas.at(i) != 0x0)
-      MSG("Emul[%d] = %s", i, (emulas.at(i))->getSection());   
-  }
-  */
 }
 /* }}} */
 
 void TaskHandler::addEmulShared(EmulInterface *eint) {
   /* add a new emulator to the system {{{1 */
-
-
-  /* Commented out by Alamelu, who thinks this does not support 
-     interleaving
-
-
-  // By default, all the threads are active. If there are no
-  // instructions, blui.poweroff would be called when advance_clock is
-  // called the first time
-  int num_flows = eint->getNumFlows();
-
-  // Set the starting offset for the EmulInterface
-  //eint->setFirstFlow(emulas.size()); //FIXME : Will not work when we have a GPU (A GPU has 1 interface, many flows);
-
-  for(int i=0;i<num_flows;i++) {// FIXME: Do we need to keep eint per flow? For CPU we only have one eint.
-  emulas.push_back(eint);
-  }
-
-   */
 
   FlowID nemul = SescConf->getRecordSize("","cpuemul");
 
@@ -189,7 +140,6 @@ void TaskHandler::addEmulShared(EmulInterface *eint) {
   */
 }
 /* }}} */
-
 
 void TaskHandler::addSimu(GProcessor *gproc) {
   /* add a new simulator to the system {{{1 */

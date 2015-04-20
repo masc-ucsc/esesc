@@ -114,6 +114,7 @@ private:
   bool          retrying;
   bool          needsDisp; // Once set, it keeps the value
   bool          doStats;
+  bool          warmup;
   /* }}} */
 
   MemRequest();
@@ -221,6 +222,28 @@ protected:
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
 #ifdef ENABLE_NBSD
     mreq->param      = param;
+#endif
+		m->req(mreq);
+  }
+
+  static void sendReqReadWarmup(MemObj *m, AddrType addr) {
+    MemRequest *mreq = create(m,addr, false, 0);
+    mreq->mt         = mt_req;
+    mreq->ma         = ma_setValid; // For reads, MOES are valid states
+    mreq->warmup     = true;
+#ifdef ENABLE_NBSD
+    mreq->param      = 0;
+#endif
+		m->req(mreq);
+  }
+
+  static void sendReqWriteWarmup(MemObj *m, AddrType addr) {
+    MemRequest *mreq = create(m,addr,false, 0);
+    mreq->mt         = mt_req;
+    mreq->ma         = ma_setDirty; // For writes, only MO are valid states
+    mreq->warmup     = true;
+#ifdef ENABLE_NBSD
+    mreq->param      = 0;
 #endif
 		m->req(mreq);
   }
@@ -368,6 +391,7 @@ protected:
   DataType getData() const { return data; }
 
   bool getStatsFlag() const { return doStats; }
+  bool isWarmup() const { return warmup; }
   bool isRetrying() const { return retrying; }
   void setRetrying() { retrying = true; }
   void clearRetrying() { retrying = false; }

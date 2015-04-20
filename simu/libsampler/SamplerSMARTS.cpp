@@ -97,9 +97,10 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
     }
 
     I(mode == EmuWarmup);
-#if 0
+#if 1
     if ( op == iLALU_LD || op == iSALU_ST)
-      emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, env, false);
+      // cache warmup fake inst, do not need SRC deps (faster)
+      emul->queueInstruction(0,addr, fid, op, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, env, false);
 #else
 		//doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
 #endif

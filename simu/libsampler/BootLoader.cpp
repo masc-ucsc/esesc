@@ -318,7 +318,11 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
   const char *sampler_sec  = SescConf->getCharPtr(section,keyword);
   const char *sampler_type = SescConf->getCharPtr(sampler_sec,"type");
 
-  EmuSampler *sampler = 0;
+  static EmuSampler *sampler = 0;
+
+  if (sampler)
+    return sampler;
+
   if(strcasecmp(sampler_type,"inst") == 0 ) {
     sampler = new SamplerSMARTS("TASS",sampler_sec,eint, fid);
   }else if(strcasecmp(sampler_type,"time") == 0 ) {

@@ -675,7 +675,9 @@ void CCache::doReq(MemRequest *mreq)
     }
 #endif
 		mreq->convert2ReqAck(l->reqAckNeeds());
-		router->scheduleReqAckAbs(mreq, inOrderUpMessageAbs(when));
+    if (!mreq->isWarmup())
+      when = inOrderUpMessageAbs(when);
+		router->scheduleReqAckAbs(mreq,when);
 	}
 
   MTRACE("doReq done");
@@ -756,7 +758,9 @@ void CCache::doReqAck(MemRequest *mreq)
 		mreq->ackAbs(when);
   }else {
     MTRACE("doReqAck is Not HomeNode, calling ackAbsCB %u", when);
-    router->scheduleReqAckAbs(mreq,inOrderUpMessageAbs(when));
+    if (!mreq->isWarmup())
+      when = inOrderUpMessageAbs(when);
+    router->scheduleReqAckAbs(mreq,when);
   }
 }
 // }}}
@@ -788,6 +792,8 @@ void CCache::doSetState(MemRequest *mreq)
 
   int16_t portid = router->getCreatorPort(mreq);
 	if (l->getSharingCount()) {
+    if (portid>=0)
+      l->removeSharing(portid);
     if (directory) {
 			if (l->getSharingCount() == 1) {
         invOne.inc(mreq->getStatsFlag());
@@ -797,7 +803,7 @@ void CCache::doSetState(MemRequest *mreq)
         invAll.inc(mreq->getStatsFlag());
         // FIXME: optimize directory for 2 or more
         int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage(1));
-        I(nmsg>1);
+        I(nmsg);
       }
     }else{
       invAll.inc(mreq->getStatsFlag());

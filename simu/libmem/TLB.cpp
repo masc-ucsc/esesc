@@ -102,6 +102,12 @@ void TLB::doReq(MemRequest *mreq)
 #else
   Line *l = tlbBank->readLine(mreq->getAddr());
 #endif
+  if (l==0 && mreq->isWarmup()) {
+    l = tlbBank->fillLine(mreq->getAddr());
+    if (lowerTLB) {
+      lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
+    }
+  }
   if (l) { //TLB Hit
 
     tlbReadHit.inc(mreq->getStatsFlag());
@@ -140,8 +146,7 @@ void TLB::doReq(MemRequest *mreq)
 
   if (pending.empty() || retrying) {
     // 1 outstanding miss at most (TLB, no MSHR complications)
-
-    MemRequest::sendReqRead(
+    MemRequest::sendReqRead( 
         lowerCache,
         mreq->getStatsFlag(),
         calcPage1Addr(mreq->getAddr()),
@@ -313,7 +318,7 @@ void TLB::req(MemRequest *mreq)
   }
   if (!mreq->isRetrying())
     curRequests++;
-  I(curRequests<=maxRequests);
+  //I(curRequests<=maxRequests && !mreq->isWarmup());
   I(curRequests>0);
 	//I(!mreq->isRetrying());
 	mreq->redoReqAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
@@ -326,7 +331,7 @@ void TLB::reqAck(MemRequest *mreq)
 	//I(!mreq->isRetrying());
   if (!mreq->isRetrying())
     curRequests--;
-  I(curRequests<=maxRequests);
+  //I(curRequests<=maxRequests && !mreq->isWarmup());
   I(curRequests>=0);
 	mreq->redoReqAckAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
 }
