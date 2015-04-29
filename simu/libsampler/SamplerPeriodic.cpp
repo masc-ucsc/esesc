@@ -98,7 +98,7 @@ SamplerPeriodic::~SamplerPeriodic()
 }
 /* }}} */
 
-void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *env)
+void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
@@ -112,7 +112,7 @@ void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int
     if (mode == EmuRabbit || mode == EmuInit)
       return;
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(pc,addr, op ,fid, src1, src2, dest, dest2, env, getStatsFlag());
+      emul->queueInstruction(pc,addr, op ,fid, src1, src2, dest, dest2, getStatsFlag());
       return;
     }
     I(mode == EmuWarmup);

@@ -1001,7 +1001,8 @@ void FUBranch::performed(DInst *dinst) {
 FURALU::FURALU(Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, bool scooreMemory_, int32_t id)
   /* constructor {{{1 */
   :Resource(cls, aGen, l)
-  ,memoryBarrier("P(%d)_memoryBarrier",id)
+  ,dmemoryBarrier("P(%d)_dmemoryBarrier",id)
+  ,imemoryBarrier("P(%d)_imemoryBarrier",id)
 {
   blockUntil = 0;
   scooreMemory = scooreMemory_;
@@ -1035,7 +1036,10 @@ StallCause FURALU::canIssue(DInst *dinst)
             && !scooreMemory) {
     if (gproc->isROBEmpty())
       return NoStall;
-    memoryBarrier.inc(dinst->getStatsFlag());
+    if (dinst->getAddr() == 0xbeefbeef)
+      imemoryBarrier.inc(dinst->getStatsFlag());
+    else
+      dmemoryBarrier.inc(dinst->getStatsFlag());
     return SyscallStall;
   }
 

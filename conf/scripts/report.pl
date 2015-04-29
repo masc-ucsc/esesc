@@ -595,8 +595,8 @@ sub showStatReport {
 
     printf " %6.3f ", 100*$l1_miss/($l1_total+1);
     printf " %6.3f ", 100*$l2_miss/($l2_total+1);
-    my $clockTicks= $cf->getResultField("P(0)","clockTicks");
-    my $nInst = getProcnInst(0);
+    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
+    my $nInst = getProcnInst($i);
     printf "%9.3f ", $nInst/$clockTicks;
 
     # szBB

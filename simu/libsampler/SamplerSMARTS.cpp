@@ -77,7 +77,7 @@ SamplerSMARTS::~SamplerSMARTS()
 }
 /* }}} */
 
-void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *env)
+void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
@@ -92,7 +92,7 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
       return;
 
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, env, getStatsFlag());
+      emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, getStatsFlag());
       return;
     }
 
@@ -100,7 +100,7 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
 #if 1
     if ( op == iLALU_LD || op == iSALU_ST)
       // cache warmup fake inst, do not need SRC deps (faster)
-      emul->queueInstruction(0,addr, fid, op, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, env, false);
+      emul->queueInstruction(0,addr, fid, op, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, false);
 #else
 		//doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
 #endif

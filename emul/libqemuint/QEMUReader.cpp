@@ -149,7 +149,7 @@ QEMUReader::~QEMUReader() {
 }
 /* }}} */
 
-void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, void * env, bool keepStats)
+void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats)
 /* queue instruction (called by QEMU) {{{1 */
 {
   uint64_t conta=0;

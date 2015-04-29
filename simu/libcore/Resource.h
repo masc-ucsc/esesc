@@ -310,7 +310,8 @@ public:
 
 class FURALU : public Resource {
 private:
-  GStatsCntr memoryBarrier;
+  GStatsCntr dmemoryBarrier;
+  GStatsCntr imemoryBarrier;
   Time_t blockUntil;
   bool scooreMemory;
 

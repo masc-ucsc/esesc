@@ -65,7 +65,7 @@ public:
   SamplerGPUSim(const char *name, const char *section, EmulInterface *emul);
   virtual ~SamplerGPUSim();
 
-  void queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest, void *env);
+  void queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest);
 
   uint64_t getTime() const;
 

@@ -69,16 +69,28 @@ FetchEngine::FetchEngine(FlowID id
   // Constraints
   SescConf->isInt("cpusimu", "fetchWidth",id);
   SescConf->isBetween("cpusimu", "fetchWidth", 1, 1024, id);
+  SescConf->isPower2("cpusimu", "fetchWidth", id);
   FetchWidth = SescConf->getInt("cpusimu", "fetchWidth", id);
+  FetchWidthBits = log2i(FetchWidth);
+
+  AlignedFetch   = SescConf->getBool("cpusimu","alignedFetch", id);
 
   SescConf->isBetween("cpusimu", "bb4Cycle",0,1024,id);
   BB4Cycle = SescConf->getInt("cpusimu", "bb4Cycle",id);
   if( BB4Cycle == 0 )
     BB4Cycle = USHRT_MAX;
-  SescConf->isBetween("cpusimu", "bpredDelay",1,1024,id);
-  bpredDelay = SescConf->getInt("cpusimu", "bpredDelay",id);
 
   const char *bpredSection = SescConf->getCharPtr("cpusimu","bpred",id);
+
+  BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
+
+  if (BTACDelay)
+    SescConf->isBetween("cpusimu", "bpredDelay",1,BTACDelay,id);
+  else
+    SescConf->isBetween("cpusimu", "bpredDelay",1,1024,id);
+
+  bpredDelay = SescConf->getInt("cpusimu", "bpredDelay",id);
+
 
   if( fe )
     bpred = new BPredictor(id, FetchWidth, bpredSection, "", fe->bpred);
@@ -88,7 +100,6 @@ FetchEngine::FetchEngine(FlowID id
   SescConf->isInt(bpredSection, "BTACDelay");
   SescConf->isBetween(bpredSection, "BTACDelay", 0, 1024);
 
-  BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
 
   if (BTACDelay!=0) {
     if (SescConf->checkCharPtr("cpusimu","bpred2",id)) {
@@ -135,59 +146,51 @@ FetchEngine::~FetchEngine() {
   delete bpred;
 }
 
-bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_delete_maxbb) {
+bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch, uint16_t* to_delete_maxbb) {
   const Instruction *inst = dinst->getInst();
-  Time_t missFetchTime=0;
 
   I(dinst->getInst()->isControl()); // getAddr is target only for br/jmp
   PredType prediction     = bpred->predict(dinst, true);
 
   if(prediction == CorrectPrediction) {
-    if( dinst->isTaken() ) {
-      bool dobreak = false;
-      // Only when the branch is taken check maxBB
-      if (bpredDelay > 1) {
-        // Block fetching (not really a miss, but the taken takes time).
-        missFetchTime = globalClock;
-        setMissInst(dinst);
-        unBlockFetchBPredDelayCB::schedule(bpredDelay-1, this , dinst, missFetchTime);
-        dobreak = true;
-      }
+    if( !dinst->isTaken() ) 
+      return false;
 
-      if( maxBB <= 1 ) {
-        // No instructions fetched (stall)
-        if (!missInst) {
-          nDelayInst2.add(n2Fetched, dinst->getStatsFlag());
-          //I(0);
-          return true;
-        }
-      }
-      maxBB--;
-      return dobreak;
+    maxBB--;
+
+    // Only when the branch is taken check maxBB
+    if (bpredDelay > 1) {
+      // Block fetching (not really a miss, but the taken takes time).
+      setMissInst(dinst);
+      unBlockFetchBPredDelayCB::schedule(bpredDelay-1, this , dinst, globalClock);
+      return true;
     }
+
+    if( maxBB < 1 ) {
+      // No instructions fetched (stall)
+      nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
+      return true;
+    }
+
     return false;
   }
-
-  I(!missInst);
-  I(missFetchTime==0);
-
-  missFetchTime = globalClock;
 
   //MSG("2: Dinst not taken Adding PC %x ID %llu\t  ",dinst->getPC(), dinst->getID());
   setMissInst(dinst);
   Time_t n = (globalClock-lastMissTime);
   avgFetchTime.sample(n, dinst->getStatsFlag());
+  if( prediction != NoBTBPrediction || BTACDelay == 0) {
+    dinst->lockFetch(this);
+    return true;
+  }
 
-  if( BTACDelay ) {
-    if( prediction == NoBTBPrediction && inst->doesJump2Label() ) {
-      nBTAC.inc(dinst->getStatsFlag());
+  if( inst->doesJump2Label() ) {
+    nBTAC.inc(dinst->getStatsFlag());
+    unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
+  }else if( bpred2) {
+    nBTAC.inc(dinst->getStatsFlag());
+    if (bpred2->predict2(dinst, true) == CorrectPrediction) {
       unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
-    }else if( prediction == NoBTBPrediction && bpred2) {
-      nBTAC.inc(dinst->getStatsFlag());
-      if (bpred2->predict2(dinst, true) == CorrectPrediction)
-        unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
-      else
-        dinst->lockFetch(this);
     }else{
       dinst->lockFetch(this);
     }
@@ -198,101 +201,109 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_d
   return true;
 }
 
-void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DInst* oldinst, int32_t n2Fetched, uint16_t maxbb) {
+void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch, uint16_t maxbb) {
 
   uint16_t tempmaxbb = maxbb; // FIXME: delete me
-  bool getStatsFlag = false;
 
-  if (oldinst) {
-    if (missInst) {
-      if (lastd != oldinst) {
-        cbPending.add(realfetchCB::create(this,bucket,eint,fid,oldinst,n2Fetched,tempmaxbb));
-      }else{
-        I(0);
-      }
-      return;
-    }
+  AddrType lastpc = 0;
+  bool     lastdiff = false;
 
-    if(oldinst->getInst()->isControl()) {
-      processBranch(oldinst, n2Fetched,&tempmaxbb);
-    }
-
-    oldinst->setFetchTime();
-    bucket->push(oldinst);
-    n2Fetched--;
-
-  } else {
-    do {
-      DInst *dinst = 0;
-      dinst = eint->executeHead(fid);
-      if (dinst == 0) {
-        //if (fid)
-        //I(0);
-        break;
-      }
-#if 1
-      if (!dinst->getStatsFlag() && dinst->getPC() == 0) {
-        if (dinst->getInst()->isLoad()) {
-          MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());
-          dinst->scrap(eint);
-          dinst = 0;
-        } else if (dinst->getInst()->isStore()) {
-          MemRequest::sendReqWriteWarmup(gms->getDL1(), dinst->getAddr());
-          dinst->scrap(eint);
-          dinst = 0;
-        }
-      }
-      if (dinst == 0) {
-        EventScheduler::advanceClock();
-        EventScheduler::advanceClock();
-        EventScheduler::advanceClock();
-        EventScheduler::advanceClock();
-        EventScheduler::advanceClock();
-        EventScheduler::advanceClock();
-        continue;
-      }
+#if 0
+  RegType  last_dest = LREG_R0;
+  RegType  last_src1 = LREG_R0;
+  RegType  last_src2 = LREG_R0;
 #endif
 
-      /*
-      MSG("\nRealfetching from Reader, FlowID(%d), dinst->pc = %llx, dinst->addr = %llx, dinst->pe_id = %d, dinst->warp_id = %d",
-          fid,
-          dinst->getPC(),
-          dinst->getAddr(),
-          dinst->getPE(),
-          dinst->getWarpID()
-         );
+  do {
+    DInst *dinst = 0;
+    dinst = eint->executeHead(fid);
+    if (dinst == 0) {
+      //if (fid)
+      //I(0);
+      break;
+    }
+
+#if 1
+    if (!dinst->getStatsFlag() && dinst->getPC() == 0) {
+      if (dinst->getInst()->isLoad()) {
+        MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());
+        dinst->scrap(eint);
+        dinst = 0;
+      } else if (dinst->getInst()->isStore()) {
+        MemRequest::sendReqWriteWarmup(gms->getDL1(), dinst->getAddr());
+        dinst->scrap(eint);
+        dinst = 0;
       }
-      */
-      getStatsFlag |= dinst->getStatsFlag();
-
-      if (missInst) {
-        I(lastd != dinst);
-//        MSG("\nOops! FID: %d PE: %d is locked now..Adding DInst ID %d to a list of callback[%d]", (int) fid, (int) dinst->getPE(), (int) dinst->getID(),(int) dinst->getPE());
-        cbPending.add(realfetchCB::create(this,bucket,eint,fid,dinst,n2Fetched,tempmaxbb));
-        return;
+    }
+    if (dinst == 0) { // Drain cache (mostly) during warmup. FIXME: add a drain cache method?
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      continue;
+    }
+#endif
+    if (lastpc == 0) {
+      if (AlignedFetch) {
+        n2Fetch -= ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
       }
-
-      dinst->setFetchTime();
-      bucket->push(dinst);
-      n2Fetched--;
-
-      if(dinst->getInst()->isControl()) {
-        bool stall_fetch = processBranch(dinst, n2Fetched,&tempmaxbb);
-        if (stall_fetch) {
-          break;
+      n2Fetch--;
+      lastdiff = false;
+    }else{
+      if ((lastpc+4) != dinst->getPC()) {
+        //        n2Fetch -= (dinst->getPC()-lastpc)>>2;
+        n2Fetch--;
+        if (lastdiff) {
+          n2Fetch--; // Missed NOP
         }
-        I(!missInst);
+        lastdiff = true;
+      }else{
+        n2Fetch--;
+        lastdiff = false;
       }
+    }
+    lastpc  = dinst->getPC();
 
-      // Fetch uses getHead, ROB retires getTail
-    } while(n2Fetched>0);
-  }
 
-  uint16_t tmp = FetchWidth - n2Fetched;
 
-  nFetched.add(tmp, getStatsFlag);
+
+    I(!missInst);
+
+    dinst->setFetchTime();
+
+    if(dinst->getInst()->isControl()) {
+      bool stall_fetch = processBranch(dinst, n2Fetch,&tempmaxbb);
+      if (stall_fetch) {
+        bucket->push(dinst);
+        break;
+      }
+#if 0
+      RegType src1 = dinst->getInst()->getSrc1();
+      if (dinst->getInst()->doesJump2Label() && dinst->getInst()->getSrc2() == LREG_R0 
+          && (src1 == last_dest || src1 == last_src1 || src1 == last_src2 || src1 == LREG_R0) ) {
+        //MSG("pc %x fusion with previous", dinst->getPC());
+        dinst->scrap(eint);
+      }else{
+        bucket->push(dinst);
+      }
+#endif
+      I(!missInst);
+    }else{
+      bucket->push(dinst);
+    }
+#if 0
+    last_dest = dinst->getInst()->getDst1();
+    last_src1 = dinst->getInst()->getSrc1();
+    last_src2 = dinst->getInst()->getSrc2();
+#endif
+
+    // Fetch uses getHead, ROB retires getTail
+  } while(n2Fetch>0);
 
   if(enableICache && !bucket->empty()) {
+    nFetched.add(FetchWidth - n2Fetch, bucket->top()->getStatsFlag());
     MemRequest::sendReqRead(gms->getIL1(), bucket->top()->getStatsFlag(), bucket->top()->getPC(), &(bucket->markFetchedCB));
   }else{
     bucket->markFetchedCB.schedule(IL1HitDelay);
@@ -317,7 +328,7 @@ void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
 
   // You pass maxBB because there may be many fetches calls to realfetch in one cycle
   // (thanks to the callbacks)
-  realfetch(bucket, eint, fid, NULL, FetchWidth,maxBB);
+  realfetch(bucket, eint, fid, FetchWidth,maxBB);
 
 }
 
@@ -367,7 +378,8 @@ void FetchEngine::setMissInst(DInst * dinst) {
   //MSG("CPU: %d\tL:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getID(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
 
   I(!missInst);
-  missInst = true;
-  lastd = dinst;
+
+  missInst      = true;
+  lastd         = dinst;
 }
 

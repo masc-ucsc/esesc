@@ -3,7 +3,8 @@
 
 uint64_t QEMUReader_get_time(void);
 uint32_t QEMUReader_getFid(uint32_t last_fid); //FIXME: use FlowID instead of unint32_t
-void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, uint32_t op, uint64_t icount, void *env);
+void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest);
+
 int32_t QEMUReader_setnoStats(uint32_t fid);
 
 void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid);

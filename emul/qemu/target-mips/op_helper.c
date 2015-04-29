@@ -26,6 +26,9 @@
 #ifndef CONFIG_USER_ONLY
 static inline void cpu_mips_tlb_flush (CPUMIPSState *env, int flush_global);
 #endif
+#ifdef CONFIG_ESESC
+#include "esesc_qemu.h"
+#endif
 
 /*****************************************************************************/
 /* Exceptions processing helpers */
@@ -70,8 +73,6 @@ void helper_raise_exception(CPUMIPSState *env, uint32_t exception)
 }
 
 #ifdef CONFIG_ESESC
-void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env);
-
 void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t op, uint64_t reg) {
 	//qemu_log_mask(CPU_LOG_TB_IN_ASM,"4. %d pc:%llx op:%llx addr:%llx\n", env->fid, (long long)pc, (long long)op, (long long)target);
   int src1 = reg & 0xFF;
@@ -82,7 +83,7 @@ void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t
 
   CPUState *cpu       = ENV_GET_CPU(env);
 	//fprintf(stderr,"%d pc:%llx op:%llx src1:%d src2:%d dest:%d addr:%llx\n", cpu->fid, (long long)pc, (long long)op, src1, src2, dest, (long long)target);
-  QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest, env);
+  QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest);
 }
 
 void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg) {
@@ -94,7 +95,7 @@ void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg)
 
   CPUState *cpu       = ENV_GET_CPU(env);
 	//fprintf(stderr,"%d pc:%llx op:%llx src1:%d src2:%d dest:%d\n", cpu->fid, (long long)pc, (long long)op, src1, src2, dest);
-  QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest, env);
+  QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest);
 }
 #endif
 

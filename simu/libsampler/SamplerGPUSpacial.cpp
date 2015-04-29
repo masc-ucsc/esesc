@@ -93,7 +93,7 @@ SamplerGPUSpacial::~SamplerGPUSpacial()
 }
 /*  */
 
-void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op)
   /* main qemu/gpu/tracer/... entry point  */
 {
 
@@ -116,7 +116,7 @@ void SamplerGPUSpacial::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID 
   }
 
   if (mode == EmuDetail || mode == EmuTiming) {
-    emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
+    emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, getStatsFlag());
     lastMode = mode;
     return;
   }

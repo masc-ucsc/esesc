@@ -76,6 +76,13 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
   maxnsTime   = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTime"));
   SescConf->isBetween(section,"maxnsTime",1,1e12);
 
+  // Rabbit first because we start with nInstSkip
+  if (nInstRabbit>0) {
+    sequence_mode.push_back(EmuRabbit);
+    sequence_size.push_back(nInstRabbit);
+    next2EmuTiming = EmuRabbit;
+  }
+
   if (nInstWarmup>0) {
     sequence_mode.push_back(EmuWarmup);
     sequence_size.push_back(nInstWarmup);
@@ -92,12 +99,6 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
     next2EmuTiming = EmuTiming;
   }
 
-  // Rabbit last because we start with nInstSkip
-  if (nInstRabbit>0) {
-    sequence_mode.push_back(EmuRabbit);
-    sequence_size.push_back(nInstRabbit);
-    next2EmuTiming = EmuRabbit;
-  }
 
   if (sequence_mode.empty()) {
     MSG("ERROR: SamplerSMARTS needs at least one valid interval");

@@ -110,6 +110,9 @@ public:
     if (!doUpdate || pred == NoPrediction)
       return pred;
 
+    if (dinst->getInst()->isJump())
+      return pred;
+
     nHit.inc(pred == CorrectPrediction);
     nMiss.inc(pred == MissPrediction);
 

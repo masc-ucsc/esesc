@@ -85,6 +85,7 @@ private:
 
   int32_t spaceInInstQueue;
   DInst   *RAT[LREG_MAX];
+  int32_t  nTotalRegs;
 
   DInst   *serializeRAT[LREG_MAX];
   RegType  last_serializeLogical;

@@ -56,7 +56,7 @@ public:
   SamplerGPUSpacial(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerGPUSpacial();
 
-  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
+  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op);
 
   float getSamplingRatio() {return 0;} //FIXME
 

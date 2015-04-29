@@ -10256,9 +10256,9 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         return;
     }
 
-    if (strstr(opn,"div")!=0) {
+    if (strstr(opn,"div")!=0 || strstr(opn,"sqr") || strstr(opn,"recip")) {
       ESESC_TRACE_ALU(ctx->pc, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
-    }else if (strstr(opn,"mul")!=0) {
+    }else if (strstr(opn,"mul")!=0 || strstr(opn,"mad") || strstr(opn,"msub")) {
       ESESC_TRACE_ALU(ctx->pc, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
     }else{
       switch (optype) {
@@ -10675,6 +10675,7 @@ static void gen_rdhwr(DisasContext *ctx, int rt, int rd)
         gen_store_gpr(t0, rt);
         break;
     case 1:
+        ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
         save_cpu_state(ctx, 1);
         gen_helper_rdhwr_synci_step(t0, cpu_env);
         gen_store_gpr(t0, rt);
@@ -12968,7 +12969,8 @@ static void gen_pool32axf (CPUMIPSState *env, DisasContext *ctx, int rt, int rs)
 #endif
     case 0x2d:
         switch (minor) {
-        case SYNC:
+          case SYNC:
+            ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
             /* NOP */
             break;
         case SYSCALL:
@@ -13841,6 +13843,7 @@ static void decode_micromips32_opc (CPUMIPSState *env, DisasContext *ctx,
         case SYNCI:
             /* Break the TB to be able to sync copied instructions
                immediately */
+            ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
             ctx->bstate = BS_STOP;
             break;
         case BC2F:
@@ -16328,13 +16331,13 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         }
 
 #ifdef CONFIG_ESESC
-        ESESC_TRACE_LCTRL(ctx->pc,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+        ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
 #endif
         /* Generating branch here as compact branches don't have delay slot */
         gen_goto_tb(ctx, 1, ctx->btarget);
         gen_set_label(fs);
 #ifdef CONFIG_ESESC
-        ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+        ESESC_TRACE_LCTRL(ctx->pc,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
 #endif
 
         ctx->hflags |= MIPS_HFLAG_FBNSLOT;
@@ -16650,6 +16653,7 @@ static void decode_opc_special(CPUMIPSState *env, DisasContext *ctx)
         generate_exception(ctx, EXCP_BREAK);
         break;
     case OPC_SYNC:
+        ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
         check_insn(ctx, ISA_MIPS2);
         /* Treat as NOP. */
         break;

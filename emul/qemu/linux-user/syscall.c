@@ -117,6 +117,7 @@ int __clone2(int (*fn)(void *), void *child_stack_base,
 
 #ifdef CONFIG_ESESC
 #include "esesc_qemu.h"
+#include "../libemulint/InstOpcode.h"
 static struct timespec start_time={0,0};
 #endif
 
@@ -8951,6 +8952,12 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
 #endif
 #ifdef TARGET_NR_cacheflush
     case TARGET_NR_cacheflush:
+        {
+          int i;
+          for(i=0;i<arg2;i+=32) {
+            QEMUReader_queue_inst(0xbeefbeef, arg1+i, cpu->fid, iRALU, 0, 0, LREG_InvalidOutput);
+          }
+        }
         /* self-modifying code is handled automatically, so nothing needed */
         ret = 0;
         break;

@@ -64,8 +64,8 @@ class QEMUEmulInterface : public EmulInterface {
     reader->start();
   }
 
-  void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, void *env, bool inEmuTiming) {
-    reader->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, env, inEmuTiming);
+  void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool inEmuTiming) {
+    reader->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, inEmuTiming);
   }
 
   void syscall(uint32_t num, Time_t time, FlowID fid) {

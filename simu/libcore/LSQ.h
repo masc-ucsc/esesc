@@ -76,7 +76,7 @@ private:
   AddrDInstQMap instMap;
 
   static AddrType calcWord(const DInst *dinst) {
-    return (dinst->getAddr()) >> 2;
+    return (dinst->getAddr()) >> 3;
   }
 
 public:

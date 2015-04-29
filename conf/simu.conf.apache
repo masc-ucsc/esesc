@@ -1,5 +1,5 @@
 # SCOORE Constants
-memLatency        = 30  # 60 - 30 for L2
+memLatency        = 60  # 60 - 30 for L2
 memLevel         = "BigMem Memory" # No BW model
 #memLevel         = "AdvMem MemBus" # No Pref
 #memLevel          = "MemCtrl MemBus" # No Pref
@@ -11,6 +11,7 @@ memBW             = 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GBytes/s (
 [tradCORE]
 areaFactor        = 2
 fetchWidth        = 4
+alignedFetch      = true
 fetchPorts        = 1
 instQueueSize     = 24
 inorder           = false
@@ -49,12 +50,12 @@ StoreSetSize      = 8192
 instWidth         = 32
 opcodeWidth       = 11
 nArchRegs         = 32
-
+nTotalRegs        = 40
 
 #########
 [AUNIT]
 blockName         = "AUNIT"
-nRegs             = 128
+nRegs             = 1024
 winSize           = 16
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
 schedNumPorts     = 1
@@ -67,7 +68,7 @@ iRALUUnit         = 'AUNIT_AALU'
 
 [MUNIT]
 blockName         = "MUNIT"
-nRegs             = 128
+nRegs             = 1024
 winSize           = 16
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
 schedNumPorts     = 3
@@ -99,24 +100,24 @@ iSALU_ADDRLat     = 0
 iSALU_ADDRUnit    = 'MUNIT_MALU'  
 iLALU_LDLat       = 0
 iLALU_LDUnit      = 'MUNIT_MALU'
-iCALU_MULTLat     = 3
+iCALU_MULTLat     = 5
 iCALU_MULTUnit    = 'MUNIT_CALU'
-iCALU_DIVLat      = 3
+iCALU_DIVLat      = 8
 iCALU_DIVUnit     = 'MUNIT_CALU'
 
 [CUNIT]
 blockName         = "CUNIT"
-nRegs             = 128
+nRegs             = 32
 winSize           = 32
-recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
+recycleAt         = 'retire'      # Recycle entries at : Execute|Retire
 schedNumPorts     = 2
 schedPortOccp     = 1
 schedDelay        = 0 # Minimum latency like a intraClusterLat
-iCALU_FPMULTLat   = 3
+iCALU_FPMULTLat   = 7
 iCALU_FPMULTUnit  = 'CUNIT_CALU'
-iCALU_FPDIVLat    = 3
+iCALU_FPDIVLat    = 28
 iCALU_FPDIVUnit   = 'CUNIT_CALU'
-iCALU_FPALULat    = 1
+iCALU_FPALULat    = 4
 iCALU_FPALUUnit   = 'CUNIT_CALU'
 
 [AUNIT_AALU]
@@ -151,20 +152,20 @@ Occ               = 1
 [BPredIssueX]
 type              = "2level"
 bpred4Cycle       = 2 # bpred for cycle
-BTACDelay         = 2 # no BTAC
+BTACDelay         = 3 # no BTAC
 l1size            = 1
 l2size            = 2*1024
-l2Bits            = 2
+l2Bits            = 1
 historySize       = 9
 Metasize          = 2*1024
-MetaBits          = 2
+MetaBits          = 1
 localSize         = 2*1024
-localBits         = 2
+localBits         = 1
 btbSize           = 32
 btbBsize          = 1
 btbAssoc          = 32
 btbReplPolicy     = 'LRU'
-rasSize           = 24
+rasSize           = 8
 # Power Parameters
 tbits             = 2       # Bits for each table entry
 tsize             = 16*1024  # Size of each table

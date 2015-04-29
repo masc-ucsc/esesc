@@ -67,6 +67,10 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
 
   spaceInInstQueue = InstQueueSize;
 
+  nTotalRegs = SescConf->getInt("cpusimu","nTotalRegs", gm->getCoreId());
+  if (nTotalRegs == 0)
+    nTotalRegs = 1024*1024*1024; // Unlimited :)
+
   busy             = false;
   flushing         = false;
   replayRecovering = false;
@@ -232,6 +236,11 @@ StallCause OoOProcessor::addInst(DInst *dinst)
   if( (ROB.size()+rROB.size()) >= MaxROBSize )
     return SmallROBStall;
 
+  const Instruction *inst = dinst->getInst();
+
+  if (nTotalRegs<=0) 
+    return SmallREGStall;
+
   Cluster *cluster = dinst->getCluster();
   if( !cluster ) {
     Resource *res = clusterManager.getResource(dinst);
@@ -246,8 +255,9 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
   // BEGIN INSERTION (note that cluster already inserted in the window)
   // dinst->dump("");
-
-  const Instruction *inst = dinst->getInst();
+  if (inst->hasDstRegister()) {
+    nTotalRegs--;
+  }
 
   //#if 1
   if(!scooreMemory){ //no dynamic serialization for tradcore
@@ -462,6 +472,9 @@ void OoOProcessor::retire()
     dinst->dump("RT ");
     fprintf(stderr,"\n");
 #endif
+    if (dinst->getInst()->hasDstRegister())
+      nTotalRegs++;
+
     dinst->destroy(eint);
 
     if (last_serialized == dinst)

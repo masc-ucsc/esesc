@@ -61,6 +61,8 @@ private:
   BPredictor   *bpred2; // 2nd level predictor
 
   uint16_t      FetchWidth;
+  uint16_t      FetchWidthBits;
+	bool          AlignedFetch;
 
   uint16_t      BB4Cycle;
   uint16_t      bpredDelay;
@@ -104,8 +106,8 @@ public:
   void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
   typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface* , FlowID, &FetchEngine::fetch>  fetchCB;
 
-  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, DInst* oldinst, int32_t n2Fetched, uint16_t maxbb);
-  typedef CallbackMember6<FetchEngine, IBucket *, EmulInterface* , FlowID, DInst*, int32_t, uint16_t, &FetchEngine::realfetch>  realfetchCB;
+  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched, uint16_t maxbb);
+  typedef CallbackMember5<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, uint16_t, &FetchEngine::realfetch>  realfetchCB;
 
   void unBlockFetch(DInst* dinst, Time_t missFetchTime);
   typedef CallbackMember2<FetchEngine, DInst*, Time_t,  &FetchEngine::unBlockFetch> unBlockFetchCB;
