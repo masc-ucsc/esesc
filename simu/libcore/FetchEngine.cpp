@@ -272,11 +272,12 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     I(!missInst);
 
     dinst->setFetchTime();
-
+    bucket->push(dinst);
+        
     if(dinst->getInst()->isControl()) {
       bool stall_fetch = processBranch(dinst, n2Fetch,&tempmaxbb);
       if (stall_fetch) {
-        bucket->push(dinst);
+        //bucket->push(dinst);
         break;
       }
 #if 0
@@ -291,7 +292,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
       I(!missInst);
     }else{
-      bucket->push(dinst);
+      //bucket->push(dinst);
     }
 #if 0
     last_dest = dinst->getInst()->getDst1();

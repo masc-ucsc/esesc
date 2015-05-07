@@ -373,7 +373,7 @@ deviceType        = 'niceCache'
 blockName         = 'mainmem'
 bsize             = 64
 hitDelay          = $(memLatency)
-coldWarmup        = true
+coldWarmup        = false
 lowerLevel        = "voidDevice"
 
 [voidDevice]
