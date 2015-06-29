@@ -54,10 +54,8 @@
 #include "Report.h"
 #include "SescConf.h"
 #include "DrawArch.h"
-#include "NodeInt.h"
 #include "Transporter.h"
 
-//live stuff
 pthread_mutex_t mutex_live;
 bool live_qemu_active = true;
 pthread_cond_t cond_live;
@@ -113,6 +111,8 @@ int BootLoader::live_group_cntr = 0;
 int64_t BootLoader::sample_count = 0;
 int64_t BootLoader::live_warmup = 0;
 int64_t BootLoader::genwarm = 0;
+uint64_t BootLoader::live_warmup_cnt = 0;
+uint64_t BootLoader::live_ninst = 0;
 bool BootLoader::schema_sent = false;
 
 void BootLoader::check() 
@@ -133,10 +133,6 @@ void BootLoader::reportOnTheFly(const char *file) {
 
   tmp = (char *)malloc(strlen(file)+1);
   strcpy(tmp,file);
- 
-  //live stuff
-  if(is_live)
-    Report::openSocket(checkpoint_id);
 
   Report::openFile(tmp);
   
@@ -154,10 +150,6 @@ void BootLoader::startReportOnTheFly() {
 
   tmp = (char *)malloc(strlen(file)+1);
   strcpy(tmp,file);
-
-  //live stuff
-  if(is_live)
-    Report::openSocket(checkpoint_id);
 
   Report::openFile(tmp);
 
@@ -196,6 +188,16 @@ void BootLoader::reportSample() {
   if (!is_live)
     return;
 
+  //check if in warmup mode (live cache)
+  if(live_warmup_cnt > 0) {
+    if(live_warmup_cnt > live_ninst)
+      live_warmup_cnt -= live_ninst;
+    else
+      live_warmup_cnt = 0;
+    GStats::flush();
+    return;
+  }
+
   //increase sample index
   sample_count++;
   live_group_cntr++;
@@ -203,11 +205,6 @@ void BootLoader::reportSample() {
     return;
   else
     live_group_cntr = 0;
-
-  //report sample results to the server
-  /*GStats::report("sample");
-  Report::flushSocket(sample_count);
-  GStats::flush();*/
 
   //check if schema is sent
   if(!schema_sent) {
@@ -226,25 +223,6 @@ void BootLoader::reportSample() {
   live_qemu_active = false;
   pthread_cond_signal(&cond_live);
   pthread_mutex_unlock(&mutex_live);
-  //printf("------------- wait signal sent\n");
-
-  //wait for resume command
-  /*
-  char buffer[1024];
-  int64_t cpid, fwu;
-  char cmd;
-  do { 
-    cpid = 0;
-    cmd = ' ';
-    fwu = 0;  
-    bzero(buffer, 1024);
-    NodeInt::read_buffer(buffer, 1024);
-    sscanf(buffer, "%c,%ld,%ld", &cmd, &cpid, &fwu);
-  } while ((cmd != 'i' && cmd != 'k') || cpid != checkpoint_id);
-
-  //if terminate commad, exit;
-  if(cmd == 'k')
-    kill(getpid(),SIGTERM);*/
 
   //Wait for resume or kill
 #ifdef ESESC_LIVE
@@ -259,8 +237,7 @@ void BootLoader::reportSample() {
   live_qemu_active = true;
   pthread_cond_signal(&cond_live);
   pthread_mutex_unlock(&mutex_live);
-  //printf("------------- resume signal sent\n");
-
+  
   return;
 }
 
@@ -387,12 +364,14 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   TaskHandler::addSimu(gproc);
 }
 
-void BootLoader::plugSocket(int64_t cpid, int64_t fwu, int64_t gw) {
+void BootLoader::plugSocket(int64_t cpid, int64_t fwu, int64_t gw, uint64_t lwcnt) {
   //live stuff
   checkpoint_id = cpid;
   sample_count = 0;
   live_warmup = fwu;
   genwarm = gw;
+  live_warmup_cnt = lwcnt;
+  live_ninst = static_cast<uint64_t>(SescConf->getDouble("live","nInstTiming"));
 }
 
 void BootLoader::plug(int argc, const char **argv) {
@@ -428,8 +407,6 @@ void BootLoader::plug(int argc, const char **argv) {
   //live stuff
   is_live = SescConf->getBool("","live");
   live_group = SescConf->getBool("","live_group");
-  if(is_live)
-    Report::openSocket(checkpoint_id);
 
   Report::openFile(reportFile);
   

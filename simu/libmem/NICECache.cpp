@@ -60,7 +60,7 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
 	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
   
 
-  warmupStepStart = 256 / 2;
+  warmupStepStart = 256 / 4;
   warmupStep      = warmupStepStart;
   warmupNext      = 16;
   warmupSlowEvery = 16;

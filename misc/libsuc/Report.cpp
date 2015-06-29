@@ -38,7 +38,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "nanassert.h"
 #include "Report.h"
 #include "SescConf.h"
-#include "NodeInt.h"
 #include "Transporter.h"
 
 FILE *Report::rfd[MAXREPORTSTACK];
@@ -46,7 +45,6 @@ const char *Report::fns[MAXREPORTSTACK];
 int32_t Report::tos=0;
 char Report::checkpoint_id[10];
 bool Report::is_live = false;
-SocketBuffer *Report::buffer;
 unsigned char * Report::binReportData;
 int Report::binLength = 0;
 std::string Report::schema = "\"sample_count\":4";
@@ -63,6 +61,7 @@ const char * Report::getNameID() {
 }
 
 void Report::openFile(const char *name) {
+  is_live = SescConf->getBool("","live");
   //live stuff
   if(is_live)
     return;
@@ -101,7 +100,6 @@ void Report::close() {
 }
 
 void Report::field(int32_t fn, const char *format,...) {
-  //live stuff
   if(is_live)
     return;
 
@@ -122,35 +120,20 @@ void Report::field(int32_t fn, const char *format,...) {
 void Report::field(const char *format, ...) {
   if(is_live)
     return;
+
   va_list ap;
   I( tos );
   FILE *ffd = rfd[tos-1];  
   va_start(ap, format);
 
-  //live stuff
-  char b[1024];
-  if (is_live) {
-    vsprintf(b, format, ap);
-  } else {
-    vfprintf(ffd, format, ap);
-  }
+  vfprintf(ffd, format, ap);
 
   va_end(ap);
 
-  //live stuff
-  if(is_live) {
-    buffer->add("s,");
-    buffer->add(checkpoint_id);
-    buffer->add(",");
-    buffer->add(b);
-    buffer->add(";");
-  } else {
-    fprintf(ffd, "\n");
-  }
+  fprintf(ffd, "\n");
 }
 
 void Report::flush() {
-  //live stuff
   if(is_live)
     return;
 
@@ -158,29 +141,6 @@ void Report::flush() {
     return;
   
   fflush(rfd[tos-1]);
-}
-
-void Report::openSocket (int64_t cpid) {
-  //live stuff
-  is_live = SescConf->getBool("","live");
-  if(is_live) {
-    buffer = new SocketBuffer(); 
-    bzero(checkpoint_id, 10);
-    sprintf(checkpoint_id, "%ld", cpid);
-  }
-}
-
-void Report::flushSocket(int64_t sample_count) {
-  //live stuff
-  return;
-
-  char b[128];
-  bzero(b, 128);
-  sprintf(b, ",sample_count=%ld;", sample_count);
-  buffer->add("s,");
-  buffer->add(checkpoint_id);
-  buffer->add(b);
-  buffer->flush(checkpoint_id);
 }
 
 void Report::binField(double data) {

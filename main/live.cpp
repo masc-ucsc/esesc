@@ -33,6 +33,9 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <netdb.h>
 #include <signal.h>
 #include "../misc/libsuc/Transporter.h" 
+#include "../misc/libsuc/LiveCache.h"
+
+#define WARMUP_ARRAY_SIZE 262144
 
 //Declaring global variables
 typedef uint32_t FlowID; // from RAWDInst.h
@@ -49,6 +52,11 @@ bool done_skip = false;
 int force_warmup = 0;
 int genwarm = 0;
 int64_t foo_inst = 0;
+LiveCache * live_warmup_cache;
+uint64_t live_warmup_addr[WARMUP_ARRAY_SIZE];
+bool live_warmup_st[WARMUP_ARRAY_SIZE];
+uint64_t live_warmup_cnt;
+int dlc = 0;
 
 //Declaring functions
 extern "C" void QEMUReader_goto_sleep(void *env);
@@ -92,8 +100,12 @@ dyn_QEMUReader_setFlowCmd_t dyn_QEMUReader_setFlowCmd=0;
 
 //This function loads the master rabbit dynamic library
 void load_rabbit () {
+  //Creating LiveCache to store warmup
+  live_warmup_cache = new LiveCache();
+
   printf("Live: Loading rabbit\n");
   handle = dlopen("librabbitso.so", RTLD_NOW);
+
   if (!handle) {
     printf("DLOPEN: %s\n", dlerror());
     exit(EXIT_FAILURE);
@@ -149,14 +161,14 @@ void load_esesc () {
   dyn_QEMUReader_finish          = (dyn_QEMUReader_finish_t)dlsym(handle, "QEMUReader_finish");
   dyn_QEMUReader_setFlowCmd      = (dyn_QEMUReader_setFlowCmd_t)dlsym(handle, "QEMUReader_setFlowCmd");
 
-  typedef void (*dyn_start_esesc_t)(char *, int, int, int, int);
+  typedef void (*dyn_start_esesc_t)(char *, int, int, int, int, uint64_t *, bool *, uint64_t, int);
   dyn_start_esesc_t dyn_start_esesc = (dyn_start_esesc_t)dlsym(handle, "start_esesc");
   if (dyn_start_esesc==0) {
     printf("DLOPEN no start_esesc: %s\n", dlerror());
     exit(-3);
   }
 
-  (*dyn_start_esesc)(host_adr, portno, child_id, force_warmup, genwarm); // FIXME: start_esesc should be a separate thread (qemu thread should wait until this is finished)
+  (*dyn_start_esesc)(host_adr, portno, child_id, force_warmup, genwarm, live_warmup_addr, live_warmup_st, live_warmup_cnt, dlc);
 }
 
 //This function is used to initialize the emulator in order to fork checkpoints
@@ -210,6 +222,9 @@ void fork_checkpoint() {
     
   //Children: create the checkpoint
 
+  //Fill out the live warmup array
+  live_warmup_cnt = live_warmup_cache->traverse(live_warmup_addr, live_warmup_st);
+
   //Send the ready command to NodeJS server
   Transporter::disconnect();
   Transporter::connect_to_server(host_adr, portno);
@@ -221,7 +236,7 @@ void fork_checkpoint() {
 
   //Go to waiting mode
   while(wait) {
-    Transporter::receive_fast("simulate", "%d,%d,%d", &k, &force_warmup, &genwarm);
+    Transporter::receive_fast("simulate", "%d,%d,%d,%d", &k, &force_warmup, &genwarm, &dlc);
     if(k == 1)
       exit(0);
     //On simulation request, create a new process to continue simulation and return to waiting mode
@@ -234,9 +249,8 @@ void fork_checkpoint() {
         fd[i] = open(name[i], O_RDONLY);
         lseek(fd[i], pos[i], SEEK_SET);
         int foo = lseek(fd[i], 0, SEEK_CUR);
-        printf("resync fd=%d seek=%d %s\n", fd[i], foo, name[i]);
+        //printf("resync fd=%d seek=%d %s\n", fd[i], foo, name[i]);
       }
-
       Transporter::disconnect();
       wait = false;
       thread_mode = 2;
@@ -277,6 +291,7 @@ extern "C" void QEMUReader_pauseThread (FlowID id) {
 
 extern "C" void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env) {
   (*dyn_QEMUReader_queue_inst)(pc, addr, fid, op, src1, src2, dest, env);
+
   foo_inst++;
   //Check for initial skip (if any)
   if(!done_skip) {
@@ -349,7 +364,6 @@ int main (int argc, char **argv) {
       create_checkpoints(qparams_argc, qparams);
     }
   } while(1);
-
   Transporter::disconnect();
   return 0;
 }

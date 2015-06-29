@@ -26,7 +26,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
-#include "SocketBuffer.h"
 
 class Report {
 private:
@@ -39,7 +38,6 @@ private:
   //live stuff
   static char checkpoint_id[];
   static bool is_live;
-  static SocketBuffer *buffer;
   static unsigned char * binReportData;
   static int binLength;
   static std::string schema;

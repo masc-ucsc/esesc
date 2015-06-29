@@ -469,6 +469,14 @@ sub showStatReport {
   printf "\n";
 
 #############################################################################
+  printf "#table3                            nCycles\n";
+
+  printf "table3  %44s ", $name;
+  my $globalClock = $cf->getResultField("OS","wallClock");
+  printf " %4.0f ", $globalClock;
+  printf "\n";
+
+#############################################################################
   if ($cf->getResultField("P(0)_robUsed","n")) {
     printf "#table8                              ProcId : ROBuse %: LDQ Use %: STQ use %: c1 winUse % : c2 winUse % :...\n";
 

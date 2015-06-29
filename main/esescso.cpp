@@ -25,7 +25,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 /*
  * This launches the ESESC simulator environment with an ideal memory
  */
-
+#define WARMUP_ARRAY_SIZE 262144
 #include <sys/types.h>
 #include <signal.h>
 
@@ -37,7 +37,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "QEMUReader.h"
 #include "BootLoader.h"
-#include "NodeInt.h" 
 #include "Transporter.h" 
 #ifdef ENABLE_NBSD
 #include "MemRequest.h"
@@ -59,10 +58,6 @@ static void *simu_thread(void *) {
   BootLoader::unboot();
   BootLoader::unplug();
   
-  /*char buffer[256];
-  bzero(buffer,256);
-  sprintf(buffer, "k,%ld,%d;", checkpoint_id, getpid());
-  NodeInt::write_buffer(buffer, 0);*/
 #ifdef ESESC_LIVE
   Transporter::send_fast("cp_done", "");
 #endif
@@ -73,14 +68,14 @@ static void *simu_thread(void *) {
   return 0;
 }
 
-extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_warmup, int genwarm) {
+extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_warmup, int genwarm, uint64_t * live_warmup_addr, bool * live_warmup_st, uint64_t live_warmup_cnt, int dlc) {
   checkpoint_id = cpid;
-  //NodeInt::sockfd = sockfd;
+  
 #ifdef ESESC_LIVE
   Transporter::connect_to_server(host_adr, portno);
   Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
+  printf("LiveSim Checkpoint thread starting CPID:%d PID:%d\n", cpid, getpid());
 #endif
-  printf("-----------------%d %d\n", cpid, getpid());
   // TODO: call a method (new) to set QEMUReader::started = true
   //
   // TODO: Create fake arguments using the esescfile
@@ -91,8 +86,8 @@ extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_war
 
   QEMUReader::setStarted();
 
-  BootLoader::plugSocket(cpid, force_warmup, genwarm);
   BootLoader::plug(argc, argv);
+  BootLoader::plugSocket(cpid, force_warmup, genwarm, live_warmup_cnt);
 
   pthread_attr_t attr;
   pthread_attr_init(&attr);
@@ -105,5 +100,16 @@ extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_war
   if (pthread_create(&ptid, &attr, simu_thread, (void *)0) != 0) {
     MSG("ERROR: pthread create failed for simu_thread");
     exit(-2);
+  }
+
+  //loading live warmup
+  if(dlc > 0) {
+    for(int i = 0; i < live_warmup_cnt && i < WARMUP_ARRAY_SIZE; i++) {
+      if(live_warmup_st[i]) {
+        QEMUReader_queue_inst(0, live_warmup_addr[i], 0, iSALU_ST, LREG_R0, LREG_R0, LREG_InvalidOutput);
+      } else {
+        QEMUReader_queue_inst(0, live_warmup_addr[i], 0, iLALU_LD, LREG_R0, LREG_R0, LREG_InvalidOutput);
+      }
+    }
   }
 }

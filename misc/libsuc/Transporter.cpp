@@ -21,7 +21,7 @@ ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 ********************************************************************************
-File name:      NodeInt
+File name:      Transporter.CPP
 ********************************************************************************/
 
 #include "Transporter.h"
@@ -173,6 +173,11 @@ string Transporter::receive(char type, string message) {
     n = read(sockfd, buf, tr);
     memcpy(enc + rd, buf, n);
     rd += n;
+  }
+
+  if(len == 0) {
+    printf("Socket error\n");
+    return receive(type, message);
   }
 
   byte * thiskey;

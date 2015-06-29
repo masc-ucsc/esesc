@@ -201,6 +201,8 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch, uint16_t* to_del
   return true;
 }
 
+// #define USE_FUSE
+
 void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch, uint16_t maxbb) {
 
   uint16_t tempmaxbb = maxbb; // FIXME: delete me
@@ -208,7 +210,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
   AddrType lastpc = 0;
   bool     lastdiff = false;
 
-#if 0
+#ifdef USE_FUSE
   RegType  last_dest = LREG_R0;
   RegType  last_src1 = LREG_R0;
   RegType  last_src2 = LREG_R0;
@@ -223,8 +225,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       break;
     }
 
-#if 1
-    if (!dinst->getStatsFlag() && dinst->getPC() == 0) {
+#ifdef USE_FUSE
+    if (/*!dinst->getStatsFlag() && */dinst->getPC() == 0) {
       if (dinst->getInst()->isLoad()) {
         MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());
         dinst->scrap(eint);
@@ -272,6 +274,17 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     I(!missInst);
 
     dinst->setFetchTime();
+#ifdef USE_FUSE
+    if(dinst->getInst()->isControl()) {
+      RegType src1 = dinst->getInst()->getSrc1();
+      if (dinst->getInst()->doesJump2Label() && dinst->getInst()->getSrc2() == LREG_R0 
+          && (src1 == last_dest || src1 == last_src1 || src1 == last_src2 || src1 == LREG_R0) ) {
+        //MSG("pc %x fusion with previous", dinst->getPC());
+        dinst->scrap(eint);
+        continue;
+      }
+    }
+#endif
     bucket->push(dinst);
         
     if(dinst->getInst()->isControl()) {
@@ -280,21 +293,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         //bucket->push(dinst);
         break;
       }
-#if 0
-      RegType src1 = dinst->getInst()->getSrc1();
-      if (dinst->getInst()->doesJump2Label() && dinst->getInst()->getSrc2() == LREG_R0 
-          && (src1 == last_dest || src1 == last_src1 || src1 == last_src2 || src1 == LREG_R0) ) {
-        //MSG("pc %x fusion with previous", dinst->getPC());
-        dinst->scrap(eint);
-      }else{
-        bucket->push(dinst);
-      }
-#endif
       I(!missInst);
     }else{
       //bucket->push(dinst);
     }
-#if 0
+#ifdef USE_FUSE
     last_dest = dinst->getInst()->getDst1();
     last_src1 = dinst->getInst()->getSrc1();
     last_src2 = dinst->getInst()->getSrc2();

@@ -43,6 +43,8 @@
 #include "GStats.h"
 #include "MemObj.h"
 #include "MemorySystem.h"
+#include "GProcessor.h"
+#include "TaskHandler.h"
 #include "MSHR.h"
 #include "Snippets.h"
 

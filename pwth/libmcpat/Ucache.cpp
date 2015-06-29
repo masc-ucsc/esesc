@@ -65,7 +65,6 @@
 #include "subarray.h"
 #include "uca.h"
 #include "SescConf.h"
-#include "NodeInt.h"
 #include "md5.h"
 
 #include <pthread.h>

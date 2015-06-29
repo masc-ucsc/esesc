@@ -23,7 +23,7 @@ ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 ********************************************************************************
-File name:      NodeInt
+File name:      Transporter.h
 ********************************************************************************/ 
 
 #define MAX_BUFFER_SIZE 1024

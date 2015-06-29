@@ -46,7 +46,6 @@
 
 /* }}} */
 
-//live stuff
 extern pthread_mutex_t mutex_live;
 extern bool live_qemu_active;
 extern pthread_cond_t cond_live;

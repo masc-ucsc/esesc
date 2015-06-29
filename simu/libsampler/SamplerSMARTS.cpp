@@ -178,12 +178,12 @@ void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
     //If in live mode and warmup is to be forced
     if(BootLoader::genwarm > 0 && next_mode == EmuTiming) {
       BootLoader::genwarm--;
-      //setMode(EmuWarmup, fid);
-      setMode(EmuDetail, fid);
+      setMode(EmuWarmup, fid);
+      //setMode(EmuDetail, fid);
     } else if(BootLoader::live_warmup > 0 && next_mode == EmuTiming) {
       BootLoader::live_warmup--;
-      BootLoader::sample_count++;
-      setMode(EmuWarmup, fid);
+      //BootLoader::sample_count++;
+      setMode(EmuDetail, fid);
       //setMode(EmuRabbit, fid);
     } else {
       setMode(next_mode, fid);
