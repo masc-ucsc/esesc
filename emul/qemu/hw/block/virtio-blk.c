@@ -33,6 +33,7 @@ VirtIOBlockReq *virtio_blk_alloc_request(VirtIOBlock *s)
     VirtIOBlockReq *req = g_slice_new(VirtIOBlockReq);
     req->dev = s;
     req->qiov.size = 0;
+    req->in_len = 0;
     req->next = NULL;
     req->mr_next = NULL;
     return req;
@@ -54,7 +55,7 @@ static void virtio_blk_complete_request(VirtIOBlockReq *req,
     trace_virtio_blk_req_complete(req, status);
 
     stb_p(&req->in->status, status);
-    virtqueue_push(s->vq, &req->elem, req->qiov.size + sizeof(*req->in));
+    virtqueue_push(s->vq, &req->elem, req->in_len);
     virtio_notify(vdev, s->vq);
 }
 
@@ -102,6 +103,14 @@ static void virtio_blk_rw_complete(void *opaque, int ret)
         if (ret) {
             int p = virtio_ldl_p(VIRTIO_DEVICE(req->dev), &req->out.type);
             bool is_read = !(p & VIRTIO_BLK_T_OUT);
+            /* Note that memory may be dirtied on read failure.  If the
+             * virtio request is not completed here, as is the case for
+             * BLOCK_ERROR_ACTION_STOP, the memory may not be copied
+             * correctly during live migration.  While this is ugly,
+             * it is acceptable because the device is free to write to
+             * the memory until the request is completed (which will
+             * happen on the other side of the migration).
+             */
             if (virtio_blk_handle_rw_error(req, -ret, is_read)) {
                 continue;
             }
@@ -201,6 +210,7 @@ static int virtio_blk_handle_scsi_req(VirtIOBlockReq *req)
 #ifdef __linux__
     int i;
     VirtIOBlockIoctlReq *ioctl_req;
+    BlockAIOCB *acb;
 #endif
 
     /*
@@ -278,8 +288,13 @@ static int virtio_blk_handle_scsi_req(VirtIOBlockReq *req)
     ioctl_req->hdr.sbp = elem->in_sg[elem->in_num - 3].iov_base;
     ioctl_req->hdr.mx_sb_len = elem->in_sg[elem->in_num - 3].iov_len;
 
-    blk_aio_ioctl(blk->blk, SG_IO, &ioctl_req->hdr,
-                  virtio_blk_ioctl_complete, ioctl_req);
+    acb = blk_aio_ioctl(blk->blk, SG_IO, &ioctl_req->hdr,
+                        virtio_blk_ioctl_complete, ioctl_req);
+    if (!acb) {
+        g_free(ioctl_req);
+        status = VIRTIO_BLK_S_UNSUPP;
+        goto fail;
+    }
     return -EINPROGRESS;
 #else
     abort();
@@ -484,12 +499,13 @@ void virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
 
     iov_discard_front(&iov, &out_num, sizeof(req->out));
 
-    if (in_num < 1 ||
-        in_iov[in_num - 1].iov_len < sizeof(struct virtio_blk_inhdr)) {
+    if (in_iov[in_num - 1].iov_len < sizeof(struct virtio_blk_inhdr)) {
         error_report("virtio-blk request inhdr too short");
         exit(1);
     }
 
+    /* We always touch the last byte, so just see how big in_iov is.  */
+    req->in_len = iov_size(in_iov, in_num);
     req->in = (void *)in_iov[in_num - 1].iov_base
               + in_iov[in_num - 1].iov_len
               - sizeof(struct virtio_blk_inhdr);
@@ -498,7 +514,7 @@ void virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
     type = virtio_ldl_p(VIRTIO_DEVICE(req->dev), &req->out.type);
 
     /* VIRTIO_BLK_T_OUT defines the command direction. VIRTIO_BLK_T_BARRIER
-     * is an optional flag. Altough a guest should not send this flag if
+     * is an optional flag. Although a guest should not send this flag if
      * not negotiated we ignored it in the past. So keep ignoring it. */
     switch (type & ~(VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_BARRIER)) {
     case VIRTIO_BLK_T_IN:
@@ -591,12 +607,6 @@ static void virtio_blk_handle_output(VirtIODevice *vdev, VirtQueue *vq)
     if (mrb.num_reqs) {
         virtio_blk_submit_multireq(s->blk, &mrb);
     }
-
-    /*
-     * FIXME: Want to check for completions before returning to guest mode,
-     * so cached reads and writes are reported as quickly as possible. But
-     * that should be done in the generic block layer.
-     */
 }
 
 static void virtio_blk_dma_restart_bh(void *opaque)
@@ -640,16 +650,21 @@ static void virtio_blk_dma_restart_cb(void *opaque, int running,
 static void virtio_blk_reset(VirtIODevice *vdev)
 {
     VirtIOBlock *s = VIRTIO_BLK(vdev);
-
-    if (s->dataplane) {
-        virtio_blk_data_plane_stop(s->dataplane);
-    }
+    AioContext *ctx;
 
     /*
      * This should cancel pending requests, but can't do nicely until there
      * are per-device request lists.
      */
-    blk_drain_all();
+    ctx = blk_get_aio_context(s->blk);
+    aio_context_acquire(ctx);
+    blk_drain(s->blk);
+
+    if (s->dataplane) {
+        virtio_blk_data_plane_stop(s->dataplane);
+    }
+    aio_context_release(ctx);
+
     blk_set_enable_write_cache(s->blk, s->original_wce);
 }
 
@@ -707,7 +722,7 @@ static void virtio_blk_set_config(VirtIODevice *vdev, const uint8_t *config)
     aio_context_release(blk_get_aio_context(s->blk));
 }
 
-static uint32_t virtio_blk_get_features(VirtIODevice *vdev, uint32_t features)
+static uint64_t virtio_blk_get_features(VirtIODevice *vdev, uint64_t features)
 {
     VirtIOBlock *s = VIRTIO_BLK(vdev);
 
@@ -884,6 +899,7 @@ static void virtio_blk_device_realize(DeviceState *dev, Error **errp)
         error_propagate(errp, err);
         return;
     }
+    blkconf_blocksizes(&conf->conf);
 
     virtio_init(vdev, "virtio-blk", VIRTIO_ID_BLOCK,
                 sizeof(struct virtio_blk_config));

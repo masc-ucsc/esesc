@@ -117,6 +117,12 @@ struct {                                                                \
         }                                                               \
 } while (/*CONSTCOND*/0)
 
+#define QLIST_FIX_HEAD_PTR(head, field) do {                            \
+        if ((head)->lh_first != NULL) {                                 \
+            (head)->lh_first->field.le_prev = &(head)->lh_first;        \
+        }                                                               \
+} while (/*CONSTCOND*/0)
+
 #define QLIST_INSERT_AFTER(listelm, elm, field) do {                    \
         if (((elm)->field.le_next = (listelm)->field.le_next) != NULL)  \
                 (listelm)->field.le_next->field.le_prev =               \
@@ -197,11 +203,12 @@ struct {                                                                \
         (head)->slh_first = (elm);                                       \
 } while (/*CONSTCOND*/0)
 
-#define QSLIST_INSERT_HEAD_ATOMIC(head, elm, field) do {                   \
-        do {                                                               \
-            (elm)->field.sle_next = (head)->slh_first;                     \
-        } while (atomic_cmpxchg(&(head)->slh_first, (elm)->field.sle_next, \
-                               (elm)) != (elm)->field.sle_next);           \
+#define QSLIST_INSERT_HEAD_ATOMIC(head, elm, field) do {                     \
+        typeof(elm) save_sle_next;                                           \
+        do {                                                                 \
+            save_sle_next = (elm)->field.sle_next = (head)->slh_first;       \
+        } while (atomic_cmpxchg(&(head)->slh_first, save_sle_next, (elm)) != \
+                 save_sle_next);                                             \
 } while (/*CONSTCOND*/0)
 
 #define QSLIST_MOVE_ATOMIC(dest, src) do {                               \

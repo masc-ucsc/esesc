@@ -24,6 +24,7 @@
 #include "qemu-common.h"
 #include "monitor/monitor.h"
 #include "sysemu/sysemu.h"
+#include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "sysemu/char.h"
 #include "hw/usb.h"
@@ -973,7 +974,6 @@ typedef struct FDCharDriver {
     CharDriverState *chr;
     GIOChannel *fd_in, *fd_out;
     int max_size;
-    QTAILQ_ENTRY(FDCharDriver) node;
 } FDCharDriver;
 
 /* Called with chr_write_lock held.  */

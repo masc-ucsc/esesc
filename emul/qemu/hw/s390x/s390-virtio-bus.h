@@ -83,7 +83,7 @@ typedef struct VirtIOS390Device VirtIOS390Device;
 
 typedef struct VirtIOS390DeviceClass {
     DeviceClass qdev;
-    int (*init)(VirtIOS390Device *dev);
+    void (*realize)(VirtIOS390Device *dev, Error **errp);
 } VirtIOS390DeviceClass;
 
 struct VirtIOS390Device {
@@ -92,7 +92,6 @@ struct VirtIOS390Device {
     ram_addr_t feat_offs;
     uint8_t feat_len;
     VirtIODevice *vdev;
-    uint32_t host_features;
     VirtioBusState bus;
 };
 
@@ -108,7 +107,6 @@ typedef struct VirtIOS390Bus {
 
 void s390_virtio_device_update_status(VirtIOS390Device *dev);
 
-VirtIOS390Device *s390_virtio_bus_console(VirtIOS390Bus *bus);
 VirtIOS390Bus *s390_virtio_bus_init(ram_addr_t *ram_size);
 
 VirtIOS390Device *s390_virtio_bus_find_vring(VirtIOS390Bus *bus,

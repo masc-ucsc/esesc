@@ -242,8 +242,9 @@ SCSIDevice *scsi_bus_legacy_add_drive(SCSIBus *bus, BlockBackend *blk,
     if (serial && object_property_find(OBJECT(dev), "serial", NULL)) {
         qdev_prop_set_string(dev, "serial", serial);
     }
-    if (qdev_prop_set_drive(dev, "drive", blk) < 0) {
-        error_setg(errp, "Setting drive property failed");
+    qdev_prop_set_drive(dev, "drive", blk, &err);
+    if (err) {
+        error_propagate(errp, err);
         object_unparent(OBJECT(dev));
         return NULL;
     }
@@ -273,7 +274,6 @@ void scsi_bus_legacy_handle_cmdline(SCSIBus *bus, Error **errp)
         scsi_bus_legacy_add_drive(bus, blk_by_legacy_dinfo(dinfo),
                                   unit, false, -1, NULL, &err);
         if (err != NULL) {
-            error_report("%s", error_get_pretty(err));
             error_propagate(errp, err);
             break;
         }
@@ -1968,6 +1968,7 @@ static const VMStateDescription vmstate_scsi_sense_state = {
     .name = "SCSIDevice/sense",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = scsi_sense_state_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8_SUB_ARRAY(sense, SCSIDevice,
                                 SCSI_SENSE_BUF_SIZE_OLD,
@@ -1998,13 +1999,9 @@ const VMStateDescription vmstate_scsi_device = {
         },
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (VMStateSubsection []) {
-        {
-            .vmsd = &vmstate_scsi_sense_state,
-            .needed = scsi_sense_state_needed,
-        }, {
-            /* empty */
-        }
+    .subsections = (const VMStateDescription*[]) {
+        &vmstate_scsi_sense_state,
+        NULL
     }
 };
 

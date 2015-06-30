@@ -945,9 +945,7 @@ static inline void gen_op_eval_fbo(TCGv dst, TCGv src,
 static inline void gen_branch2(DisasContext *dc, target_ulong pc1,
                                target_ulong pc2, TCGv r_cond)
 {
-    int l1;
-
-    l1 = gen_new_label();
+    TCGLabel *l1 = gen_new_label();
 
     tcg_gen_brcondi_tl(TCG_COND_EQ, r_cond, 0, l1);
 
@@ -960,9 +958,7 @@ static inline void gen_branch2(DisasContext *dc, target_ulong pc1,
 static inline void gen_branch_a(DisasContext *dc, target_ulong pc1,
                                 target_ulong pc2, TCGv r_cond)
 {
-    int l1;
-
-    l1 = gen_new_label();
+    TCGLabel *l1 = gen_new_label();
 
     tcg_gen_brcondi_tl(TCG_COND_EQ, r_cond, 0, l1);
 
@@ -2605,7 +2601,8 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
             if (xop == 0x3a) {  /* generate trap */
                 int cond = GET_FIELD(insn, 3, 6);
                 TCGv_i32 trap;
-                int l1 = -1, mask;
+                TCGLabel *l1 = NULL;
+                int mask;
 
                 if (cond == 0) {
                     /* Trap never.  */
@@ -5337,7 +5334,7 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log("--------------\n");
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
-        log_target_disas(env, pc_start, last_pc + 4 - pc_start, 0);
+        log_target_disas(cs, pc_start, last_pc + 4 - pc_start, 0);
         qemu_log("\n");
     }
 #endif

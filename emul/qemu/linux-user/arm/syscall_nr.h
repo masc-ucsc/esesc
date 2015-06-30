@@ -354,7 +354,7 @@
 #define TARGET_NR_kexec_load			(347)
 #define TARGET_NR_utimensat			(348)
 #define TARGET_NR_signalfd			(349)
-#define TARGET_NR_timerfd			(350)
+#define TARGET_NR_timerfd_create		(350)
 #define TARGET_NR_eventfd			(351)
 #define TARGET_NR_fallocate			(352)
 #define TARGET_NR_timerfd_settime		(353)
@@ -384,6 +384,3 @@
 #define TARGET_NR_process_vm_writev            (377)
 #define TARGET_NR_kcmp                         (378)
 #define TARGET_NR_finit_module                 (379)
-#ifdef CONFIG_ESESC
-#define TARGET_NR_esesccall                    (398)
-#endif

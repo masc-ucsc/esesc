@@ -31,7 +31,6 @@
 #include "qapi-visit.h"
 #include "qapi/opts-visitor.h"
 #include "qapi/dealloc-visitor.h"
-#include "qapi/qmp/qerror.h"
 #include "hw/boards.h"
 #include "sysemu/hostmem.h"
 #include "qmp-commands.h"
@@ -66,7 +65,7 @@ static void numa_node_parse(NumaNodeOptions *node, QemuOpts *opts, Error **errp)
 
     if (nodenr >= MAX_NODES) {
         error_setg(errp, "Max number of NUMA nodes reached: %"
-                   PRIu16 "\n", nodenr);
+                   PRIu16 "", nodenr);
         return;
     }
 
@@ -76,16 +75,18 @@ static void numa_node_parse(NumaNodeOptions *node, QemuOpts *opts, Error **errp)
     }
 
     for (cpus = node->cpus; cpus; cpus = cpus->next) {
-        if (cpus->value > MAX_CPUMASK_BITS) {
-            error_setg(errp, "CPU number %" PRIu16 " is bigger than %d",
-                       cpus->value, MAX_CPUMASK_BITS);
+        if (cpus->value >= max_cpus) {
+            error_setg(errp,
+                       "CPU index (%" PRIu16 ")"
+                       " should be smaller than maxcpus (%d)",
+                       cpus->value, max_cpus);
             return;
         }
         bitmap_set(numa_info[nodenr].node_cpu, cpus->value, 1);
     }
 
     if (node->has_mem && node->has_memdev) {
-        error_setg(errp, "qemu: cannot specify both mem= and memdev=\n");
+        error_setg(errp, "qemu: cannot specify both mem= and memdev=");
         return;
     }
 
@@ -94,7 +95,7 @@ static void numa_node_parse(NumaNodeOptions *node, QemuOpts *opts, Error **errp)
     }
     if (node->has_memdev != have_memdevs) {
         error_setg(errp, "qemu: memdev option must be specified for either "
-                   "all or no nodes\n");
+                   "all or no nodes");
         return;
     }
 
@@ -123,7 +124,7 @@ static void numa_node_parse(NumaNodeOptions *node, QemuOpts *opts, Error **errp)
     max_numa_nodeid = MAX(max_numa_nodeid, nodenr + 1);
 }
 
-static int parse_numa(QemuOpts *opts, void *opaque)
+static int parse_numa(void *opaque, QemuOpts *opts, Error **errp)
 {
     NumaOptions *object = NULL;
     Error *err = NULL;
@@ -165,12 +166,56 @@ error:
     return -1;
 }
 
-void parse_numa_opts(void)
+static char *enumerate_cpus(unsigned long *cpus, int max_cpus)
+{
+    int cpu;
+    bool first = true;
+    GString *s = g_string_new(NULL);
+
+    for (cpu = find_first_bit(cpus, max_cpus);
+        cpu < max_cpus;
+        cpu = find_next_bit(cpus, max_cpus, cpu + 1)) {
+        g_string_append_printf(s, "%s%d", first ? "" : " ", cpu);
+        first = false;
+    }
+    return g_string_free(s, FALSE);
+}
+
+static void validate_numa_cpus(void)
+{
+    int i;
+    DECLARE_BITMAP(seen_cpus, MAX_CPUMASK_BITS);
+
+    bitmap_zero(seen_cpus, MAX_CPUMASK_BITS);
+    for (i = 0; i < nb_numa_nodes; i++) {
+        if (bitmap_intersects(seen_cpus, numa_info[i].node_cpu,
+                              MAX_CPUMASK_BITS)) {
+            bitmap_and(seen_cpus, seen_cpus,
+                       numa_info[i].node_cpu, MAX_CPUMASK_BITS);
+            error_report("CPU(s) present in multiple NUMA nodes: %s",
+                         enumerate_cpus(seen_cpus, max_cpus));;
+            exit(EXIT_FAILURE);
+        }
+        bitmap_or(seen_cpus, seen_cpus,
+                  numa_info[i].node_cpu, MAX_CPUMASK_BITS);
+    }
+
+    if (!bitmap_full(seen_cpus, max_cpus)) {
+        char *msg;
+        bitmap_complement(seen_cpus, seen_cpus, max_cpus);
+        msg = enumerate_cpus(seen_cpus, max_cpus);
+        error_report("warning: CPU(s) not present in any NUMA nodes: %s", msg);
+        error_report("warning: All CPU(s) up to maxcpus should be described "
+                     "in NUMA config");
+        g_free(msg);
+    }
+}
+
+void parse_numa_opts(MachineClass *mc)
 {
     int i;
 
-    if (qemu_opts_foreach(qemu_find_opts("numa"), parse_numa,
-                          NULL, 1) != 0) {
+    if (qemu_opts_foreach(qemu_find_opts("numa"), parse_numa, NULL, NULL)) {
         exit(1);
     }
 
@@ -233,15 +278,25 @@ void parse_numa_opts(void)
                 break;
             }
         }
-        /* assigning the VCPUs round-robin is easier to implement, guest OSes
-         * must cope with this anyway, because there are BIOSes out there in
-         * real machines which also use this scheme.
+        /* Historically VCPUs were assigned in round-robin order to NUMA
+         * nodes. However it causes issues with guest not handling it nice
+         * in case where cores/threads from a multicore CPU appear on
+         * different nodes. So allow boards to override default distribution
+         * rule grouping VCPUs by socket so that VCPUs from the same socket
+         * would be on the same node.
          */
         if (i == nb_numa_nodes) {
             for (i = 0; i < max_cpus; i++) {
-                set_bit(i, numa_info[i % nb_numa_nodes].node_cpu);
+                unsigned node_id = i % nb_numa_nodes;
+                if (mc->cpu_index_to_socket_id) {
+                    node_id = mc->cpu_index_to_socket_id(i) % nb_numa_nodes;
+                }
+
+                set_bit(i, numa_info[node_id].node_cpu);
             }
         }
+
+        validate_numa_cpus();
     }
 }
 
@@ -400,7 +455,7 @@ static int query_memdev(Object *obj, void *opaque)
 
         m->value->policy = object_property_get_enum(obj,
                                                     "policy",
-                                                    HostMemPolicy_lookup,
+                                                    "HostMemPolicy",
                                                     &err);
         if (err) {
             goto error;
@@ -429,7 +484,7 @@ MemdevList *qmp_query_memdev(Error **errp)
     Object *obj;
     MemdevList *list = NULL;
 
-    obj = object_resolve_path("/objects", NULL);
+    obj = object_get_objects_root();
     if (obj == NULL) {
         return NULL;
     }

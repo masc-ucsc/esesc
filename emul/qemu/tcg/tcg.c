@@ -208,12 +208,10 @@ static __attribute__((unused)) inline void tcg_patch64(tcg_insn_unit *p,
 /* label relocation processing */
 
 static void tcg_out_reloc(TCGContext *s, tcg_insn_unit *code_ptr, int type,
-                          int label_index, intptr_t addend)
+                          TCGLabel *l, intptr_t addend)
 {
-    TCGLabel *l;
     TCGRelocation *r;
 
-    l = &s->labels[label_index];
     if (l->has_value) {
         /* FIXME: This may break relocations on RISC targets that
            modify instruction fields in place.  The caller may not have 
@@ -230,9 +228,8 @@ static void tcg_out_reloc(TCGContext *s, tcg_insn_unit *code_ptr, int type,
     }
 }
 
-static void tcg_out_label(TCGContext *s, int label_index, tcg_insn_unit *ptr)
+static void tcg_out_label(TCGContext *s, TCGLabel *l, tcg_insn_unit *ptr)
 {
-    TCGLabel *l = &s->labels[label_index];
     intptr_t value = (intptr_t)ptr;
     TCGRelocation *r;
 
@@ -246,19 +243,16 @@ static void tcg_out_label(TCGContext *s, int label_index, tcg_insn_unit *ptr)
     l->u.value_ptr = ptr;
 }
 
-int gen_new_label(void)
+TCGLabel *gen_new_label(void)
 {
     TCGContext *s = &tcg_ctx;
-    int idx;
-    TCGLabel *l;
+    TCGLabel *l = tcg_malloc(sizeof(TCGLabel));
 
-    if (s->nb_labels >= TCG_MAX_LABELS)
-        tcg_abort();
-    idx = s->nb_labels++;
-    l = &s->labels[idx];
-    l->has_value = 0;
-    l->u.first_reloc = NULL;
-    return idx;
+    *l = (TCGLabel){
+        .id = s->nb_labels++
+    };
+
+    return l;
 }
 
 #include "tcg-target.c"
@@ -1077,22 +1071,46 @@ void tcg_dump_ops(TCGContext *s)
             case INDEX_op_qemu_st_i32:
             case INDEX_op_qemu_ld_i64:
             case INDEX_op_qemu_st_i64:
-                if (args[k] < ARRAY_SIZE(ldst_name) && ldst_name[args[k]]) {
-                    qemu_log(",%s", ldst_name[args[k++]]);
-                } else {
-                    qemu_log(",$0x%" TCG_PRIlx, args[k++]);
+                {
+                    TCGMemOpIdx oi = args[k++];
+                    TCGMemOp op = get_memop(oi);
+                    unsigned ix = get_mmuidx(oi);
+
+                    if (op & ~(MO_AMASK | MO_BSWAP | MO_SSIZE)) {
+                        qemu_log(",$0x%x,%u", op, ix);
+                    } else {
+                        const char *s_al = "", *s_op;
+                        if (op & MO_AMASK) {
+                            if ((op & MO_AMASK) == MO_ALIGN) {
+                                s_al = "al+";
+                            } else {
+                                s_al = "un+";
+                            }
+                        }
+                        s_op = ldst_name[op & (MO_BSWAP | MO_SSIZE)];
+                        qemu_log(",%s%s,%u", s_al, s_op, ix);
+                    }
+                    i = 1;
                 }
-                i = 1;
                 break;
             default:
                 i = 0;
                 break;
             }
-            for (; i < nb_cargs; i++) {
-                if (k != 0) {
-                    qemu_log(",");
-                }
-                qemu_log("$0x%" TCG_PRIlx, args[k++]);
+            switch (c) {
+            case INDEX_op_set_label:
+            case INDEX_op_br:
+            case INDEX_op_brcond_i32:
+            case INDEX_op_brcond_i64:
+            case INDEX_op_brcond2_i32:
+                qemu_log("%s$L%d", k ? "," : "", arg_label(args[k])->id);
+                i++, k++;
+                break;
+            default:
+                break;
+            }
+            for (; i < nb_cargs; i++, k++) {
+                qemu_log("%s$0x%" TCG_PRIlx, k ? "," : "", args[k]);
             }
         }
         qemu_log("\n");
@@ -1369,15 +1387,19 @@ static void tcg_liveness_analysis(TCGContext *s)
                         memset(dead_temps, 1, s->nb_globals);
                     }
 
-                    /* input args are live */
+                    /* record arguments that die in this helper */
                     for (i = nb_oargs; i < nb_iargs + nb_oargs; i++) {
                         arg = args[i];
                         if (arg != TCG_CALL_DUMMY_ARG) {
                             if (dead_temps[arg]) {
                                 dead_args |= (1 << i);
                             }
-                            dead_temps[arg] = 0;
                         }
+                    }
+                    /* input arguments are live for preceeding opcodes */
+                    for (i = nb_oargs; i < nb_oargs + nb_iargs; i++) {
+                        arg = args[i];
+                        dead_temps[arg] = 0;
                     }
                     s->op_dead_args[oi] = dead_args;
                     s->op_sync_args[oi] = sync_args;
@@ -1513,12 +1535,16 @@ static void tcg_liveness_analysis(TCGContext *s)
                     memset(mem_temps, 1, s->nb_globals);
                 }
 
-                /* input args are live */
+                /* record arguments that die in this opcode */
                 for (i = nb_oargs; i < nb_oargs + nb_iargs; i++) {
                     arg = args[i];
                     if (dead_temps[arg]) {
                         dead_args |= (1 << i);
                     }
+                }
+                /* input arguments are live for preceeding opcodes */
+                for (i = nb_oargs; i < nb_oargs + nb_iargs; i++) {
+                    arg = args[i];
                     dead_temps[arg] = 0;
                 }
                 s->op_dead_args[oi] = dead_args;
@@ -1989,6 +2015,16 @@ static void tcg_reg_alloc_op(TCGContext *s,
                 if (!IS_DEAD_ARG(i)) {
                     goto allocate_in_reg;
                 }
+                /* check if the current register has already been allocated
+                   for another input aliased to an output */
+                int k2, i2;
+                for (k2 = 0 ; k2 < k ; k2++) {
+                    i2 = def->sorted_args[nb_oargs + k2];
+                    if ((def->args_ct[i2].ct & TCG_CT_IALIAS) &&
+                        (new_args[i2] == ts->reg)) {
+                        goto allocate_in_reg;
+                    }
+                }
             }
         }
         reg = ts->reg;
@@ -2332,7 +2368,7 @@ static inline int tcg_gen_code_common(TCGContext *s,
             break;
         case INDEX_op_set_label:
             tcg_reg_alloc_bb_end(s, s->reserved_regs);
-            tcg_out_label(s, args[0], s->code_ptr);
+            tcg_out_label(s, arg_label(args[0]), s->code_ptr);
             break;
         case INDEX_op_call:
             tcg_reg_alloc_call(s, op->callo, op->calli, args,

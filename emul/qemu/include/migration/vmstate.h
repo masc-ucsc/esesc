@@ -120,11 +120,6 @@ typedef struct {
     bool (*field_exists)(void *opaque, int version_id);
 } VMStateField;
 
-typedef struct VMStateSubsection {
-    const VMStateDescription *vmsd;
-    bool (*needed)(void *opaque);
-} VMStateSubsection;
-
 struct VMStateDescription {
     const char *name;
     int unmigratable;
@@ -135,8 +130,9 @@ struct VMStateDescription {
     int (*pre_load)(void *opaque);
     int (*post_load)(void *opaque, int version_id);
     void (*pre_save)(void *opaque);
+    bool (*needed)(void *opaque);
     VMStateField *fields;
-    const VMStateSubsection *subsections;
+    const VMStateDescription **subsections;
 };
 
 extern const VMStateDescription vmstate_dummy;
@@ -504,9 +500,10 @@ extern const VMStateInfo vmstate_info_bitmap;
     .start        = (_start),                                        \
 }
 
-#define VMSTATE_BUFFER_UNSAFE_INFO(_field, _state, _version, _info, _size) { \
+#define VMSTATE_BUFFER_UNSAFE_INFO_TEST(_field, _state, _test, _version, _info, _size) { \
     .name       = (stringify(_field)),                               \
     .version_id = (_version),                                        \
+    .field_exists = (_test),                                         \
     .size       = (_size),                                           \
     .info       = &(_info),                                          \
     .flags      = VMS_BUFFER,                                        \
@@ -565,6 +562,10 @@ extern const VMStateInfo vmstate_info_bitmap;
 #define VMSTATE_STRUCT_ARRAY(_field, _state, _num, _version, _vmsd, _type) \
     VMSTATE_STRUCT_ARRAY_TEST(_field, _state, _num, NULL, _version,   \
             _vmsd, _type)
+
+#define VMSTATE_BUFFER_UNSAFE_INFO(_field, _state, _version, _info, _size) \
+    VMSTATE_BUFFER_UNSAFE_INFO_TEST(_field, _state, NULL, _version, _info, \
+            _size)
 
 #define VMSTATE_BOOL_V(_f, _s, _v)                                    \
     VMSTATE_SINGLE(_f, _s, _v, vmstate_info_bool, bool)
@@ -811,6 +812,8 @@ extern const VMStateInfo vmstate_info_bitmap;
     {}
 
 #define SELF_ANNOUNCE_ROUNDS 5
+
+void loadvm_free_handlers(MigrationIncomingState *mis);
 
 int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
                        void *opaque, int version_id);

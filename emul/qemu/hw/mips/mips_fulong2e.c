@@ -168,6 +168,7 @@ static int64_t load_kernel (CPUMIPSState *env)
     rom_add_blob_fixed("prom", prom_buf, prom_size,
                        cpu_mips_kseg0_to_phys(NULL, ENVP_ADDR));
 
+    g_free(prom_buf);
     return kernel_entry;
 }
 
@@ -301,8 +302,7 @@ static void mips_fulong2e_init(MachineState *machine)
     bios_size = 1024 * 1024;
 
     /* allocate RAM */
-    memory_region_init_ram(ram, NULL, "fulong2e.ram", ram_size, &error_abort);
-    vmstate_register_ram_global(ram);
+    memory_region_allocate_system_memory(ram, NULL, "fulong2e.ram", ram_size);
     memory_region_init_ram(bios, NULL, "fulong2e.bios", bios_size,
                            &error_abort);
     vmstate_register_ram_global(bios);

@@ -22,7 +22,6 @@
 #include "hw/hw.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
-#include "monitor/monitor.h"
 #include "hw/loader.h"
 #include "elf.h"
 #include "hw/sysbus.h"
@@ -469,7 +468,7 @@ static void spapr_vio_busdev_realize(DeviceState *qdev, Error **errp)
     }
 
     if (pc->rtce_window_size) {
-        uint32_t liobn = SPAPR_VIO_BASE_LIOBN | dev->reg;
+        uint32_t liobn = SPAPR_VIO_LIOBN(dev->reg);
 
         memory_region_init(&dev->mrroot, OBJECT(dev), "iommu-spapr-root",
                            ram_size);

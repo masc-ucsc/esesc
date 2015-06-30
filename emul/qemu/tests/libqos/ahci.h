@@ -523,9 +523,12 @@ void ahci_write_fis(AHCIQState *ahci, RegH2DFIS *fis, uint64_t addr);
 unsigned ahci_pick_cmd(AHCIQState *ahci, uint8_t port);
 unsigned size_to_prdtl(unsigned bytes, unsigned bytes_per_prd);
 void ahci_guest_io(AHCIQState *ahci, uint8_t port, uint8_t ide_cmd,
-                   uint64_t gbuffer, size_t size);
+                   uint64_t gbuffer, size_t size, uint64_t sector);
+AHCICommand *ahci_guest_io_halt(AHCIQState *ahci, uint8_t port, uint8_t ide_cmd,
+                                uint64_t gbuffer, size_t size, uint64_t sector);
+void ahci_guest_io_resume(AHCIQState *ahci, AHCICommand *cmd);
 void ahci_io(AHCIQState *ahci, uint8_t port, uint8_t ide_cmd,
-             void *buffer, size_t bufsize);
+             void *buffer, size_t bufsize, uint64_t sector);
 
 /* Command Lifecycle */
 AHCICommand *ahci_command_create(uint8_t command_name);
@@ -537,11 +540,16 @@ void ahci_command_verify(AHCIQState *ahci, AHCICommand *cmd);
 void ahci_command_free(AHCICommand *cmd);
 
 /* Command adjustments */
+void ahci_command_set_flags(AHCICommand *cmd, uint16_t cmdh_flags);
+void ahci_command_clr_flags(AHCICommand *cmd, uint16_t cmdh_flags);
+void ahci_command_set_offset(AHCICommand *cmd, uint64_t lba_sect);
 void ahci_command_set_buffer(AHCICommand *cmd, uint64_t buffer);
 void ahci_command_set_size(AHCICommand *cmd, uint64_t xbytes);
 void ahci_command_set_prd_size(AHCICommand *cmd, unsigned prd_size);
 void ahci_command_set_sizes(AHCICommand *cmd, uint64_t xbytes,
                             unsigned prd_size);
+void ahci_command_adjust(AHCICommand *cmd, uint64_t lba_sect, uint64_t gbuffer,
+                         uint64_t xbytes, unsigned prd_size);
 
 /* Command Misc */
 uint8_t ahci_command_slot(AHCICommand *cmd);

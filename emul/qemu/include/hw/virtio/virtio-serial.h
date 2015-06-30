@@ -60,6 +60,17 @@ typedef struct VirtIOSerialPortClass {
         /* Guest is now ready to accept data (virtqueues set up). */
     void (*guest_ready)(VirtIOSerialPort *port);
 
+        /*
+         * Guest has enqueued a buffer for the host to write into.
+         * Called each time a buffer is enqueued by the guest;
+         * irrespective of whether there already were free buffers the
+         * host could have consumed.
+         *
+         * This is dependent on both the guest and host end being
+         * connected.
+         */
+    void (*guest_writable)(VirtIOSerialPort *port);
+
     /*
      * Guest wrote some data to the port. This data is handed over to
      * the app via this callback.  The app can return a size less than
@@ -209,8 +220,5 @@ void virtio_serial_throttle_port(VirtIOSerialPort *port, bool throttle);
 #define TYPE_VIRTIO_SERIAL "virtio-serial-device"
 #define VIRTIO_SERIAL(obj) \
         OBJECT_CHECK(VirtIOSerial, (obj), TYPE_VIRTIO_SERIAL)
-
-#define DEFINE_VIRTIO_SERIAL_PROPERTIES(_state, _field) \
-        DEFINE_PROP_UINT32("max_ports", _state, _field.max_virtserial_ports, 31)
 
 #endif

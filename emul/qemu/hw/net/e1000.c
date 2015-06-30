@@ -578,7 +578,7 @@ static inline int
 is_vlan_packet(E1000State *s, const uint8_t *buf)
 {
     return (be16_to_cpup((uint16_t *)(buf + 12)) ==
-                le16_to_cpup((uint16_t *)(s->mac_reg + VET)));
+                le16_to_cpu(s->mac_reg[VET]));
 }
 
 static inline int
@@ -711,7 +711,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
         (tp->cptse || txd_lower & E1000_TXD_CMD_EOP)) {
         tp->vlan_needed = 1;
         stw_be_p(tp->vlan_header,
-                      le16_to_cpup((uint16_t *)(s->mac_reg + VET)));
+                      le16_to_cpu(s->mac_reg[VET]));
         stw_be_p(tp->vlan_header + 2,
                       le16_to_cpu(dp->upper.fields.special));
     }
@@ -1370,6 +1370,7 @@ static const VMStateDescription vmstate_e1000_mit_state = {
     .name = "e1000/mit_state",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = e1000_mit_state_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(mac_reg[RDTR], E1000State),
         VMSTATE_UINT32(mac_reg[RADV], E1000State),
@@ -1457,13 +1458,9 @@ static const VMStateDescription vmstate_e1000 = {
         VMSTATE_UINT32_SUB_ARRAY(mac_reg, E1000State, VFTA, 128),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (VMStateSubsection[]) {
-        {
-            .vmsd = &vmstate_e1000_mit_state,
-            .needed = e1000_mit_state_needed,
-        }, {
-            /* empty */
-        }
+    .subsections = (const VMStateDescription*[]) {
+        &vmstate_e1000_mit_state,
+        NULL
     }
 };
 

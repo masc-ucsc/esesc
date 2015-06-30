@@ -6,6 +6,7 @@
 /*** qdev-properties.c ***/
 
 extern PropertyInfo qdev_prop_bit;
+extern PropertyInfo qdev_prop_bit64;
 extern PropertyInfo qdev_prop_bool;
 extern PropertyInfo qdev_prop_uint8;
 extern PropertyInfo qdev_prop_uint16;
@@ -49,6 +50,15 @@ extern PropertyInfo qdev_prop_arraylen;
             + type_check(uint32_t,typeof_field(_state, _field)), \
         .qtype     = QTYPE_QBOOL,                                \
         .defval    = (bool)_defval,                              \
+        }
+#define DEFINE_PROP_BIT64(_name, _state, _field, _bit, _defval) {       \
+        .name      = (_name),                                           \
+        .info      = &(qdev_prop_bit),                                  \
+        .bitnr    = (_bit),                                             \
+        .offset    = offsetof(_state, _field)                           \
+            + type_check(uint64_t, typeof_field(_state, _field)),       \
+        .qtype     = QTYPE_QBOOL,                                       \
+        .defval    = (bool)_defval,                                     \
         }
 
 #define DEFINE_PROP_BOOL(_name, _state, _field, _defval) {       \
@@ -149,8 +159,8 @@ extern PropertyInfo qdev_prop_arraylen;
                         LostTickPolicy)
 #define DEFINE_PROP_BIOS_CHS_TRANS(_n, _s, _f, _d) \
     DEFINE_PROP_DEFAULT(_n, _s, _f, _d, qdev_prop_bios_chs_trans, int)
-#define DEFINE_PROP_BLOCKSIZE(_n, _s, _f, _d) \
-    DEFINE_PROP_DEFAULT(_n, _s, _f, _d, qdev_prop_blocksize, uint16_t)
+#define DEFINE_PROP_BLOCKSIZE(_n, _s, _f) \
+    DEFINE_PROP_DEFAULT(_n, _s, _f, 0, qdev_prop_blocksize, uint16_t)
 #define DEFINE_PROP_PCI_HOST_DEVADDR(_n, _s, _f) \
     DEFINE_PROP(_n, _s, _f, qdev_prop_pci_host_devaddr, PCIHostDeviceAddress)
 
@@ -168,8 +178,8 @@ void qdev_prop_set_uint64(DeviceState *dev, const char *name, uint64_t value);
 void qdev_prop_set_string(DeviceState *dev, const char *name, const char *value);
 void qdev_prop_set_chr(DeviceState *dev, const char *name, CharDriverState *value);
 void qdev_prop_set_netdev(DeviceState *dev, const char *name, NetClientState *value);
-int qdev_prop_set_drive(DeviceState *dev, const char *name,
-                        BlockBackend *value) QEMU_WARN_UNUSED_RESULT;
+void qdev_prop_set_drive(DeviceState *dev, const char *name,
+                         BlockBackend *value, Error **errp);
 void qdev_prop_set_drive_nofail(DeviceState *dev, const char *name,
                                 BlockBackend *value);
 void qdev_prop_set_macaddr(DeviceState *dev, const char *name, uint8_t *value);

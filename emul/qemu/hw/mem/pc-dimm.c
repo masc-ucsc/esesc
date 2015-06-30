@@ -211,7 +211,6 @@ uint64_t pc_dimm_get_free_addr(uint64_t address_space_start,
     uint64_t address_space_end = address_space_start + address_space_size;
 
     g_assert(QEMU_ALIGN_UP(address_space_start, align) == address_space_start);
-    g_assert(QEMU_ALIGN_UP(address_space_size, align) == address_space_size);
 
     if (!address_space_size) {
         error_setg(errp, "memory hotplug is not enabled, "
@@ -351,6 +350,7 @@ static void pc_dimm_class_init(ObjectClass *oc, void *data)
 
     dc->realize = pc_dimm_realize;
     dc->props = pc_dimm_properties;
+    dc->desc = "DIMM memory module";
 
     ddc->get_memory_region = pc_dimm_get_memory_region;
 }

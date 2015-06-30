@@ -215,10 +215,6 @@ void cpu_list_unlock(void)
 /***********************************************************/
 /* CPUX86 core interface */
 
-void cpu_smm_update(CPUX86State *env)
-{
-}
-
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
     return cpu_get_real_ticks();
@@ -525,8 +521,6 @@ segv:
     info.si_code = TARGET_SEGV_MAPERR;
     info._sifields._sigfault._addr = env->exception.vaddress;
     queue_signal(env, info.si_signo, &info);
-
-    end_exclusive();
 }
 
 /* Handle a jump to the kernel code page.  */
@@ -566,7 +560,7 @@ do_kernel_trap(CPUARMState *env)
         end_exclusive();
         break;
     case 0xffff0fe0: /* __kernel_get_tls */
-        env->regs[0] = env->cp15.tpidrro_el[0];
+        env->regs[0] = cpu_get_tls(env);
         break;
     case 0xffff0f60: /* __kernel_cmpxchg64 */
         arm_kernel_cmpxchg64_helper(env);
@@ -3452,8 +3446,8 @@ void init_task_state(TaskState *ts)
 CPUArchState *cpu_copy(CPUArchState *env)
 {
     CPUState *cpu = ENV_GET_CPU(env);
-    CPUArchState *new_env = cpu_init(cpu_model);
-    CPUState *new_cpu = ENV_GET_CPU(new_env);
+    CPUState *new_cpu = cpu_init(cpu_model);
+    CPUArchState *new_env = new_cpu->env_ptr;
     CPUBreakpoint *bp;
     CPUWatchpoint *wp;
 
@@ -3465,8 +3459,8 @@ CPUArchState *cpu_copy(CPUArchState *env)
     /* Clone all break/watchpoints.
        Note: Once we support ptrace with hw-debug register access, make sure
        BP_CPU break/watchpoints are handled correctly on clone. */
-    QTAILQ_INIT(&cpu->breakpoints);
-    QTAILQ_INIT(&cpu->watchpoints);
+    QTAILQ_INIT(&new_cpu->breakpoints);
+    QTAILQ_INIT(&new_cpu->watchpoints);
     QTAILQ_FOREACH(bp, &cpu->breakpoints, entry) {
         cpu_breakpoint_insert(new_cpu, bp->pc, bp->flags, NULL);
     }
@@ -3885,6 +3879,8 @@ int main(int argc, char **argv, char **envp)
     cpu_model = NULL;
 #ifdef CONFIG_ESESC
     cpu_model = "MIPS64R6-generic";
+    //cpu_model = "MIPS32R5-generic";
+    //cpu_model = "MIPS32R6-generic";
 #endif
 #if defined(cpudef_setup)
     cpudef_setup(); /* parse cpu definitions in target config file (TBD) */
@@ -3940,20 +3936,21 @@ int main(int argc, char **argv, char **envp)
 # else
         cpu_model = "750";
 # endif
+#elif defined TARGET_SH4
+        cpu_model = TYPE_SH7785_CPU;
 #else
         cpu_model = "any";
 #endif
     }
     tcg_exec_init(0);
-    cpu_exec_init_all();
     /* NOTE: we need to init the CPU at this stage to get
        qemu_host_page_size */
-    env = cpu_init(cpu_model);
-    if (!env) {
+    cpu = cpu_init(cpu_model);
+    if (!cpu) {
         fprintf(stderr, "Unable to find CPU definition\n");
         exit(1);
     }
-    cpu = ENV_GET_CPU(env);
+    env = cpu->env_ptr;
     cpu_reset(cpu);
 
     thread_cpu = cpu;
