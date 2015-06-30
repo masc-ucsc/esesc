@@ -1,5 +1,6 @@
 // Contributed by Jose Renau
 //                Ehsan K.Ardestani
+//                Sushant Kondguli
 //
 // The ESESC/BSD License
 //
@@ -98,26 +99,29 @@ SamplerPeriodic::~SamplerPeriodic()
 }
 /* }}} */
 
-void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
+uint64_t SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
   if(likely(!execute(fid, 1)))
-    return; // QEMU can still send a few additional instructions (emul should stop soon)
+    return 0; // QEMU can still send a few additional instructions (emul should stop soon)
 
   I(!done[fid]);
 
   // process the current sample mode
   if (getNextSwitch()>totalnInst) {
-    if (mode == EmuRabbit || mode == EmuInit)
-      return;
+    if (mode == EmuRabbit || mode == EmuInit) {
+      uint64_t rabbitInst = getNextSwitch() - totalnInst;
+      execute(fid,rabbitInst); 
+      return rabbitInst; 
+    }
     if (mode == EmuDetail || mode == EmuTiming) {
       emul->queueInstruction(pc,addr, op ,fid, src1, src2, dest, dest2, getStatsFlag());
-      return;
+      return 0;
     }
     I(mode == EmuWarmup);
     doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
-    return;
+    return 0;
   }
 
 #if 0
@@ -131,6 +135,7 @@ void SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int
   I(getNextSwitch() <= totalnInst);
   coordinateWithOthersAndNextMode(fid);
   I(mode == next_mode); //it was a detailed sync
+  return 0;
 }
 /* }}} */
 

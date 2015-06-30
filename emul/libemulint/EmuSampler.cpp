@@ -1,4 +1,5 @@
 // Contributed by Jose Renau
+//                Sushant Kondguli
 //
 // The ESESC/BSD License
 //
@@ -340,6 +341,17 @@ bool EmuSampler::execute(FlowID fid, uint64_t icount)
       fprintf(stderr,">%d",fid );
     else
       fprintf(stderr,"?%d",fid );
+  }
+
+  // An adjustment when adding more than one instruction. Keeps the sample prints valid 
+  // Repeat: Note, this is racy code. We can miss a rwdt from time to time, but who cares?
+  if (icount > 1) {
+    while (next < totalnInst) {
+        if (mode==EmuRabbit)
+            fprintf(stderr,"r%d",fid );
+        next += 4*1024*1024; 
+    }
+    next = totalnInst;
   }
 
   return !done[fid];

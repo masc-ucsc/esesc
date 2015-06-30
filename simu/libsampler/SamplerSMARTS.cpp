@@ -1,5 +1,6 @@
 // Contributed by Jose Renau
 //                Ehsan K.Ardestani
+//                Sushant Kondguli
 //
 // The ESESC/BSD License
 //
@@ -77,23 +78,29 @@ SamplerSMARTS::~SamplerSMARTS()
 }
 /* }}} */
 
-void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
+uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
   if(likely(!execute(fid, 1)))
-    return; // QEMU can still send a few additional instructions (emul should stop soon)
+    return 0; // QEMU can still send a few additional instructions (emul should stop soon)
   I(mode!=EmuInit);
 
   // process the current sample mode
   if (getNextSwitch()>totalnInst) {
 
-    if (mode == EmuRabbit || mode == EmuInit)
-      return;
+    if (mode == EmuRabbit || mode == EmuInit) {
+      uint64_t rabbitInst = getNextSwitch() - totalnInst;
+      execute(fid,rabbitInst);
+      // Qemu is not going to return untill it has executed these many instructions
+      // Or untill it hits a syscall that causes it to exit
+      // Untill then, you are on your own. Sit back and relax!
+      return rabbitInst; 
+    }
 
     if (mode == EmuDetail || mode == EmuTiming) {
       emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, getStatsFlag());
-      return;
+      return 0;
     }
 
     I(mode == EmuWarmup);
@@ -104,7 +111,7 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
 #else
 		//doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
 #endif
-    return;
+    return 0;
   }
 
   // Look for the new mode
@@ -116,7 +123,7 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
 
   if (getNextSwitch() > totalnInst){//another thread just changed the mode
     pthread_mutex_unlock (&mode_lock);
-    return;
+    return 0;
   }
 
   lastMode = mode;
@@ -140,7 +147,7 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
     if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
       markDone();
       pthread_mutex_unlock (&mode_lock);
-      return;
+      return 0;
     }
     if (doPower) {
       uint64_t mytime = getTime();
@@ -159,6 +166,7 @@ void SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int s
   }
   pthread_mutex_unlock (&mode_lock);
 
+  return 0;
 }
 /* }}} */
 

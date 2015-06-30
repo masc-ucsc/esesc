@@ -70,7 +70,8 @@ void helper_raise_exception(CPUMIPSState *env, uint32_t exception)
 }
 
 #ifdef CONFIG_ESESC
-void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env);
+long long int icount = 0;
+uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env);
 
 void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t op, uint64_t reg) {
 	//qemu_log_mask(CPU_LOG_TB_IN_ASM,"4. %d pc:%llx op:%llx addr:%llx\n", env->fid, (long long)pc, (long long)op, (long long)target);
@@ -82,7 +83,13 @@ void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t
   reg      = reg >> 8;
   int dest = reg & 0xFF;
 
-  QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest, env);
+  // This will not be accurate but it'll be faster
+  // Assuming that's why you are running in rabbit mode
+  if (icount <= 0)
+  {
+    icount = QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest, env);
+  }
+  else icount --; 
 }
 
 void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg) {
@@ -97,7 +104,13 @@ void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg)
 
 	//fprintf(stderr,"%d pc:%llx op:%llx src1:%d src2:%d dest:%d\n", cpu->fid, (long long)pc, (long long)op, src1, src2, dest);
 //fprintf(stdout,"Here\n");
-  QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest, env);
+  // This will not be accurate but it'll be faster
+  // Assuming that's why you are running in rabbit mode
+  if (icount <= 0)
+  {
+    icount = QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest, env);
+  }
+  else icount --;
 }
 #endif
 

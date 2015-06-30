@@ -258,6 +258,7 @@ struct CPUState {
     uint32_t host_tid;
 #ifdef CONFIG_ESESC
     uint32_t fid; /* simu flow id */
+    uint64_t icount; /* instruction count */
 #endif
     bool running;
     struct QemuCond *halt_cond;
