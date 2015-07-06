@@ -99,7 +99,7 @@ SamplerPeriodic::~SamplerPeriodic()
 }
 /* }}} */
 
-uint64_t SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2)
+uint64_t SamplerPeriodic::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *dummy)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());

@@ -76,10 +76,10 @@ extern "C" uint64_t QEMUReader_get_time()
   return qsamplerlist[0]->getTime();
 }
 
-extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest) {
+extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *dummy) {
   I(fid<128); // qsampler statically sized to 128 at most
 
-  return qsamplerlist[fid]->queue(pc,addr,fid,op,src1, src2, dest, LREG_InvalidOutput);
+  return qsamplerlist[fid]->queue(pc,addr,fid,op,src1, src2, dest, LREG_InvalidOutput, dummy);
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)

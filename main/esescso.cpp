@@ -106,9 +106,9 @@ extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_war
   if(dlc > 0) {
     for(int i = 0; i < live_warmup_cnt && i < WARMUP_ARRAY_SIZE; i++) {
       if(live_warmup_st[i]) {
-        QEMUReader_queue_inst(0, live_warmup_addr[i], 0, iSALU_ST, LREG_R0, LREG_R0, LREG_InvalidOutput);
+        QEMUReader_queue_inst(0, live_warmup_addr[i], 0, iSALU_ST, LREG_R0, LREG_R0, LREG_InvalidOutput, NULL);
       } else {
-        QEMUReader_queue_inst(0, live_warmup_addr[i], 0, iLALU_LD, LREG_R0, LREG_R0, LREG_InvalidOutput);
+        QEMUReader_queue_inst(0, live_warmup_addr[i], 0, iLALU_LD, LREG_R0, LREG_R0, LREG_InvalidOutput, NULL);
       }
     }
   }
