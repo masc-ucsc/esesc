@@ -205,7 +205,6 @@ static AddressSpace *pbm_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
     return &is->iommu_as;
 }
 
-/* Called from RCU critical section */
 static IOMMUTLBEntry pbm_translate_iommu(MemoryRegion *iommu, hwaddr addr,
                                          bool is_write)
 {
@@ -289,8 +288,7 @@ static IOMMUTLBEntry pbm_translate_iommu(MemoryRegion *iommu, hwaddr addr,
         }
     }
 
-    tte = address_space_ldq_be(&address_space_memory, baseaddr + offset,
-                               MEMTXATTRS_UNSPECIFIED, NULL);
+    tte = ldq_be_phys(&address_space_memory, baseaddr + offset);
 
     if (!(tte & IOMMU_TTE_DATA_V)) {
         /* Invalid mapping */
@@ -793,13 +791,14 @@ static int pci_pbm_init_device(SysBusDevice *dev)
     return 0;
 }
 
-static void pbm_pci_host_realize(PCIDevice *d, Error **errp)
+static int pbm_pci_host_init(PCIDevice *d)
 {
     pci_set_word(d->config + PCI_COMMAND,
                  PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
     pci_set_word(d->config + PCI_STATUS,
                  PCI_STATUS_FAST_BACK | PCI_STATUS_66MHZ |
                  PCI_STATUS_DEVSEL_MEDIUM);
+    return 0;
 }
 
 static void pbm_pci_host_class_init(ObjectClass *klass, void *data)
@@ -807,7 +806,7 @@ static void pbm_pci_host_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    k->realize = pbm_pci_host_realize;
+    k->init = pbm_pci_host_init;
     k->vendor_id = PCI_VENDOR_ID_SUN;
     k->device_id = PCI_DEVICE_ID_SUN_SABRE;
     k->class_id = PCI_CLASS_BRIDGE_HOST;

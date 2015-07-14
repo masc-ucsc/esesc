@@ -4,14 +4,14 @@
   'data': { 'value1': 'TestTypeA',
             'value2': 'TestTypeB' } }
 
-{ 'struct': 'TestBase',
+{ 'type': 'TestBase',
   'data': { 'enum1': 'TestEnum' } }
 
 { 'enum': 'TestEnum',
   'data': [ 'value1', 'value2' ] }
 
-{ 'struct': 'TestTypeA',
+{ 'type': 'TestTypeA',
   'data': { 'string': 'str' } }
 
-{ 'struct': 'TestTypeB',
+{ 'type': 'TestTypeB',
   'data': { 'integer': 'int' } }

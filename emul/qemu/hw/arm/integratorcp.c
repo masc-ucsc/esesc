@@ -15,7 +15,6 @@
 #include "net/net.h"
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
-#include "qemu/error-report.h"
 
 #define TYPE_INTEGRATOR_CM "integrator_core"
 #define INTEGRATOR_CM(obj) \
@@ -406,39 +405,16 @@ static int icp_pic_init(SysBusDevice *sbd)
 
 /* CP control registers.  */
 
-#define TYPE_ICP_CONTROL_REGS "icp-ctrl-regs"
-#define ICP_CONTROL_REGS(obj) \
-    OBJECT_CHECK(ICPCtrlRegsState, (obj), TYPE_ICP_CONTROL_REGS)
-
-typedef struct ICPCtrlRegsState {
-    /*< private >*/
-    SysBusDevice parent_obj;
-    /*< public >*/
-
-    MemoryRegion iomem;
-
-    qemu_irq mmc_irq;
-    uint32_t intreg_state;
-} ICPCtrlRegsState;
-
-#define ICP_GPIO_MMC_WPROT      "mmc-wprot"
-#define ICP_GPIO_MMC_CARDIN     "mmc-cardin"
-
-#define ICP_INTREG_WPROT        (1 << 0)
-#define ICP_INTREG_CARDIN       (1 << 3)
-
 static uint64_t icp_control_read(void *opaque, hwaddr offset,
                                  unsigned size)
 {
-    ICPCtrlRegsState *s = opaque;
-
     switch (offset >> 2) {
     case 0: /* CP_IDFIELD */
         return 0x41034003;
     case 1: /* CP_FLASHPROG */
         return 0;
     case 2: /* CP_INTREG */
-        return s->intreg_state;
+        return 0;
     case 3: /* CP_DECODE */
         return 0x11;
     default:
@@ -450,14 +426,9 @@ static uint64_t icp_control_read(void *opaque, hwaddr offset,
 static void icp_control_write(void *opaque, hwaddr offset,
                           uint64_t value, unsigned size)
 {
-    ICPCtrlRegsState *s = opaque;
-
     switch (offset >> 2) {
-    case 2: /* CP_INTREG */
-        s->intreg_state &= ~(value & ICP_INTREG_CARDIN);
-        qemu_set_irq(s->mmc_irq, !!(s->intreg_state & ICP_INTREG_CARDIN));
-        break;
     case 1: /* CP_FLASHPROG */
+    case 2: /* CP_INTREG */
     case 3: /* CP_DECODE */
         /* Nothing interesting implemented yet.  */
         break;
@@ -472,41 +443,15 @@ static const MemoryRegionOps icp_control_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void icp_control_mmc_wprot(void *opaque, int line, int level)
+static void icp_control_init(hwaddr base)
 {
-    ICPCtrlRegsState *s = opaque;
+    MemoryRegion *io;
 
-    s->intreg_state &= ~ICP_INTREG_WPROT;
-    if (level) {
-        s->intreg_state |= ICP_INTREG_WPROT;
-    }
-}
-
-static void icp_control_mmc_cardin(void *opaque, int line, int level)
-{
-    ICPCtrlRegsState *s = opaque;
-
-    /* line is released by writing to CP_INTREG */
-    if (level) {
-        s->intreg_state |= ICP_INTREG_CARDIN;
-        qemu_set_irq(s->mmc_irq, 1);
-    }
-}
-
-static void icp_control_init(Object *obj)
-{
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    ICPCtrlRegsState *s = ICP_CONTROL_REGS(obj);
-    DeviceState *dev = DEVICE(obj);
-
-    memory_region_init_io(&s->iomem, OBJECT(s), &icp_control_ops, s,
-                          "icp_ctrl_regs", 0x00800000);
-    sysbus_init_mmio(sbd, &s->iomem);
-
-    qdev_init_gpio_in_named(dev, icp_control_mmc_wprot, ICP_GPIO_MMC_WPROT, 1);
-    qdev_init_gpio_in_named(dev, icp_control_mmc_cardin,
-                            ICP_GPIO_MMC_CARDIN, 1);
-    sysbus_init_irq(sbd, &s->mmc_irq);
+    io = (MemoryRegion *)g_malloc0(sizeof(MemoryRegion));
+    memory_region_init_io(io, NULL, &icp_control_ops, NULL,
+                          "control", 0x00800000);
+    memory_region_add_subregion(get_system_memory(), base, io);
+    /* ??? Save/restore.  */
 }
 
 
@@ -524,51 +469,25 @@ static void integratorcp_init(MachineState *machine)
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
-    ObjectClass *cpu_oc;
-    Object *cpuobj;
     ARMCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *ram_alias = g_new(MemoryRegion, 1);
     qemu_irq pic[32];
-    DeviceState *dev, *sic, *icp;
+    DeviceState *dev;
     int i;
-    Error *err = NULL;
 
     if (!cpu_model) {
         cpu_model = "arm926";
     }
-
-    cpu_oc = cpu_class_by_name(TYPE_ARM_CPU, cpu_model);
-    if (!cpu_oc) {
+    cpu = cpu_arm_init(cpu_model);
+    if (!cpu) {
         fprintf(stderr, "Unable to find CPU definition\n");
         exit(1);
     }
 
-    cpuobj = object_new(object_class_get_name(cpu_oc));
-
-    /* By default ARM1176 CPUs have EL3 enabled.  This board does not
-     * currently support EL3 so the CPU EL3 property is disabled before
-     * realization.
-     */
-    if (object_property_find(cpuobj, "has_el3", NULL)) {
-        object_property_set_bool(cpuobj, false, "has_el3", &err);
-        if (err) {
-            error_report_err(err);
-            exit(1);
-        }
-    }
-
-    object_property_set_bool(cpuobj, true, "realized", &err);
-    if (err) {
-        error_report_err(err);
-        exit(1);
-    }
-
-    cpu = ARM_CPU(cpuobj);
-
-    memory_region_allocate_system_memory(ram, NULL, "integrator.ram",
-                                         ram_size);
+    memory_region_init_ram(ram, NULL, "integrator.ram", ram_size, &error_abort);
+    vmstate_register_ram_global(ram);
     /* ??? On a real system the first 1Mb is mapped as SSRAM or boot flash.  */
     /* ??? RAM should repeat to fill physical memory space.  */
     /* SDRAM at address zero*/
@@ -589,24 +508,17 @@ static void integratorcp_init(MachineState *machine)
     for (i = 0; i < 32; i++) {
         pic[i] = qdev_get_gpio_in(dev, i);
     }
-    sic = sysbus_create_simple(TYPE_INTEGRATOR_PIC, 0xca000000, pic[26]);
+    sysbus_create_simple(TYPE_INTEGRATOR_PIC, 0xca000000, pic[26]);
     sysbus_create_varargs("integrator_pit", 0x13000000,
                           pic[5], pic[6], pic[7], NULL);
     sysbus_create_simple("pl031", 0x15000000, pic[8]);
     sysbus_create_simple("pl011", 0x16000000, pic[1]);
     sysbus_create_simple("pl011", 0x17000000, pic[2]);
-    icp = sysbus_create_simple(TYPE_ICP_CONTROL_REGS, 0xcb000000,
-                               qdev_get_gpio_in(sic, 3));
+    icp_control_init(0xcb000000);
     sysbus_create_simple("pl050_keyboard", 0x18000000, pic[3]);
     sysbus_create_simple("pl050_mouse", 0x19000000, pic[4]);
     sysbus_create_simple(TYPE_INTEGRATOR_DEBUG, 0x1a000000, 0);
-
-    dev = sysbus_create_varargs("pl181", 0x1c000000, pic[23], pic[24], NULL);
-    qdev_connect_gpio_out(dev, 0,
-                          qdev_get_gpio_in_named(icp, ICP_GPIO_MMC_WPROT, 0));
-    qdev_connect_gpio_out(dev, 1,
-                          qdev_get_gpio_in_named(icp, ICP_GPIO_MMC_CARDIN, 0));
-
+    sysbus_create_varargs("pl181", 0x1c000000, pic[23], pic[24], NULL);
     if (nd_table[0].used)
         smc91c111_init(&nd_table[0], 0xc8000000, pic[27]);
 
@@ -667,18 +579,10 @@ static const TypeInfo icp_pic_info = {
     .class_init    = icp_pic_class_init,
 };
 
-static const TypeInfo icp_ctrl_regs_info = {
-    .name          = TYPE_ICP_CONTROL_REGS,
-    .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(ICPCtrlRegsState),
-    .instance_init = icp_control_init,
-};
-
 static void integratorcp_register_types(void)
 {
     type_register_static(&icp_pic_info);
     type_register_static(&core_info);
-    type_register_static(&icp_ctrl_regs_info);
 }
 
 type_init(integratorcp_register_types)

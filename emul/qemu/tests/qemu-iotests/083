@@ -56,8 +56,7 @@ filter_nbd() {
 	#
 	# Filter out the TCP port number since this changes between runs.
 	sed -e 's#^.*nbd\.c:.*##g' \
-	    -e 's#nbd:127\.0\.0\.1:[^:]*:#nbd:127\.0\.0\.1:PORT:#g' \
-            -e 's#\(exportname=foo\|PORT\): Failed to .*$#\1#'
+	    -e 's#nbd:127\.0\.0\.1:[^:]*:#nbd:127\.0\.0\.1:PORT:#g'
 }
 
 check_disconnect() {

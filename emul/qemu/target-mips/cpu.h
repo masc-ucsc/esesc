@@ -4,6 +4,7 @@
 //#define DEBUG_OP
 
 #define ALIGNED_ONLY
+#define TARGET_HAS_ICE 1
 
 #define ELF_MACHINE	EM_MIPS
 
@@ -74,6 +75,14 @@ union wr_t {
     int32_t w[MSA_WRLEN/32];
     int64_t d[MSA_WRLEN/64];
 };
+
+#if defined(CONFIG_USER_ONLY)
+/* Custom prctl interface.  */
+#define PR_SET_FP_MODE 45
+#define PR_GET_FP_MODE 46
+#define PR_FP_MODE_FR  (1 << 0)
+#define PR_FP_MODE_FRE (1 << 1)
+#endif
 
 typedef union fpr_t fpr_t;
 union fpr_t {
@@ -164,6 +173,7 @@ typedef struct mips_def_t mips_def_t;
 #define MIPS_FPU_MAX 1
 #define MIPS_DSP_ACC 4
 #define MIPS_KSCRATCH_NUM 6
+#define MIPS_MAAR_MAX 16 /* Must be an even number. */
 
 typedef struct TCState TCState;
 struct TCState {
@@ -225,13 +235,13 @@ struct CPUMIPSState {
     uint32_t SEGBITS;
     uint32_t PABITS;
 #if defined(TARGET_MIPS64)
-# define PABITS_BASE 36
+# define DEFAULT_PABITS 36
 #else
-# define PABITS_BASE 32
+# define DEFAULT_PABITS 32
 #endif
     target_ulong SEGMask;
     uint64_t PAMask;
-#define PAMASK_BASE ((1ULL << PABITS_BASE) - 1)
+#define DEFAULT_PAMASK ((1ULL << DEFAULT_PABITS) - 1)
 
     int32_t msair;
 #define MSAIR_ProcID    8
@@ -239,6 +249,8 @@ struct CPUMIPSState {
 
     int32_t CP0_Index;
     /* CP0_MVP* are per MVP registers. */
+    int32_t CP0_VPControl;
+#define CP0VPCtl_DIS    0
     int32_t CP0_Random;
     int32_t CP0_VPEControl;
 #define CP0VPECo_YSI	21
@@ -288,16 +300,37 @@ struct CPUMIPSState {
 # define CP0EnLo_RI 31
 # define CP0EnLo_XI 30
 #endif
+    int32_t CP0_GlobalNumer;
+#define CP0GN_VPId 0
     target_ulong CP0_Context;
     target_ulong CP0_KScratch[MIPS_KSCRATCH_NUM];
     int32_t CP0_PageMask;
     int32_t CP0_PageGrain_rw_bitmask;
     int32_t CP0_PageGrain;
-#define CP0PG_RIE 31
-#define CP0PG_XIE 30
+#define CP0PG_RIE  31
+#define CP0PG_XIE  30
 #define CP0PG_ELPA 29
-#define CP0PG_IEC 27
+#define CP0PG_IEC  27
+    target_ulong CP0_PWBase;
+    target_ulong CP0_PWField;
+#define CP0PF_GDI   24
+#define CP0PF_UDI   18
+#define CP0PF_MDI   12
+#define CP0PF_PTI   6
+#define CP0PF_PTEI  0
+    target_ulong CP0_PWSize;
+#define CP0PS_PS    30
+#define CP0PS_GDW   24
+#define CP0PS_UDW   18
+#define CP0PS_MDW   12
+#define CP0PS_PTW   6
+#define CP0PS_PTEW  0
     int32_t CP0_Wired;
+    int32_t CP0_PWCtl;
+#define CP0PC_PWEN      31
+#define CP0PC_DPH       7
+#define CP0PC_HUGEPG    6
+#define CP0PC_PSN       0
     int32_t CP0_SRSConf0_rw_bitmask;
     int32_t CP0_SRSConf0;
 #define CP0SRSC0_M	31
@@ -436,6 +469,7 @@ struct CPUMIPSState {
 #define CP0C3_MSAP  28
 #define CP0C3_BP 27
 #define CP0C3_BI 26
+#define CP0C3_PW 24
 #define CP0C3_IPLW 21
 #define CP0C3_MMAR 18
 #define CP0C3_MCU  17
@@ -472,13 +506,17 @@ struct CPUMIPSState {
 #define CP0C5_MSAEn      27
 #define CP0C5_UFE        9
 #define CP0C5_FRE        8
+#define CP0C5_VP         7
 #define CP0C5_SBRI       6
 #define CP0C5_MVH        5
 #define CP0C5_LLB        4
+#define CP0C5_MRP        3
 #define CP0C5_UFR        2
 #define CP0C5_NFExists   0
     int32_t CP0_Config6;
     int32_t CP0_Config7;
+    uint64_t CP0_MAAR[MIPS_MAAR_MAX];
+    int32_t CP0_MAARI;
     /* XXX: Maybe make LLAddr per-TC? */
     uint64_t lladdr;
     target_ulong llval;
@@ -526,7 +564,7 @@ struct CPUMIPSState {
 #define EXCP_INST_NOTAVAIL 0x2 /* No valid instruction word for BadInstr */
     uint32_t hflags;    /* CPU State */
     /* TMASK defines different execution modes */
-#define MIPS_HFLAG_TMASK  0x75807FF
+#define MIPS_HFLAG_TMASK  0xF5807FF
 #define MIPS_HFLAG_MODE   0x00007 /* execution modes                    */
     /* The KSU flags must be the lowest bits in hflags. The flag order
        must be the same as defined for CP0 Status. This allows to use
@@ -573,8 +611,9 @@ struct CPUMIPSState {
 #define MIPS_HFLAG_SBRI  0x400000 /* R6 SDBBP causes RI excpt. in user mode */
 #define MIPS_HFLAG_FBNSLOT 0x800000 /* Forbidden slot                   */
 #define MIPS_HFLAG_MSA   0x1000000
-#define MIPS_HFLAG_FRE   0x2000000 /* FRE enabled */
-#define MIPS_HFLAG_ELPA  0x4000000
+#define MIPS_HFLAG_ELPA  0x2000000
+#define MIPS_HFLAG_LLBIT 0x4000000 /* In this mode we snoop all stores */
+#define MIPS_HFLAG_FRE   0x8000000 /* FRE enabled */
     target_ulong btarget;        /* Jump / branch target               */
     target_ulong bcond;          /* Branch condition (if needed)       */
 
@@ -627,6 +666,8 @@ void mips_cpu_list (FILE *f, fprintf_function cpu_fprintf);
 
 extern void cpu_wrdsp(uint32_t rs, uint32_t mask_num, CPUMIPSState *env);
 extern uint32_t cpu_rddsp(uint32_t mask_num, CPUMIPSState *env);
+
+#define CPU_SAVE_VERSION 5
 
 /* MMU modes definitions. We carefully match the indices with our
    hflags layout. */
@@ -751,7 +792,14 @@ void mips_tcg_init(void);
 MIPSCPU *cpu_mips_init(const char *cpu_model);
 int cpu_mips_signal_handler(int host_signum, void *pinfo, void *puc);
 
-#define cpu_init(cpu_model) CPU(cpu_mips_init(cpu_model))
+static inline CPUMIPSState *cpu_init(const char *cpu_model)
+{
+    MIPSCPU *cpu = cpu_mips_init(cpu_model);
+    if (cpu == NULL) {
+        return NULL;
+    }
+    return &cpu->env;
+}
 
 /* TODO QOM'ify CPU reset and remove */
 void cpu_state_reset(CPUMIPSState *s);
@@ -774,12 +822,15 @@ int mips_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
 void r4k_invalidate_tlb (CPUMIPSState *env, int idx, int use_extra);
 hwaddr cpu_mips_translate_address (CPUMIPSState *env, target_ulong address,
 		                               int rw);
+bool cpu_mips_validate_access(CPUMIPSState *env, target_ulong address,
+                            target_ulong badvaddr, unsigned data_size, int rw);
 #endif
 target_ulong exception_resume_pc (CPUMIPSState *env);
 
 /* op_helper.c */
 extern unsigned int ieee_rm[];
 int ieee_ex_to_mips(int xcpt);
+void update_pagemask(CPUMIPSState *env, target_ulong arg1, int32_t *pagemask);
 
 static inline void restore_rounding_mode(CPUMIPSState *env)
 {
@@ -791,32 +842,6 @@ static inline void restore_flush_mode(CPUMIPSState *env)
 {
     set_flush_to_zero((env->active_fpu.fcr31 & (1 << 24)) != 0,
                       &env->active_fpu.fp_status);
-}
-
-static inline void restore_fp_status(CPUMIPSState *env)
-{
-    restore_rounding_mode(env);
-    restore_flush_mode(env);
-}
-
-static inline void restore_msa_fp_status(CPUMIPSState *env)
-{
-    float_status *status = &env->active_tc.msa_fp_status;
-    int rounding_mode = (env->active_tc.msacsr & MSACSR_RM_MASK) >> MSACSR_RM;
-    bool flush_to_zero = (env->active_tc.msacsr & MSACSR_FS_MASK) != 0;
-
-    set_float_rounding_mode(ieee_rm[rounding_mode], status);
-    set_flush_to_zero(flush_to_zero, status);
-    set_flush_inputs_to_zero(flush_to_zero, status);
-}
-
-static inline void restore_pamask(CPUMIPSState *env)
-{
-    if (env->hflags & MIPS_HFLAG_ELPA) {
-        env->PAMask = (1ULL << env->PABITS) - 1;
-    } else {
-        env->PAMask = PAMASK_BASE;
-    }
 }
 
 static inline void cpu_get_tb_cpu_state(CPUMIPSState *env, target_ulong *pc,
@@ -859,6 +884,20 @@ static inline int mips_vpe_active(CPUMIPSState *env)
     return active;
 }
 
+static inline int mips_vp_active(CPUMIPSState *env)
+{
+    CPUState *other_cs = first_cpu;
+
+    CPU_FOREACH(other_cs) {
+        MIPSCPU *other_cpu = MIPS_CPU(other_cs);
+        if ((&other_cpu->env != env) &&
+            ((other_cpu->env.CP0_VPControl >> CP0VPCtl_DIS) &1)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 #include "exec/exec-all.h"
 
 static inline void compute_hflags(CPUMIPSState *env)
@@ -866,8 +905,8 @@ static inline void compute_hflags(CPUMIPSState *env)
     env->hflags &= ~(MIPS_HFLAG_COP1X | MIPS_HFLAG_64 | MIPS_HFLAG_CP0 |
                      MIPS_HFLAG_F64 | MIPS_HFLAG_FPU | MIPS_HFLAG_KSU |
                      MIPS_HFLAG_AWRAP | MIPS_HFLAG_DSP | MIPS_HFLAG_DSPR2 |
-                     MIPS_HFLAG_SBRI | MIPS_HFLAG_MSA | MIPS_HFLAG_FRE |
-                     MIPS_HFLAG_ELPA);
+                     MIPS_HFLAG_SBRI | MIPS_HFLAG_MSA | MIPS_HFLAG_ELPA |
+                     MIPS_HFLAG_FRE);
     if (!(env->CP0_Status & (1 << CP0St_EXL)) &&
         !(env->CP0_Status & (1 << CP0St_ERL)) &&
         !(env->hflags & MIPS_HFLAG_DM)) {
@@ -948,14 +987,14 @@ static inline void compute_hflags(CPUMIPSState *env)
             env->hflags |= MIPS_HFLAG_MSA;
         }
     }
-    if (env->active_fpu.fcr0 & (1 << FCR0_FREP)) {
-        if (env->CP0_Config5 & (1 << CP0C5_FRE)) {
-            env->hflags |= MIPS_HFLAG_FRE;
-        }
-    }
     if (env->CP0_Config3 & (1 << CP0C3_LPA)) {
         if (env->CP0_PageGrain & (1 << CP0PG_ELPA)) {
             env->hflags |= MIPS_HFLAG_ELPA;
+        }
+    }
+    if (env->active_fpu.fcr0 & (1 << FCR0_FREP)) {
+        if (env->CP0_Config5 & (1 << CP0C5_FRE)) {
+            env->hflags |= MIPS_HFLAG_FRE;
         }
     }
 }

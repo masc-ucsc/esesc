@@ -9,19 +9,6 @@
 #include "audio_pt_int.h"
 
 typedef struct {
-    int samples;
-    char *server;
-    char *sink;
-    char *source;
-} PAConf;
-
-typedef struct {
-    PAConf conf;
-    pa_threaded_mainloop *mainloop;
-    pa_context *context;
-} paaudio;
-
-typedef struct {
     HWVoiceOut hw;
     int done;
     int live;
@@ -30,7 +17,6 @@ typedef struct {
     pa_stream *stream;
     void *pcm_buf;
     struct audio_pt pt;
-    paaudio *g;
 } PAVoiceOut;
 
 typedef struct {
@@ -44,10 +30,20 @@ typedef struct {
     struct audio_pt pt;
     const void *read_data;
     size_t read_index, read_length;
-    paaudio *g;
 } PAVoiceIn;
 
-static void qpa_audio_fini(void *opaque);
+typedef struct {
+    int samples;
+    char *server;
+    char *sink;
+    char *source;
+    pa_threaded_mainloop *mainloop;
+    pa_context *context;
+} paaudio;
+
+static paaudio glob_paaudio = {
+    .samples = 4096,
+};
 
 static void GCC_FMT_ATTR (2, 3) qpa_logerr (int err, const char *fmt, ...)
 {
@@ -110,7 +106,7 @@ static inline int PA_STREAM_IS_GOOD(pa_stream_state_t x)
 
 static int qpa_simple_read (PAVoiceIn *p, void *data, size_t length, int *rerror)
 {
-    paaudio *g = p->g;
+    paaudio *g = &glob_paaudio;
 
     pa_threaded_mainloop_lock (g->mainloop);
 
@@ -164,7 +160,7 @@ unlock_and_fail:
 
 static int qpa_simple_write (PAVoiceOut *p, const void *data, size_t length, int *rerror)
 {
-    paaudio *g = p->g;
+    paaudio *g = &glob_paaudio;
 
     pa_threaded_mainloop_lock (g->mainloop);
 
@@ -226,7 +222,7 @@ static void *qpa_thread_out (void *arg)
             }
         }
 
-        decr = to_mix = audio_MIN (pa->live, pa->g->conf.samples >> 2);
+        decr = to_mix = audio_MIN (pa->live, glob_paaudio.samples >> 2);
         rpos = pa->rpos;
 
         if (audio_pt_unlock (&pa->pt, AUDIO_FUNC)) {
@@ -318,7 +314,7 @@ static void *qpa_thread_in (void *arg)
             }
         }
 
-        incr = to_grab = audio_MIN (pa->dead, pa->g->conf.samples >> 2);
+        incr = to_grab = audio_MIN (pa->dead, glob_paaudio.samples >> 2);
         wpos = pa->wpos;
 
         if (audio_pt_unlock (&pa->pt, AUDIO_FUNC)) {
@@ -434,7 +430,7 @@ static audfmt_e pa_to_audfmt (pa_sample_format_t fmt, int *endianness)
 
 static void context_state_cb (pa_context *c, void *userdata)
 {
-    paaudio *g = userdata;
+    paaudio *g = &glob_paaudio;
 
     switch (pa_context_get_state(c)) {
     case PA_CONTEXT_READY:
@@ -453,7 +449,7 @@ static void context_state_cb (pa_context *c, void *userdata)
 
 static void stream_state_cb (pa_stream *s, void * userdata)
 {
-    paaudio *g = userdata;
+    paaudio *g = &glob_paaudio;
 
     switch (pa_stream_get_state (s)) {
 
@@ -471,21 +467,23 @@ static void stream_state_cb (pa_stream *s, void * userdata)
 
 static void stream_request_cb (pa_stream *s, size_t length, void *userdata)
 {
-    paaudio *g = userdata;
+    paaudio *g = &glob_paaudio;
 
     pa_threaded_mainloop_signal (g->mainloop, 0);
 }
 
 static pa_stream *qpa_simple_new (
-        paaudio *g,
+        const char *server,
         const char *name,
         pa_stream_direction_t dir,
         const char *dev,
+        const char *stream_name,
         const pa_sample_spec *ss,
         const pa_channel_map *map,
         const pa_buffer_attr *attr,
         int *rerror)
 {
+    paaudio *g = &glob_paaudio;
     int r;
     pa_stream *stream;
 
@@ -536,15 +534,13 @@ fail:
     return NULL;
 }
 
-static int qpa_init_out(HWVoiceOut *hw, struct audsettings *as,
-                        void *drv_opaque)
+static int qpa_init_out (HWVoiceOut *hw, struct audsettings *as)
 {
     int error;
-    pa_sample_spec ss;
-    pa_buffer_attr ba;
+    static pa_sample_spec ss;
+    static pa_buffer_attr ba;
     struct audsettings obt_as = *as;
     PAVoiceOut *pa = (PAVoiceOut *) hw;
-    paaudio *g = pa->g = drv_opaque;
 
     ss.format = audfmt_to_pa (as->fmt, as->endianness);
     ss.channels = as->nchannels;
@@ -562,10 +558,11 @@ static int qpa_init_out(HWVoiceOut *hw, struct audsettings *as,
     obt_as.fmt = pa_to_audfmt (ss.format, &obt_as.endianness);
 
     pa->stream = qpa_simple_new (
-        g,
+        glob_paaudio.server,
         "qemu",
         PA_STREAM_PLAYBACK,
-        g->conf.sink,
+        glob_paaudio.sink,
+        "pcm.playback",
         &ss,
         NULL,                   /* channel map */
         &ba,                    /* buffering attributes */
@@ -577,7 +574,7 @@ static int qpa_init_out(HWVoiceOut *hw, struct audsettings *as,
     }
 
     audio_pcm_init_info (&hw->info, &obt_as);
-    hw->samples = g->conf.samples;
+    hw->samples = glob_paaudio.samples;
     pa->pcm_buf = audio_calloc (AUDIO_FUNC, hw->samples, 1 << hw->info.shift);
     pa->rpos = hw->rpos;
     if (!pa->pcm_buf) {
@@ -604,13 +601,12 @@ static int qpa_init_out(HWVoiceOut *hw, struct audsettings *as,
     return -1;
 }
 
-static int qpa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
+static int qpa_init_in (HWVoiceIn *hw, struct audsettings *as)
 {
     int error;
-    pa_sample_spec ss;
+    static pa_sample_spec ss;
     struct audsettings obt_as = *as;
     PAVoiceIn *pa = (PAVoiceIn *) hw;
-    paaudio *g = pa->g = drv_opaque;
 
     ss.format = audfmt_to_pa (as->fmt, as->endianness);
     ss.channels = as->nchannels;
@@ -619,10 +615,11 @@ static int qpa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
     obt_as.fmt = pa_to_audfmt (ss.format, &obt_as.endianness);
 
     pa->stream = qpa_simple_new (
-        g,
+        glob_paaudio.server,
         "qemu",
         PA_STREAM_RECORD,
-        g->conf.source,
+        glob_paaudio.source,
+        "pcm.capture",
         &ss,
         NULL,                   /* channel map */
         NULL,                   /* buffering attributes */
@@ -634,7 +631,7 @@ static int qpa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
     }
 
     audio_pcm_init_info (&hw->info, &obt_as);
-    hw->samples = g->conf.samples;
+    hw->samples = glob_paaudio.samples;
     pa->pcm_buf = audio_calloc (AUDIO_FUNC, hw->samples, 1 << hw->info.shift);
     pa->wpos = hw->wpos;
     if (!pa->pcm_buf) {
@@ -706,7 +703,7 @@ static int qpa_ctl_out (HWVoiceOut *hw, int cmd, ...)
     PAVoiceOut *pa = (PAVoiceOut *) hw;
     pa_operation *op;
     pa_cvolume v;
-    paaudio *g = pa->g;
+    paaudio *g = &glob_paaudio;
 
 #ifdef PA_CHECK_VERSION    /* macro is present in 0.9.16+ */
     pa_cvolume_init (&v);  /* function is present in 0.9.13+ */
@@ -758,7 +755,7 @@ static int qpa_ctl_in (HWVoiceIn *hw, int cmd, ...)
     PAVoiceIn *pa = (PAVoiceIn *) hw;
     pa_operation *op;
     pa_cvolume v;
-    paaudio *g = pa->g;
+    paaudio *g = &glob_paaudio;
 
 #ifdef PA_CHECK_VERSION
     pa_cvolume_init (&v);
@@ -808,31 +805,23 @@ static int qpa_ctl_in (HWVoiceIn *hw, int cmd, ...)
 }
 
 /* common */
-static PAConf glob_conf = {
-    .samples = 4096,
-};
-
 static void *qpa_audio_init (void)
 {
-    paaudio *g = g_malloc(sizeof(paaudio));
-    g->conf = glob_conf;
-    g->mainloop = NULL;
-    g->context = NULL;
+    paaudio *g = &glob_paaudio;
 
     g->mainloop = pa_threaded_mainloop_new ();
     if (!g->mainloop) {
         goto fail;
     }
 
-    g->context = pa_context_new (pa_threaded_mainloop_get_api (g->mainloop),
-                                 g->conf.server);
+    g->context = pa_context_new (pa_threaded_mainloop_get_api (g->mainloop), glob_paaudio.server);
     if (!g->context) {
         goto fail;
     }
 
     pa_context_set_state_callback (g->context, context_state_cb, g);
 
-    if (pa_context_connect (g->context, g->conf.server, 0, NULL) < 0) {
+    if (pa_context_connect (g->context, glob_paaudio.server, 0, NULL) < 0) {
         qpa_logerr (pa_context_errno (g->context),
                     "pa_context_connect() failed\n");
         goto fail;
@@ -865,13 +854,12 @@ static void *qpa_audio_init (void)
 
     pa_threaded_mainloop_unlock (g->mainloop);
 
-    return g;
+    return &glob_paaudio;
 
 unlock_and_fail:
     pa_threaded_mainloop_unlock (g->mainloop);
 fail:
     AUD_log (AUDIO_CAP, "Failed to initialize PA context");
-    qpa_audio_fini(g);
     return NULL;
 }
 
@@ -886,38 +874,39 @@ static void qpa_audio_fini (void *opaque)
     if (g->context) {
         pa_context_disconnect (g->context);
         pa_context_unref (g->context);
+        g->context = NULL;
     }
 
     if (g->mainloop) {
         pa_threaded_mainloop_free (g->mainloop);
     }
 
-    g_free(g);
+    g->mainloop = NULL;
 }
 
 struct audio_option qpa_options[] = {
     {
         .name  = "SAMPLES",
         .tag   = AUD_OPT_INT,
-        .valp  = &glob_conf.samples,
+        .valp  = &glob_paaudio.samples,
         .descr = "buffer size in samples"
     },
     {
         .name  = "SERVER",
         .tag   = AUD_OPT_STR,
-        .valp  = &glob_conf.server,
+        .valp  = &glob_paaudio.server,
         .descr = "server address"
     },
     {
         .name  = "SINK",
         .tag   = AUD_OPT_STR,
-        .valp  = &glob_conf.sink,
+        .valp  = &glob_paaudio.sink,
         .descr = "sink device name"
     },
     {
         .name  = "SOURCE",
         .tag   = AUD_OPT_STR,
-        .valp  = &glob_conf.source,
+        .valp  = &glob_paaudio.source,
         .descr = "source device name"
     },
     { /* End of list */ }

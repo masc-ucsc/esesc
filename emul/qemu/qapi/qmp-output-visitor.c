@@ -16,6 +16,7 @@
 #include "qemu/queue.h"
 #include "qemu-common.h"
 #include "qapi/qmp/types.h"
+#include "qapi/qmp/qerror.h"
 
 typedef struct QStackEntry
 {
@@ -165,7 +166,7 @@ static void qmp_output_type_bool(Visitor *v, bool *obj, const char *name,
                                  Error **errp)
 {
     QmpOutputVisitor *qov = to_qov(v);
-    qmp_output_add(qov, name, qbool_from_bool(*obj));
+    qmp_output_add(qov, name, qbool_from_int(*obj));
 }
 
 static void qmp_output_type_str(Visitor *v, char **obj, const char *name,

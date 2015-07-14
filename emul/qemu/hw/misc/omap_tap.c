@@ -95,8 +95,7 @@ static void omap_tap_write(void *opaque, hwaddr addr,
                            uint64_t value, unsigned size)
 {
     if (size != 4) {
-        omap_badwidth_write32(opaque, addr, value);
-        return;
+        return omap_badwidth_write32(opaque, addr, value);
     }
 
     OMAP_BAD_REG(addr);

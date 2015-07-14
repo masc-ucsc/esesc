@@ -108,6 +108,10 @@ void cpu_list_unlock(void)
 /***********************************************************/
 /* CPUX86 core interface */
 
+void cpu_smm_update(CPUX86State *env)
+{
+}
+
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
     return cpu_get_real_ticks();
@@ -901,14 +905,15 @@ int main(int argc, char **argv)
 #endif
     }
     tcg_exec_init(0);
+    cpu_exec_init_all();
     /* NOTE: we need to init the CPU at this stage to get
        qemu_host_page_size */
-    cpu = cpu_init(cpu_model);
-    if (!cpu) {
+    env = cpu_init(cpu_model);
+    if (!env) {
         fprintf(stderr, "Unable to find CPU definition\n");
         exit(1);
     }
-    env = cpu->env_ptr;
+    cpu = ENV_GET_CPU(env);
 #if defined(TARGET_SPARC) || defined(TARGET_PPC)
     cpu_reset(cpu);
 #endif

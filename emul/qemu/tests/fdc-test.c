@@ -218,10 +218,6 @@ static uint8_t send_read_no_dma_command(int nb_sect, uint8_t expected_st0)
         inb(FLOPPY_BASE + reg_fifo);
     }
 
-    msr = inb(FLOPPY_BASE + reg_msr);
-    assert_bit_set(msr, BUSY | RQM | DIO);
-    g_assert(get_irq(FLOPPY_IRQ));
-
     st0 = floppy_recv();
     if (st0 != expected_st0) {
         ret = 1;
@@ -232,14 +228,7 @@ static uint8_t send_read_no_dma_command(int nb_sect, uint8_t expected_st0)
     floppy_recv();
     floppy_recv();
     floppy_recv();
-    g_assert(get_irq(FLOPPY_IRQ));
     floppy_recv();
-
-    /* Check that we're back in command phase */
-    msr = inb(FLOPPY_BASE + reg_msr);
-    assert_bit_clear(msr, BUSY | DIO);
-    assert_bit_set(msr, RQM);
-    g_assert(!get_irq(FLOPPY_IRQ));
 
     return ret;
 }
@@ -302,7 +291,7 @@ static void test_media_insert(void)
     /* Insert media in drive. DSKCHK should not be reset until a step pulse
      * is sent. */
     qmp_discard_response("{'execute':'change', 'arguments':{"
-                         " 'device':'floppy0', 'target': %s, 'arg': 'raw' }}",
+                         " 'device':'floppy0', 'target': %s }}",
                          test_image);
     qmp_discard_response(""); /* ignore event
                                  (FIXME open -> open transition?!) */
@@ -414,7 +403,6 @@ static void test_read_id(void)
     uint8_t head = 0;
     uint8_t cyl;
     uint8_t st0;
-    uint8_t msr;
 
     /* Seek to track 0 and check with READ ID */
     send_seek(0);
@@ -423,19 +411,10 @@ static void test_read_id(void)
     g_assert(!get_irq(FLOPPY_IRQ));
     floppy_send(head << 2 | drive);
 
-    msr = inb(FLOPPY_BASE + reg_msr);
-    if (!get_irq(FLOPPY_IRQ)) {
-        assert_bit_set(msr, BUSY);
-        assert_bit_clear(msr, RQM);
-    }
-
     while (!get_irq(FLOPPY_IRQ)) {
         /* qemu involves a timer with READ ID... */
         clock_step(1000000000LL / 50);
     }
-
-    msr = inb(FLOPPY_BASE + reg_msr);
-    assert_bit_set(msr, BUSY | RQM | DIO);
 
     st0 = floppy_recv();
     floppy_recv();
@@ -443,9 +422,7 @@ static void test_read_id(void)
     cyl = floppy_recv();
     head = floppy_recv();
     floppy_recv();
-    g_assert(get_irq(FLOPPY_IRQ));
     floppy_recv();
-    g_assert(!get_irq(FLOPPY_IRQ));
 
     g_assert_cmpint(cyl, ==, 0);
     g_assert_cmpint(head, ==, 0);
@@ -466,19 +443,10 @@ static void test_read_id(void)
     g_assert(!get_irq(FLOPPY_IRQ));
     floppy_send(head << 2 | drive);
 
-    msr = inb(FLOPPY_BASE + reg_msr);
-    if (!get_irq(FLOPPY_IRQ)) {
-        assert_bit_set(msr, BUSY);
-        assert_bit_clear(msr, RQM);
-    }
-
     while (!get_irq(FLOPPY_IRQ)) {
         /* qemu involves a timer with READ ID... */
         clock_step(1000000000LL / 50);
     }
-
-    msr = inb(FLOPPY_BASE + reg_msr);
-    assert_bit_set(msr, BUSY | RQM | DIO);
 
     st0 = floppy_recv();
     floppy_recv();
@@ -486,9 +454,7 @@ static void test_read_id(void)
     cyl = floppy_recv();
     head = floppy_recv();
     floppy_recv();
-    g_assert(get_irq(FLOPPY_IRQ));
     floppy_recv();
-    g_assert(!get_irq(FLOPPY_IRQ));
 
     g_assert_cmpint(cyl, ==, 8);
     g_assert_cmpint(head, ==, 1);

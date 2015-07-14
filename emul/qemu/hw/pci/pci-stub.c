@@ -20,17 +20,28 @@
 
 #include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
-#include "qapi/qmp/qerror.h"
 #include "hw/pci/pci.h"
 #include "qmp-commands.h"
 
 PciInfoList *qmp_query_pci(Error **errp)
 {
-    error_setg(errp, QERR_UNSUPPORTED);
+    error_set(errp, QERR_UNSUPPORTED);
     return NULL;
 }
 
-void hmp_pcie_aer_inject_error(Monitor *mon, const QDict *qdict)
+static void pci_error_message(Monitor *mon)
 {
     monitor_printf(mon, "PCI devices not supported\n");
+}
+
+int do_pcie_aer_inject_error(Monitor *mon,
+                             const QDict *qdict, QObject **ret_data)
+{
+    pci_error_message(mon);
+    return -ENOSYS;
+}
+
+void pcie_aer_inject_error_print(Monitor *mon, const QObject *data)
+{
+    pci_error_message(mon);
 }

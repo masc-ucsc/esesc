@@ -30,8 +30,6 @@
 #define TUNGETVNETHDRSZ _IOR('T', 215, int)
 #define TUNSETVNETHDRSZ _IOW('T', 216, int)
 #define TUNSETQUEUE  _IOW('T', 217, int)
-#define TUNSETVNETLE _IOW('T', 220, int)
-#define TUNSETVNETBE _IOW('T', 222, int)
 
 #endif
 

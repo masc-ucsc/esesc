@@ -5,10 +5,7 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include "glib-compat.h"
-
-#include <string.h>
-#include <stdbool.h>
+#include "qemu-common.h"
 
 #include "cac.h"
 #include "vcard.h"

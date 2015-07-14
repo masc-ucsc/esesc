@@ -1210,9 +1210,20 @@ cris_cc_strings[] =
   "le",
   "a",
   /* This is a placeholder.  In v0, this would be "ext".  In v32, this
-     is "sb". */
+     is "sb".  See cris_conds15.  */
   "wf"
 };
+
+/* Different names and semantics for condition 1111 (0xf).  */
+const struct cris_cond15 cris_cond15s[] =
+{
+  /* FIXME: In what version did condition "ext" disappear?  */
+  {"ext", cris_ver_v0_3},
+  {"wf", cris_ver_v10},
+  {"sb", cris_ver_v32p},
+  {NULL, 0}
+};
+
 
 /*
  * Local variables:

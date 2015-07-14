@@ -225,7 +225,7 @@ rfc3986_parse_scheme(URI *uri, const char **str) {
     while (ISA_ALPHA(cur) || ISA_DIGIT(cur) ||
            (*cur == '+') || (*cur == '-') || (*cur == '.')) cur++;
     if (uri != NULL) {
-        g_free(uri->scheme);
+	if (uri->scheme != NULL) g_free(uri->scheme);
 	uri->scheme = g_strndup(*str, cur - *str);
     }
     *str = cur;
@@ -262,7 +262,8 @@ rfc3986_parse_fragment(URI *uri, const char **str)
            ((uri != NULL) && (uri->cleanup & 1) && (IS_UNWISE(cur))))
         NEXT(cur);
     if (uri != NULL) {
-        g_free(uri->fragment);
+        if (uri->fragment != NULL)
+            g_free(uri->fragment);
 	if (uri->cleanup & 2)
 	    uri->fragment = g_strndup(*str, cur - *str);
 	else
@@ -297,7 +298,8 @@ rfc3986_parse_query(URI *uri, const char **str)
            ((uri != NULL) && (uri->cleanup & 1) && (IS_UNWISE(cur))))
         NEXT(cur);
     if (uri != NULL) {
-        g_free(uri->query);
+	if (uri->query != NULL)
+	    g_free (uri->query);
 	uri->query = g_strndup (*str, cur - *str);
     }
     *str = cur;
@@ -320,23 +322,19 @@ static int
 rfc3986_parse_port(URI *uri, const char **str)
 {
     const char *cur = *str;
-    int port = 0;
 
     if (ISA_DIGIT(cur)) {
-        while (ISA_DIGIT(cur)) {
-            port = port * 10 + (*cur - '0');
-            if (port > 65535) {
-                return 1;
-            }
-            cur++;
-        }
-        if (uri) {
-            uri->port = port;
-        }
-        *str = cur;
-        return 0;
+	if (uri != NULL)
+	    uri->port = 0;
+	while (ISA_DIGIT(cur)) {
+	    if (uri != NULL)
+		uri->port = uri->port * 10 + (*cur - '0');
+	    cur++;
+	}
+	*str = cur;
+	return(0);
     }
-    return 1;
+    return(1);
 }
 
 /**
@@ -362,7 +360,7 @@ rfc3986_parse_user_info(URI *uri, const char **str)
 	NEXT(cur);
     if (*cur == '@') {
 	if (uri != NULL) {
-            g_free(uri->user);
+	    if (uri->user != NULL) g_free(uri->user);
 	    if (uri->cleanup & 2)
 		uri->user = g_strndup(*str, cur - *str);
 	    else
@@ -475,9 +473,9 @@ not_ipv4:
         NEXT(cur);
 found:
     if (uri != NULL) {
-        g_free(uri->authority);
+	if (uri->authority != NULL) g_free(uri->authority);
 	uri->authority = NULL;
-        g_free(uri->server);
+	if (uri->server != NULL) g_free(uri->server);
 	if (cur != host) {
 	    if (uri->cleanup & 2)
 		uri->server = g_strndup(host, cur - host);
@@ -587,7 +585,7 @@ rfc3986_parse_path_ab_empty(URI *uri, const char **str)
 	if (ret != 0) return(ret);
     }
     if (uri != NULL) {
-        g_free(uri->path);
+	if (uri->path != NULL) g_free(uri->path);
         if (*str != cur) {
             if (uri->cleanup & 2)
                 uri->path = g_strndup(*str, cur - *str);
@@ -633,7 +631,7 @@ rfc3986_parse_path_absolute(URI *uri, const char **str)
 	}
     }
     if (uri != NULL) {
-        g_free(uri->path);
+	if (uri->path != NULL) g_free(uri->path);
         if (cur != *str) {
             if (uri->cleanup & 2)
                 uri->path = g_strndup(*str, cur - *str);
@@ -675,7 +673,7 @@ rfc3986_parse_path_rootless(URI *uri, const char **str)
 	if (ret != 0) return(ret);
     }
     if (uri != NULL) {
-        g_free(uri->path);
+	if (uri->path != NULL) g_free(uri->path);
         if (cur != *str) {
             if (uri->cleanup & 2)
                 uri->path = g_strndup(*str, cur - *str);
@@ -717,7 +715,7 @@ rfc3986_parse_path_no_scheme(URI *uri, const char **str)
 	if (ret != 0) return(ret);
     }
     if (uri != NULL) {
-        g_free(uri->path);
+	if (uri->path != NULL) g_free(uri->path);
         if (cur != *str) {
             if (uri->cleanup & 2)
                 uri->path = g_strndup(*str, cur - *str);
@@ -771,7 +769,7 @@ rfc3986_parse_hier_part(URI *uri, const char **str)
     } else {
 	/* path-empty is effectively empty */
 	if (uri != NULL) {
-            g_free(uri->path);
+	    if (uri->path != NULL) g_free(uri->path);
 	    uri->path = NULL;
 	}
     }
@@ -814,7 +812,7 @@ rfc3986_parse_relative_ref(URI *uri, const char *str) {
     } else {
 	/* path-empty is effectively empty */
 	if (uri != NULL) {
-            g_free(uri->path);
+	    if (uri->path != NULL) g_free(uri->path);
 	    uri->path = NULL;
 	}
     }
@@ -932,10 +930,12 @@ uri_parse(const char *str) {
     if (str == NULL)
 	return(NULL);
     uri = uri_new();
-    ret = rfc3986_parse_uri_reference(uri, str);
-    if (ret) {
-        uri_free(uri);
-        return(NULL);
+    if (uri != NULL) {
+	ret = rfc3986_parse_uri_reference(uri, str);
+        if (ret) {
+	    uri_free(uri);
+	    return(NULL);
+	}
     }
     return(uri);
 }
@@ -976,13 +976,15 @@ uri_parse_raw(const char *str, int raw) {
     if (str == NULL)
 	return(NULL);
     uri = uri_new();
-    if (raw) {
-        uri->cleanup |= 2;
-    }
-    ret = uri_parse_into(uri, str);
-    if (ret) {
-        uri_free(uri);
-        return(NULL);
+    if (uri != NULL) {
+        if (raw) {
+	    uri->cleanup |= 2;
+	}
+	ret = uri_parse_into(uri, str);
+        if (ret) {
+	    uri_free(uri);
+	    return(NULL);
+	}
     }
     return(uri);
 }
@@ -1004,7 +1006,8 @@ URI *
 uri_new(void) {
     URI *ret;
 
-    ret = g_new0(URI, 1);
+    ret = (URI *) g_malloc(sizeof(URI));
+    memset(ret, 0, sizeof(URI));
     return(ret);
 }
 
@@ -1053,12 +1056,14 @@ uri_to_string(URI *uri) {
 	while (*p != 0) {
 	    if (len >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
 		ret = temp;
 	    }
 	    ret[len++] = *p++;
 	}
 	if (len >= max) {
             temp = realloc2n(ret, &max);
+            if (temp == NULL) goto mem_error;
             ret = temp;
 	}
 	ret[len++] = ':';
@@ -1068,6 +1073,7 @@ uri_to_string(URI *uri) {
 	while (*p != 0) {
 	    if (len + 3 >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
                 ret = temp;
 	    }
 	    if (IS_RESERVED(*(p)) || IS_UNRESERVED(*(p)))
@@ -1084,6 +1090,7 @@ uri_to_string(URI *uri) {
 	if (uri->server != NULL) {
 	    if (len + 3 >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
                 ret = temp;
 	    }
 	    ret[len++] = '/';
@@ -1093,6 +1100,7 @@ uri_to_string(URI *uri) {
 		while (*p != 0) {
 		    if (len + 3 >= max) {
                         temp = realloc2n(ret, &max);
+                        if (temp == NULL) goto mem_error;
                         ret = temp;
 		    }
 		    if ((IS_UNRESERVED(*(p))) ||
@@ -1111,6 +1119,7 @@ uri_to_string(URI *uri) {
 		}
 		if (len + 3 >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		ret[len++] = '@';
@@ -1119,6 +1128,7 @@ uri_to_string(URI *uri) {
 	    while (*p != 0) {
 		if (len >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		ret[len++] = *p++;
@@ -1126,6 +1136,7 @@ uri_to_string(URI *uri) {
 	    if (uri->port > 0) {
 		if (len + 10 >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		len += snprintf(&ret[len], max - len, ":%d", uri->port);
@@ -1133,6 +1144,7 @@ uri_to_string(URI *uri) {
 	} else if (uri->authority != NULL) {
 	    if (len + 3 >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
                 ret = temp;
 	    }
 	    ret[len++] = '/';
@@ -1141,6 +1153,7 @@ uri_to_string(URI *uri) {
 	    while (*p != 0) {
 		if (len + 3 >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		if ((IS_UNRESERVED(*(p))) ||
@@ -1159,6 +1172,7 @@ uri_to_string(URI *uri) {
 	} else if (uri->scheme != NULL) {
 	    if (len + 3 >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
                 ret = temp;
 	    }
 	    ret[len++] = '/';
@@ -1178,6 +1192,7 @@ uri_to_string(URI *uri) {
 	        (!strcmp(uri->scheme, "file"))) {
 		if (len + 3 >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		ret[len++] = *p++;
@@ -1187,6 +1202,7 @@ uri_to_string(URI *uri) {
 	    while (*p != 0) {
 		if (len + 3 >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		if ((IS_UNRESERVED(*(p))) || ((*(p) == '/')) ||
@@ -1206,6 +1222,7 @@ uri_to_string(URI *uri) {
 	if (uri->query != NULL) {
 	    if (len + 1 >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
                 ret = temp;
 	    }
 	    ret[len++] = '?';
@@ -1213,6 +1230,7 @@ uri_to_string(URI *uri) {
 	    while (*p != 0) {
 		if (len + 1 >= max) {
                     temp = realloc2n(ret, &max);
+                    if (temp == NULL) goto mem_error;
                     ret = temp;
 		}
 		ret[len++] = *p++;
@@ -1222,6 +1240,7 @@ uri_to_string(URI *uri) {
     if (uri->fragment != NULL) {
 	if (len + 3 >= max) {
             temp = realloc2n(ret, &max);
+            if (temp == NULL) goto mem_error;
             ret = temp;
 	}
 	ret[len++] = '#';
@@ -1229,6 +1248,7 @@ uri_to_string(URI *uri) {
 	while (*p != 0) {
 	    if (len + 3 >= max) {
                 temp = realloc2n(ret, &max);
+                if (temp == NULL) goto mem_error;
                 ret = temp;
 	    }
 	    if ((IS_UNRESERVED(*(p))) || (IS_RESERVED(*(p))))
@@ -1244,10 +1264,15 @@ uri_to_string(URI *uri) {
     }
     if (len >= max) {
         temp = realloc2n(ret, &max);
+        if (temp == NULL) goto mem_error;
         ret = temp;
     }
     ret[len] = 0;
     return(ret);
+
+mem_error:
+    g_free(ret);
+    return(NULL);
 }
 
 /**
@@ -1260,21 +1285,21 @@ static void
 uri_clean(URI *uri) {
     if (uri == NULL) return;
 
-    g_free(uri->scheme);
+    if (uri->scheme != NULL) g_free(uri->scheme);
     uri->scheme = NULL;
-    g_free(uri->server);
+    if (uri->server != NULL) g_free(uri->server);
     uri->server = NULL;
-    g_free(uri->user);
+    if (uri->user != NULL) g_free(uri->user);
     uri->user = NULL;
-    g_free(uri->path);
+    if (uri->path != NULL) g_free(uri->path);
     uri->path = NULL;
-    g_free(uri->fragment);
+    if (uri->fragment != NULL) g_free(uri->fragment);
     uri->fragment = NULL;
-    g_free(uri->opaque);
+    if (uri->opaque != NULL) g_free(uri->opaque);
     uri->opaque = NULL;
-    g_free(uri->authority);
+    if (uri->authority != NULL) g_free(uri->authority);
     uri->authority = NULL;
-    g_free(uri->query);
+    if (uri->query != NULL) g_free(uri->query);
     uri->query = NULL;
 }
 
@@ -1653,6 +1678,8 @@ uri_resolve(const char *uri, const char *base) {
     else {
 	if (*uri) {
 	    ref = uri_new();
+	    if (ref == NULL)
+		goto done;
 	    ret = uri_parse_into(ref, uri);
 	}
 	else
@@ -1671,6 +1698,8 @@ uri_resolve(const char *uri, const char *base) {
 	ret = -1;
     else {
 	bas = uri_new();
+	if (bas == NULL)
+	    goto done;
 	ret = uri_parse_into(bas, base);
     }
     if (ret != 0) {
@@ -1682,8 +1711,10 @@ uri_resolve(const char *uri, const char *base) {
 	/*
 	 * the base fragment must be ignored
 	 */
-        g_free(bas->fragment);
-        bas->fragment = NULL;
+	if (bas->fragment != NULL) {
+	    g_free(bas->fragment);
+	    bas->fragment = NULL;
+	}
 	val = uri_to_string(bas);
 	goto done;
     }
@@ -1701,23 +1732,28 @@ uri_resolve(const char *uri, const char *base) {
      *    document.
      */
     res = uri_new();
+    if (res == NULL)
+	goto done;
     if ((ref->scheme == NULL) && (ref->path == NULL) &&
 	((ref->authority == NULL) && (ref->server == NULL))) {
-        res->scheme = g_strdup(bas->scheme);
+	if (bas->scheme != NULL)
+	    res->scheme = g_strdup(bas->scheme);
 	if (bas->authority != NULL)
 	    res->authority = g_strdup(bas->authority);
 	else if (bas->server != NULL) {
-            res->server = g_strdup(bas->server);
-            res->user = g_strdup(bas->user);
-            res->port = bas->port;
+	    res->server = g_strdup(bas->server);
+	    if (bas->user != NULL)
+		res->user = g_strdup(bas->user);
+	    res->port = bas->port;
 	}
-        res->path = g_strdup(bas->path);
-        if (ref->query != NULL) {
+	if (bas->path != NULL)
+	    res->path = g_strdup(bas->path);
+	if (ref->query != NULL)
 	    res->query = g_strdup (ref->query);
-        } else {
-            res->query = g_strdup(bas->query);
-        }
-        res->fragment = g_strdup(ref->fragment);
+	else if (bas->query != NULL)
+	    res->query = g_strdup(bas->query);
+	if (ref->fragment != NULL)
+	    res->fragment = g_strdup(ref->fragment);
 	goto step_7;
     }
 
@@ -1731,10 +1767,13 @@ uri_resolve(const char *uri, const char *base) {
 	val = uri_to_string(ref);
 	goto done;
     }
-    res->scheme = g_strdup(bas->scheme);
+    if (bas->scheme != NULL)
+	res->scheme = g_strdup(bas->scheme);
 
-    res->query = g_strdup(ref->query);
-    res->fragment = g_strdup(ref->fragment);
+    if (ref->query != NULL)
+	res->query = g_strdup(ref->query);
+    if (ref->fragment != NULL)
+	res->fragment = g_strdup(ref->fragment);
 
     /*
      * 4) If the authority component is defined, then the reference is a
@@ -1748,17 +1787,20 @@ uri_resolve(const char *uri, const char *base) {
 	    res->authority = g_strdup(ref->authority);
 	else {
 	    res->server = g_strdup(ref->server);
-            res->user = g_strdup(ref->user);
+	    if (ref->user != NULL)
+		res->user = g_strdup(ref->user);
             res->port = ref->port;
 	}
-        res->path = g_strdup(ref->path);
+	if (ref->path != NULL)
+	    res->path = g_strdup(ref->path);
 	goto step_7;
     }
     if (bas->authority != NULL)
 	res->authority = g_strdup(bas->authority);
     else if (bas->server != NULL) {
-        res->server = g_strdup(bas->server);
-        res->user = g_strdup(bas->user);
+	res->server = g_strdup(bas->server);
+	if (bas->user != NULL)
+	    res->user = g_strdup(bas->user);
 	res->port = bas->port;
     }
 
@@ -1905,6 +1947,8 @@ uri_resolve_relative (const char *uri, const char * base)
      * First parse URI into a standard form
      */
     ref = uri_new ();
+    if (ref == NULL)
+	return NULL;
     /* If URI not already in "relative" form */
     if (uri[0] != '.') {
 	ret = uri_parse_into (ref, uri);
@@ -1921,6 +1965,8 @@ uri_resolve_relative (const char *uri, const char * base)
 	goto done;
     }
     bas = uri_new ();
+    if (bas == NULL)
+	goto done;
     if (base[0] != '.') {
 	ret = uri_parse_into (bas, base);
 	if (ret != 0)
@@ -1939,8 +1985,7 @@ uri_resolve_relative (const char *uri, const char * base)
 	val = g_strdup (uri);
 	goto done;
     }
-    if (bas->path == ref->path ||
-        (bas->path && ref->path && !strcmp(bas->path, ref->path))) {
+    if (!strcmp(bas->path, ref->path)) {
 	val = g_strdup("");
 	goto done;
     }

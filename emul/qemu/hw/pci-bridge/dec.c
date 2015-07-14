@@ -107,9 +107,10 @@ static int pci_dec_21154_device_init(SysBusDevice *dev)
     return 0;
 }
 
-static void dec_21154_pci_host_realize(PCIDevice *d, Error **errp)
+static int dec_21154_pci_host_init(PCIDevice *d)
 {
     /* PCI2PCI bridge same values as PearPC - check this */
+    return 0;
 }
 
 static void dec_21154_pci_host_class_init(ObjectClass *klass, void *data)
@@ -117,7 +118,7 @@ static void dec_21154_pci_host_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    k->realize = dec_21154_pci_host_realize;
+    k->init = dec_21154_pci_host_init;
     k->vendor_id = PCI_VENDOR_ID_DEC;
     k->device_id = PCI_DEVICE_ID_DEC_21154;
     k->revision = 0x02;

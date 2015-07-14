@@ -219,7 +219,7 @@ static void dec_b(DisasContext *dc)
     /* restore IE.IE in case of an eret */
     if (dc->r0 == R_EA) {
         TCGv t0 = tcg_temp_new();
-        TCGLabel *l1 = gen_new_label();
+        int l1 = gen_new_label();
         tcg_gen_andi_tl(t0, cpu_ie, IE_EIE);
         tcg_gen_ori_tl(cpu_ie, cpu_ie, IE_IE);
         tcg_gen_brcondi_tl(TCG_COND_EQ, t0, IE_EIE, l1);
@@ -228,7 +228,7 @@ static void dec_b(DisasContext *dc)
         tcg_temp_free(t0);
     } else if (dc->r0 == R_BA) {
         TCGv t0 = tcg_temp_new();
-        TCGLabel *l1 = gen_new_label();
+        int l1 = gen_new_label();
         tcg_gen_andi_tl(t0, cpu_ie, IE_BIE);
         tcg_gen_ori_tl(cpu_ie, cpu_ie, IE_IE);
         tcg_gen_brcondi_tl(TCG_COND_EQ, t0, IE_BIE, l1);
@@ -252,7 +252,9 @@ static void dec_bi(DisasContext *dc)
 
 static inline void gen_cond_branch(DisasContext *dc, int cond)
 {
-    TCGLabel *l1 = gen_new_label();
+    int l1;
+
+    l1 = gen_new_label();
     tcg_gen_brcond_tl(cond, cpu_R[dc->r0], cpu_R[dc->r1], l1);
     gen_goto_tb(dc, 0, dc->pc + 4);
     gen_set_label(l1);
@@ -426,7 +428,7 @@ static void dec_cmpne(DisasContext *dc)
 
 static void dec_divu(DisasContext *dc)
 {
-    TCGLabel *l1;
+    int l1;
 
     LOG_DIS("divu r%d, r%d, r%d\n", dc->r2, dc->r0, dc->r1);
 
@@ -506,7 +508,7 @@ static void dec_lw(DisasContext *dc)
 
 static void dec_modu(DisasContext *dc)
 {
-    TCGLabel *l1;
+    int l1;
 
     LOG_DIS("modu r%d, r%d, %d\n", dc->r2, dc->r0, dc->r1);
 
@@ -767,8 +769,8 @@ static void dec_sr(DisasContext *dc)
         }
         tcg_gen_sari_tl(cpu_R[dc->r1], cpu_R[dc->r0], dc->imm5);
     } else {
-        TCGLabel *l1 = gen_new_label();
-        TCGLabel *l2 = gen_new_label();
+        int l1 = gen_new_label();
+        int l2 = gen_new_label();
         TCGv t0 = tcg_temp_local_new();
         tcg_gen_andi_tl(t0, cpu_R[dc->r1], 0x1f);
 
@@ -803,8 +805,8 @@ static void dec_sru(DisasContext *dc)
         }
         tcg_gen_shri_tl(cpu_R[dc->r1], cpu_R[dc->r0], dc->imm5);
     } else {
-        TCGLabel *l1 = gen_new_label();
-        TCGLabel *l2 = gen_new_label();
+        int l1 = gen_new_label();
+        int l2 = gen_new_label();
         TCGv t0 = tcg_temp_local_new();
         tcg_gen_andi_tl(t0, cpu_R[dc->r1], 0x1f);
 
@@ -863,24 +865,24 @@ static void dec_wcsr(DisasContext *dc)
         break;
     case CSR_IM:
         /* mark as an io operation because it could cause an interrupt */
-        if (dc->tb->cflags & CF_USE_ICOUNT) {
+        if (use_icount) {
             gen_io_start();
         }
         gen_helper_wcsr_im(cpu_env, cpu_R[dc->r1]);
         tcg_gen_movi_tl(cpu_pc, dc->pc + 4);
-        if (dc->tb->cflags & CF_USE_ICOUNT) {
+        if (use_icount) {
             gen_io_end();
         }
         dc->is_jmp = DISAS_UPDATE;
         break;
     case CSR_IP:
         /* mark as an io operation because it could cause an interrupt */
-        if (dc->tb->cflags & CF_USE_ICOUNT) {
+        if (use_icount) {
             gen_io_start();
         }
         gen_helper_wcsr_ip(cpu_env, cpu_R[dc->r1]);
         tcg_gen_movi_tl(cpu_pc, dc->pc + 4);
-        if (dc->tb->cflags & CF_USE_ICOUNT) {
+        if (use_icount) {
             gen_io_end();
         }
         dc->is_jmp = DISAS_UPDATE;
@@ -1060,6 +1062,7 @@ void gen_intermediate_code_internal(LM32CPU *cpu,
     CPUState *cs = CPU(cpu);
     CPULM32State *env = &cpu->env;
     struct DisasContext ctx, *dc = &ctx;
+    uint16_t *gen_opc_end;
     uint32_t pc_start;
     int j, lj;
     uint32_t next_page_start;
@@ -1071,6 +1074,8 @@ void gen_intermediate_code_internal(LM32CPU *cpu,
     dc->num_breakpoints = cpu->num_breakpoints;
     dc->num_watchpoints = cpu->num_watchpoints;
     dc->tb = tb;
+
+    gen_opc_end = tcg_ctx.gen_opc_buf + OPC_MAX_SIZE;
 
     dc->is_jmp = DISAS_NEXT;
     dc->pc = pc_start;
@@ -1090,12 +1095,12 @@ void gen_intermediate_code_internal(LM32CPU *cpu,
         max_insns = CF_COUNT_MASK;
     }
 
-    gen_tb_start(tb);
+    gen_tb_start();
     do {
         check_breakpoint(env, dc);
 
         if (search_pc) {
-            j = tcg_op_buf_count();
+            j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
             if (lj < j) {
                 lj++;
                 while (lj < j) {
@@ -1119,7 +1124,7 @@ void gen_intermediate_code_internal(LM32CPU *cpu,
         num_insns++;
 
     } while (!dc->is_jmp
-         && !tcg_op_buf_full()
+         && tcg_ctx.gen_opc_ptr < gen_opc_end
          && !cs->singlestep_enabled
          && !singlestep
          && (dc->pc < next_page_start)
@@ -1153,9 +1158,9 @@ void gen_intermediate_code_internal(LM32CPU *cpu,
     }
 
     gen_tb_end(tb, num_insns);
-
+    *tcg_ctx.gen_opc_ptr = INDEX_op_end;
     if (search_pc) {
-        j = tcg_op_buf_count();
+        j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
         lj++;
         while (lj <= j) {
             tcg_ctx.gen_opc_instr_start[lj++] = 0;
@@ -1168,9 +1173,10 @@ void gen_intermediate_code_internal(LM32CPU *cpu,
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log("\n");
-        log_target_disas(cs, pc_start, dc->pc - pc_start, 0);
-        qemu_log("\nisize=%d osize=%d\n",
-                 dc->pc - pc_start, tcg_op_buf_count());
+        log_target_disas(env, pc_start, dc->pc - pc_start, 0);
+        qemu_log("\nisize=%d osize=%td\n",
+            dc->pc - pc_start, tcg_ctx.gen_opc_ptr -
+            tcg_ctx.gen_opc_buf);
     }
 #endif
 }

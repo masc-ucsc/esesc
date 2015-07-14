@@ -170,8 +170,7 @@ static void default_reset_secondary(ARMCPU *cpu,
 {
     CPUARMState *env = &cpu->env;
 
-    address_space_stl_notdirty(&address_space_memory, info->smp_bootreg_addr,
-                               0, MEMTXATTRS_UNSPECIFIED, NULL);
+    stl_phys_notdirty(&address_space_memory, info->smp_bootreg_addr, 0);
     env->regs[15] = info->smp_loader_start;
 }
 
@@ -181,8 +180,7 @@ static inline bool have_dtb(const struct arm_boot_info *info)
 }
 
 #define WRITE_WORD(p, value) do { \
-    address_space_stl_notdirty(&address_space_memory, p, value, \
-                               MEMTXATTRS_UNSPECIFIED, NULL);  \
+    stl_phys_notdirty(&address_space_memory, p, value);  \
     p += 4;                       \
 } while (0)
 
@@ -331,8 +329,6 @@ static void set_kernel_args_old(const struct arm_boot_info *info)
  * Returns: the size of the device tree image on success,
  *          0 if the image size exceeds the limit,
  *          -1 on errors.
- *
- * Note: Must not be called unless have_dtb(binfo) is true.
  */
 static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
                     hwaddr addr_limit)
@@ -356,7 +352,7 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
             goto fail;
         }
         g_free(filename);
-    } else {
+    } else if (binfo->get_dtb) {
         fdt = binfo->get_dtb(binfo, &size);
         if (!fdt) {
             fprintf(stderr, "Board was unable to create a dtb blob\n");
@@ -459,34 +455,6 @@ static void do_cpu_reset(void *opaque)
                 env->thumb = info->entry & 1;
             }
         } else {
-            /* If we are booting Linux then we need to check whether we are
-             * booting into secure or non-secure state and adjust the state
-             * accordingly.  Out of reset, ARM is defined to be in secure state
-             * (SCR.NS = 0), we change that here if non-secure boot has been
-             * requested.
-             */
-            if (arm_feature(env, ARM_FEATURE_EL3)) {
-                /* AArch64 is defined to come out of reset into EL3 if enabled.
-                 * If we are booting Linux then we need to adjust our EL as
-                 * Linux expects us to be in EL2 or EL1.  AArch32 resets into
-                 * SVC, which Linux expects, so no privilege/exception level to
-                 * adjust.
-                 */
-                if (env->aarch64) {
-                    if (arm_feature(env, ARM_FEATURE_EL2)) {
-                        env->pstate = PSTATE_MODE_EL2h;
-                    } else {
-                        env->pstate = PSTATE_MODE_EL1h;
-                    }
-                }
-
-                /* Set to non-secure if not a secure boot */
-                if (!info->secure_boot) {
-                    /* Linux expects non-secure state */
-                    env->cp15.scr_el3 |= SCR_NS;
-                }
-            }
-
             if (CPU(cpu) == first_cpu) {
                 if (env->aarch64) {
                     env->pc = info->loader_start;
@@ -508,56 +476,7 @@ static void do_cpu_reset(void *opaque)
     }
 }
 
-/**
- * load_image_to_fw_cfg() - Load an image file into an fw_cfg entry identified
- *                          by key.
- * @fw_cfg:         The firmware config instance to store the data in.
- * @size_key:       The firmware config key to store the size of the loaded
- *                  data under, with fw_cfg_add_i32().
- * @data_key:       The firmware config key to store the loaded data under,
- *                  with fw_cfg_add_bytes().
- * @image_name:     The name of the image file to load. If it is NULL, the
- *                  function returns without doing anything.
- * @try_decompress: Whether the image should be decompressed (gunzipped) before
- *                  adding it to fw_cfg. If decompression fails, the image is
- *                  loaded as-is.
- *
- * In case of failure, the function prints an error message to stderr and the
- * process exits with status 1.
- */
-static void load_image_to_fw_cfg(FWCfgState *fw_cfg, uint16_t size_key,
-                                 uint16_t data_key, const char *image_name,
-                                 bool try_decompress)
-{
-    size_t size = -1;
-    uint8_t *data;
-
-    if (image_name == NULL) {
-        return;
-    }
-
-    if (try_decompress) {
-        size = load_image_gzipped_buffer(image_name,
-                                         LOAD_IMAGE_MAX_GUNZIP_BYTES, &data);
-    }
-
-    if (size == (size_t)-1) {
-        gchar *contents;
-        gsize length;
-
-        if (!g_file_get_contents(image_name, &contents, &length, NULL)) {
-            fprintf(stderr, "failed to load \"%s\"\n", image_name);
-            exit(1);
-        }
-        size = length;
-        data = (uint8_t *)contents;
-    }
-
-    fw_cfg_add_i32(fw_cfg, size_key, size);
-    fw_cfg_add_bytes(fw_cfg, data_key, data, size);
-}
-
-static void arm_load_kernel_notify(Notifier *notifier, void *data)
+void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
 {
     CPUState *cs;
     int kernel_size;
@@ -568,55 +487,30 @@ static void arm_load_kernel_notify(Notifier *notifier, void *data)
     hwaddr entry, kernel_load_offset;
     int big_endian;
     static const ARMInsnFixup *primary_loader;
-    ArmLoadKernelNotifier *n = DO_UPCAST(ArmLoadKernelNotifier,
-                                         notifier, notifier);
-    ARMCPU *cpu = n->cpu;
-    struct arm_boot_info *info =
-        container_of(n, struct arm_boot_info, load_kernel_notifier);
+
+    /* CPU objects (unlike devices) are not automatically reset on system
+     * reset, so we must always register a handler to do so. If we're
+     * actually loading a kernel, the handler is also responsible for
+     * arranging that we start it correctly.
+     */
+    for (cs = CPU(cpu); cs; cs = CPU_NEXT(cs)) {
+        qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
+    }
 
     /* Load the kernel.  */
-    if (!info->kernel_filename || info->firmware_loaded) {
+    if (!info->kernel_filename) {
 
         if (have_dtb(info)) {
-            /* If we have a device tree blob, but no kernel to supply it to (or
-             * the kernel is supposed to be loaded by the bootloader), copy the
-             * DTB to the base of RAM for the bootloader to pick up.
+            /* If we have a device tree blob, but no kernel to supply it to,
+             * copy it to the base of RAM for a bootloader to pick up.
              */
             if (load_dtb(info->loader_start, info, 0) < 0) {
                 exit(1);
             }
         }
 
-        if (info->kernel_filename) {
-            FWCfgState *fw_cfg;
-            bool try_decompressing_kernel;
-
-            fw_cfg = fw_cfg_find();
-            try_decompressing_kernel = arm_feature(&cpu->env,
-                                                   ARM_FEATURE_AARCH64);
-
-            /* Expose the kernel, the command line, and the initrd in fw_cfg.
-             * We don't process them here at all, it's all left to the
-             * firmware.
-             */
-            load_image_to_fw_cfg(fw_cfg,
-                                 FW_CFG_KERNEL_SIZE, FW_CFG_KERNEL_DATA,
-                                 info->kernel_filename,
-                                 try_decompressing_kernel);
-            load_image_to_fw_cfg(fw_cfg,
-                                 FW_CFG_INITRD_SIZE, FW_CFG_INITRD_DATA,
-                                 info->initrd_filename, false);
-
-            if (info->kernel_cmdline) {
-                fw_cfg_add_i32(fw_cfg, FW_CFG_CMDLINE_SIZE,
-                               strlen(info->kernel_cmdline) + 1);
-                fw_cfg_add_string(fw_cfg, FW_CFG_CMDLINE_DATA,
-                                  info->kernel_cmdline);
-            }
-        }
-
-        /* We will start from address 0 (typically a boot ROM image) in the
-         * same way as hardware.
+        /* If no kernel specified, do nothing; we will start from address 0
+         * (typically a boot ROM image) in the same way as hardware.
          */
         return;
     }
@@ -769,23 +663,5 @@ static void arm_load_kernel_notify(Notifier *notifier, void *data)
 
     for (cs = CPU(cpu); cs; cs = CPU_NEXT(cs)) {
         ARM_CPU(cs)->env.boot_info = info;
-    }
-}
-
-void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
-{
-    CPUState *cs;
-
-    info->load_kernel_notifier.cpu = cpu;
-    info->load_kernel_notifier.notifier.notify = arm_load_kernel_notify;
-    qemu_add_machine_init_done_notifier(&info->load_kernel_notifier.notifier);
-
-    /* CPU objects (unlike devices) are not automatically reset on system
-     * reset, so we must always register a handler to do so. If we're
-     * actually loading a kernel, the handler is also responsible for
-     * arranging that we start it correctly.
-     */
-    for (cs = CPU(cpu); cs; cs = CPU_NEXT(cs)) {
-        qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
     }
 }

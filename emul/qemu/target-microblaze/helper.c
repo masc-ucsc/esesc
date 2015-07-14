@@ -22,6 +22,7 @@
 #include "qemu/host-utils.h"
 
 #define D(x)
+#define DMMU(x)
 
 #if defined(CONFIG_USER_ONLY)
 
@@ -56,10 +57,10 @@ int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
     int prot;
 
     mmu_available = 0;
-    if (cpu->cfg.use_mmu) {
+    if (env->pvr.regs[0] & PVR0_USE_MMU) {
         mmu_available = 1;
-        if ((cpu->cfg.pvr == C_PVR_FULL) &&
-            (env->pvr.regs[11] & PVR11_USE_MMU) != PVR11_USE_MMU) {
+        if ((env->pvr.regs[0] & PVR0_PVR_FULL_MASK)
+            && (env->pvr.regs[11] & PVR11_USE_MMU) != PVR11_USE_MMU) {
             mmu_available = 0;
         }
     }
@@ -74,14 +75,13 @@ int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
             vaddr = address & TARGET_PAGE_MASK;
             paddr = lu.paddr + vaddr - lu.vaddr;
 
-            qemu_log_mask(CPU_LOG_MMU, "MMU map mmu=%d v=%x p=%x prot=%x\n",
-                    mmu_idx, vaddr, paddr, lu.prot);
+            DMMU(qemu_log("MMU map mmu=%d v=%x p=%x prot=%x\n",
+                     mmu_idx, vaddr, paddr, lu.prot));
             tlb_set_page(cs, vaddr, paddr, lu.prot, mmu_idx, TARGET_PAGE_SIZE);
             r = 0;
         } else {
             env->sregs[SR_EAR] = address;
-            qemu_log_mask(CPU_LOG_MMU, "mmu=%d miss v=%" VADDR_PRIx "\n",
-                                        mmu_idx, address);
+            DMMU(qemu_log("mmu=%d miss v=%x\n", mmu_idx, address));
 
             switch (lu.err) {
                 case ERR_PROT:
@@ -154,7 +154,7 @@ void mb_cpu_do_interrupt(CPUState *cs)
                           env->sregs[SR_ESR], env->iflags);
             log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             env->iflags &= ~(IMM_FLAG | D_FLAG);
-            env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x20;
+            env->sregs[SR_PC] = cpu->base_vectors + 0x20;
             break;
 
         case EXCP_MMU:
@@ -194,7 +194,7 @@ void mb_cpu_do_interrupt(CPUState *cs)
                           env->sregs[SR_PC], env->sregs[SR_EAR], env->iflags);
             log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             env->iflags &= ~(IMM_FLAG | D_FLAG);
-            env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x20;
+            env->sregs[SR_PC] = cpu->base_vectors + 0x20;
             break;
 
         case EXCP_IRQ:
@@ -235,7 +235,7 @@ void mb_cpu_do_interrupt(CPUState *cs)
             env->sregs[SR_MSR] |= t;
 
             env->regs[14] = env->sregs[SR_PC];
-            env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x10;
+            env->sregs[SR_PC] = cpu->base_vectors + 0x10;
             //log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             break;
 
@@ -254,7 +254,7 @@ void mb_cpu_do_interrupt(CPUState *cs)
             if (cs->exception_index == EXCP_HW_BREAK) {
                 env->regs[16] = env->sregs[SR_PC];
                 env->sregs[SR_MSR] |= MSR_BIP;
-                env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x18;
+                env->sregs[SR_PC] = cpu->base_vectors + 0x18;
             } else
                 env->sregs[SR_PC] = env->btarget;
             break;

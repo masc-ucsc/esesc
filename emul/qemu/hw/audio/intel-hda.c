@@ -1126,7 +1126,7 @@ static void intel_hda_reset(DeviceState *dev)
     intel_hda_update_irq(d);
 }
 
-static void intel_hda_realize(PCIDevice *pci, Error **errp)
+static int intel_hda_init(PCIDevice *pci)
 {
     IntelHDAState *d = INTEL_HDA(pci);
     uint8_t *conf = d->pci.config;
@@ -1147,6 +1147,8 @@ static void intel_hda_realize(PCIDevice *pci, Error **errp)
 
     hda_codec_bus_init(DEVICE(pci), &d->codecs, sizeof(d->codecs),
                        intel_hda_response, intel_hda_xfer);
+
+    return 0;
 }
 
 static void intel_hda_exit(PCIDevice *pci)
@@ -1243,7 +1245,7 @@ static void intel_hda_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = intel_hda_realize;
+    k->init = intel_hda_init;
     k->exit = intel_hda_exit;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->class_id = PCI_CLASS_MULTIMEDIA_HD_AUDIO;

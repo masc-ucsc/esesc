@@ -1337,7 +1337,7 @@ static void ac97_on_reset (DeviceState *dev)
     mixer_reset (s);
 }
 
-static void ac97_realize(PCIDevice *dev, Error **errp)
+static int ac97_initfn (PCIDevice *dev)
 {
     AC97LinkState *s = DO_UPCAST (AC97LinkState, dev, dev);
     uint8_t *c = s->dev.config;
@@ -1384,6 +1384,7 @@ static void ac97_realize(PCIDevice *dev, Error **errp)
     pci_register_bar (&s->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nabm);
     AUD_register_card ("ac97", &s->card);
     ac97_on_reset (&s->dev.qdev);
+    return 0;
 }
 
 static int ac97_init (PCIBus *bus)
@@ -1402,7 +1403,7 @@ static void ac97_class_init (ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS (klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS (klass);
 
-    k->realize = ac97_realize;
+    k->init = ac97_initfn;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82801AA_5;
     k->revision = 0x01;

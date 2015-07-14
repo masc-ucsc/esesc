@@ -231,7 +231,7 @@ int usb_desc_msos(const USBDesc *desc,  USBPacket *p,
         length = len;
     }
     memcpy(dest, buf, length);
-    g_free(buf);
+    free(buf);
 
     p->actual_length = length;
     return 0;

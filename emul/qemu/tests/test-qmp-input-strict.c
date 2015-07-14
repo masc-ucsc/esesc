@@ -1,7 +1,7 @@
 /*
  * QMP Input Visitor unit-tests (strict mode).
  *
- * Copyright (C) 2011-2012, 2015 Red Hat Inc.
+ * Copyright (C) 2011-2012 Red Hat Inc.
  *
  * Authors:
  *  Luiz Capitulino <lcapitulino@redhat.com>
@@ -116,18 +116,15 @@ static void test_validate_struct(TestInputVisitorData *data,
 static void test_validate_struct_nested(TestInputVisitorData *data,
                                          const void *unused)
 {
-    UserDefTwo *udp = NULL;
+    UserDefNested *udp = NULL;
     Error *err = NULL;
     Visitor *v;
 
-    v = validate_test_init(data, "{ 'string0': 'string0', "
-                           "'dict1': { 'string1': 'string1', "
-                           "'dict2': { 'userdef': { 'integer': 42, "
-                           "'string': 'string' }, 'string': 'string2'}}}");
+    v = validate_test_init(data, "{ 'string0': 'string0', 'dict1': { 'string1': 'string1', 'dict2': { 'userdef1': { 'integer': 42, 'string': 'string' }, 'string2': 'string2'}}}");
 
-    visit_type_UserDefTwo(v, &udp, NULL, &err);
+    visit_type_UserDefNested(v, &udp, NULL, &err);
     g_assert(!err);
-    qapi_free_UserDefTwo(udp);
+    qapi_free_UserDefNested(udp);
 }
 
 static void test_validate_list(TestInputVisitorData *data,
@@ -144,18 +141,18 @@ static void test_validate_list(TestInputVisitorData *data,
     qapi_free_UserDefOneList(head);
 }
 
-static void test_validate_union_native_list(TestInputVisitorData *data,
-                                            const void *unused)
+static void test_validate_union(TestInputVisitorData *data,
+                                 const void *unused)
 {
-    UserDefNativeListUnion *tmp = NULL;
+    UserDefUnion *tmp = NULL;
     Visitor *v;
     Error *err = NULL;
 
-    v = validate_test_init(data, "{ 'type': 'integer', 'data' : [ 1, 2 ] }");
+    v = validate_test_init(data, "{ 'type': 'b', 'integer': 41, 'data' : { 'integer': 42 } }");
 
-    visit_type_UserDefNativeListUnion(v, &tmp, NULL, &err);
+    visit_type_UserDefUnion(v, &tmp, NULL, &err);
     g_assert(!err);
-    qapi_free_UserDefNativeListUnion(tmp);
+    qapi_free_UserDefUnion(tmp);
 }
 
 static void test_validate_union_flat(TestInputVisitorData *data,
@@ -176,18 +173,18 @@ static void test_validate_union_flat(TestInputVisitorData *data,
     qapi_free_UserDefFlatUnion(tmp);
 }
 
-static void test_validate_alternate(TestInputVisitorData *data,
-                                    const void *unused)
+static void test_validate_union_anon(TestInputVisitorData *data,
+                                     const void *unused)
 {
-    UserDefAlternate *tmp = NULL;
+    UserDefAnonUnion *tmp = NULL;
     Visitor *v;
     Error *err = NULL;
 
     v = validate_test_init(data, "42");
 
-    visit_type_UserDefAlternate(v, &tmp, NULL, &err);
+    visit_type_UserDefAnonUnion(v, &tmp, NULL, &err);
     g_assert(!err);
-    qapi_free_UserDefAlternate(tmp);
+    qapi_free_UserDefAnonUnion(tmp);
 }
 
 static void test_validate_fail_struct(TestInputVisitorData *data,
@@ -210,15 +207,15 @@ static void test_validate_fail_struct(TestInputVisitorData *data,
 static void test_validate_fail_struct_nested(TestInputVisitorData *data,
                                               const void *unused)
 {
-    UserDefTwo *udp = NULL;
+    UserDefNested *udp = NULL;
     Error *err = NULL;
     Visitor *v;
 
     v = validate_test_init(data, "{ 'string0': 'string0', 'dict1': { 'string1': 'string1', 'dict2': { 'userdef1': { 'integer': 42, 'string': 'string', 'extra': [42, 23, {'foo':'bar'}] }, 'string2': 'string2'}}}");
 
-    visit_type_UserDefTwo(v, &udp, NULL, &err);
+    visit_type_UserDefNested(v, &udp, NULL, &err);
     g_assert(err);
-    qapi_free_UserDefTwo(udp);
+    qapi_free_UserDefNested(udp);
 }
 
 static void test_validate_fail_list(TestInputVisitorData *data,
@@ -235,19 +232,18 @@ static void test_validate_fail_list(TestInputVisitorData *data,
     qapi_free_UserDefOneList(head);
 }
 
-static void test_validate_fail_union_native_list(TestInputVisitorData *data,
-                                                 const void *unused)
+static void test_validate_fail_union(TestInputVisitorData *data,
+                                      const void *unused)
 {
-    UserDefNativeListUnion *tmp = NULL;
+    UserDefUnion *tmp = NULL;
     Error *err = NULL;
     Visitor *v;
 
-    v = validate_test_init(data,
-                           "{ 'type': 'integer', 'data' : [ 'string' ] }");
+    v = validate_test_init(data, "{ 'type': 'b', 'data' : { 'integer': 42 } }");
 
-    visit_type_UserDefNativeListUnion(v, &tmp, NULL, &err);
+    visit_type_UserDefUnion(v, &tmp, NULL, &err);
     g_assert(err);
-    qapi_free_UserDefNativeListUnion(tmp);
+    qapi_free_UserDefUnion(tmp);
 }
 
 static void test_validate_fail_union_flat(TestInputVisitorData *data,
@@ -279,18 +275,18 @@ static void test_validate_fail_union_flat_no_discrim(TestInputVisitorData *data,
     qapi_free_UserDefFlatUnion2(tmp);
 }
 
-static void test_validate_fail_alternate(TestInputVisitorData *data,
-                                         const void *unused)
+static void test_validate_fail_union_anon(TestInputVisitorData *data,
+                                          const void *unused)
 {
-    UserDefAlternate *tmp = NULL;
+    UserDefAnonUnion *tmp = NULL;
     Visitor *v;
     Error *err = NULL;
 
     v = validate_test_init(data, "3.14");
 
-    visit_type_UserDefAlternate(v, &tmp, NULL, &err);
+    visit_type_UserDefAnonUnion(v, &tmp, NULL, &err);
     g_assert(err);
-    qapi_free_UserDefAlternate(tmp);
+    qapi_free_UserDefAnonUnion(tmp);
 }
 
 static void validate_test_add(const char *testpath,
@@ -308,31 +304,31 @@ int main(int argc, char **argv)
     g_test_init(&argc, &argv, NULL);
 
     validate_test_add("/visitor/input-strict/pass/struct",
-                      &testdata, test_validate_struct);
+                       &testdata, test_validate_struct);
     validate_test_add("/visitor/input-strict/pass/struct-nested",
-                      &testdata, test_validate_struct_nested);
+                       &testdata, test_validate_struct_nested);
     validate_test_add("/visitor/input-strict/pass/list",
-                      &testdata, test_validate_list);
+                       &testdata, test_validate_list);
+    validate_test_add("/visitor/input-strict/pass/union",
+                       &testdata, test_validate_union);
     validate_test_add("/visitor/input-strict/pass/union-flat",
-                      &testdata, test_validate_union_flat);
-    validate_test_add("/visitor/input-strict/pass/alternate",
-                      &testdata, test_validate_alternate);
-    validate_test_add("/visitor/input-strict/pass/union-native-list",
-                      &testdata, test_validate_union_native_list);
+                       &testdata, test_validate_union_flat);
+    validate_test_add("/visitor/input-strict/pass/union-anon",
+                       &testdata, test_validate_union_anon);
     validate_test_add("/visitor/input-strict/fail/struct",
-                      &testdata, test_validate_fail_struct);
+                       &testdata, test_validate_fail_struct);
     validate_test_add("/visitor/input-strict/fail/struct-nested",
-                      &testdata, test_validate_fail_struct_nested);
+                       &testdata, test_validate_fail_struct_nested);
     validate_test_add("/visitor/input-strict/fail/list",
-                      &testdata, test_validate_fail_list);
+                       &testdata, test_validate_fail_list);
+    validate_test_add("/visitor/input-strict/fail/union",
+                       &testdata, test_validate_fail_union);
     validate_test_add("/visitor/input-strict/fail/union-flat",
-                      &testdata, test_validate_fail_union_flat);
+                       &testdata, test_validate_fail_union_flat);
     validate_test_add("/visitor/input-strict/fail/union-flat-no-discriminator",
-                      &testdata, test_validate_fail_union_flat_no_discrim);
-    validate_test_add("/visitor/input-strict/fail/alternate",
-                      &testdata, test_validate_fail_alternate);
-    validate_test_add("/visitor/input-strict/fail/union-native-list",
-                      &testdata, test_validate_fail_union_native_list);
+                       &testdata, test_validate_fail_union_flat_no_discrim);
+    validate_test_add("/visitor/input-strict/fail/union-anon",
+                       &testdata, test_validate_fail_union_anon);
 
     g_test_run();
 

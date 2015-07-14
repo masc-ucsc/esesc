@@ -27,22 +27,22 @@
 #include <hw/pci/pci.h>
 #include <hw/sysbus.h>
 
-#include "qemu/error-report.h"
+#include "monitor/monitor.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/dma.h"
 #include "internal.h"
 #include <hw/ide/pci.h>
 #include <hw/ide/ahci.h>
 
-#define DEBUG_AHCI 0
+/* #define DEBUG_AHCI */
 
+#ifdef DEBUG_AHCI
 #define DPRINTF(port, fmt, ...) \
-do { \
-    if (DEBUG_AHCI) { \
-        fprintf(stderr, "ahci: %s: [%d] ", __func__, port); \
-        fprintf(stderr, fmt, ## __VA_ARGS__); \
-    } \
-} while (0)
+do { fprintf(stderr, "ahci: %s: [%d] ", __FUNCTION__, port); \
+     fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
+#else
+#define DPRINTF(port, fmt, ...) do {} while(0)
+#endif
 
 static void check_cmd(AHCIState *s, int port);
 static int handle_cmd(AHCIState *s,int port,int slot);
@@ -51,10 +51,6 @@ static void ahci_write_fis_d2h(AHCIDevice *ad, uint8_t *cmd_fis);
 static void ahci_init_d2h(AHCIDevice *ad);
 static int ahci_dma_prepare_buf(IDEDMA *dma, int is_write);
 static void ahci_commit_buf(IDEDMA *dma, uint32_t tx_bytes);
-static bool ahci_map_clb_address(AHCIDevice *ad);
-static bool ahci_map_fis_address(AHCIDevice *ad);
-static void ahci_unmap_clb_address(AHCIDevice *ad);
-static void ahci_unmap_fis_address(AHCIDevice *ad);
 
 
 static uint32_t  ahci_port_read(AHCIState *s, int port, int offset)
@@ -198,61 +194,6 @@ static void map_page(AddressSpace *as, uint8_t **ptr, uint64_t addr,
     }
 }
 
-/**
- * Check the cmd register to see if we should start or stop
- * the DMA or FIS RX engines.
- *
- * @ad: Device to engage.
- * @allow_stop: Allow device to transition from started to stopped?
- *   'no' is useful for migration post_load, which does not expect a transition.
- *
- * @return 0 on success, -1 on error.
- */
-static int ahci_cond_start_engines(AHCIDevice *ad, bool allow_stop)
-{
-    AHCIPortRegs *pr = &ad->port_regs;
-
-    if (pr->cmd & PORT_CMD_START) {
-        if (ahci_map_clb_address(ad)) {
-            pr->cmd |= PORT_CMD_LIST_ON;
-        } else {
-            error_report("AHCI: Failed to start DMA engine: "
-                         "bad command list buffer address");
-            return -1;
-        }
-    } else if (pr->cmd & PORT_CMD_LIST_ON) {
-        if (allow_stop) {
-            ahci_unmap_clb_address(ad);
-            pr->cmd = pr->cmd & ~(PORT_CMD_LIST_ON);
-        } else {
-            error_report("AHCI: DMA engine should be off, "
-                         "but appears to still be running");
-            return -1;
-        }
-    }
-
-    if (pr->cmd & PORT_CMD_FIS_RX) {
-        if (ahci_map_fis_address(ad)) {
-            pr->cmd |= PORT_CMD_FIS_ON;
-        } else {
-            error_report("AHCI: Failed to start FIS receive engine: "
-                         "bad FIS receive buffer address");
-            return -1;
-        }
-    } else if (pr->cmd & PORT_CMD_FIS_ON) {
-        if (allow_stop) {
-            ahci_unmap_fis_address(ad);
-            pr->cmd = pr->cmd & ~(PORT_CMD_FIS_ON);
-        } else {
-            error_report("AHCI: FIS receive engine should be off, "
-                         "but appears to still be running");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
 static void  ahci_port_write(AHCIState *s, int port, int offset, uint32_t val)
 {
     AHCIPortRegs *pr = &s->dev[port].port_regs;
@@ -261,15 +202,25 @@ static void  ahci_port_write(AHCIState *s, int port, int offset, uint32_t val)
     switch (offset) {
         case PORT_LST_ADDR:
             pr->lst_addr = val;
+            map_page(s->as, &s->dev[port].lst,
+                     ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
+            s->dev[port].cur_cmd = NULL;
             break;
         case PORT_LST_ADDR_HI:
             pr->lst_addr_hi = val;
+            map_page(s->as, &s->dev[port].lst,
+                     ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
+            s->dev[port].cur_cmd = NULL;
             break;
         case PORT_FIS_ADDR:
             pr->fis_addr = val;
+            map_page(s->as, &s->dev[port].res_fis,
+                     ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
             break;
         case PORT_FIS_ADDR_HI:
             pr->fis_addr_hi = val;
+            map_page(s->as, &s->dev[port].res_fis,
+                     ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
             break;
         case PORT_IRQ_STAT:
             pr->irq_stat &= ~val;
@@ -280,12 +231,15 @@ static void  ahci_port_write(AHCIState *s, int port, int offset, uint32_t val)
             ahci_check_irq(s);
             break;
         case PORT_CMD:
-            /* Block any Read-only fields from being set;
-             * including LIST_ON and FIS_ON. */
-            pr->cmd = (pr->cmd & PORT_CMD_RO_MASK) | (val & ~PORT_CMD_RO_MASK);
+            pr->cmd = val & ~(PORT_CMD_LIST_ON | PORT_CMD_FIS_ON);
 
-            /* Check FIS RX and CLB engines, allow transition to false: */
-            ahci_cond_start_engines(&s->dev[port], true);
+            if (pr->cmd & PORT_CMD_START) {
+                pr->cmd |= PORT_CMD_LIST_ON;
+            }
+
+            if (pr->cmd & PORT_CMD_FIS_RX) {
+                pr->cmd |= PORT_CMD_FIS_ON;
+            }
 
             /* XXX usually the FIS would be pending on the bus here and
                    issuing deferred until the OS enables FIS receival.
@@ -597,7 +551,7 @@ static void ahci_reset_port(AHCIState *s, int port)
 
 static void debug_print_fis(uint8_t *fis, int cmd_len)
 {
-#if DEBUG_AHCI
+#ifdef DEBUG_AHCI
     int i;
 
     fprintf(stderr, "fis:");
@@ -609,37 +563,6 @@ static void debug_print_fis(uint8_t *fis, int cmd_len)
     }
     fprintf(stderr, "\n");
 #endif
-}
-
-static bool ahci_map_fis_address(AHCIDevice *ad)
-{
-    AHCIPortRegs *pr = &ad->port_regs;
-    map_page(ad->hba->as, &ad->res_fis,
-             ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
-    return ad->res_fis != NULL;
-}
-
-static void ahci_unmap_fis_address(AHCIDevice *ad)
-{
-    dma_memory_unmap(ad->hba->as, ad->res_fis, 256,
-                     DMA_DIRECTION_FROM_DEVICE, 256);
-    ad->res_fis = NULL;
-}
-
-static bool ahci_map_clb_address(AHCIDevice *ad)
-{
-    AHCIPortRegs *pr = &ad->port_regs;
-    ad->cur_cmd = NULL;
-    map_page(ad->hba->as, &ad->lst,
-             ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
-    return ad->lst != NULL;
-}
-
-static void ahci_unmap_clb_address(AHCIDevice *ad)
-{
-    dma_memory_unmap(ad->hba->as, ad->lst, 1024,
-                     DMA_DIRECTION_FROM_DEVICE, 1024);
-    ad->lst = NULL;
 }
 
 static void ahci_write_fis_sdb(AHCIState *s, int port, uint32_t finished)
@@ -657,7 +580,7 @@ static void ahci_write_fis_sdb(AHCIState *s, int port, uint32_t finished)
     sdb_fis = (SDBFIS *)&ad->res_fis[RES_FIS_SDBFIS];
     ide_state = &ad->port.ifs[0];
 
-    sdb_fis->type = SATA_FIS_TYPE_SDB;
+    sdb_fis->type = 0xA1;
     /* Interrupt pending & Notification bit */
     sdb_fis->flags = (ad->hba->control_regs.irqstatus ? (1 << 6) : 0);
     sdb_fis->status = ide_state->status & 0x77;
@@ -708,7 +631,7 @@ static void ahci_write_fis_pio(AHCIDevice *ad, uint16_t len)
 
     pio_fis = &ad->res_fis[RES_FIS_PSFIS];
 
-    pio_fis[0] = SATA_FIS_TYPE_PIO_SETUP;
+    pio_fis[0] = 0x5f;
     pio_fis[1] = (ad->hba->control_regs.irqstatus ? (1 << 6) : 0);
     pio_fis[2] = s->status;
     pio_fis[3] = s->error;
@@ -767,7 +690,7 @@ static void ahci_write_fis_d2h(AHCIDevice *ad, uint8_t *cmd_fis)
 
     d2h_fis = &ad->res_fis[RES_FIS_RFIS];
 
-    d2h_fis[0] = SATA_FIS_TYPE_REGISTER_D2H;
+    d2h_fis[0] = 0x34;
     d2h_fis[1] = (ad->hba->control_regs.irqstatus ? (1 << 6) : 0);
     d2h_fis[2] = s->status;
     d2h_fis[3] = s->error;
@@ -876,7 +799,7 @@ static int ahci_populate_sglist(AHCIDevice *ad, QEMUSGList *sglist,
 
         qemu_sglist_init(sglist, qbus->parent, (sglist_alloc_hint - off_idx),
                          ad->hba->as);
-        qemu_sglist_add(sglist, le64_to_cpu(tbl[off_idx].addr) + off_pos,
+        qemu_sglist_add(sglist, le64_to_cpu(tbl[off_idx].addr + off_pos),
                         prdt_tbl_entry_size(&tbl[off_idx]) - off_pos);
 
         for (i = off_idx + 1; i < sglist_alloc_hint; i++) {
@@ -1231,15 +1154,12 @@ out:
 static void ahci_start_dma(IDEDMA *dma, IDEState *s,
                            BlockCompletionFunc *dma_cb)
 {
+#ifdef DEBUG_AHCI
     AHCIDevice *ad = DO_UPCAST(AHCIDevice, dma, dma);
+#endif
     DPRINTF(ad->port_no, "\n");
     s->io_buffer_offset = 0;
     dma_cb(s, 0);
-}
-
-static void ahci_restart_dma(IDEDMA *dma)
-{
-    /* Nothing to do, ahci_start_dma already resets s->io_buffer_offset.  */
 }
 
 /**
@@ -1308,6 +1228,12 @@ static int ahci_dma_rw_buf(IDEDMA *dma, int is_write)
     return 1;
 }
 
+static int ahci_dma_set_unit(IDEDMA *dma, int unit)
+{
+    /* only a single unit per link */
+    return 0;
+}
+
 static void ahci_cmd_done(IDEDMA *dma)
 {
     AHCIDevice *ad = DO_UPCAST(AHCIDevice, dma, dma);
@@ -1328,14 +1254,19 @@ static void ahci_irq_set(void *opaque, int n, int level)
 {
 }
 
+static void ahci_dma_restart_cb(void *opaque, int running, RunState state)
+{
+}
+
 static const IDEDMAOps ahci_dma_ops = {
     .start_dma = ahci_start_dma,
-    .restart_dma = ahci_restart_dma,
     .start_transfer = ahci_start_transfer,
     .prepare_buf = ahci_dma_prepare_buf,
     .commit_buf = ahci_commit_buf,
     .rw_buf = ahci_dma_rw_buf,
+    .set_unit = ahci_dma_set_unit,
     .cmd_done = ahci_cmd_done,
+    .restart_cb = ahci_dma_restart_cb,
 };
 
 void ahci_init(AHCIState *s, DeviceState *qdev, AddressSpace *as, int ports)
@@ -1365,7 +1296,6 @@ void ahci_init(AHCIState *s, DeviceState *qdev, AddressSpace *as, int ports)
         ad->port_no = i;
         ad->port.dma = &ad->dma;
         ad->port.dma->ops = &ahci_dma_ops;
-        ide_register_restart_cb(&ad->port);
     }
 }
 
@@ -1405,7 +1335,6 @@ static const VMStateDescription vmstate_ahci_device = {
     .version_id = 1,
     .fields = (VMStateField[]) {
         VMSTATE_IDE_BUS(port, AHCIDevice),
-        VMSTATE_IDE_DRIVE(port.ifs[0], AHCIDevice),
         VMSTATE_UINT32(port_state, AHCIDevice),
         VMSTATE_UINT32(finished, AHCIDevice),
         VMSTATE_UINT32(port_regs.lst_addr, AHCIDevice),
@@ -1437,31 +1366,23 @@ static int ahci_state_post_load(void *opaque, int version_id)
 
     for (i = 0; i < s->ports; i++) {
         ad = &s->dev[i];
+        AHCIPortRegs *pr = &ad->port_regs;
 
-        /* Only remap the CLB address if appropriate, disallowing a state
-         * transition from 'on' to 'off' it should be consistent here. */
-        if (ahci_cond_start_engines(ad, false) != 0) {
-            return -1;
-        }
-
+        map_page(s->as, &ad->lst,
+                 ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
+        map_page(s->as, &ad->res_fis,
+                 ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
         /*
-         * If an error is present, ad->busy_slot will be valid and not -1.
-         * In this case, an operation is waiting to resume and will re-check
-         * for additional AHCI commands to execute upon completion.
-         *
-         * In the case where no error was present, busy_slot will be -1,
-         * and we should check to see if there are additional commands waiting.
+         * All pending i/o should be flushed out on a migrate. However,
+         * we might not have cleared the busy_slot since this is done
+         * in a bh. Also, issue i/o against any slots that are pending.
          */
-        if (ad->busy_slot == -1) {
-            check_cmd(s, i);
-        } else {
-            /* We are in the middle of a command, and may need to access
-             * the command header in guest memory again. */
-            if (ad->busy_slot < 0 || ad->busy_slot >= AHCI_MAX_CMDS) {
-                return -1;
-            }
-            ad->cur_cmd = &((AHCICmdHdr *)ad->lst)[ad->busy_slot];
+        if ((ad->busy_slot != -1) &&
+            !(ad->port.ifs[0].status & (BUSY_STAT|DRQ_STAT))) {
+            pr->cmd_issue &= ~(1 << ad->busy_slot);
+            ad->busy_slot = -1;
         }
+        check_cmd(s, i);
     }
 
     return 0;
@@ -1499,6 +1420,7 @@ typedef struct SysbusAHCIState {
 
 static const VMStateDescription vmstate_sysbus_ahci = {
     .name = "sysbus-ahci",
+    .unmigratable = 1, /* Still buggy under I/O load */
     .fields = (VMStateField[]) {
         VMSTATE_AHCI(ahci, SysbusAHCIState),
         VMSTATE_END_OF_LIST()

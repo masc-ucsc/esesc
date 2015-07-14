@@ -425,6 +425,13 @@ static int minimac2_can_rx(NetClientState *nc)
     return 0;
 }
 
+static void minimac2_cleanup(NetClientState *nc)
+{
+    MilkymistMinimac2State *s = qemu_get_nic_opaque(nc);
+
+    s->nic = NULL;
+}
+
 static void milkymist_minimac2_reset(DeviceState *d)
 {
     MilkymistMinimac2State *s = MILKYMIST_MINIMAC2(d);
@@ -447,6 +454,7 @@ static NetClientInfo net_milkymist_minimac2_info = {
     .size = sizeof(NICState),
     .can_receive = minimac2_can_rx,
     .receive = minimac2_rx,
+    .cleanup = minimac2_cleanup,
 };
 
 static int milkymist_minimac2_init(SysBusDevice *sbd)

@@ -216,9 +216,10 @@ static int get_event_by_name(const char *name, BlkDebugEvent *event)
 struct add_rule_data {
     BDRVBlkdebugState *s;
     int action;
+    Error **errp;
 };
 
-static int add_rule(void *opaque, QemuOpts *opts, Error **errp)
+static int add_rule(QemuOpts *opts, void *opaque)
 {
     struct add_rule_data *d = opaque;
     BDRVBlkdebugState *s = d->s;
@@ -229,10 +230,10 @@ static int add_rule(void *opaque, QemuOpts *opts, Error **errp)
     /* Find the right event for the rule */
     event_name = qemu_opt_get(opts, "event");
     if (!event_name) {
-        error_setg(errp, "Missing event name for rule");
+        error_setg(d->errp, "Missing event name for rule");
         return -1;
     } else if (get_event_by_name(event_name, &event) < 0) {
-        error_setg(errp, "Invalid event name \"%s\"", event_name);
+        error_setg(d->errp, "Invalid event name \"%s\"", event_name);
         return -1;
     }
 
@@ -318,7 +319,8 @@ static int read_config(BDRVBlkdebugState *s, const char *filename,
 
     d.s = s;
     d.action = ACTION_INJECT_ERROR;
-    qemu_opts_foreach(&inject_error_opts, add_rule, &d, &local_err);
+    d.errp = &local_err;
+    qemu_opts_foreach(&inject_error_opts, add_rule, &d, 1);
     if (local_err) {
         error_propagate(errp, local_err);
         ret = -EINVAL;
@@ -326,7 +328,7 @@ static int read_config(BDRVBlkdebugState *s, const char *filename,
     }
 
     d.action = ACTION_SET_STATE;
-    qemu_opts_foreach(&set_state_opts, add_rule, &d, &local_err);
+    qemu_opts_foreach(&set_state_opts, add_rule, &d, 1);
     if (local_err) {
         error_propagate(errp, local_err);
         ret = -EINVAL;
@@ -429,7 +431,7 @@ static int blkdebug_open(BlockDriverState *bs, QDict *options, int flags,
     /* Open the backing file */
     assert(bs->file == NULL);
     ret = bdrv_open_image(&bs->file, qemu_opt_get(opts, "x-image"), options, "image",
-                          bs, &child_file, false, &local_err);
+                          flags | BDRV_O_PROTOCOL, false, &local_err);
     if (ret < 0) {
         error_propagate(errp, local_err);
         goto out;
@@ -470,14 +472,12 @@ static BlockAIOCB *inject_error(BlockDriverState *bs,
     int error = rule->options.inject.error;
     struct BlkdebugAIOCB *acb;
     QEMUBH *bh;
-    bool immediately = rule->options.inject.immediately;
 
     if (rule->options.inject.once) {
-        QSIMPLEQ_REMOVE(&s->active_rules, rule, BlkdebugRule, active_next);
-        remove_rule(rule);
+        QSIMPLEQ_INIT(&s->active_rules);
     }
 
-    if (immediately) {
+    if (rule->options.inject.immediately) {
         return NULL;
     }
 
@@ -719,39 +719,19 @@ static int64_t blkdebug_getlength(BlockDriverState *bs)
     return bdrv_getlength(bs->file);
 }
 
-static int blkdebug_truncate(BlockDriverState *bs, int64_t offset)
-{
-    return bdrv_truncate(bs->file, offset);
-}
-
 static void blkdebug_refresh_filename(BlockDriverState *bs)
 {
+    BDRVBlkdebugState *s = bs->opaque;
+    struct BlkdebugRule *rule;
     QDict *opts;
-    const QDictEntry *e;
-    bool force_json = false;
+    QList *inject_error_list = NULL, *set_state_list = NULL;
+    QList *suspend_list = NULL;
+    int event;
 
-    for (e = qdict_first(bs->options); e; e = qdict_next(bs->options, e)) {
-        if (strcmp(qdict_entry_key(e), "config") &&
-            strcmp(qdict_entry_key(e), "x-image") &&
-            strcmp(qdict_entry_key(e), "image") &&
-            strncmp(qdict_entry_key(e), "image.", strlen("image.")))
-        {
-            force_json = true;
-            break;
-        }
-    }
-
-    if (force_json && !bs->file->full_open_options) {
+    if (!bs->file->full_open_options) {
         /* The config file cannot be recreated, so creating a plain filename
          * is impossible */
         return;
-    }
-
-    if (!force_json && bs->file->exact_filename[0]) {
-        snprintf(bs->exact_filename, sizeof(bs->exact_filename),
-                 "blkdebug:%s:%s",
-                 qdict_get_try_str(bs->options, "config") ?: "",
-                 bs->file->exact_filename);
     }
 
     opts = qdict_new();
@@ -760,14 +740,72 @@ static void blkdebug_refresh_filename(BlockDriverState *bs)
     QINCREF(bs->file->full_open_options);
     qdict_put_obj(opts, "image", QOBJECT(bs->file->full_open_options));
 
-    for (e = qdict_first(bs->options); e; e = qdict_next(bs->options, e)) {
-        if (strcmp(qdict_entry_key(e), "x-image") &&
-            strcmp(qdict_entry_key(e), "image") &&
-            strncmp(qdict_entry_key(e), "image.", strlen("image.")))
-        {
-            qobject_incref(qdict_entry_value(e));
-            qdict_put_obj(opts, qdict_entry_key(e), qdict_entry_value(e));
+    for (event = 0; event < BLKDBG_EVENT_MAX; event++) {
+        QLIST_FOREACH(rule, &s->rules[event], next) {
+            if (rule->action == ACTION_INJECT_ERROR) {
+                QDict *inject_error = qdict_new();
+
+                qdict_put_obj(inject_error, "event", QOBJECT(qstring_from_str(
+                              BlkdebugEvent_lookup[rule->event])));
+                qdict_put_obj(inject_error, "state",
+                              QOBJECT(qint_from_int(rule->state)));
+                qdict_put_obj(inject_error, "errno", QOBJECT(qint_from_int(
+                              rule->options.inject.error)));
+                qdict_put_obj(inject_error, "sector", QOBJECT(qint_from_int(
+                              rule->options.inject.sector)));
+                qdict_put_obj(inject_error, "once", QOBJECT(qbool_from_int(
+                              rule->options.inject.once)));
+                qdict_put_obj(inject_error, "immediately",
+                              QOBJECT(qbool_from_int(
+                              rule->options.inject.immediately)));
+
+                if (!inject_error_list) {
+                    inject_error_list = qlist_new();
+                }
+
+                qlist_append_obj(inject_error_list, QOBJECT(inject_error));
+            } else if (rule->action == ACTION_SET_STATE) {
+                QDict *set_state = qdict_new();
+
+                qdict_put_obj(set_state, "event", QOBJECT(qstring_from_str(
+                              BlkdebugEvent_lookup[rule->event])));
+                qdict_put_obj(set_state, "state",
+                              QOBJECT(qint_from_int(rule->state)));
+                qdict_put_obj(set_state, "new_state", QOBJECT(qint_from_int(
+                              rule->options.set_state.new_state)));
+
+                if (!set_state_list) {
+                    set_state_list = qlist_new();
+                }
+
+                qlist_append_obj(set_state_list, QOBJECT(set_state));
+            } else if (rule->action == ACTION_SUSPEND) {
+                QDict *suspend = qdict_new();
+
+                qdict_put_obj(suspend, "event", QOBJECT(qstring_from_str(
+                              BlkdebugEvent_lookup[rule->event])));
+                qdict_put_obj(suspend, "state",
+                              QOBJECT(qint_from_int(rule->state)));
+                qdict_put_obj(suspend, "tag", QOBJECT(qstring_from_str(
+                              rule->options.suspend.tag)));
+
+                if (!suspend_list) {
+                    suspend_list = qlist_new();
+                }
+
+                qlist_append_obj(suspend_list, QOBJECT(suspend));
+            }
         }
+    }
+
+    if (inject_error_list) {
+        qdict_put_obj(opts, "inject-error", QOBJECT(inject_error_list));
+    }
+    if (set_state_list) {
+        qdict_put_obj(opts, "set-state", QOBJECT(set_state_list));
+    }
+    if (suspend_list) {
+        qdict_put_obj(opts, "suspend", QOBJECT(suspend_list));
     }
 
     bs->full_open_options = opts;
@@ -782,7 +820,6 @@ static BlockDriver bdrv_blkdebug = {
     .bdrv_file_open         = blkdebug_open,
     .bdrv_close             = blkdebug_close,
     .bdrv_getlength         = blkdebug_getlength,
-    .bdrv_truncate          = blkdebug_truncate,
     .bdrv_refresh_filename  = blkdebug_refresh_filename,
 
     .bdrv_aio_readv         = blkdebug_aio_readv,

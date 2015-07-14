@@ -11,7 +11,6 @@
  */
 
 #include "qom/object.h"
-#include "qom/object_interfaces.h"
 #include "qemu-common.h"
 #include "qapi/visitor.h"
 #include "qapi-visit.h"
@@ -440,114 +439,6 @@ Object *object_new(const char *typename)
     return object_new_with_type(ti);
 }
 
-
-Object *object_new_with_props(const char *typename,
-                              Object *parent,
-                              const char *id,
-                              Error **errp,
-                              ...)
-{
-    va_list vargs;
-    Object *obj;
-
-    va_start(vargs, errp);
-    obj = object_new_with_propv(typename, parent, id, errp, vargs);
-    va_end(vargs);
-
-    return obj;
-}
-
-
-Object *object_new_with_propv(const char *typename,
-                              Object *parent,
-                              const char *id,
-                              Error **errp,
-                              va_list vargs)
-{
-    Object *obj;
-    ObjectClass *klass;
-    Error *local_err = NULL;
-
-    klass = object_class_by_name(typename);
-    if (!klass) {
-        error_setg(errp, "invalid object type: %s", typename);
-        return NULL;
-    }
-
-    if (object_class_is_abstract(klass)) {
-        error_setg(errp, "object type '%s' is abstract", typename);
-        return NULL;
-    }
-    obj = object_new(typename);
-
-    if (object_set_propv(obj, &local_err, vargs) < 0) {
-        goto error;
-    }
-
-    object_property_add_child(parent, id, obj, &local_err);
-    if (local_err) {
-        goto error;
-    }
-
-    if (object_dynamic_cast(obj, TYPE_USER_CREATABLE)) {
-        user_creatable_complete(obj, &local_err);
-        if (local_err) {
-            object_unparent(obj);
-            goto error;
-        }
-    }
-
-    object_unref(OBJECT(obj));
-    return obj;
-
- error:
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
-    object_unref(obj);
-    return NULL;
-}
-
-
-int object_set_props(Object *obj,
-                     Error **errp,
-                     ...)
-{
-    va_list vargs;
-    int ret;
-
-    va_start(vargs, errp);
-    ret = object_set_propv(obj, errp, vargs);
-    va_end(vargs);
-
-    return ret;
-}
-
-
-int object_set_propv(Object *obj,
-                     Error **errp,
-                     va_list vargs)
-{
-    const char *propname;
-    Error *local_err = NULL;
-
-    propname = va_arg(vargs, char *);
-    while (propname != NULL) {
-        const char *value = va_arg(vargs, char *);
-
-        g_assert(value != NULL);
-        object_property_parse(obj, value, propname, &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
-            return -1;
-        }
-        propname = va_arg(vargs, char *);
-    }
-
-    return 0;
-}
-
-
 Object *object_dynamic_cast(Object *obj, const char *typename)
 {
     if (obj && object_class_dynamic_cast(object_get_class(obj), typename)) {
@@ -926,7 +817,7 @@ void object_property_get(Object *obj, Visitor *v, const char *name,
     }
 
     if (!prop->get) {
-        error_setg(errp, QERR_PERMISSION_DENIED);
+        error_set(errp, QERR_PERMISSION_DENIED);
     } else {
         prop->get(obj, v, prop->opaque, name, errp);
     }
@@ -941,7 +832,7 @@ void object_property_set(Object *obj, Visitor *v, const char *name,
     }
 
     if (!prop->set) {
-        error_setg(errp, QERR_PERMISSION_DENIED);
+        error_set(errp, QERR_PERMISSION_DENIED);
     } else {
         prop->set(obj, v, prop->opaque, name, errp);
     }
@@ -968,7 +859,7 @@ char *object_property_get_str(Object *obj, const char *name,
     }
     qstring = qobject_to_qstring(ret);
     if (!qstring) {
-        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name, "string");
+        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name, "string");
         retval = NULL;
     } else {
         retval = g_strdup(qstring_get_str(qstring));
@@ -999,8 +890,7 @@ Object *object_property_get_link(Object *obj, const char *name,
     if (str && *str) {
         target = object_resolve_path(str, NULL);
         if (!target) {
-            error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
-                      "Device '%s' not found", str);
+            error_set(errp, QERR_DEVICE_NOT_FOUND, str);
         }
     }
 
@@ -1011,7 +901,7 @@ Object *object_property_get_link(Object *obj, const char *name,
 void object_property_set_bool(Object *obj, bool value,
                               const char *name, Error **errp)
 {
-    QBool *qbool = qbool_from_bool(value);
+    QBool *qbool = qbool_from_int(value);
     object_property_set_qobject(obj, QOBJECT(qbool), name, errp);
 
     QDECREF(qbool);
@@ -1029,10 +919,10 @@ bool object_property_get_bool(Object *obj, const char *name,
     }
     qbool = qobject_to_qbool(ret);
     if (!qbool) {
-        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name, "boolean");
+        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name, "boolean");
         retval = false;
     } else {
-        retval = qbool_get_bool(qbool);
+        retval = qbool_get_int(qbool);
     }
 
     QDECREF(qbool);
@@ -1060,7 +950,7 @@ int64_t object_property_get_int(Object *obj, const char *name,
     }
     qint = qobject_to_qint(ret);
     if (!qint) {
-        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name, "int");
+        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name, "int");
         retval = -1;
     } else {
         retval = qint_get_int(qint);
@@ -1070,34 +960,13 @@ int64_t object_property_get_int(Object *obj, const char *name,
     return retval;
 }
 
-typedef struct EnumProperty {
-    const char * const *strings;
-    int (*get)(Object *, Error **);
-    void (*set)(Object *, int, Error **);
-} EnumProperty;
-
 int object_property_get_enum(Object *obj, const char *name,
-                             const char *typename, Error **errp)
+                             const char *strings[], Error **errp)
 {
     StringOutputVisitor *sov;
     StringInputVisitor *siv;
     char *str;
     int ret;
-    ObjectProperty *prop = object_property_find(obj, name, errp);
-    EnumProperty *enumprop;
-
-    if (prop == NULL) {
-        return 0;
-    }
-
-    if (!g_str_equal(prop->type, typename)) {
-        error_setg(errp, "Property %s on %s is not '%s' enum type",
-                   name, object_class_get_name(
-                       object_get_class(obj)), typename);
-        return 0;
-    }
-
-    enumprop = prop->opaque;
 
     sov = string_output_visitor_new(false);
     object_property_get(obj, string_output_get_visitor(sov), name, errp);
@@ -1105,7 +974,7 @@ int object_property_get_enum(Object *obj, const char *name,
     siv = string_input_visitor_new(str);
     string_output_visitor_cleanup(sov);
     visit_type_enum(string_input_get_visitor(siv),
-                    &ret, enumprop->strings, NULL, name, errp);
+                    &ret, strings, NULL, name, errp);
 
     g_free(str);
     string_input_visitor_cleanup(siv);
@@ -1183,11 +1052,6 @@ Object *object_get_root(void)
     }
 
     return root;
-}
-
-Object *object_get_objects_root(void)
-{
-    return container_get(object_get_root(), "/objects");
 }
 
 static void object_get_child_property(Object *obj, Visitor *v, void *opaque,
@@ -1304,10 +1168,9 @@ static Object *object_resolve_link(Object *obj, const char *name,
     } else if (!target) {
         target = object_resolve_path(path, &ambiguous);
         if (target || ambiguous) {
-            error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name, target_type);
+            error_set(errp, QERR_INVALID_PARAMETER_TYPE, name, target_type);
         } else {
-            error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
-                      "Device '%s' not found", path);
+            error_set(errp, QERR_DEVICE_NOT_FOUND, path);
         }
         target = NULL;
     }
@@ -1401,22 +1264,6 @@ void object_property_add_link(Object *obj, const char *name,
 
 out:
     g_free(full_type);
-}
-
-void object_property_add_const_link(Object *obj, const char *name,
-                                    Object *target, Error **errp)
-{
-    char *link_type;
-    ObjectProperty *op;
-
-    link_type = g_strdup_printf("link<%s>", object_get_typename(target));
-    op = object_property_add(obj, name, link_type,
-                             object_get_child_property, NULL,
-                             NULL, target, errp);
-    if (op != NULL) {
-        op->resolve = object_resolve_child_property;
-    }
-    g_free(link_type);
 }
 
 gchar *object_get_canonical_path_component(Object *obj)
@@ -1696,137 +1543,6 @@ void object_property_add_bool(Object *obj, const char *name,
     }
 }
 
-static void property_get_enum(Object *obj, Visitor *v, void *opaque,
-                              const char *name, Error **errp)
-{
-    EnumProperty *prop = opaque;
-    int value;
-
-    value = prop->get(obj, errp);
-    visit_type_enum(v, &value, prop->strings, NULL, name, errp);
-}
-
-static void property_set_enum(Object *obj, Visitor *v, void *opaque,
-                              const char *name, Error **errp)
-{
-    EnumProperty *prop = opaque;
-    int value;
-
-    visit_type_enum(v, &value, prop->strings, NULL, name, errp);
-    prop->set(obj, value, errp);
-}
-
-static void property_release_enum(Object *obj, const char *name,
-                                  void *opaque)
-{
-    EnumProperty *prop = opaque;
-    g_free(prop);
-}
-
-void object_property_add_enum(Object *obj, const char *name,
-                              const char *typename,
-                              const char * const *strings,
-                              int (*get)(Object *, Error **),
-                              void (*set)(Object *, int, Error **),
-                              Error **errp)
-{
-    Error *local_err = NULL;
-    EnumProperty *prop = g_malloc(sizeof(*prop));
-
-    prop->strings = strings;
-    prop->get = get;
-    prop->set = set;
-
-    object_property_add(obj, name, typename,
-                        get ? property_get_enum : NULL,
-                        set ? property_set_enum : NULL,
-                        property_release_enum,
-                        prop, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        g_free(prop);
-    }
-}
-
-typedef struct TMProperty {
-    void (*get)(Object *, struct tm *, Error **);
-} TMProperty;
-
-static void property_get_tm(Object *obj, Visitor *v, void *opaque,
-                            const char *name, Error **errp)
-{
-    TMProperty *prop = opaque;
-    Error *err = NULL;
-    struct tm value;
-
-    prop->get(obj, &value, &err);
-    if (err) {
-        goto out;
-    }
-
-    visit_start_struct(v, NULL, "struct tm", name, 0, &err);
-    if (err) {
-        goto out;
-    }
-    visit_type_int32(v, &value.tm_year, "tm_year", &err);
-    if (err) {
-        goto out_end;
-    }
-    visit_type_int32(v, &value.tm_mon, "tm_mon", &err);
-    if (err) {
-        goto out_end;
-    }
-    visit_type_int32(v, &value.tm_mday, "tm_mday", &err);
-    if (err) {
-        goto out_end;
-    }
-    visit_type_int32(v, &value.tm_hour, "tm_hour", &err);
-    if (err) {
-        goto out_end;
-    }
-    visit_type_int32(v, &value.tm_min, "tm_min", &err);
-    if (err) {
-        goto out_end;
-    }
-    visit_type_int32(v, &value.tm_sec, "tm_sec", &err);
-    if (err) {
-        goto out_end;
-    }
-out_end:
-    error_propagate(errp, err);
-    err = NULL;
-    visit_end_struct(v, errp);
-out:
-    error_propagate(errp, err);
-
-}
-
-static void property_release_tm(Object *obj, const char *name,
-                                void *opaque)
-{
-    TMProperty *prop = opaque;
-    g_free(prop);
-}
-
-void object_property_add_tm(Object *obj, const char *name,
-                            void (*get)(Object *, struct tm *, Error **),
-                            Error **errp)
-{
-    Error *local_err = NULL;
-    TMProperty *prop = g_malloc0(sizeof(*prop));
-
-    prop->get = get;
-
-    object_property_add(obj, name, "struct tm",
-                        get ? property_get_tm : NULL, NULL,
-                        property_release_tm,
-                        prop, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        g_free(prop);
-    }
-}
-
 static char *qdev_get_type(Object *obj, Error **errp)
 {
     return g_strdup(object_get_typename(obj));
@@ -1894,7 +1610,7 @@ void object_property_add_uint64_ptr(Object *obj, const char *name,
 
 typedef struct {
     Object *target_obj;
-    char *target_name;
+    const char *target_name;
 } AliasProperty;
 
 static void property_get_alias(Object *obj, struct Visitor *v, void *opaque,
@@ -1925,7 +1641,6 @@ static void property_release_alias(Object *obj, const char *name, void *opaque)
 {
     AliasProperty *prop = opaque;
 
-    g_free(prop->target_name);
     g_free(prop);
 }
 
@@ -1953,7 +1668,7 @@ void object_property_add_alias(Object *obj, const char *name,
 
     prop = g_malloc(sizeof(*prop));
     prop->target_obj = target_obj;
-    prop->target_name = g_strdup(target_name);
+    prop->target_name = target_name;
 
     op = object_property_add(obj, name, prop_type,
                              property_get_alias,
@@ -1967,7 +1682,7 @@ void object_property_add_alias(Object *obj, const char *name,
     }
     op->resolve = property_resolve_alias;
 
-    object_property_set_description(obj, op->name,
+    object_property_set_description(obj, name,
                                     target_prop->description,
                                     &error_abort);
 

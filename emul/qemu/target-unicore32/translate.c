@@ -33,7 +33,7 @@ typedef struct DisasContext {
     /* Nonzero if this instruction has been conditionally skipped.  */
     int condjmp;
     /* The label that will be jumped to when the instruction is skipped.  */
-    TCGLabel *condlabel;
+    int condlabel;
     struct TranslationBlock *tb;
     int singlestep_enabled;
 #ifndef CONFIG_USER_ONLY
@@ -419,11 +419,11 @@ static inline void gen_uc32_shift_reg(TCGv var, int shiftop,
     dead_tmp(shift);
 }
 
-static void gen_test_cc(int cc, TCGLabel *label)
+static void gen_test_cc(int cc, int label)
 {
     TCGv tmp;
     TCGv tmp2;
-    TCGLabel *inv;
+    int inv;
 
     switch (cc) {
     case 0: /* eq: Z */
@@ -1877,6 +1877,7 @@ static inline void gen_intermediate_code_internal(UniCore32CPU *cpu,
     CPUUniCore32State *env = &cpu->env;
     DisasContext dc1, *dc = &dc1;
     CPUBreakpoint *bp;
+    uint16_t *gen_opc_end;
     int j, lj;
     target_ulong pc_start;
     uint32_t next_page_start;
@@ -1889,6 +1890,8 @@ static inline void gen_intermediate_code_internal(UniCore32CPU *cpu,
     pc_start = tb->pc;
 
     dc->tb = tb;
+
+    gen_opc_end = tcg_ctx.gen_opc_buf + OPC_MAX_SIZE;
 
     dc->is_jmp = DISAS_NEXT;
     dc->pc = pc_start;
@@ -1914,7 +1917,7 @@ static inline void gen_intermediate_code_internal(UniCore32CPU *cpu,
     }
 #endif
 
-    gen_tb_start(tb);
+    gen_tb_start();
     do {
         if (unlikely(!QTAILQ_EMPTY(&cs->breakpoints))) {
             QTAILQ_FOREACH(bp, &cs->breakpoints, entry) {
@@ -1930,7 +1933,7 @@ static inline void gen_intermediate_code_internal(UniCore32CPU *cpu,
             }
         }
         if (search_pc) {
-            j = tcg_op_buf_count();
+            j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
             if (lj < j) {
                 lj++;
                 while (lj < j) {
@@ -1962,7 +1965,7 @@ static inline void gen_intermediate_code_internal(UniCore32CPU *cpu,
          * Also stop translation when a page boundary is reached.  This
          * ensures prefetch aborts occur at the right place.  */
         num_insns++;
-    } while (!dc->is_jmp && !tcg_op_buf_full() &&
+    } while (!dc->is_jmp && tcg_ctx.gen_opc_ptr < gen_opc_end &&
              !cs->singlestep_enabled &&
              !singlestep &&
              dc->pc < next_page_start &&
@@ -2034,17 +2037,18 @@ static inline void gen_intermediate_code_internal(UniCore32CPU *cpu,
 
 done_generating:
     gen_tb_end(tb, num_insns);
+    *tcg_ctx.gen_opc_ptr = INDEX_op_end;
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log("----------------\n");
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
-        log_target_disas(cs, pc_start, dc->pc - pc_start, 0);
+        log_target_disas(env, pc_start, dc->pc - pc_start, 0);
         qemu_log("\n");
     }
 #endif
     if (search_pc) {
-        j = tcg_op_buf_count();
+        j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
         lj++;
         while (lj <= j) {
             tcg_ctx.gen_opc_instr_start[lj++] = 0;

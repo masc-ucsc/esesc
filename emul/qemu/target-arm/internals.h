@@ -82,14 +82,11 @@ static inline void arm_log_exception(int idx)
 
 /*
  * For AArch64, map a given EL to an index in the banked_spsr array.
- * Note that this mapping and the AArch32 mapping defined in bank_number()
- * must agree such that the AArch64<->AArch32 SPSRs have the architecturally
- * mandated mapping between each other.
  */
 static inline unsigned int aarch64_banked_spsr_index(unsigned int el)
 {
     static const unsigned int map[4] = {
-        [1] = 1, /* EL1.  */
+        [1] = 0, /* EL1.  */
         [2] = 6, /* EL2.  */
         [3] = 7, /* EL3.  */
     };
@@ -156,9 +153,9 @@ static inline void update_spsel(CPUARMState *env, uint32_t imm)
  */
 static inline bool extended_addresses_enabled(CPUARMState *env)
 {
-    TCR *tcr = &env->cp15.tcr_el[arm_is_secure(env) ? 3 : 1];
-    return arm_el_is_aa64(env, 1) ||
-           (arm_feature(env, ARM_FEATURE_LPAE) && (tcr->raw_tcr & TTBCR_EAE));
+    return arm_el_is_aa64(env, 1)
+        || ((arm_feature(env, ARM_FEATURE_LPAE)
+             && (env->cp15.c2_control & TTBCR_EAE)));
 }
 
 /* Valid Syndrome Register EC field values */
@@ -347,12 +344,6 @@ static inline uint32_t syn_breakpoint(int same_el)
         | ARM_EL_IL | 0x22;
 }
 
-static inline uint32_t syn_wfx(int cv, int cond, int ti)
-{
-    return (EC_WFX_TRAP << ARM_EL_EC_SHIFT) |
-           (cv << 24) | (cond << 20) | ti;
-}
-
 /* Update a QEMU watchpoint based on the information the guest has set in the
  * DBGWCR<n>_EL1 and DBGWVR<n>_EL1 registers.
  */
@@ -386,9 +377,5 @@ bool arm_is_psci_call(ARMCPU *cpu, int excp_type);
 /* Actually handle a PSCI call */
 void arm_handle_psci_call(ARMCPU *cpu);
 #endif
-
-/* Do a page table walk and add page to TLB if possible */
-bool arm_tlb_fill(CPUState *cpu, vaddr address, int rw, int mmu_idx,
-                  uint32_t *fsr);
 
 #endif

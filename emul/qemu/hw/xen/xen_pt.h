@@ -31,14 +31,10 @@ void xen_pt_log(const PCIDevice *d, const char *f, ...) GCC_FMT_ATTR(2, 3);
 /* Helper */
 #define XEN_PFN(x) ((x) >> XC_PAGE_SHIFT)
 
-typedef const struct XenPTRegInfo XenPTRegInfo;
+typedef struct XenPTRegInfo XenPTRegInfo;
 typedef struct XenPTReg XenPTReg;
 
 typedef struct XenPCIPassthroughState XenPCIPassthroughState;
-
-#define TYPE_XEN_PT_DEVICE "xen-pci-passthrough"
-#define XEN_PT_DEVICE(obj) \
-    OBJECT_CHECK(XenPCIPassthroughState, (obj), TYPE_XEN_PT_DEVICE)
 
 /* function type for config reg */
 typedef int (*xen_pt_conf_reg_init)
@@ -105,12 +101,12 @@ struct XenPTRegInfo {
     uint32_t offset;
     uint32_t size;
     uint32_t init_val;
-    /* reg reserved field mask (ON:reserved, OFF:defined) */
-    uint32_t res_mask;
     /* reg read only field mask (ON:RO/ROS, OFF:other) */
     uint32_t ro_mask;
     /* reg emulate field mask (ON:emu, OFF:passthrough) */
     uint32_t emu_mask;
+    /* no write back allowed */
+    uint32_t no_wb;
     xen_pt_conf_reg_init init;
     /* read/write function pointer
      * for double_word/word/byte size */
@@ -137,11 +133,11 @@ struct XenPTReg {
     uint32_t data; /* emulated value */
 };
 
-typedef const struct XenPTRegGroupInfo XenPTRegGroupInfo;
+typedef struct XenPTRegGroupInfo XenPTRegGroupInfo;
 
 /* emul reg group size initialize method */
 typedef int (*xen_pt_reg_size_init_fn)
-    (XenPCIPassthroughState *, XenPTRegGroupInfo *,
+    (XenPCIPassthroughState *, const XenPTRegGroupInfo *,
      uint32_t base_offset, uint8_t *size);
 
 /* emulated register group information */
@@ -156,7 +152,7 @@ struct XenPTRegGroupInfo {
 /* emul register group management table */
 typedef struct XenPTRegGroup {
     QLIST_ENTRY(XenPTRegGroup) entries;
-    XenPTRegGroupInfo *reg_grp;
+    const XenPTRegGroupInfo *reg_grp;
     uint32_t base_offset;
     uint8_t size;
     QLIST_HEAD(, XenPTReg) reg_tbl_list;
@@ -181,7 +177,6 @@ typedef struct XenPTMSIXEntry {
     uint32_t data;
     uint32_t vector_ctrl;
     bool updated; /* indicate whether MSI ADDR or DATA is updated */
-    bool warned;  /* avoid issuing (bogus) warning more than once */
 } XenPTMSIXEntry;
 typedef struct XenPTMSIX {
     uint32_t ctrl_offset;
@@ -201,8 +196,6 @@ struct XenPCIPassthroughState {
 
     PCIHostDeviceAddress hostaddr;
     bool is_virtfn;
-    bool permissive;
-    bool permissive_warned;
     XenHostPCIDevice real_device;
     XenPTRegion bases[PCI_NUM_REGIONS]; /* Access regions */
     QLIST_HEAD(, XenPTRegGroup) reg_grps;

@@ -62,7 +62,7 @@ NetQueue *qemu_new_net_queue(void *opaque)
 {
     NetQueue *queue;
 
-    queue = g_new0(NetQueue, 1);
+    queue = g_malloc0(sizeof(NetQueue));
 
     queue->opaque = opaque;
     queue->nq_maxlen = 10000;

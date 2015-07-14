@@ -39,8 +39,7 @@ setup_fixture(OptsVisitorFixture *f, gconstpointer test_data)
     QemuOpts *opts;
     OptsVisitor *ov;
 
-    opts = qemu_opts_parse(qemu_find_opts("userdef"), opts_string, false,
-                           NULL);
+    opts = qemu_opts_parse(qemu_find_opts("userdef"), opts_string, 0);
     g_assert(opts != NULL);
 
     ov = opts_visitor_new(opts);

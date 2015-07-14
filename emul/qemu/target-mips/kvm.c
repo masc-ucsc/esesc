@@ -23,7 +23,6 @@
 #include "cpu.h"
 #include "sysemu/cpus.h"
 #include "kvm_mips.h"
-#include "exec/memattrs.h"
 
 #define DEBUG_KVM 0
 
@@ -41,7 +40,7 @@ unsigned long kvm_arch_vcpu_id(CPUState *cs)
     return cs->cpu_index;
 }
 
-int kvm_arch_init(MachineState *ms, KVMState *s)
+int kvm_arch_init(KVMState *s)
 {
     /* MIPS has 128 signals */
     kvm_set_sigmask_len(s, 16);
@@ -111,10 +110,9 @@ void kvm_arch_pre_run(CPUState *cs, struct kvm_run *run)
     }
 }
 
-MemTxAttrs kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
+void kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
 {
     DPRINTF("%s\n", __func__);
-    return MEMTXATTRS_UNSPECIFIED;
 }
 
 int kvm_arch_process_async_events(CPUState *cs)
@@ -441,7 +439,7 @@ static void kvm_mips_update_state(void *opaque, int running, RunState state)
         }
     } else {
         /* Set clock restore time to now */
-        count_resume = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        count_resume = get_clock();
         ret = kvm_mips_put_one_reg64(cs, KVM_REG_MIPS_COUNT_RESUME,
                                      &count_resume);
         if (ret < 0) {
@@ -689,15 +687,4 @@ int kvm_arch_get_registers(CPUState *cs)
     kvm_mips_get_cp0_registers(cs);
 
     return ret;
-}
-
-int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
-                             uint64_t address, uint32_t data)
-{
-    return 0;
-}
-
-int kvm_arch_msi_data_to_gsi(uint32_t data)
-{
-    abort();
 }

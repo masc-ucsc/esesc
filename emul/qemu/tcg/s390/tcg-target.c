@@ -1274,24 +1274,26 @@ static void tgen_gotoi(TCGContext *s, int cc, tcg_insn_unit *dest)
     }
 }
 
-static void tgen_branch(TCGContext *s, int cc, TCGLabel *l)
+static void tgen_branch(TCGContext *s, int cc, int labelno)
 {
+    TCGLabel* l = &s->labels[labelno];
     if (l->has_value) {
         tgen_gotoi(s, cc, l->u.value_ptr);
     } else if (USE_LONG_BRANCHES) {
         tcg_out16(s, RIL_BRCL | (cc << 4));
-        tcg_out_reloc(s, s->code_ptr, R_390_PC32DBL, l, -2);
+        tcg_out_reloc(s, s->code_ptr, R_390_PC32DBL, labelno, -2);
         s->code_ptr += 2;
     } else {
         tcg_out16(s, RI_BRC | (cc << 4));
-        tcg_out_reloc(s, s->code_ptr, R_390_PC16DBL, l, -2);
+        tcg_out_reloc(s, s->code_ptr, R_390_PC16DBL, labelno, -2);
         s->code_ptr += 1;
     }
 }
 
 static void tgen_compare_branch(TCGContext *s, S390Opcode opc, int cc,
-                                TCGReg r1, TCGReg r2, TCGLabel *l)
+                                TCGReg r1, TCGReg r2, int labelno)
 {
+    TCGLabel* l = &s->labels[labelno];
     intptr_t off;
 
     if (l->has_value) {
@@ -1299,7 +1301,7 @@ static void tgen_compare_branch(TCGContext *s, S390Opcode opc, int cc,
     } else {
         /* We need to keep the offset unchanged for retranslation.  */
         off = s->code_ptr[1];
-        tcg_out_reloc(s, s->code_ptr + 1, R_390_PC16DBL, l, -2);
+        tcg_out_reloc(s, s->code_ptr + 1, R_390_PC16DBL, labelno, -2);
     }
 
     tcg_out16(s, (opc & 0xff00) | (r1 << 4) | r2);
@@ -1308,8 +1310,9 @@ static void tgen_compare_branch(TCGContext *s, S390Opcode opc, int cc,
 }
 
 static void tgen_compare_imm_branch(TCGContext *s, S390Opcode opc, int cc,
-                                    TCGReg r1, int i2, TCGLabel *l)
+                                    TCGReg r1, int i2, int labelno)
 {
+    TCGLabel* l = &s->labels[labelno];
     tcg_target_long off;
 
     if (l->has_value) {
@@ -1317,7 +1320,7 @@ static void tgen_compare_imm_branch(TCGContext *s, S390Opcode opc, int cc,
     } else {
         /* We need to keep the offset unchanged for retranslation.  */
         off = s->code_ptr[1];
-        tcg_out_reloc(s, s->code_ptr + 1, R_390_PC16DBL, l, -2);
+        tcg_out_reloc(s, s->code_ptr + 1, R_390_PC16DBL, labelno, -2);
     }
 
     tcg_out16(s, (opc & 0xff00) | (r1 << 4) | cc);
@@ -1326,7 +1329,7 @@ static void tgen_compare_imm_branch(TCGContext *s, S390Opcode opc, int cc,
 }
 
 static void tgen_brcond(TCGContext *s, TCGType type, TCGCond c,
-                        TCGReg r1, TCGArg c2, int c2const, TCGLabel *l)
+                        TCGReg r1, TCGArg c2, int c2const, int labelno)
 {
     int cc;
 
@@ -1341,7 +1344,7 @@ static void tgen_brcond(TCGContext *s, TCGType type, TCGCond c,
             opc = (type == TCG_TYPE_I32
                    ? (is_unsigned ? RIE_CLRJ : RIE_CRJ)
                    : (is_unsigned ? RIE_CLGRJ : RIE_CGRJ));
-            tgen_compare_branch(s, opc, cc, r1, c2, l);
+            tgen_compare_branch(s, opc, cc, r1, c2, labelno);
             return;
         }
 
@@ -1367,13 +1370,13 @@ static void tgen_brcond(TCGContext *s, TCGType type, TCGCond c,
             }
         }
         if (in_range) {
-            tgen_compare_imm_branch(s, opc, cc, r1, c2, l);
+            tgen_compare_imm_branch(s, opc, cc, r1, c2, labelno);
             return;
         }
     }
 
     cc = tgen_cmp(s, type, c, r1, c2, c2const);
-    tgen_branch(s, cc, l);
+    tgen_branch(s, cc, labelno);
 }
 
 static void tcg_out_call(TCGContext *s, tcg_insn_unit *dest)
@@ -1544,16 +1547,17 @@ static TCGReg tcg_out_tlb_read(TCGContext* s, TCGReg addr_reg, TCGMemOp opc,
     return addr_reg;
 }
 
-static void add_qemu_ldst_label(TCGContext *s, bool is_ld, TCGMemOpIdx oi,
-                                TCGReg data, TCGReg addr,
+static void add_qemu_ldst_label(TCGContext *s, bool is_ld, TCGMemOp opc,
+                                TCGReg data, TCGReg addr, int mem_index,
                                 tcg_insn_unit *raddr, tcg_insn_unit *label_ptr)
 {
     TCGLabelQemuLdst *label = new_ldst_label(s);
 
     label->is_ld = is_ld;
-    label->oi = oi;
+    label->opc = opc;
     label->datalo_reg = data;
     label->addrlo_reg = addr;
+    label->mem_index = mem_index;
     label->raddr = raddr;
     label->label_ptr[0] = label_ptr;
 }
@@ -1562,8 +1566,7 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 {
     TCGReg addr_reg = lb->addrlo_reg;
     TCGReg data_reg = lb->datalo_reg;
-    TCGMemOpIdx oi = lb->oi;
-    TCGMemOp opc = get_memop(oi);
+    TCGMemOp opc = lb->opc;
 
     patch_reloc(lb->label_ptr[0], R_390_PC16DBL, (intptr_t)s->code_ptr, -2);
 
@@ -1571,9 +1574,9 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     if (TARGET_LONG_BITS == 64) {
         tcg_out_mov(s, TCG_TYPE_I64, TCG_REG_R3, addr_reg);
     }
-    tcg_out_movi(s, TCG_TYPE_I32, TCG_REG_R4, oi);
+    tcg_out_movi(s, TCG_TYPE_I32, TCG_REG_R4, lb->mem_index);
     tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_R5, (uintptr_t)lb->raddr);
-    tcg_out_call(s, qemu_ld_helpers[opc & (MO_BSWAP | MO_SSIZE)]);
+    tcg_out_call(s, qemu_ld_helpers[opc]);
     tcg_out_mov(s, TCG_TYPE_I64, data_reg, TCG_REG_R2);
 
     tgen_gotoi(s, S390_CC_ALWAYS, lb->raddr);
@@ -1583,8 +1586,7 @@ static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 {
     TCGReg addr_reg = lb->addrlo_reg;
     TCGReg data_reg = lb->datalo_reg;
-    TCGMemOpIdx oi = lb->oi;
-    TCGMemOp opc = get_memop(oi);
+    TCGMemOp opc = lb->opc;
 
     patch_reloc(lb->label_ptr[0], R_390_PC16DBL, (intptr_t)s->code_ptr, -2);
 
@@ -1608,9 +1610,9 @@ static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     default:
         tcg_abort();
     }
-    tcg_out_movi(s, TCG_TYPE_I32, TCG_REG_R5, oi);
+    tcg_out_movi(s, TCG_TYPE_I32, TCG_REG_R5, lb->mem_index);
     tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_R6, (uintptr_t)lb->raddr);
-    tcg_out_call(s, qemu_st_helpers[opc & (MO_BSWAP | MO_SIZE)]);
+    tcg_out_call(s, qemu_st_helpers[opc]);
 
     tgen_gotoi(s, S390_CC_ALWAYS, lb->raddr);
 }
@@ -1633,11 +1635,9 @@ static void tcg_prepare_user_ldst(TCGContext *s, TCGReg *addr_reg,
 #endif /* CONFIG_SOFTMMU */
 
 static void tcg_out_qemu_ld(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
-                            TCGMemOpIdx oi)
+                            TCGMemOp opc, int mem_index)
 {
-    TCGMemOp opc = get_memop(oi);
 #ifdef CONFIG_SOFTMMU
-    unsigned mem_index = get_mmuidx(oi);
     tcg_insn_unit *label_ptr;
     TCGReg base_reg;
 
@@ -1648,7 +1648,8 @@ static void tcg_out_qemu_ld(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
 
     tcg_out_qemu_ld_direct(s, opc, data_reg, base_reg, TCG_REG_R2, 0);
 
-    add_qemu_ldst_label(s, 1, oi, data_reg, addr_reg, s->code_ptr, label_ptr);
+    add_qemu_ldst_label(s, 1, opc, data_reg, addr_reg, mem_index,
+                        s->code_ptr, label_ptr);
 #else
     TCGReg index_reg;
     tcg_target_long disp;
@@ -1659,11 +1660,9 @@ static void tcg_out_qemu_ld(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
 }
 
 static void tcg_out_qemu_st(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
-                            TCGMemOpIdx oi)
+                            TCGMemOp opc, int mem_index)
 {
-    TCGMemOp opc = get_memop(oi);
 #ifdef CONFIG_SOFTMMU
-    unsigned mem_index = get_mmuidx(oi);
     tcg_insn_unit *label_ptr;
     TCGReg base_reg;
 
@@ -1674,7 +1673,8 @@ static void tcg_out_qemu_st(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
 
     tcg_out_qemu_st_direct(s, opc, data_reg, base_reg, TCG_REG_R2, 0);
 
-    add_qemu_ldst_label(s, 0, oi, data_reg, addr_reg, s->code_ptr, label_ptr);
+    add_qemu_ldst_label(s, 0, opc, data_reg, addr_reg, mem_index,
+                        s->code_ptr, label_ptr);
 #else
     TCGReg index_reg;
     tcg_target_long disp;
@@ -1904,12 +1904,12 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         break;
 
     case INDEX_op_br:
-        tgen_branch(s, S390_CC_ALWAYS, arg_label(args[0]));
+        tgen_branch(s, S390_CC_ALWAYS, args[0]);
         break;
 
     case INDEX_op_brcond_i32:
         tgen_brcond(s, TCG_TYPE_I32, args[2], args[0],
-                    args[1], const_args[1], arg_label(args[3]));
+                    args[1], const_args[1], args[3]);
         break;
     case INDEX_op_setcond_i32:
         tgen_setcond(s, TCG_TYPE_I32, args[3], args[0], args[1],
@@ -1923,11 +1923,11 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     case INDEX_op_qemu_ld_i32:
         /* ??? Technically we can use a non-extending instruction.  */
     case INDEX_op_qemu_ld_i64:
-        tcg_out_qemu_ld(s, args[0], args[1], args[2]);
+        tcg_out_qemu_ld(s, args[0], args[1], args[2], args[3]);
         break;
     case INDEX_op_qemu_st_i32:
     case INDEX_op_qemu_st_i64:
-        tcg_out_qemu_st(s, args[0], args[1], args[2]);
+        tcg_out_qemu_st(s, args[0], args[1], args[2], args[3]);
         break;
 
     case INDEX_op_ld16s_i64:
@@ -2126,7 +2126,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
 
     case INDEX_op_brcond_i64:
         tgen_brcond(s, TCG_TYPE_I64, args[2], args[0],
-                    args[1], const_args[1], arg_label(args[3]));
+                    args[1], const_args[1], args[3]);
         break;
     case INDEX_op_setcond_i64:
         tgen_setcond(s, TCG_TYPE_I64, args[3], args[0], args[1],

@@ -40,7 +40,6 @@
 #include "qemu/timer.h"
 #include "qemu/sockets.h"
 #include "sysemu/sysemu.h"
-#include "trace.h"
 
 #include "pcnet.h"
 
@@ -686,7 +685,9 @@ static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val);
 
 static void pcnet_s_reset(PCNetState *s)
 {
-    trace_pcnet_s_reset(s);
+#ifdef PCNET_DEBUG
+    printf("pcnet_s_reset\n");
+#endif
 
     s->rdra = 0;
     s->tdra = 0;
@@ -759,7 +760,9 @@ static void pcnet_update_irq(PCNetState *s)
         s->csr[4] |= 0x0040;
         s->csr[0] |= 0x0080;
         isr = 1;
-        trace_pcnet_user_int(s);
+#ifdef PCNET_DEBUG
+        printf("pcnet user int\n");
+#endif
     }
 
 #if 1
@@ -774,7 +777,9 @@ static void pcnet_update_irq(PCNetState *s)
     }
 
     if (isr != s->isr) {
-        trace_pcnet_isr_change(s, isr, s->isr);
+#ifdef PCNET_DEBUG
+        printf("pcnet: INTA=%d\n", isr);
+#endif
     }
     qemu_set_irq(s->irq, isr);
     s->isr = isr;
@@ -786,7 +791,9 @@ static void pcnet_init(PCNetState *s)
     uint16_t padr[3], ladrf[4], mode;
     uint32_t rdra, tdra;
 
-    trace_pcnet_init(s, PHYSADDR(s, CSR_IADR(s)));
+#ifdef PCNET_DEBUG
+    printf("pcnet_init init_addr=0x%08x\n", PHYSADDR(s,CSR_IADR(s)));
+#endif
 
     if (BCR_SSIZE32(s)) {
         struct pcnet_initblk32 initblk;
@@ -824,7 +831,9 @@ static void pcnet_init(PCNetState *s)
         tdra &= 0x00ffffff;
     }
 
-    trace_pcnet_rlen_tlen(s, rlen, tlen);
+#if defined(PCNET_DEBUG)
+    printf("rlen=%d tlen=%d\n", rlen, tlen);
+#endif
 
     CSR_RCVRL(s) = (rlen < 9) ? (1 << rlen) : 512;
     CSR_XMTRL(s) = (tlen < 9) ? (1 << tlen) : 512;
@@ -843,8 +852,11 @@ static void pcnet_init(PCNetState *s)
     CSR_RCVRC(s) = CSR_RCVRL(s);
     CSR_XMTRC(s) = CSR_XMTRL(s);
 
-    trace_pcnet_ss32_rdra_tdra(s, BCR_SSIZE32(s),
-                               s->rdra, CSR_RCVRL(s), s->tdra, CSR_XMTRL(s));
+#ifdef PCNET_DEBUG
+    printf("pcnet ss32=%d rdra=0x%08x[%d] tdra=0x%08x[%d]\n",
+        BCR_SSIZE32(s),
+        s->rdra, CSR_RCVRL(s), s->tdra, CSR_XMTRL(s));
+#endif
 
     s->csr[0] |= 0x0101;
     s->csr[0] &= ~0x0004;       /* clear STOP bit */
@@ -1241,14 +1253,6 @@ static void pcnet_transmit(PCNetState *s)
         }
 
         bcnt = 4096 - GET_FIELD(tmd.length, TMDL, BCNT);
-
-        /* if multi-tmd packet outsizes s->buffer then skip it silently.
-           Note: this is not what real hw does */
-        if (s->xmit_pos + bcnt > sizeof(s->buffer)) {
-            s->xmit_pos = -1;
-            goto txdone;
-        }
-
         s->phys_mem_read(s->dma_opaque, PHYSADDR(s, tmd.tbadr),
                          s->buffer + s->xmit_pos, bcnt, CSR_BSWP(s));
         s->xmit_pos += bcnt;
@@ -1715,12 +1719,17 @@ const VMStateDescription vmstate_pcnet = {
         VMSTATE_BUFFER(buffer, PCNetState),
         VMSTATE_UNUSED_TEST(is_version_2, 4),
         VMSTATE_INT32(tx_busy, PCNetState),
-        VMSTATE_TIMER_PTR(poll_timer, PCNetState),
+        VMSTATE_TIMER(poll_timer, PCNetState),
         VMSTATE_END_OF_LIST()
     }
 };
 
-void pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info)
+void pcnet_common_cleanup(PCNetState *d)
+{
+    d->nic = NULL;
+}
+
+int pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info)
 {
     int i;
     uint16_t checksum;
@@ -1759,4 +1768,6 @@ void pcnet_common_init(DeviceState *dev, PCNetState *s, NetClientInfo *info)
     *(uint16_t *)&s->prom[12] = cpu_to_le16(checksum);
 
     s->lnkst = 0x40; /* initial link state: up */
+
+    return 0;
 }

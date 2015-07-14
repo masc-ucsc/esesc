@@ -11,6 +11,7 @@
 
 #include "qemu/iov.h"
 #include "hw/qdev.h"
+#include "qapi/qmp/qerror.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-rng.h"
 #include "sysemu/rng.h"
@@ -98,7 +99,7 @@ static void handle_input(VirtIODevice *vdev, VirtQueue *vq)
     virtio_rng_process(vrng);
 }
 
-static uint64_t get_features(VirtIODevice *vdev, uint64_t f)
+static uint32_t get_features(VirtIODevice *vdev, uint32_t f)
 {
     return f;
 }
@@ -148,7 +149,7 @@ static void virtio_rng_device_realize(DeviceState *dev, Error **errp)
     VirtIORNG *vrng = VIRTIO_RNG(dev);
     Error *local_err = NULL;
 
-    if (vrng->conf.period_ms <= 0) {
+    if (!vrng->conf.period_ms > 0) {
         error_setg(errp, "'period' parameter expects a positive integer");
         return;
     }
@@ -218,13 +219,7 @@ static void virtio_rng_device_unrealize(DeviceState *dev, Error **errp)
 }
 
 static Property virtio_rng_properties[] = {
-    /* Set a default rate limit of 2^47 bytes per minute or roughly 2TB/s.  If
-     * you have an entropy source capable of generating more entropy than this
-     * and you can pass it through via virtio-rng, then hats off to you.  Until
-     * then, this is unlimited for all practical purposes.
-     */
-    DEFINE_PROP_UINT64("max-bytes", VirtIORNG, conf.max_bytes, INT64_MAX),
-    DEFINE_PROP_UINT32("period", VirtIORNG, conf.period_ms, 1 << 16),
+    DEFINE_VIRTIO_RNG_PROPERTIES(VirtIORNG, conf),
     DEFINE_PROP_END_OF_LIST(),
 };
 

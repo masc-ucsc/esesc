@@ -73,6 +73,14 @@ static bool mips_cpu_has_work(CPUState *cs)
             has_work = false;
         }
     }
+    if (env->CP0_Config5 & (1 << CP0C5_VP)) {
+        if (cs->interrupt_request & CPU_INTERRUPT_WAKE) {
+            has_work = true;
+        }
+        if (!mips_vp_active(env)) {
+            has_work = false;
+        }
+    }
     return has_work;
 }
 
@@ -148,7 +156,6 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
     cc->do_unassigned_access = mips_cpu_unassigned_access;
     cc->do_unaligned_access = mips_cpu_do_unaligned_access;
     cc->get_phys_page_debug = mips_cpu_get_phys_page_debug;
-    cc->vmsd = &vmstate_mips_cpu;
 #endif
 
     cc->gdb_num_core_regs = 73;

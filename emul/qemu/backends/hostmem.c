@@ -13,6 +13,7 @@
 #include "qapi/visitor.h"
 #include "qapi-types.h"
 #include "qapi-visit.h"
+#include "qapi/qmp/qerror.h"
 #include "qemu/config-file.h"
 #include "qom/object_interfaces.h"
 
@@ -112,17 +113,24 @@ host_memory_backend_set_host_nodes(Object *obj, Visitor *v, void *opaque,
 #endif
 }
 
-static int
-host_memory_backend_get_policy(Object *obj, Error **errp G_GNUC_UNUSED)
+static void
+host_memory_backend_get_policy(Object *obj, Visitor *v, void *opaque,
+                               const char *name, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    return backend->policy;
+    int policy = backend->policy;
+
+    visit_type_enum(v, &policy, HostMemPolicy_lookup, NULL, name, errp);
 }
 
 static void
-host_memory_backend_set_policy(Object *obj, int policy, Error **errp)
+host_memory_backend_set_policy(Object *obj, Visitor *v, void *opaque,
+                               const char *name, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
+    int policy;
+
+    visit_type_enum(v, &policy, HostMemPolicy_lookup, NULL, name, errp);
     backend->policy = policy;
 
 #ifndef CONFIG_NUMA
@@ -244,10 +252,9 @@ static void host_memory_backend_init(Object *obj)
     object_property_add(obj, "host-nodes", "int",
                         host_memory_backend_get_host_nodes,
                         host_memory_backend_set_host_nodes, NULL, NULL, NULL);
-    object_property_add_enum(obj, "policy", "HostMemPolicy",
-                             HostMemPolicy_lookup,
-                             host_memory_backend_get_policy,
-                             host_memory_backend_set_policy, NULL);
+    object_property_add(obj, "policy", "str",
+                        host_memory_backend_get_policy,
+                        host_memory_backend_set_policy, NULL, NULL, NULL);
 }
 
 MemoryRegion *
@@ -328,26 +335,12 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
     }
 }
 
-static bool
-host_memory_backend_can_be_deleted(UserCreatable *uc, Error **errp)
-{
-    MemoryRegion *mr;
-
-    mr = host_memory_backend_get_memory(MEMORY_BACKEND(uc), errp);
-    if (memory_region_is_mapped(mr)) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
 static void
 host_memory_backend_class_init(ObjectClass *oc, void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
 
     ucc->complete = host_memory_backend_memory_complete;
-    ucc->can_be_deleted = host_memory_backend_can_be_deleted;
 }
 
 static const TypeInfo host_memory_backend_info = {

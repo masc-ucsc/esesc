@@ -92,21 +92,6 @@ static bool kvm_arm_gic_can_save_restore(GICState *s)
     return s->dev_fd >= 0;
 }
 
-static bool kvm_gic_supports_attr(GICState *s, int group, int attrnum)
-{
-    struct kvm_device_attr attr = {
-        .group = group,
-        .attr = attrnum,
-        .flags = 0,
-    };
-
-    if (s->dev_fd == -1) {
-        return false;
-    }
-
-    return kvm_device_ioctl(s->dev_fd, KVM_HAS_DEVICE_ATTR, &attr) == 0;
-}
-
 static void kvm_gic_access(GICState *s, int group, int offset,
                                    int cpu, uint32_t *val, bool write)
 {
@@ -176,20 +161,6 @@ static void translate_clear(GICState *s, int irq, int cpu,
     }
 }
 
-static void translate_group(GICState *s, int irq, int cpu,
-                            uint32_t *field, bool to_kernel)
-{
-    int cm = (irq < GIC_INTERNAL) ? (1 << cpu) : ALL_CPU_MASK;
-
-    if (to_kernel) {
-        *field = GIC_TEST_GROUP(irq, cm);
-    } else {
-        if (*field & 1) {
-            GIC_SET_GROUP(irq, cm);
-        }
-    }
-}
-
 static void translate_enabled(GICState *s, int irq, int cpu,
                               uint32_t *field, bool to_kernel)
 {
@@ -251,7 +222,7 @@ static void translate_priority(GICState *s, int irq, int cpu,
     if (to_kernel) {
         *field = GIC_GET_PRIORITY(irq, cpu) & 0xff;
     } else {
-        gic_set_priority(s, cpu, irq, *field & 0xff, MEMTXATTRS_UNSPECIFIED);
+        gic_set_priority(s, cpu, irq, *field & 0xff);
     }
 }
 
@@ -353,8 +324,8 @@ static void kvm_arm_gic_put(GICState *s)
      * Distributor State
      */
 
-    /* s->ctlr -> GICD_CTLR */
-    reg = s->ctlr;
+    /* s->enabled -> GICD_CTLR */
+    reg = s->enabled;
     kvm_gicd_access(s, 0x0, 0, &reg, true);
 
     /* Sanity checking on GICD_TYPER and s->num_irq, s->num_cpu */
@@ -379,18 +350,10 @@ static void kvm_arm_gic_put(GICState *s)
     kvm_dist_put(s, 0x180, 1, s->num_irq, translate_clear);
     kvm_dist_put(s, 0x100, 1, s->num_irq, translate_enabled);
 
-    /* irq_state[n].group -> GICD_IGROUPRn */
-    kvm_dist_put(s, 0x80, 1, s->num_irq, translate_group);
-
     /* s->irq_target[irq] -> GICD_ITARGETSRn
      * (restore targets before pending to ensure the pending state is set on
      * the appropriate CPU interfaces in the kernel) */
     kvm_dist_put(s, 0x800, 8, s->num_irq, translate_targets);
-
-    /* irq_state[n].trigger -> GICD_ICFGRn
-     * (restore configuration registers before pending IRQs so we treat
-     * level/edge correctly) */
-    kvm_dist_put(s, 0xc00, 2, s->num_irq, translate_trigger);
 
     /* irq_state[n].pending + irq_state[n].level -> GICD_ISPENDRn */
     kvm_dist_put(s, 0x280, 1, s->num_irq, translate_clear);
@@ -400,6 +363,8 @@ static void kvm_arm_gic_put(GICState *s)
     kvm_dist_put(s, 0x380, 1, s->num_irq, translate_clear);
     kvm_dist_put(s, 0x300, 1, s->num_irq, translate_active);
 
+    /* irq_state[n].trigger -> GICD_ICFRn */
+    kvm_dist_put(s, 0xc00, 2, s->num_irq, translate_trigger);
 
     /* s->priorityX[irq] -> ICD_IPRIORITYRn */
     kvm_dist_put(s, 0x400, 8, s->num_irq, translate_priority);
@@ -414,8 +379,8 @@ static void kvm_arm_gic_put(GICState *s)
      */
 
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
-        /* s->cpu_ctlr[cpu] -> GICC_CTLR */
-        reg = s->cpu_ctlr[cpu];
+        /* s->cpu_enabled[cpu] -> GICC_CTLR */
+        reg = s->cpu_enabled[cpu];
         kvm_gicc_access(s, 0x00, cpu, &reg, true);
 
         /* s->priority_mask[cpu] -> GICC_PMR */
@@ -453,9 +418,9 @@ static void kvm_arm_gic_get(GICState *s)
      * Distributor State
      */
 
-    /* GICD_CTLR -> s->ctlr */
+    /* GICD_CTLR -> s->enabled */
     kvm_gicd_access(s, 0x0, 0, &reg, false);
-    s->ctlr = reg;
+    s->enabled = reg & 1;
 
     /* Sanity checking on GICD_TYPER -> s->num_irq, s->num_cpu */
     kvm_gicd_access(s, 0x4, 0, &reg, false);
@@ -471,13 +436,20 @@ static void kvm_arm_gic_get(GICState *s)
     /* GICD_IIDR -> ? */
     kvm_gicd_access(s, 0x8, 0, &reg, false);
 
+    /* Verify no GROUP 1 interrupts configured in the kernel */
+    for_each_irq_reg(i, s->num_irq, 1) {
+        kvm_gicd_access(s, 0x80 + (i * 4), 0, &reg, false);
+        if (reg != 0) {
+            fprintf(stderr, "Unsupported GICD_IGROUPRn value: %08x\n",
+                    reg);
+            abort();
+        }
+    }
+
     /* Clear all the IRQ settings */
     for (i = 0; i < s->num_irq; i++) {
         memset(&s->irq_state[i], 0, sizeof(s->irq_state[0]));
     }
-
-    /* GICD_IGROUPRn -> irq_state[n].group */
-    kvm_dist_get(s, 0x80, 1, s->num_irq, translate_group);
 
     /* GICD_ISENABLERn -> irq_state[n].enabled */
     kvm_dist_get(s, 0x100, 1, s->num_irq, translate_enabled);
@@ -506,9 +478,9 @@ static void kvm_arm_gic_get(GICState *s)
      */
 
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
-        /* GICC_CTLR -> s->cpu_ctlr[cpu] */
+        /* GICC_CTLR -> s->cpu_enabled[cpu] */
         kvm_gicc_access(s, 0x00, cpu, &reg, false);
-        s->cpu_ctlr[cpu] = reg;
+        s->cpu_enabled[cpu] = (reg & 1);
 
         /* GICC_PMR -> s->priority_mask[cpu] */
         kvm_gicc_access(s, 0x04, cpu, &reg, false);
@@ -554,12 +526,6 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    if (s->security_extn) {
-        error_setg(errp, "the in-kernel VGIC does not implement the "
-                   "security extensions");
-        return;
-    }
-
     i = s->num_irq - GIC_INTERNAL;
     /* For the GIC, also expose incoming GPIO lines for PPIs for each CPU.
      * GPIO array layout is thus:
@@ -570,14 +536,11 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
      */
     i += (GIC_INTERNAL * s->num_cpu);
     qdev_init_gpio_in(dev, kvm_arm_gic_set_irq, i);
-    /* We never use our outbound IRQ/FIQ lines but provide them so that
+    /* We never use our outbound IRQ lines but provide them so that
      * we maintain the same interface as the non-KVM GIC.
      */
     for (i = 0; i < s->num_cpu; i++) {
         sysbus_init_irq(sbd, &s->parent_irq[i]);
-    }
-    for (i = 0; i < s->num_cpu; i++) {
-        sysbus_init_irq(sbd, &s->parent_fiq[i]);
     }
 
     /* Try to create the device via the device control API */
@@ -588,18 +551,6 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
     } else if (ret != -ENODEV && ret != -ENOTSUP) {
         error_setg_errno(errp, -ret, "error creating in-kernel VGIC");
         return;
-    }
-
-    if (kvm_gic_supports_attr(s, KVM_DEV_ARM_VGIC_GRP_NR_IRQS, 0)) {
-        uint32_t numirqs = s->num_irq;
-        kvm_gic_access(s, KVM_DEV_ARM_VGIC_GRP_NR_IRQS, 0, 0, &numirqs, 1);
-    }
-
-    /* Tell the kernel to complete VGIC initialization now */
-    if (kvm_gic_supports_attr(s, KVM_DEV_ARM_VGIC_GRP_CTRL,
-                              KVM_DEV_ARM_VGIC_CTRL_INIT)) {
-        kvm_gic_access(s, KVM_DEV_ARM_VGIC_GRP_CTRL,
-                          KVM_DEV_ARM_VGIC_CTRL_INIT, 0, 0, 1);
     }
 
     /* Distributor */

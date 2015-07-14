@@ -82,8 +82,7 @@ static void omap_l4ta_write(void *opaque, hwaddr addr,
     struct omap_target_agent_s *s = (struct omap_target_agent_s *) opaque;
 
     if (size != 4) {
-        omap_badwidth_write32(opaque, addr, value);
-        return;
+        return omap_badwidth_write32(opaque, addr, value);
     }
 
     switch (addr) {

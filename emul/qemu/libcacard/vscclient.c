@@ -10,20 +10,14 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #ifndef _WIN32
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <unistd.h>
 #define closesocket(x) close(x)
-#else
-#include <getopt.h>
 #endif
 
-#include "glib-compat.h"
+#include "qemu-common.h"
 
 #include "vscard_common.h"
 

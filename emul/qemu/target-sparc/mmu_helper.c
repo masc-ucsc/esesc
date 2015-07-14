@@ -213,9 +213,10 @@ int sparc_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
                                       address, rw, mmu_idx, &page_size);
     vaddr = address;
     if (error_code == 0) {
-        qemu_log_mask(CPU_LOG_MMU,
-                "Translate at %" VADDR_PRIx " -> " TARGET_FMT_plx ", vaddr "
-                TARGET_FMT_lx "\n", address, paddr, vaddr);
+#ifdef DEBUG_MMU
+        printf("Translate at %" VADDR_PRIx " -> " TARGET_FMT_plx ", vaddr "
+               TARGET_FMT_lx "\n", address, paddr, vaddr);
+#endif
         tlb_set_page(cs, vaddr, paddr, prot, mmu_idx, page_size);
         return 0;
     }

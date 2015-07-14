@@ -28,38 +28,38 @@
 #include "qapi-types.h"
 
 int net_init_dump(const NetClientOptions *opts, const char *name,
-                  NetClientState *peer, Error **errp);
+                  NetClientState *peer);
 
 #ifdef CONFIG_SLIRP
 int net_init_slirp(const NetClientOptions *opts, const char *name,
-                   NetClientState *peer, Error **errp);
+                   NetClientState *peer);
 #endif
 
 int net_init_hubport(const NetClientOptions *opts, const char *name,
-                     NetClientState *peer, Error **errp);
+                     NetClientState *peer);
 
 int net_init_socket(const NetClientOptions *opts, const char *name,
-                    NetClientState *peer, Error **errp);
+                    NetClientState *peer);
 
 int net_init_tap(const NetClientOptions *opts, const char *name,
-                 NetClientState *peer, Error **errp);
+                 NetClientState *peer);
 
 int net_init_bridge(const NetClientOptions *opts, const char *name,
-                    NetClientState *peer, Error **errp);
+                    NetClientState *peer);
 
 int net_init_l2tpv3(const NetClientOptions *opts, const char *name,
-                    NetClientState *peer, Error **errp);
+                    NetClientState *peer);
 #ifdef CONFIG_VDE
 int net_init_vde(const NetClientOptions *opts, const char *name,
-                 NetClientState *peer, Error **errp);
+                 NetClientState *peer);
 #endif
 
 #ifdef CONFIG_NETMAP
 int net_init_netmap(const NetClientOptions *opts, const char *name,
-                    NetClientState *peer, Error **errp);
+                    NetClientState *peer);
 #endif
 
 int net_init_vhost_user(const NetClientOptions *opts, const char *name,
-                        NetClientState *peer, Error **errp);
+                        NetClientState *peer);
 
 #endif /* QEMU_NET_CLIENTS_H */

@@ -24,7 +24,6 @@
 
 #include "block/accounting.h"
 #include "block/block_int.h"
-#include "qemu/timer.h"
 
 void block_acct_start(BlockAcctStats *stats, BlockAcctCookie *cookie,
                       int64_t bytes, enum BlockAcctType type)
@@ -32,7 +31,7 @@ void block_acct_start(BlockAcctStats *stats, BlockAcctCookie *cookie,
     assert(type < BLOCK_MAX_IOTYPE);
 
     cookie->bytes = bytes;
-    cookie->start_time_ns = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+    cookie->start_time_ns = get_clock();
     cookie->type = type;
 }
 
@@ -42,8 +41,7 @@ void block_acct_done(BlockAcctStats *stats, BlockAcctCookie *cookie)
 
     stats->nr_bytes[cookie->type] += cookie->bytes;
     stats->nr_ops[cookie->type]++;
-    stats->total_time_ns[cookie->type] +=
-        qemu_clock_get_ns(QEMU_CLOCK_REALTIME) - cookie->start_time_ns;
+    stats->total_time_ns[cookie->type] += get_clock() - cookie->start_time_ns;
 }
 
 
@@ -53,11 +51,4 @@ void block_acct_highest_sector(BlockAcctStats *stats, int64_t sector_num,
     if (stats->wr_highest_sector < sector_num + nb_sectors - 1) {
         stats->wr_highest_sector = sector_num + nb_sectors - 1;
     }
-}
-
-void block_acct_merge_done(BlockAcctStats *stats, enum BlockAcctType type,
-                      int num_requests)
-{
-    assert(type < BLOCK_MAX_IOTYPE);
-    stats->merged[type] += num_requests;
 }

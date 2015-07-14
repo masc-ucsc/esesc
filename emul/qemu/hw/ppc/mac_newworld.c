@@ -116,10 +116,10 @@ static const MemoryRegionOps unin_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void fw_cfg_boot_set(void *opaque, const char *boot_device,
-                            Error **errp)
+static int fw_cfg_boot_set(void *opaque, const char *boot_device)
 {
-    fw_cfg_modify_i16(opaque, FW_CFG_BOOT_DEVICE, boot_device[0]);
+    fw_cfg_add_i16(opaque, FW_CFG_BOOT_DEVICE, boot_device[0]);
+    return 0;
 }
 
 static uint64_t translate_kernel_address(void *opaque, uint64_t addr)
@@ -371,7 +371,6 @@ static void ppc_core99_init(MachineState *machine)
         /* 970 gets a U3 bus */
         pci_bus = pci_pmac_u3_init(pic, get_system_memory(), get_system_io());
         machine_arch = ARCH_MAC99_U3;
-        machine->usb |= defaults_enabled() && !machine->usb_disabled;
     } else {
         pci_bus = pci_pmac_init(pic, get_system_memory(), get_system_io());
         machine_arch = ARCH_MAC99;
@@ -418,16 +417,13 @@ static void ppc_core99_init(MachineState *machine)
     dev = qdev_create(adb_bus, TYPE_ADB_MOUSE);
     qdev_init_nofail(dev);
 
-    if (machine->usb) {
+    if (usb_enabled(machine_arch == ARCH_MAC99_U3)) {
         pci_create_simple(pci_bus, -1, "pci-ohci");
-
         /* U3 needs to use USB for input because Linux doesn't support via-cuda
         on PPC64 */
         if (machine_arch == ARCH_MAC99_U3) {
-            USBBus *usb_bus = usb_bus_find(-1);
-
-            usb_create_simple(usb_bus, "usb-kbd");
-            usb_create_simple(usb_bus, "usb-mouse");
+            usbdevice_create("keyboard");
+            usbdevice_create("mouse");
         }
     }
 
@@ -458,8 +454,9 @@ static void ppc_core99_init(MachineState *machine)
     pmac_format_nvram_partition(nvr, 0x2000);
     /* No PCI init: the BIOS will do it */
 
-    fw_cfg = fw_cfg_init_mem(CFG_ADDR, CFG_ADDR + 2);
+    fw_cfg = fw_cfg_init(0, 0, CFG_ADDR, CFG_ADDR + 2);
     fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, (uint16_t)max_cpus);
+    fw_cfg_add_i32(fw_cfg, FW_CFG_ID, 1);
     fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, (uint64_t)ram_size);
     fw_cfg_add_i16(fw_cfg, FW_CFG_MACHINE_ID, machine_arch);
     fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_ADDR, kernel_base);
@@ -504,27 +501,18 @@ static int core99_kvm_type(const char *arg)
     return 2;
 }
 
-static void core99_machine_class_init(ObjectClass *oc, void *data)
-{
-    MachineClass *mc = MACHINE_CLASS(oc);
-
-    mc->name = "mac99";
-    mc->desc = "Mac99 based PowerMAC";
-    mc->init = ppc_core99_init;
-    mc->max_cpus = MAX_CPUS;
-    mc->default_boot_order = "cd";
-    mc->kvm_type = core99_kvm_type;
-}
-
-static const TypeInfo core99_machine_info = {
-    .name          = "mac99-machine",
-    .parent        = TYPE_MACHINE,
-    .class_init    = core99_machine_class_init,
+static QEMUMachine core99_machine = {
+    .name = "mac99",
+    .desc = "Mac99 based PowerMAC",
+    .init = ppc_core99_init,
+    .max_cpus = MAX_CPUS,
+    .default_boot_order = "cd",
+    .kvm_type = core99_kvm_type,
 };
 
-static void mac_machine_register_types(void)
+static void core99_machine_init(void)
 {
-    type_register_static(&core99_machine_info);
+    qemu_register_machine(&core99_machine);
 }
 
-type_init(mac_machine_register_types)
+machine_init(core99_machine_init);

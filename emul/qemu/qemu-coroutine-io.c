@@ -45,7 +45,7 @@ qemu_co_sendv_recvv(int sockfd, struct iovec *iov, unsigned iov_cnt,
             if (err == EAGAIN || err == EWOULDBLOCK) {
                 qemu_coroutine_yield();
             } else if (done == 0) {
-                return -err;
+                return -1;
             } else {
                 break;
             }

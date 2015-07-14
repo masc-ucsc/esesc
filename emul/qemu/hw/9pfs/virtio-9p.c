@@ -13,7 +13,6 @@
 
 #include "hw/virtio/virtio.h"
 #include "hw/i386/pc.h"
-#include "qemu/error-report.h"
 #include "qemu/sockets.h"
 #include "virtio-9p.h"
 #include "fsdev/qemu-fsdev.h"
@@ -1951,8 +1950,7 @@ static void v9fs_write(void *opaque)
 
     err = pdu_unmarshal(pdu, offset, "dqd", &fid, &off, &count);
     if (err < 0) {
-        complete_pdu(s, pdu, err);
-        return;
+        return complete_pdu(s, pdu, err);
     }
     offset += err;
     v9fs_init_qiov_from_pdu(&qiov_full, pdu, offset, count, true);

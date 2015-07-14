@@ -92,8 +92,7 @@ static void omap_sdrc_write(void *opaque, hwaddr addr,
     struct omap_sdrc_s *s = (struct omap_sdrc_s *) opaque;
 
     if (size != 4) {
-        omap_badwidth_write32(opaque, addr, value);
-        return;
+        return omap_badwidth_write32(opaque, addr, value);
     }
 
     switch (addr) {

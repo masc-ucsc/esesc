@@ -25,7 +25,6 @@
 #include "exec/address-spaces.h"
 #include "qapi/visitor.h"
 #include "qapi-event.h"
-#include "trace.h"
 
 #if defined(__linux__)
 #include <sys/mman.h>
@@ -70,7 +69,7 @@ static inline void reset_stats(VirtIOBalloon *dev)
 static bool balloon_stats_supported(const VirtIOBalloon *s)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(s);
-    return virtio_has_feature(vdev, VIRTIO_BALLOON_F_STATS_VQ);
+    return vdev->guest_features & (1 << VIRTIO_BALLOON_F_STATS_VQ);
 }
 
 static bool balloon_stats_enabled(const VirtIOBalloon *s)
@@ -223,8 +222,6 @@ static void virtio_balloon_handle_output(VirtIODevice *vdev, VirtQueue *vq)
             if (!int128_nz(section.size) || !memory_region_is_ram(section.mr))
                 continue;
 
-            trace_virtio_balloon_handle_output(memory_region_name(section.mr),
-                                               pa);
             /* Using memory_region_get_ram_ptr is bending the rules a bit, but
                should be OK because we only want a single page.  */
             addr = section.offset_within_region;
@@ -288,7 +285,6 @@ static void virtio_balloon_get_config(VirtIODevice *vdev, uint8_t *config_data)
     config.num_pages = cpu_to_le32(dev->num_pages);
     config.actual = cpu_to_le32(dev->actual);
 
-    trace_virtio_balloon_get_config(config.num_pages, config.actual);
     memcpy(config_data, &config, sizeof(struct virtio_balloon_config));
 }
 
@@ -298,47 +294,40 @@ static void virtio_balloon_set_config(VirtIODevice *vdev,
     VirtIOBalloon *dev = VIRTIO_BALLOON(vdev);
     struct virtio_balloon_config config;
     uint32_t oldactual = dev->actual;
-    ram_addr_t vm_ram_size = get_current_ram_size();
-
     memcpy(&config, config_data, sizeof(struct virtio_balloon_config));
     dev->actual = le32_to_cpu(config.actual);
     if (dev->actual != oldactual) {
-        qapi_event_send_balloon_change(vm_ram_size -
+        qapi_event_send_balloon_change(ram_size -
                         ((ram_addr_t) dev->actual << VIRTIO_BALLOON_PFN_SHIFT),
                         &error_abort);
     }
-    trace_virtio_balloon_set_config(dev->actual, oldactual);
 }
 
-static uint64_t virtio_balloon_get_features(VirtIODevice *vdev, uint64_t f)
+static uint32_t virtio_balloon_get_features(VirtIODevice *vdev, uint32_t f)
 {
-    VirtIOBalloon *dev = VIRTIO_BALLOON(vdev);
-    f |= dev->host_features;
-    virtio_add_feature(&f, VIRTIO_BALLOON_F_STATS_VQ);
+    f |= (1 << VIRTIO_BALLOON_F_STATS_VQ);
     return f;
 }
 
 static void virtio_balloon_stat(void *opaque, BalloonInfo *info)
 {
     VirtIOBalloon *dev = opaque;
-    info->actual = get_current_ram_size() - ((uint64_t) dev->actual <<
-                                             VIRTIO_BALLOON_PFN_SHIFT);
+    info->actual = ram_size - ((uint64_t) dev->actual <<
+                               VIRTIO_BALLOON_PFN_SHIFT);
 }
 
 static void virtio_balloon_to_target(void *opaque, ram_addr_t target)
 {
     VirtIOBalloon *dev = VIRTIO_BALLOON(opaque);
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
-    ram_addr_t vm_ram_size = get_current_ram_size();
 
-    if (target > vm_ram_size) {
-        target = vm_ram_size;
+    if (target > ram_size) {
+        target = ram_size;
     }
     if (target) {
-        dev->num_pages = (vm_ram_size - target) >> VIRTIO_BALLOON_PFN_SHIFT;
+        dev->num_pages = (ram_size - target) >> VIRTIO_BALLOON_PFN_SHIFT;
         virtio_notify_config(vdev);
     }
-    trace_virtio_balloon_to_target(target, dev->num_pages);
 }
 
 static void virtio_balloon_save(QEMUFile *f, void *opaque)
@@ -385,7 +374,7 @@ static void virtio_balloon_device_realize(DeviceState *dev, Error **errp)
                                    virtio_balloon_stat, s);
 
     if (ret < 0) {
-        error_setg(errp, "Only one balloon device is supported");
+        error_setg(errp, "Adding balloon handler failed");
         virtio_cleanup(vdev);
         return;
     }
@@ -398,6 +387,14 @@ static void virtio_balloon_device_realize(DeviceState *dev, Error **errp)
 
     register_savevm(dev, "virtio-balloon", -1, 1,
                     virtio_balloon_save, virtio_balloon_load, s);
+
+    object_property_add(OBJECT(dev), "guest-stats", "guest statistics",
+                        balloon_stats_get_all, NULL, NULL, s, NULL);
+
+    object_property_add(OBJECT(dev), "guest-stats-polling-interval", "int",
+                        balloon_stats_get_poll_interval,
+                        balloon_stats_set_poll_interval,
+                        NULL, s, NULL);
 }
 
 static void virtio_balloon_device_unrealize(DeviceState *dev, Error **errp)
@@ -411,22 +408,7 @@ static void virtio_balloon_device_unrealize(DeviceState *dev, Error **errp)
     virtio_cleanup(vdev);
 }
 
-static void virtio_balloon_instance_init(Object *obj)
-{
-    VirtIOBalloon *s = VIRTIO_BALLOON(obj);
-
-    object_property_add(obj, "guest-stats", "guest statistics",
-                        balloon_stats_get_all, NULL, NULL, s, NULL);
-
-    object_property_add(obj, "guest-stats-polling-interval", "int",
-                        balloon_stats_get_poll_interval,
-                        balloon_stats_set_poll_interval,
-                        NULL, s, NULL);
-}
-
 static Property virtio_balloon_properties[] = {
-    DEFINE_PROP_BIT("deflate-on-oom", VirtIOBalloon, host_features,
-                    VIRTIO_BALLOON_F_DEFLATE_ON_OOM, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -450,7 +432,6 @@ static const TypeInfo virtio_balloon_info = {
     .name = TYPE_VIRTIO_BALLOON,
     .parent = TYPE_VIRTIO_DEVICE,
     .instance_size = sizeof(VirtIOBalloon),
-    .instance_init = virtio_balloon_instance_init,
     .class_init = virtio_balloon_class_init,
 };
 

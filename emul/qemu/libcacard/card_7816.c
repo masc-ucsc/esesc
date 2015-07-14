@@ -5,9 +5,7 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include "glib-compat.h"
-
-#include <string.h>
+#include "qemu-common.h"
 
 #include "vcard.h"
 #include "vcard_emul.h"

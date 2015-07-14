@@ -999,7 +999,7 @@ static IO_READ_PROTO (dsp_read)
         retval = (!s->out_data_len || s->highspeed) ? 0 : 0x80;
         if (s->mixer_regs[0x82] & 1) {
             ack = 1;
-            s->mixer_regs[0x82] &= ~1;
+            s->mixer_regs[0x82] &= 1;
             qemu_irq_lower (s->pic);
         }
         break;
@@ -1008,7 +1008,7 @@ static IO_READ_PROTO (dsp_read)
         retval = 0xff;
         if (s->mixer_regs[0x82] & 2) {
             ack = 1;
-            s->mixer_regs[0x82] &= ~2;
+            s->mixer_regs[0x82] &= 2;
             qemu_irq_lower (s->pic);
         }
         break;
@@ -1119,6 +1119,12 @@ static IO_WRITE_PROTO (mixer_write_datab)
     }
 
     s->mixer_regs[s->mixer_nreg] = val;
+}
+
+static IO_WRITE_PROTO (mixer_write_indexw)
+{
+    mixer_write_indexb (opaque, nport, val & 0xff);
+    mixer_write_datab (opaque, nport, (val >> 8) & 0xff);
 }
 
 static IO_READ_PROTO (mixer_read)
@@ -1339,6 +1345,7 @@ static const VMStateDescription vmstate_sb16 = {
 
 static const MemoryRegionPortio sb16_ioport_list[] = {
     {  4, 1, 1, .write = mixer_write_indexb },
+    {  4, 1, 2, .write = mixer_write_indexw },
     {  5, 1, 1, .read = mixer_read, .write = mixer_write_datab },
     {  6, 1, 1, .read = dsp_read, .write = dsp_write },
     { 10, 1, 1, .read = dsp_read },

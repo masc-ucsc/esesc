@@ -57,6 +57,5 @@ static inline void outb(uint16_t port, uint8_t data)
 /* Misc functions */
 
 void printf(const char *fmt, ...);
-void* memcpy(void *dest, const void *src, int n);
 
 #endif

@@ -23,7 +23,6 @@
 #define PCI_CLASS_STORAGE_OTHER          0x0180
 
 #define PCI_CLASS_NETWORK_ETHERNET       0x0200
-#define PCI_CLASS_NETWORK_OTHER          0x0280
 
 #define PCI_CLASS_DISPLAY_VGA            0x0300
 #define PCI_CLASS_DISPLAY_OTHER          0x0380
@@ -32,7 +31,6 @@
 
 #define PCI_CLASS_MEMORY_RAM             0x0500
 
-#define PCI_CLASS_SYSTEM_SDHCI           0x0805
 #define PCI_CLASS_SYSTEM_OTHER           0x0880
 
 #define PCI_CLASS_SERIAL_USB             0x0c03
@@ -46,13 +44,6 @@
 
 #define PCI_CLASS_COMMUNICATION_SERIAL   0x0700
 #define PCI_CLASS_COMMUNICATION_OTHER    0x0780
-
-#define PCI_CLASS_INPUT_KEYBOARD         0x0900
-#define PCI_CLASS_INPUT_PEN              0x0901
-#define PCI_CLASS_INPUT_MOUSE            0x0902
-#define PCI_CLASS_INPUT_SCANNER          0x0903
-#define PCI_CLASS_INPUT_GAMEPORT         0x0904
-#define PCI_CLASS_INPUT_OTHER            0x0980
 
 #define PCI_CLASS_PROCESSOR_CO           0x0b40
 #define PCI_CLASS_PROCESSOR_POWERPC      0x0b20

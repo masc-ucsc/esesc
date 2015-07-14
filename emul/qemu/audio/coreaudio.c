@@ -32,16 +32,20 @@
 #define AUDIO_CAP "coreaudio"
 #include "audio_int.h"
 
-static int isAtexit;
-
-typedef struct {
+struct {
     int buffer_frames;
     int nbuffers;
-} CoreaudioConf;
+    int isAtexit;
+} conf = {
+    .buffer_frames = 512,
+    .nbuffers = 4,
+    .isAtexit = 0
+};
 
 typedef struct coreaudioVoiceOut {
     HWVoiceOut hw;
     pthread_mutex_t mutex;
+    int isAtexit;
     AudioDeviceID outputDeviceID;
     UInt32 audioDevicePropertyBufferFrameSize;
     AudioStreamBasicDescription outputStreamBasicDescription;
@@ -157,7 +161,7 @@ static inline UInt32 isPlaying (AudioDeviceID outputDeviceID)
 
 static void coreaudio_atexit (void)
 {
-    isAtexit = 1;
+    conf.isAtexit = 1;
 }
 
 static int coreaudio_lock (coreaudioVoiceOut *core, const char *fn_name)
@@ -283,8 +287,7 @@ static int coreaudio_write (SWVoiceOut *sw, void *buf, int len)
     return audio_pcm_sw_write (sw, buf, len);
 }
 
-static int coreaudio_init_out(HWVoiceOut *hw, struct audsettings *as,
-                              void *drv_opaque)
+static int coreaudio_init_out (HWVoiceOut *hw, struct audsettings *as)
 {
     OSStatus status;
     coreaudioVoiceOut *core = (coreaudioVoiceOut *) hw;
@@ -292,7 +295,6 @@ static int coreaudio_init_out(HWVoiceOut *hw, struct audsettings *as,
     int err;
     const char *typ = "playback";
     AudioValueRange frameRange;
-    CoreaudioConf *conf = drv_opaque;
 
     /* create mutex */
     err = pthread_mutex_init(&core->mutex, NULL);
@@ -334,16 +336,16 @@ static int coreaudio_init_out(HWVoiceOut *hw, struct audsettings *as,
         return -1;
     }
 
-    if (frameRange.mMinimum > conf->buffer_frames) {
+    if (frameRange.mMinimum > conf.buffer_frames) {
         core->audioDevicePropertyBufferFrameSize = (UInt32) frameRange.mMinimum;
         dolog ("warning: Upsizing Buffer Frames to %f\n", frameRange.mMinimum);
     }
-    else if (frameRange.mMaximum < conf->buffer_frames) {
+    else if (frameRange.mMaximum < conf.buffer_frames) {
         core->audioDevicePropertyBufferFrameSize = (UInt32) frameRange.mMaximum;
         dolog ("warning: Downsizing Buffer Frames to %f\n", frameRange.mMaximum);
     }
     else {
-        core->audioDevicePropertyBufferFrameSize = conf->buffer_frames;
+        core->audioDevicePropertyBufferFrameSize = conf.buffer_frames;
     }
 
     /* set Buffer Frame Size */
@@ -377,7 +379,7 @@ static int coreaudio_init_out(HWVoiceOut *hw, struct audsettings *as,
                            "Could not get device buffer frame size\n");
         return -1;
     }
-    hw->samples = conf->nbuffers * core->audioDevicePropertyBufferFrameSize;
+    hw->samples = conf.nbuffers * core->audioDevicePropertyBufferFrameSize;
 
     /* get StreamFormat */
     propertySize = sizeof(core->outputStreamBasicDescription);
@@ -441,7 +443,7 @@ static void coreaudio_fini_out (HWVoiceOut *hw)
     int err;
     coreaudioVoiceOut *core = (coreaudioVoiceOut *) hw;
 
-    if (!isAtexit) {
+    if (!conf.isAtexit) {
         /* stop playback */
         if (isPlaying(core->outputDeviceID)) {
             status = AudioDeviceStop(core->outputDeviceID, audioDeviceIOProc);
@@ -484,7 +486,7 @@ static int coreaudio_ctl_out (HWVoiceOut *hw, int cmd, ...)
 
     case VOICE_DISABLE:
         /* stop playback */
-        if (!isAtexit) {
+        if (!conf.isAtexit) {
             if (isPlaying(core->outputDeviceID)) {
                 status = AudioDeviceStop(core->outputDeviceID, audioDeviceIOProc);
                 if (status != kAudioHardwareNoError) {
@@ -497,36 +499,28 @@ static int coreaudio_ctl_out (HWVoiceOut *hw, int cmd, ...)
     return 0;
 }
 
-static CoreaudioConf glob_conf = {
-    .buffer_frames = 512,
-    .nbuffers = 4,
-};
-
 static void *coreaudio_audio_init (void)
 {
-    CoreaudioConf *conf = g_malloc(sizeof(CoreaudioConf));
-    *conf = glob_conf;
-
     atexit(coreaudio_atexit);
-    return conf;
+    return &coreaudio_audio_init;
 }
 
 static void coreaudio_audio_fini (void *opaque)
 {
-    g_free(opaque);
+    (void) opaque;
 }
 
 static struct audio_option coreaudio_options[] = {
     {
         .name  = "BUFFER_SIZE",
         .tag   = AUD_OPT_INT,
-        .valp  = &glob_conf.buffer_frames,
+        .valp  = &conf.buffer_frames,
         .descr = "Size of the buffer in frames"
     },
     {
         .name  = "BUFFER_COUNT",
         .tag   = AUD_OPT_INT,
-        .valp  = &glob_conf.nbuffers,
+        .valp  = &conf.nbuffers,
         .descr = "Number of buffers"
     },
     { /* End of list */ }

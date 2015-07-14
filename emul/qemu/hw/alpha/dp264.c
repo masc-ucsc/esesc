@@ -55,7 +55,7 @@ static void clipper_init(MachineState *machine)
     ISABus *isa_bus;
     qemu_irq rtc_irq;
     long size, i;
-    char *palcode_filename;
+    const char *palcode_filename;
     uint64_t palcode_entry, palcode_low, palcode_high;
     uint64_t kernel_entry, kernel_low, kernel_high;
 
@@ -83,7 +83,11 @@ static void clipper_init(MachineState *machine)
     pci_vga_init(pci_bus);
 
     /* Serial code setup.  */
-    serial_hds_isa_init(isa_bus, MAX_SERIAL_PORTS);
+    for (i = 0; i < MAX_SERIAL_PORTS; ++i) {
+        if (serial_hds[i]) {
+            serial_isa_init(isa_bus, i, serial_hds[i]);
+        }
+    }
 
     /* Network setup.  e1000 is good enough, failing Tulip support.  */
     for (i = 0; i < nb_nics; i++) {
@@ -101,8 +105,8 @@ static void clipper_init(MachineState *machine)
     /* Load PALcode.  Given that this is not "real" cpu palcode,
        but one explicitly written for the emulation, we might as
        well load it directly from and ELF image.  */
-    palcode_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS,
-                                bios_name ? bios_name : "palcode-clipper");
+    palcode_filename = (bios_name ? bios_name : "palcode-clipper");
+    palcode_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, palcode_filename);
     if (palcode_filename == NULL) {
         hw_error("no palcode provided\n");
         exit(1);
@@ -114,7 +118,6 @@ static void clipper_init(MachineState *machine)
         hw_error("could not load palcode '%s'\n", palcode_filename);
         exit(1);
     }
-    g_free(palcode_filename);
 
     /* Start all cpus at the PALcode RESET entry point.  */
     for (i = 0; i < smp_cpus; ++i) {
@@ -158,12 +161,9 @@ static void clipper_init(MachineState *machine)
             load_image_targphys(initrd_filename, initrd_base,
                                 ram_size - initrd_base);
 
-            address_space_stq(&address_space_memory, param_offset + 0x100,
-                              initrd_base + 0xfffffc0000000000ULL,
-                              MEMTXATTRS_UNSPECIFIED,
-                              NULL);
-            address_space_stq(&address_space_memory, param_offset + 0x108,
-                              initrd_size, MEMTXATTRS_UNSPECIFIED, NULL);
+            stq_phys(&address_space_memory,
+                     param_offset + 0x100, initrd_base + 0xfffffc0000000000ULL);
+            stq_phys(&address_space_memory, param_offset + 0x108, initrd_size);
         }
     }
 }

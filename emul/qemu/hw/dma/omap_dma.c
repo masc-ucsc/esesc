@@ -136,7 +136,7 @@ struct omap_dma_s {
 
 static inline void omap_dma_interrupts_update(struct omap_dma_s *s)
 {
-    s->intr_update(s);
+    return s->intr_update(s);
 }
 
 static void omap_dma_channel_load(struct omap_dma_channel_s *ch)
@@ -1502,8 +1502,7 @@ static void omap_dma_write(void *opaque, hwaddr addr,
     int reg, ch;
 
     if (size != 2) {
-        omap_badwidth_write16(opaque, addr, value);
-        return;
+        return omap_badwidth_write16(opaque, addr, value);
     }
 
     switch (addr) {
@@ -1858,8 +1857,7 @@ static void omap_dma4_write(void *opaque, hwaddr addr,
     struct omap_dma_channel_s *ch;
 
     if (size == 1) {
-        omap_badwidth_write16(opaque, addr, value);
-        return;
+        return omap_badwidth_write16(opaque, addr, value);
     }
 
     switch (addr) {

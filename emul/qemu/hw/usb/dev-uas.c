@@ -127,9 +127,6 @@ struct UASDevice {
     USBPacket                 *status3[UAS_MAX_STREAMS + 1];
 };
 
-#define TYPE_USB_UAS "usb-uas"
-#define USB_UAS(obj) OBJECT_CHECK(UASDevice, (obj), TYPE_USB_UAS)
-
 struct UASRequest {
     uint16_t     tag;
     uint64_t     lun;
@@ -629,7 +626,7 @@ static const struct SCSIBusInfo usb_uas_scsi_info = {
 
 static void usb_uas_handle_reset(USBDevice *dev)
 {
-    UASDevice *uas = USB_UAS(dev);
+    UASDevice *uas = DO_UPCAST(UASDevice, dev, dev);
     UASRequest *req, *nreq;
     UASStatus *st, *nst;
 
@@ -658,7 +655,7 @@ static void usb_uas_handle_control(USBDevice *dev, USBPacket *p,
 
 static void usb_uas_cancel_io(USBDevice *dev, USBPacket *p)
 {
-    UASDevice *uas = USB_UAS(dev);
+    UASDevice *uas = DO_UPCAST(UASDevice, dev, dev);
     UASRequest *req, *nreq;
     int i;
 
@@ -800,7 +797,7 @@ incorrect_lun:
 
 static void usb_uas_handle_data(USBDevice *dev, USBPacket *p)
 {
-    UASDevice *uas = USB_UAS(dev);
+    UASDevice *uas = DO_UPCAST(UASDevice, dev, dev);
     uas_iu iu;
     UASStatus *st;
     UASRequest *req;
@@ -891,14 +888,14 @@ static void usb_uas_handle_data(USBDevice *dev, USBPacket *p)
 
 static void usb_uas_handle_destroy(USBDevice *dev)
 {
-    UASDevice *uas = USB_UAS(dev);
+    UASDevice *uas = DO_UPCAST(UASDevice, dev, dev);
 
     qemu_bh_delete(uas->status_bh);
 }
 
 static void usb_uas_realize(USBDevice *dev, Error **errp)
 {
-    UASDevice *uas = USB_UAS(dev);
+    UASDevice *uas = DO_UPCAST(UASDevice, dev, dev);
 
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
@@ -946,7 +943,7 @@ static void usb_uas_class_initfn(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo uas_info = {
-    .name          = TYPE_USB_UAS,
+    .name          = "usb-uas",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(UASDevice),
     .class_init    = usb_uas_class_initfn,

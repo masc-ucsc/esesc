@@ -69,17 +69,11 @@ static void hb_reset_secondary(ARMCPU *cpu, const struct arm_boot_info *info)
 
     switch (info->nb_cpus) {
     case 4:
-        address_space_stl_notdirty(&address_space_memory,
-                                   SMP_BOOT_REG + 0x30, 0,
-                                   MEMTXATTRS_UNSPECIFIED, NULL);
+        stl_phys_notdirty(&address_space_memory, SMP_BOOT_REG + 0x30, 0);
     case 3:
-        address_space_stl_notdirty(&address_space_memory,
-                                   SMP_BOOT_REG + 0x20, 0,
-                                   MEMTXATTRS_UNSPECIFIED, NULL);
+        stl_phys_notdirty(&address_space_memory, SMP_BOOT_REG + 0x20, 0);
     case 2:
-        address_space_stl_notdirty(&address_space_memory,
-                                   SMP_BOOT_REG + 0x10, 0,
-                                   MEMTXATTRS_UNSPECIFIED, NULL);
+        stl_phys_notdirty(&address_space_memory, SMP_BOOT_REG + 0x10, 0);
         env->regs[15] = SMP_BOOT_ADDR;
         break;
     default:
@@ -217,7 +211,6 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
     qemu_irq pic[128];
     int n;
     qemu_irq cpu_irq[4];
-    qemu_irq cpu_fiq[4];
     MemoryRegion *sysram;
     MemoryRegion *dram;
     MemoryRegion *sysmem;
@@ -248,34 +241,21 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
         cpuobj = object_new(object_class_get_name(oc));
         cpu = ARM_CPU(cpuobj);
 
-        /* By default A9 and A15 CPUs have EL3 enabled.  This board does not
-         * currently support EL3 so the CPU EL3 property is disabled before
-         * realization.
-         */
-        if (object_property_find(cpuobj, "has_el3", NULL)) {
-            object_property_set_bool(cpuobj, false, "has_el3", &err);
-            if (err) {
-                error_report_err(err);
-                exit(1);
-            }
-        }
-
         if (object_property_find(cpuobj, "reset-cbar", NULL)) {
             object_property_set_int(cpuobj, MPCORE_PERIPHBASE,
                                     "reset-cbar", &error_abort);
         }
         object_property_set_bool(cpuobj, true, "realized", &err);
         if (err) {
-            error_report_err(err);
+            error_report("%s", error_get_pretty(err));
             exit(1);
         }
         cpu_irq[n] = qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_IRQ);
-        cpu_fiq[n] = qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_FIQ);
     }
 
     sysmem = get_system_memory();
     dram = g_new(MemoryRegion, 1);
-    memory_region_allocate_system_memory(dram, NULL, "highbank.dram", ram_size);
+    memory_region_init_ram(dram, NULL, "highbank.dram", ram_size, &error_abort);
     /* SDRAM at address zero.  */
     memory_region_add_subregion(sysmem, 0, dram);
 
@@ -286,10 +266,10 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
     if (bios_name != NULL) {
         sysboot_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
         if (sysboot_filename != NULL) {
-            if (load_image_targphys(sysboot_filename, 0xfff88000, 0x8000) < 0) {
+            uint32_t filesize = get_image_size(sysboot_filename);
+            if (load_image_targphys("sysram.bin", 0xfff88000, filesize) < 0) {
                 hw_error("Unable to load %s\n", bios_name);
             }
-            g_free(sysboot_filename);
         } else {
            hw_error("Unable to find %s\n", bios_name);
         }
@@ -315,7 +295,6 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
     sysbus_mmio_map(busdev, 0, MPCORE_PERIPHBASE);
     for (n = 0; n < smp_cpus; n++) {
         sysbus_connect_irq(busdev, n, cpu_irq[n]);
-        sysbus_connect_irq(busdev, n + smp_cpus, cpu_fiq[n]);
     }
 
     for (n = 0; n < 128; n++) {

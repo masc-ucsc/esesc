@@ -58,13 +58,14 @@ static void i82378_request_pic_irq(void *opaque, int irq, int level)
     qemu_set_irq(s->i8259[irq], level);
 }
 
-static void i82378_realize(PCIDevice *pci, Error **errp)
+static int i82378_initfn(PCIDevice *pci)
 {
     DeviceState *dev = DEVICE(pci);
     I82378State *s = I82378(dev);
     uint8_t *pci_conf;
     ISABus *isabus;
     ISADevice *isa;
+    qemu_irq *out0_irq;
 
     pci_conf = pci->config;
     pci_set_word(pci_conf + PCI_COMMAND,
@@ -74,8 +75,7 @@ static void i82378_realize(PCIDevice *pci, Error **errp)
 
     pci_config_set_interrupt_pin(pci_conf, 1); /* interrupt pin 0 */
 
-    isabus = isa_bus_new(dev, get_system_memory(),
-                         pci_address_space_io(pci));
+    isabus = isa_bus_new(dev, pci_address_space_io(pci));
 
     /* This device has:
        2 82C59 (irq)
@@ -87,9 +87,11 @@ static void i82378_realize(PCIDevice *pci, Error **errp)
        All devices accept byte access only, except timer
      */
 
+    /* Workaround the fact that i8259 is not qdev'ified... */
+    out0_irq = qemu_allocate_irqs(i82378_request_out0_irq, s, 1);
+
     /* 2 82C59 (irq) */
-    s->i8259 = i8259_init(isabus,
-                          qemu_allocate_irq(i82378_request_out0_irq, s, 0));
+    s->i8259 = i8259_init(isabus, *out0_irq);
     isa_bus_irqs(isabus, s->i8259);
 
     /* 1 82C54 (pit) */
@@ -104,6 +106,8 @@ static void i82378_realize(PCIDevice *pci, Error **errp)
 
     /* timer */
     isa_create_simple(isabus, "mc146818rtc");
+
+    return 0;
 }
 
 static void i82378_init(Object *obj)
@@ -120,7 +124,7 @@ static void i82378_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    k->realize = i82378_realize;
+    k->init = i82378_initfn;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82378;
     k->revision = 0x03;

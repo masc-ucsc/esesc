@@ -1,7 +1,7 @@
 /*
  * Unified Hosting Interface syscalls.
  *
- * Copyright (c) 2015 Imagination Technologies
+ * Copyright (c) 2014 Imagination Technologies
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,9 +21,8 @@
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "exec/softmmu-semi.h"
-#include "exec/semihost.h"
 
-typedef enum UHIOp {
+typedef enum UHI_Op {
     UHI_exit = 1,
     UHI_open = 2,
     UHI_close = 3,
@@ -40,9 +39,9 @@ typedef enum UHIOp {
     UHI_pread = 19,
     UHI_pwrite = 20,
     UHI_link = 22
-} UHIOp;
+} UHI_Op;
 
-typedef struct UHIStat {
+typedef struct UHI_stat {
     int16_t uhi_st_dev;
     uint16_t uhi_st_ino;
     uint32_t uhi_st_mode;
@@ -60,9 +59,9 @@ typedef struct UHIStat {
     uint64_t uhi_st_blksize;
     uint64_t uhi_st_blocks;
     uint64_t uhi_st_spare4[2];
-} UHIStat;
+} UHI_stat;
 
-enum UHIOpenFlags {
+enum UHIOpen_flags {
     UHIOpen_RDONLY = 0x0,
     UHIOpen_WRONLY = 0x1,
     UHIOpen_RDWR   = 0x2,
@@ -72,35 +71,62 @@ enum UHIOpenFlags {
     UHIOpen_EXCL   = 0x800
 };
 
-/* Errno values taken from asm-mips/errno.h */
-static uint16_t host_to_mips_errno[] = {
-    [ENAMETOOLONG] = 78,
-#ifdef EOVERFLOW
-    [EOVERFLOW]    = 79,
+#ifdef CONFIG_USER_ONLY
+static const char **semihosting_argv;
+static int semihosting_argc;
+static const char *semihosting_root;
+#else
+extern const char **semihosting_argv;
+extern int semihosting_argc;
+extern const char *semihosting_root;
 #endif
-#ifdef ELOOP
-    [ELOOP]        = 90,
-#endif
-};
 
-static int errno_mips(int err)
+static int put_root_in_front(const char *jr, char *buf)
 {
-    if (err < 0 || err >= ARRAY_SIZE(host_to_mips_errno)) {
-        return EINVAL;
-    } else if (host_to_mips_errno[err]) {
-        return host_to_mips_errno[err];
+    const char *separator = "/";
+    bool is_jr_separator = (jr[strlen(jr) - 1] == separator[0]);
+    bool is_path_separator = (buf[0] == separator[0]);
+    char *path = g_malloc(strlen(buf) + 1);
+
+    if (!path) {
+        return -1;
+    }
+
+    strcpy(path, buf);
+    strcpy(buf, jr);
+
+    if (is_jr_separator && is_path_separator) {
+        /* skip redundant separator */
+        strcat(buf, path + 1);
     } else {
-        return err;
+        if (!is_jr_separator && !is_path_separator) {
+            /* insert missing separator */
+            strcat(buf, separator);
+        }
+        strcat(buf, path);
+    }
+
+    g_free(path);
+    return 0;
+}
+
+static int apply_root(char *buf)
+{
+    if (!semihosting_root) {
+        return 0; /* nothing to do */
+    } else if (semihosting_root[0] == '\0') {
+        return 0; /* nothing to do */
+    } else {
+        return put_root_in_front(semihosting_root, buf);
     }
 }
 
 static int copy_stat_to_target(CPUMIPSState *env, const struct stat *src,
-                               target_ulong vaddr)
+                                target_ulong vaddr)
 {
-    hwaddr len = sizeof(struct UHIStat);
-    UHIStat *dst = lock_user(VERIFY_WRITE, vaddr, len, 0);
+    hwaddr len = sizeof(struct UHI_stat);
+    UHI_stat *dst = lock_user(VERIFY_WRITE, vaddr, len, 0);
     if (!dst) {
-        errno = EFAULT;
         return -1;
     }
 
@@ -152,8 +178,7 @@ static int write_to_file(CPUMIPSState *env, target_ulong fd, target_ulong vaddr,
     int num_of_bytes;
     void *dst = lock_user(VERIFY_READ, vaddr, len, 1);
     if (!dst) {
-        errno = EFAULT;
-        return -1;
+        return 0;
     }
 
     if (offset) {
@@ -177,8 +202,7 @@ static int read_from_file(CPUMIPSState *env, target_ulong fd,
     int num_of_bytes;
     void *dst = lock_user(VERIFY_WRITE, vaddr, len, 0);
     if (!dst) {
-        errno = EFAULT;
-        return -1;
+        return 0;
     }
 
     if (offset) {
@@ -198,13 +222,13 @@ static int read_from_file(CPUMIPSState *env, target_ulong fd,
 static int copy_argn_to_target(CPUMIPSState *env, int arg_num,
                                target_ulong vaddr)
 {
-    int strsize = strlen(semihosting_get_arg(arg_num)) + 1;
+    int strsize = strlen(semihosting_argv[arg_num]) + 1;
     char *dst = lock_user(VERIFY_WRITE, vaddr, strsize, 0);
     if (!dst) {
         return -1;
     }
 
-    strcpy(dst, semihosting_get_arg(arg_num));
+    strcpy(dst, semihosting_argv[arg_num]);
 
     unlock_user(dst, vaddr, strsize);
     return 0;
@@ -215,7 +239,7 @@ static int copy_argn_to_target(CPUMIPSState *env, int arg_num,
         p = lock_user_string(addr);             \
         if (!p) {                               \
             gpr[2] = -1;                        \
-            gpr[3] = EFAULT;                    \
+            gpr[3] = ENAMETOOLONG;              \
             goto uhi_done;                      \
         }                                       \
     } while (0)
@@ -228,7 +252,7 @@ static int copy_argn_to_target(CPUMIPSState *env, int arg_num,
 void helper_do_semihosting(CPUMIPSState *env)
 {
     target_ulong *gpr = env->active_tc.gpr;
-    const UHIOp op = gpr[25];
+    const UHI_Op op = gpr[25];
     char *p, *p2;
 
     switch (op) {
@@ -244,8 +268,9 @@ void helper_do_semihosting(CPUMIPSState *env)
         } else if (!strcmp("/dev/stderr", p)) {
             gpr[2] = 2;
         } else {
+            apply_root(p);
             gpr[2] = open(p, get_open_flags(gpr[5]), gpr[6]);
-            gpr[3] = errno_mips(errno);
+            gpr[3] = errno;
         }
         FREE_TARGET_STRING(p, gpr[4]);
         break;
@@ -256,24 +281,25 @@ void helper_do_semihosting(CPUMIPSState *env)
             goto uhi_done;
         }
         gpr[2] = close(gpr[4]);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         break;
     case UHI_read:
         gpr[2] = read_from_file(env, gpr[4], gpr[5], gpr[6], 0);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         break;
     case UHI_write:
         gpr[2] = write_to_file(env, gpr[4], gpr[5], gpr[6], 0);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         break;
     case UHI_lseek:
         gpr[2] = lseek(gpr[4], gpr[5], gpr[6]);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         break;
     case UHI_unlink:
         GET_TARGET_STRING(p, gpr[4]);
+        apply_root(p);
         gpr[2] = remove(p);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         FREE_TARGET_STRING(p, gpr[4]);
         break;
     case UHI_fstat:
@@ -281,26 +307,25 @@ void helper_do_semihosting(CPUMIPSState *env)
             struct stat sbuf;
             memset(&sbuf, 0, sizeof(sbuf));
             gpr[2] = fstat(gpr[4], &sbuf);
-            gpr[3] = errno_mips(errno);
+            gpr[3] = errno;
             if (gpr[2]) {
                 goto uhi_done;
             }
             gpr[2] = copy_stat_to_target(env, &sbuf, gpr[5]);
-            gpr[3] = errno_mips(errno);
         }
         break;
     case UHI_argc:
-        gpr[2] = semihosting_get_argc();
+        gpr[2] = semihosting_argc;
         break;
     case UHI_argnlen:
-        if (gpr[4] >= semihosting_get_argc()) {
+        if (gpr[4] >= semihosting_argc) {
             gpr[2] = -1;
             goto uhi_done;
         }
-        gpr[2] = strlen(semihosting_get_arg(gpr[4]));
+        gpr[2] = strlen(semihosting_argv[gpr[4]]);
         break;
     case UHI_argn:
-        if (gpr[4] >= semihosting_get_argc()) {
+        if (gpr[4] >= semihosting_argc) {
             gpr[2] = -1;
             goto uhi_done;
         }
@@ -308,13 +333,13 @@ void helper_do_semihosting(CPUMIPSState *env)
         break;
     case UHI_plog:
         GET_TARGET_STRING(p, gpr[4]);
-        p2 = strstr(p, "%d");
-        if (p2) {
-            int char_num = p2 - p;
+        char *percentd_pos = strstr(p, "%d");
+        if (percentd_pos) {
+            int char_num = percentd_pos - p;
             char *buf = g_malloc(char_num + 1);
             strncpy(buf, p, char_num);
             buf[char_num] = '\0';
-            gpr[2] = printf("%s%d%s", buf, (int)gpr[5], p2 + 2);
+            gpr[2] = printf("%s%d%s", buf, (int)gpr[5], percentd_pos + 2);
             g_free(buf);
         } else {
             gpr[2] = printf("%s", p);
@@ -333,18 +358,20 @@ void helper_do_semihosting(CPUMIPSState *env)
         break;
     case UHI_pread:
         gpr[2] = read_from_file(env, gpr[4], gpr[5], gpr[6], gpr[7]);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         break;
     case UHI_pwrite:
         gpr[2] = write_to_file(env, gpr[4], gpr[5], gpr[6], gpr[7]);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         break;
 #ifndef _WIN32
     case UHI_link:
         GET_TARGET_STRING(p, gpr[4]);
         GET_TARGET_STRING(p2, gpr[5]);
+        apply_root(p);
+        apply_root(p2);
         gpr[2] = link(p, p2);
-        gpr[3] = errno_mips(errno);
+        gpr[3] = errno;
         FREE_TARGET_STRING(p2, gpr[5]);
         FREE_TARGET_STRING(p, gpr[4]);
         break;

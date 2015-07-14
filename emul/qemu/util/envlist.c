@@ -94,30 +94,30 @@ envlist_parse(envlist_t *envlist, const char *env,
 {
 	char *tmpenv, *envvar;
 	char *envsave = NULL;
-    int ret = 0;
-    assert(callback != NULL);
+
+	assert(callback != NULL);
 
 	if ((envlist == NULL) || (env == NULL))
 		return (EINVAL);
 
+	/*
+	 * We need to make temporary copy of the env string
+	 * as strtok_r(3) modifies it while it tokenizes.
+	 */
 	if ((tmpenv = strdup(env)) == NULL)
 		return (errno);
-    envsave = tmpenv;
 
-    do {
-        envvar = strchr(tmpenv, ',');
-        if (envvar != NULL) {
-            *envvar = '\0';
-        }
-        if ((*callback)(envlist, tmpenv) != 0) {
-            ret = errno;
-            break;
+	envvar = strtok_r(tmpenv, ",", &envsave);
+	while (envvar != NULL) {
+		if ((*callback)(envlist, envvar) != 0) {
+			free(tmpenv);
+			return (errno);
 		}
-        tmpenv = envvar + 1;
-    } while (envvar != NULL);
+		envvar = strtok_r(NULL, ",", &envsave);
+	}
 
-    free(envsave);
-    return ret;
+	free(tmpenv);
+	return (0);
 }
 
 /*

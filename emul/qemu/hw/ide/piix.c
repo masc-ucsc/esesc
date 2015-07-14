@@ -143,11 +143,12 @@ static void pci_piix_init_ports(PCIIDEState *d) {
 
         bmdma_init(&d->bus[i], &d->bmdma[i], d);
         d->bmdma[i].bus = &d->bus[i];
-        ide_register_restart_cb(&d->bus[i]);
+        qemu_add_vm_change_state_handler(d->bus[i].dma->ops->restart_cb,
+                                         &d->bmdma[i].dma);
     }
 }
 
-static void pci_piix_ide_realize(PCIDevice *dev, Error **errp)
+static int pci_piix_ide_initfn(PCIDevice *dev)
 {
     PCIIDEState *d = PCI_IDE(dev);
     uint8_t *pci_conf = dev->config;
@@ -162,6 +163,8 @@ static void pci_piix_ide_realize(PCIDevice *dev, Error **errp)
     vmstate_register(DEVICE(dev), 0, &vmstate_ide_pci, d);
 
     pci_piix_init_ports(d);
+
+    return 0;
 }
 
 int pci_piix3_xen_ide_unplug(DeviceState *dev)
@@ -235,7 +238,7 @@ static void piix3_ide_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = pci_piix_ide_realize;
+    k->init = pci_piix_ide_initfn;
     k->exit = pci_piix_ide_exitfn;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
@@ -255,7 +258,7 @@ static void piix3_ide_xen_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = pci_piix_ide_realize;
+    k->init = pci_piix_ide_initfn;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
     k->class_id = PCI_CLASS_STORAGE_IDE;
@@ -273,7 +276,7 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = pci_piix_ide_realize;
+    k->init = pci_piix_ide_initfn;
     k->exit = pci_piix_ide_exitfn;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371AB;

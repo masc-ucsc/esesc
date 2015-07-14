@@ -133,8 +133,9 @@ static void n800_mmc_cs_cb(void *opaque, int line, int level)
 
 static void n8x0_gpio_setup(struct n800_s *s)
 {
-    qdev_connect_gpio_out(s->mpu->gpio, N8X0_MMC_CS_GPIO,
-                          qemu_allocate_irq(n800_mmc_cs_cb, s->mpu->mmc, 0));
+    qemu_irq *mmc_cs = qemu_allocate_irqs(n800_mmc_cs_cb, s->mpu->mmc, 1);
+    qdev_connect_gpio_out(s->mpu->gpio, N8X0_MMC_CS_GPIO, mmc_cs[0]);
+
     qemu_irq_lower(qdev_get_gpio_in(s->mpu->gpio, N800_BAT_COVER_GPIO));
 }
 
@@ -578,10 +579,7 @@ static uint32_t mipid_txrx(void *opaque, uint32_t cmd, int len)
 
     case 0x26:	/* GAMSET */
         if (!s->pm) {
-            s->gamma = ctz32(s->param[0] & 0xf);
-            if (s->gamma == 32) {
-                s->gamma = -1; /* XXX: should this be 0? */
-            }
+            s->gamma = ffs(s->param[0] & 0xf) - 1;
         } else if (s->pm < 0) {
             s->pm = 1;
         }
@@ -1346,7 +1344,7 @@ static void n8x0_init(MachineState *machine,
     n8x0_dss_setup(s);
     n8x0_cbus_setup(s);
     n8x0_uart_setup(s);
-    if (usb_enabled()) {
+    if (usb_enabled(false)) {
         n8x0_usb_setup(s);
     }
 
@@ -1405,12 +1403,12 @@ static struct arm_boot_info n810_binfo = {
 
 static void n800_init(MachineState *machine)
 {
-    n8x0_init(machine, &n800_binfo, 800);
+    return n8x0_init(machine, &n800_binfo, 800);
 }
 
 static void n810_init(MachineState *machine)
 {
-    n8x0_init(machine, &n810_binfo, 810);
+    return n8x0_init(machine, &n810_binfo, 810);
 }
 
 static QEMUMachine n800_machine = {

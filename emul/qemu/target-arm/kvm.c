@@ -21,15 +21,11 @@
 #include "sysemu/kvm.h"
 #include "kvm_arm.h"
 #include "cpu.h"
-#include "internals.h"
 #include "hw/arm/arm.h"
-#include "exec/memattrs.h"
 
 const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
     KVM_CAP_LAST_INFO
 };
-
-static bool cap_has_mp_state;
 
 int kvm_arm_vcpu_init(CPUState *cs)
 {
@@ -153,14 +149,12 @@ static const TypeInfo host_arm_cpu_type_info = {
     .class_size = sizeof(ARMHostCPUClass),
 };
 
-int kvm_arch_init(MachineState *ms, KVMState *s)
+int kvm_arch_init(KVMState *s)
 {
     /* For ARM interrupt delivery is always asynchronous,
      * whether we are using an in-kernel VGIC or not.
      */
     kvm_async_interrupts_allowed = true;
-
-    cap_has_mp_state = kvm_check_extension(s, KVM_CAP_MP_STATE);
 
     type_register_static(&host_arm_cpu_type_info);
 
@@ -285,94 +279,6 @@ void kvm_arm_register_device(MemoryRegion *mr, uint64_t devid, uint64_t group,
     memory_region_ref(kd->mr);
 }
 
-static int compare_u64(const void *a, const void *b)
-{
-    if (*(uint64_t *)a > *(uint64_t *)b) {
-        return 1;
-    }
-    if (*(uint64_t *)a < *(uint64_t *)b) {
-        return -1;
-    }
-    return 0;
-}
-
-/* Initialize the CPUState's cpreg list according to the kernel's
- * definition of what CPU registers it knows about (and throw away
- * the previous TCG-created cpreg list).
- */
-int kvm_arm_init_cpreg_list(ARMCPU *cpu)
-{
-    struct kvm_reg_list rl;
-    struct kvm_reg_list *rlp;
-    int i, ret, arraylen;
-    CPUState *cs = CPU(cpu);
-
-    rl.n = 0;
-    ret = kvm_vcpu_ioctl(cs, KVM_GET_REG_LIST, &rl);
-    if (ret != -E2BIG) {
-        return ret;
-    }
-    rlp = g_malloc(sizeof(struct kvm_reg_list) + rl.n * sizeof(uint64_t));
-    rlp->n = rl.n;
-    ret = kvm_vcpu_ioctl(cs, KVM_GET_REG_LIST, rlp);
-    if (ret) {
-        goto out;
-    }
-    /* Sort the list we get back from the kernel, since cpreg_tuples
-     * must be in strictly ascending order.
-     */
-    qsort(&rlp->reg, rlp->n, sizeof(rlp->reg[0]), compare_u64);
-
-    for (i = 0, arraylen = 0; i < rlp->n; i++) {
-        if (!kvm_arm_reg_syncs_via_cpreg_list(rlp->reg[i])) {
-            continue;
-        }
-        switch (rlp->reg[i] & KVM_REG_SIZE_MASK) {
-        case KVM_REG_SIZE_U32:
-        case KVM_REG_SIZE_U64:
-            break;
-        default:
-            fprintf(stderr, "Can't handle size of register in kernel list\n");
-            ret = -EINVAL;
-            goto out;
-        }
-
-        arraylen++;
-    }
-
-    cpu->cpreg_indexes = g_renew(uint64_t, cpu->cpreg_indexes, arraylen);
-    cpu->cpreg_values = g_renew(uint64_t, cpu->cpreg_values, arraylen);
-    cpu->cpreg_vmstate_indexes = g_renew(uint64_t, cpu->cpreg_vmstate_indexes,
-                                         arraylen);
-    cpu->cpreg_vmstate_values = g_renew(uint64_t, cpu->cpreg_vmstate_values,
-                                        arraylen);
-    cpu->cpreg_array_len = arraylen;
-    cpu->cpreg_vmstate_array_len = arraylen;
-
-    for (i = 0, arraylen = 0; i < rlp->n; i++) {
-        uint64_t regidx = rlp->reg[i];
-        if (!kvm_arm_reg_syncs_via_cpreg_list(regidx)) {
-            continue;
-        }
-        cpu->cpreg_indexes[arraylen] = regidx;
-        arraylen++;
-    }
-    assert(cpu->cpreg_array_len == arraylen);
-
-    if (!write_kvmstate_to_list(cpu)) {
-        /* Shouldn't happen unless kernel is inconsistent about
-         * what registers exist.
-         */
-        fprintf(stderr, "Initial read of kernel register state failed\n");
-        ret = -EINVAL;
-        goto out;
-    }
-
-out:
-    g_free(rlp);
-    return ret;
-}
-
 bool write_kvmstate_to_list(ARMCPU *cpu)
 {
     CPUState *cs = CPU(cpu);
@@ -445,71 +351,12 @@ bool write_list_to_kvmstate(ARMCPU *cpu)
     return ok;
 }
 
-void kvm_arm_reset_vcpu(ARMCPU *cpu)
-{
-    int ret;
-
-    /* Re-init VCPU so that all registers are set to
-     * their respective reset values.
-     */
-    ret = kvm_arm_vcpu_init(CPU(cpu));
-    if (ret < 0) {
-        fprintf(stderr, "kvm_arm_vcpu_init failed: %s\n", strerror(-ret));
-        abort();
-    }
-    if (!write_kvmstate_to_list(cpu)) {
-        fprintf(stderr, "write_kvmstate_to_list failed\n");
-        abort();
-    }
-}
-
-/*
- * Update KVM's MP_STATE based on what QEMU thinks it is
- */
-int kvm_arm_sync_mpstate_to_kvm(ARMCPU *cpu)
-{
-    if (cap_has_mp_state) {
-        struct kvm_mp_state mp_state = {
-            .mp_state =
-            cpu->powered_off ? KVM_MP_STATE_STOPPED : KVM_MP_STATE_RUNNABLE
-        };
-        int ret = kvm_vcpu_ioctl(CPU(cpu), KVM_SET_MP_STATE, &mp_state);
-        if (ret) {
-            fprintf(stderr, "%s: failed to set MP_STATE %d/%s\n",
-                    __func__, ret, strerror(-ret));
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-/*
- * Sync the KVM MP_STATE into QEMU
- */
-int kvm_arm_sync_mpstate_to_qemu(ARMCPU *cpu)
-{
-    if (cap_has_mp_state) {
-        struct kvm_mp_state mp_state;
-        int ret = kvm_vcpu_ioctl(CPU(cpu), KVM_GET_MP_STATE, &mp_state);
-        if (ret) {
-            fprintf(stderr, "%s: failed to get MP_STATE %d/%s\n",
-                    __func__, ret, strerror(-ret));
-            abort();
-        }
-        cpu->powered_off = (mp_state.mp_state == KVM_MP_STATE_STOPPED);
-    }
-
-    return 0;
-}
-
 void kvm_arch_pre_run(CPUState *cs, struct kvm_run *run)
 {
 }
 
-MemTxAttrs kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
+void kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
 {
-    return MEMTXATTRS_UNSPECIFIED;
 }
 
 int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
@@ -593,15 +440,4 @@ int kvm_arch_irqchip_create(KVMState *s)
     }
 
     return 0;
-}
-
-int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
-                             uint64_t address, uint32_t data)
-{
-    return 0;
-}
-
-int kvm_arch_msi_data_to_gsi(uint32_t data)
-{
-    return (data - 32) & 0xffff;
 }

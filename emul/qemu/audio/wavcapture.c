@@ -1,6 +1,5 @@
 #include "hw/hw.h"
 #include "monitor/monitor.h"
-#include "qemu/error-report.h"
 #include "audio.h"
 
 typedef struct {

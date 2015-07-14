@@ -67,7 +67,7 @@ void aio_set_fd_handler(AioContext *ctx,
 
         if (node == NULL) {
             /* Alloc and insert if it's not already there */
-            node = g_new0(AioHandler, 1);
+            node = g_malloc0(sizeof(AioHandler));
             node->pfd.fd = fd;
             QLIST_INSERT_HEAD(&ctx->aio_handlers, node, node);
         }
@@ -129,7 +129,7 @@ void aio_set_event_notifier(AioContext *ctx,
     } else {
         if (node == NULL) {
             /* Alloc and insert if it's not already there */
-            node = g_new0(AioHandler, 1);
+            node = g_malloc0(sizeof(AioHandler));
             node->e = e;
             node->pfd.fd = (uintptr_t)event_notifier_get_handle(e);
             node->pfd.events = G_IO_IN;
@@ -283,7 +283,6 @@ bool aio_poll(AioContext *ctx, bool blocking)
     int count;
     int timeout;
 
-    aio_context_acquire(ctx);
     have_select_revents = aio_prepare(ctx);
     if (have_select_revents) {
         blocking = false;
@@ -324,13 +323,7 @@ bool aio_poll(AioContext *ctx, bool blocking)
 
         timeout = blocking
             ? qemu_timeout_ns_to_ms(aio_compute_timeout(ctx)) : 0;
-        if (timeout) {
-            aio_context_release(ctx);
-        }
         ret = WaitForMultipleObjects(count, events, FALSE, timeout);
-        if (timeout) {
-            aio_context_acquire(ctx);
-        }
         aio_set_dispatching(ctx, true);
 
         if (first && aio_bh_poll(ctx)) {
@@ -356,6 +349,5 @@ bool aio_poll(AioContext *ctx, bool blocking)
     progress |= timerlistgroup_run_timers(&ctx->tlg);
 
     aio_set_dispatching(ctx, was_dispatching);
-    aio_context_release(ctx);
     return progress;
 }

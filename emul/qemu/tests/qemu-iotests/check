@@ -238,7 +238,6 @@ QEMU_NBD      -- $QEMU_NBD
 IMGFMT        -- $FULL_IMGFMT_DETAILS
 IMGPROTO      -- $FULL_IMGPROTO_DETAILS
 PLATFORM      -- $FULL_HOST_DETAILS
-TEST_DIR      -- $TEST_DIR
 SOCKET_SCM_HELPER -- $SOCKET_SCM_HELPER
 
 EOF
@@ -296,15 +295,9 @@ do
             run_command="./$seq"
         fi
         export OUTPUT_DIR=$PWD
-        if $debug; then
-            (cd "$source_iotests";
-            MALLOC_PERTURB_=${MALLOC_PERTURB_:-$(($RANDOM % 255 + 1))} \
-                    $run_command -d 2>&1 | tee $tmp.out)
-        else
-            (cd "$source_iotests";
-            MALLOC_PERTURB_=${MALLOC_PERTURB_:-$(($RANDOM % 255 + 1))} \
-                    $run_command >$tmp.out 2>&1)
-        fi
+        (cd "$source_iotests";
+        MALLOC_PERTURB_=${MALLOC_PERTURB_:-$(($RANDOM % 255 + 1))} \
+                $run_command >$tmp.out 2>&1)
         sts=$?
         $timestamp && _timestamp
         stop=`_wallclock`

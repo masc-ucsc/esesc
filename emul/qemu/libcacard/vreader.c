@@ -10,9 +10,7 @@
 #endif
 #define G_LOG_DOMAIN "libcacard"
 
-#include "glib-compat.h"
-
-#include <string.h>
+#include "qemu-common.h"
 
 #include "vcard.h"
 #include "vcard_emul.h"

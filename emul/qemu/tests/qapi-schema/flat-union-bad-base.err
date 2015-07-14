@@ -1,1 +1,0 @@
-tests/qapi-schema/flat-union-bad-base.json:9: Flat union 'TestUnion' must have a string base field

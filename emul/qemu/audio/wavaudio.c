@@ -36,10 +36,15 @@ typedef struct WAVVoiceOut {
     int total_samples;
 } WAVVoiceOut;
 
-typedef struct {
+static struct {
     struct audsettings settings;
     const char *wav_path;
-} WAVConf;
+} conf = {
+    .settings.freq      = 44100,
+    .settings.nchannels = 2,
+    .settings.fmt       = AUD_FMT_S16,
+    .wav_path           = "qemu.wav"
+};
 
 static int wav_run_out (HWVoiceOut *hw, int live)
 {
@@ -100,8 +105,7 @@ static void le_store (uint8_t *buf, uint32_t val, int len)
     }
 }
 
-static int wav_init_out(HWVoiceOut *hw, struct audsettings *as,
-                        void *drv_opaque)
+static int wav_init_out (HWVoiceOut *hw, struct audsettings *as)
 {
     WAVVoiceOut *wav = (WAVVoiceOut *) hw;
     int bits16 = 0, stereo = 0;
@@ -111,8 +115,9 @@ static int wav_init_out(HWVoiceOut *hw, struct audsettings *as,
         0x02, 0x00, 0x44, 0xac, 0x00, 0x00, 0x10, 0xb1, 0x02, 0x00, 0x04,
         0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00
     };
-    WAVConf *conf = drv_opaque;
-    struct audsettings wav_as = conf->settings;
+    struct audsettings wav_as = conf.settings;
+
+    (void) as;
 
     stereo = wav_as.nchannels == 2;
     switch (wav_as.fmt) {
@@ -150,10 +155,10 @@ static int wav_init_out(HWVoiceOut *hw, struct audsettings *as,
     le_store (hdr + 28, hw->info.freq << (bits16 + stereo), 4);
     le_store (hdr + 32, 1 << (bits16 + stereo), 2);
 
-    wav->f = fopen (conf->wav_path, "wb");
+    wav->f = fopen (conf.wav_path, "wb");
     if (!wav->f) {
         dolog ("Failed to open wave file `%s'\nReason: %s\n",
-               conf->wav_path, strerror (errno));
+               conf.wav_path, strerror (errno));
         g_free (wav->pcm_buf);
         wav->pcm_buf = NULL;
         return -1;
@@ -221,49 +226,40 @@ static int wav_ctl_out (HWVoiceOut *hw, int cmd, ...)
     return 0;
 }
 
-static WAVConf glob_conf = {
-    .settings.freq      = 44100,
-    .settings.nchannels = 2,
-    .settings.fmt       = AUD_FMT_S16,
-    .wav_path           = "qemu.wav"
-};
-
 static void *wav_audio_init (void)
 {
-    WAVConf *conf = g_malloc(sizeof(WAVConf));
-    *conf = glob_conf;
-    return conf;
+    return &conf;
 }
 
 static void wav_audio_fini (void *opaque)
 {
+    (void) opaque;
     ldebug ("wav_fini");
-    g_free(opaque);
 }
 
 static struct audio_option wav_options[] = {
     {
         .name  = "FREQUENCY",
         .tag   = AUD_OPT_INT,
-        .valp  = &glob_conf.settings.freq,
+        .valp  = &conf.settings.freq,
         .descr = "Frequency"
     },
     {
         .name  = "FORMAT",
         .tag   = AUD_OPT_FMT,
-        .valp  = &glob_conf.settings.fmt,
+        .valp  = &conf.settings.fmt,
         .descr = "Format"
     },
     {
         .name  = "DAC_FIXED_CHANNELS",
         .tag   = AUD_OPT_INT,
-        .valp  = &glob_conf.settings.nchannels,
+        .valp  = &conf.settings.nchannels,
         .descr = "Number of channels (1 - mono, 2 - stereo)"
     },
     {
         .name  = "PATH",
         .tag   = AUD_OPT_STR,
-        .valp  = &glob_conf.wav_path,
+        .valp  = &conf.wav_path,
         .descr = "Path to wave file"
     },
     { /* End of list */ }

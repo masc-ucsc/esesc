@@ -226,8 +226,7 @@ static void omap_mcspi_write(void *opaque, hwaddr addr,
     int ch = 0;
 
     if (size != 4) {
-        omap_badwidth_write32(opaque, addr, value);
-        return;
+        return omap_badwidth_write32(opaque, addr, value);
     }
 
     switch (addr) {

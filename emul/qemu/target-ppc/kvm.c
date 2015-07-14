@@ -39,7 +39,6 @@
 #include "sysemu/watchdog.h"
 #include "trace.h"
 #include "exec/gdbstub.h"
-#include "exec/memattrs.h"
 
 //#define DEBUG_KVM
 
@@ -96,7 +95,7 @@ static void kvm_kick_cpu(void *opaque)
 
 static int kvm_ppc_register_host_cpu_type(void);
 
-int kvm_arch_init(MachineState *ms, KVMState *s)
+int kvm_arch_init(KVMState *s)
 {
     cap_interrupt_unset = kvm_check_extension(s, KVM_CAP_PPC_UNSET_IRQ);
     cap_interrupt_level = kvm_check_extension(s, KVM_CAP_PPC_IRQ_LEVEL);
@@ -1271,9 +1270,8 @@ void kvm_arch_pre_run(CPUState *cs, struct kvm_run *run)
      * anyways, so we will get a chance to deliver the rest. */
 }
 
-MemTxAttrs kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
+void kvm_arch_post_run(CPUState *cpu, struct kvm_run *run)
 {
-    return MEMTXATTRS_UNSPECIFIED;
 }
 
 int kvm_arch_process_async_events(CPUState *cs)
@@ -1884,23 +1882,6 @@ int kvmppc_get_hypercall(CPUPPCState *env, uint8_t *buf, int buf_len)
     return 0;
 }
 
-static inline int kvmppc_enable_hcall(KVMState *s, target_ulong hcall)
-{
-    return kvm_vm_enable_cap(s, KVM_CAP_PPC_ENABLE_HCALL, 0, hcall, 1);
-}
-
-void kvmppc_enable_logical_ci_hcalls(void)
-{
-    /*
-     * FIXME: it would be nice if we could detect the cases where
-     * we're using a device which requires the in kernel
-     * implementation of these hcalls, but the kernel lacks them and
-     * produce a warning.
-     */
-    kvmppc_enable_hcall(kvm_state, H_LOGICAL_CI_LOAD);
-    kvmppc_enable_hcall(kvm_state, H_LOGICAL_CI_STORE);
-}
-
 void kvmppc_set_papr(PowerPCCPU *cpu)
 {
     CPUState *cs = CPU(cpu);
@@ -2265,23 +2246,8 @@ int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize, int64_t max_ns)
                     strerror(errno));
             return rc;
         } else if (rc) {
-            uint8_t *buffer = buf;
-            ssize_t n = rc;
-            while (n) {
-                struct kvm_get_htab_header *head =
-                    (struct kvm_get_htab_header *) buffer;
-                size_t chunksize = sizeof(*head) +
-                     HASH_PTE_SIZE_64 * head->n_valid;
-
-                qemu_put_be32(f, head->index);
-                qemu_put_be16(f, head->n_valid);
-                qemu_put_be16(f, head->n_invalid);
-                qemu_put_buffer(f, (void *)(head + 1),
-                                HASH_PTE_SIZE_64 * head->n_valid);
-
-                buffer += chunksize;
-                n -= chunksize;
-            }
+            /* Kernel already retuns data in BE format for the file */
+            qemu_put_buffer(f, buf, rc);
         }
     } while ((rc != 0)
              && ((max_ns < 0)
@@ -2298,6 +2264,7 @@ int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
     ssize_t rc;
 
     buf = alloca(chunksize);
+    /* This is KVM on ppc, so this is all big-endian */
     buf->index = index;
     buf->n_valid = n_valid;
     buf->n_invalid = n_invalid;
@@ -2420,15 +2387,4 @@ out_close:
 
 error_out:
     return;
-}
-
-int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
-                             uint64_t address, uint32_t data)
-{
-    return 0;
-}
-
-int kvm_arch_msi_data_to_gsi(uint32_t data)
-{
-    return data & 0xffff;
 }

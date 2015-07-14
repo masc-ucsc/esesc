@@ -114,9 +114,10 @@ static int pci_grackle_init_device(SysBusDevice *dev)
     return 0;
 }
 
-static void grackle_pci_host_realize(PCIDevice *d, Error **errp)
+static int grackle_pci_host_init(PCIDevice *d)
 {
     d->config[0x09] = 0x01;
+    return 0;
 }
 
 static void grackle_pci_class_init(ObjectClass *klass, void *data)
@@ -124,7 +125,7 @@ static void grackle_pci_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    k->realize   = grackle_pci_host_realize;
+    k->init      = grackle_pci_host_init;
     k->vendor_id = PCI_VENDOR_ID_MOTOROLA;
     k->device_id = PCI_DEVICE_ID_MOTOROLA_MPC106;
     k->revision  = 0x00;

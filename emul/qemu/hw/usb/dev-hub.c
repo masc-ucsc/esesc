@@ -41,9 +41,6 @@ typedef struct USBHubState {
     USBHubPort ports[NUM_PORTS];
 } USBHubState;
 
-#define TYPE_USB_HUB "usb-hub"
-#define USB_HUB(obj) OBJECT_CHECK(USBHubState, (obj), TYPE_USB_HUB)
-
 #define ClearHubFeature		(0x2000 | USB_REQ_CLEAR_FEATURE)
 #define ClearPortFeature	(0x2300 | USB_REQ_CLEAR_FEATURE)
 #define GetHubDescriptor	(0xa000 | USB_REQ_GET_DESCRIPTOR)
@@ -230,7 +227,7 @@ static void usb_hub_complete(USBPort *port, USBPacket *packet)
 
 static USBDevice *usb_hub_find_device(USBDevice *dev, uint8_t addr)
 {
-    USBHubState *s = USB_HUB(dev);
+    USBHubState *s = DO_UPCAST(USBHubState, dev, dev);
     USBHubPort *port;
     USBDevice *downstream;
     int i;
@@ -250,7 +247,7 @@ static USBDevice *usb_hub_find_device(USBDevice *dev, uint8_t addr)
 
 static void usb_hub_handle_reset(USBDevice *dev)
 {
-    USBHubState *s = USB_HUB(dev);
+    USBHubState *s = DO_UPCAST(USBHubState, dev, dev);
     USBHubPort *port;
     int i;
 
@@ -516,7 +513,7 @@ static USBPortOps usb_hub_port_ops = {
 
 static void usb_hub_realize(USBDevice *dev, Error **errp)
 {
-    USBHubState *s = USB_HUB(dev);
+    USBHubState *s = DO_UPCAST(USBHubState, dev, dev);
     USBHubPort *port;
     int i;
 
@@ -580,7 +577,7 @@ static void usb_hub_class_initfn(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo hub_info = {
-    .name          = TYPE_USB_HUB,
+    .name          = "usb-hub",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBHubState),
     .class_init    = usb_hub_class_initfn,

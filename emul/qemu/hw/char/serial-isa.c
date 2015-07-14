@@ -119,27 +119,20 @@ static void serial_register_types(void)
 
 type_init(serial_register_types)
 
-static void serial_isa_init(ISABus *bus, int index, CharDriverState *chr)
+bool serial_isa_init(ISABus *bus, int index, CharDriverState *chr)
 {
     DeviceState *dev;
     ISADevice *isadev;
 
-    isadev = isa_create(bus, TYPE_ISA_SERIAL);
+    isadev = isa_try_create(bus, TYPE_ISA_SERIAL);
+    if (!isadev) {
+        return false;
+    }
     dev = DEVICE(isadev);
     qdev_prop_set_uint32(dev, "index", index);
     qdev_prop_set_chr(dev, "chardev", chr);
-    qdev_init_nofail(dev);
-}
-
-void serial_hds_isa_init(ISABus *bus, int n)
-{
-    int i;
-
-    assert(n <= MAX_SERIAL_PORTS);
-
-    for (i = 0; i < n; ++i) {
-        if (serial_hds[i]) {
-            serial_isa_init(bus, i, serial_hds[i]);
-        }
+    if (qdev_init(dev) < 0) {
+        return false;
     }
+    return true;
 }

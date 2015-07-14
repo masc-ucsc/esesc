@@ -71,7 +71,7 @@
 #
 # Since 0.14.0
 ##
-{ 'struct': 'NameInfo', 'data': {'*name': 'str'} }
+{ 'type': 'NameInfo', 'data': {'*name': 'str'} }
 
 ##
 # @query-name:
@@ -95,7 +95,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'KvmInfo', 'data': {'enabled': 'bool', 'present': 'bool'} }
+{ 'type': 'KvmInfo', 'data': {'enabled': 'bool', 'present': 'bool'} }
 
 ##
 # @query-kvm:
@@ -170,7 +170,7 @@
 #
 # Notes: @singlestep is enabled through the GDB stub
 ##
-{ 'struct': 'StatusInfo',
+{ 'type': 'StatusInfo',
   'data': {'running': 'bool', 'singlestep': 'bool', 'status': 'RunState'} }
 
 ##
@@ -195,7 +195,7 @@
 #
 # Notes: If no UUID was specified for the guest, a null UUID is returned.
 ##
-{ 'struct': 'UuidInfo', 'data': {'UUID': 'str'} }
+{ 'type': 'UuidInfo', 'data': {'UUID': 'str'} }
 
 ##
 # @query-uuid:
@@ -226,7 +226,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'ChardevInfo', 'data': {'label': 'str',
+{ 'type': 'ChardevInfo', 'data': {'label': 'str',
                                   'filename': 'str',
                                   'frontend-open': 'bool'} }
 
@@ -250,7 +250,7 @@
 #
 # Since: 2.0
 ##
-{ 'struct': 'ChardevBackendInfo', 'data': {'name': 'str'} }
+{ 'type': 'ChardevBackendInfo', 'data': {'name': 'str'} }
 
 ##
 # @query-chardev-backends:
@@ -339,7 +339,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'EventInfo', 'data': {'name': 'str'} }
+{ 'type': 'EventInfo', 'data': {'name': 'str'} }
 
 ##
 # @query-events:
@@ -380,7 +380,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'MigrationStats',
+{ 'type': 'MigrationStats',
   'data': {'transferred': 'int', 'remaining': 'int', 'total': 'int' ,
            'duplicate': 'int', 'skipped': 'int', 'normal': 'int',
            'normal-bytes': 'int', 'dirty-pages-rate' : 'int',
@@ -405,48 +405,24 @@
 #
 # Since: 1.2
 ##
-{ 'struct': 'XBZRLECacheStats',
+{ 'type': 'XBZRLECacheStats',
   'data': {'cache-size': 'int', 'bytes': 'int', 'pages': 'int',
            'cache-miss': 'int', 'cache-miss-rate': 'number',
            'overflow': 'int' } }
-
-# @MigrationStatus:
-#
-# An enumeration of migration status.
-#
-# @none: no migration has ever happened.
-#
-# @setup: migration process has been initiated.
-#
-# @cancelling: in the process of cancelling migration.
-#
-# @cancelled: cancelling migration is finished.
-#
-# @active: in the process of doing migration.
-#
-# @completed: migration is finished.
-#
-# @failed: some error occurred during migration process.
-#
-# Since: 2.3
-#
-##
-{ 'enum': 'MigrationStatus',
-  'data': [ 'none', 'setup', 'cancelling', 'cancelled',
-            'active', 'completed', 'failed' ] }
 
 ##
 # @MigrationInfo
 #
 # Information about current migration process.
 #
-# @status: #optional @MigrationStatus describing the current migration status.
-#          If this field is not returned, no migration process
+# @status: #optional string describing the current migration status.
+#          As of 0.14.0 this can be 'setup', 'active', 'completed', 'failed' or
+#          'cancelled'. If this field is not returned, no migration process
 #          has been initiated
 #
 # @ram: #optional @MigrationStats containing detailed migration
 #       status, only returned if status is 'active' or
-#       'completed'(since 1.2)
+#       'completed'. 'comppleted' (since 1.2)
 #
 # @disk: #optional @MigrationStats containing detailed disk migration
 #        status, only returned if status is 'active' and it is a block
@@ -476,8 +452,8 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'MigrationInfo',
-  'data': {'*status': 'MigrationStatus', '*ram': 'MigrationStats',
+{ 'type': 'MigrationInfo',
+  'data': {'*status': 'str', '*ram': 'MigrationStats',
            '*disk': 'MigrationStats',
            '*xbzrle-cache': 'XBZRLECacheStats',
            '*total-time': 'int',
@@ -515,22 +491,13 @@
 #          to enable the capability on the source VM. The feature is disabled by
 #          default. (since 1.6)
 #
-# @compress: Use multiple compression threads to accelerate live migration.
-#          This feature can help to reduce the migration traffic, by sending
-#          compressed pages. Please note that if compress and xbzrle are both
-#          on, compress only takes effect in the ram bulk stage, after that,
-#          it will be disabled and only xbzrle takes effect, this can help to
-#          minimize migration traffic. The feature is disabled by default.
-#          (since 2.4 )
-#
 # @auto-converge: If enabled, QEMU will automatically throttle down the guest
 #          to speed up convergence of RAM migration. (since 1.6)
 #
 # Since: 1.2
 ##
 { 'enum': 'MigrationCapability',
-  'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks',
-           'compress'] }
+  'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks'] }
 
 ##
 # @MigrationCapabilityStatus
@@ -543,7 +510,7 @@
 #
 # Since: 1.2
 ##
-{ 'struct': 'MigrationCapabilityStatus',
+{ 'type': 'MigrationCapabilityStatus',
   'data': { 'capability' : 'MigrationCapability', 'state' : 'bool' } }
 
 ##
@@ -569,93 +536,6 @@
 ##
 { 'command': 'query-migrate-capabilities', 'returns':   ['MigrationCapabilityStatus']}
 
-# @MigrationParameter
-#
-# Migration parameters enumeration
-#
-# @compress-level: Set the compression level to be used in live migration,
-#          the compression level is an integer between 0 and 9, where 0 means
-#          no compression, 1 means the best compression speed, and 9 means best
-#          compression ratio which will consume more CPU.
-#
-# @compress-threads: Set compression thread count to be used in live migration,
-#          the compression thread count is an integer between 1 and 255.
-#
-# @decompress-threads: Set decompression thread count to be used in live
-#          migration, the decompression thread count is an integer between 1
-#          and 255. Usually, decompression is at least 4 times as fast as
-#          compression, so set the decompress-threads to the number about 1/4
-#          of compress-threads is adequate.
-#
-# Since: 2.4
-##
-{ 'enum': 'MigrationParameter',
-  'data': ['compress-level', 'compress-threads', 'decompress-threads'] }
-
-#
-# @migrate-set-parameters
-#
-# Set the following migration parameters
-#
-# @compress-level: compression level
-#
-# @compress-threads: compression thread count
-#
-# @decompress-threads: decompression thread count
-#
-# Since: 2.4
-##
-{ 'command': 'migrate-set-parameters',
-  'data': { '*compress-level': 'int',
-            '*compress-threads': 'int',
-            '*decompress-threads': 'int'} }
-
-#
-# @MigrationParameters
-#
-# @compress-level: compression level
-#
-# @compress-threads: compression thread count
-#
-# @decompress-threads: decompression thread count
-#
-# Since: 2.4
-##
-{ 'struct': 'MigrationParameters',
-  'data': { 'compress-level': 'int',
-            'compress-threads': 'int',
-            'decompress-threads': 'int'} }
-##
-# @query-migrate-parameters
-#
-# Returns information about the current migration parameters
-#
-# Returns: @MigrationParameters
-#
-# Since: 2.4
-##
-{ 'command': 'query-migrate-parameters',
-  'returns': 'MigrationParameters' }
-
-##
-# @client_migrate_info
-#
-# Set migration information for remote display.  This makes the server
-# ask the client to automatically reconnect using the new parameters
-# once migration finished successfully.  Only implemented for SPICE.
-#
-# @protocol:     must be "spice"
-# @hostname:     migration target hostname
-# @port:         #optional spice tcp port for plaintext channels
-# @tls-port:     #optional spice tcp port for tls-secured channels
-# @cert-subject: #optional server certificate subject
-#
-# Since: 0.14.0
-##
-{ 'command': 'client_migrate_info',
-  'data': { 'protocol': 'str', 'hostname': 'str', '*port': 'int',
-            '*tls-port': 'int', '*cert-subject': 'str' } }
-
 ##
 # @MouseInfo:
 #
@@ -671,7 +551,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'MouseInfo',
+{ 'type': 'MouseInfo',
   'data': {'name': 'str', 'index': 'int', 'current': 'bool',
            'absolute': 'bool'} }
 
@@ -698,8 +578,6 @@
 # @halted: true if the virtual CPU is in the halt state.  Halt usually refers
 #          to a processor specific low power mode.
 #
-# @qom_path: path to the CPU object in the QOM tree (since 2.4)
-#
 # @pc: #optional If the target is i386 or x86_64, this is the 64-bit instruction
 #                pointer.
 #                If the target is Sparc, this is the PC component of the
@@ -719,11 +597,9 @@
 # Notes: @halted is a transient state that changes frequently.  By the time the
 #        data is sent to the client, the guest may no longer be halted.
 ##
-{ 'struct': 'CpuInfo',
-  'data': {'CPU': 'int', 'current': 'bool', 'halted': 'bool',
-           'qom_path': 'str',
-           '*pc': 'int', '*nip': 'int', '*npc': 'int', '*PC': 'int',
-           'thread_id': 'int'} }
+{ 'type': 'CpuInfo',
+  'data': {'CPU': 'int', 'current': 'bool', 'halted': 'bool', '*pc': 'int',
+           '*nip': 'int', '*npc': 'int', '*PC': 'int', 'thread_id': 'int'} }
 
 ##
 # @query-cpus:
@@ -747,7 +623,7 @@
 #
 # Since: 2.0
 ##
-{ 'struct': 'IOThreadInfo',
+{ 'type': 'IOThreadInfo',
   'data': {'id': 'str', 'thread-id': 'int'} }
 
 ##
@@ -796,15 +672,12 @@
 #
 # @family: address family
 #
-# @websocket: true in case the socket is a websocket (since 2.3).
-#
 # Since: 2.1
 ##
-{ 'struct': 'VncBasicInfo',
+{ 'type': 'VncBasicInfo',
   'data': { 'host': 'str',
             'service': 'str',
-            'family': 'NetworkAddressFamily',
-            'websocket': 'bool' } }
+            'family': 'NetworkAddressFamily' } }
 
 ##
 # @VncServerInfo
@@ -815,7 +688,7 @@
 #
 # Since: 2.1
 ##
-{ 'struct': 'VncServerInfo',
+{ 'type': 'VncServerInfo',
   'base': 'VncBasicInfo',
   'data': { '*auth': 'str' } }
 
@@ -832,7 +705,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'VncClientInfo',
+{ 'type': 'VncClientInfo',
   'base': 'VncBasicInfo',
   'data': { '*x509_dname': 'str', '*sasl_username': 'str' } }
 
@@ -872,67 +745,10 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'VncInfo',
+{ 'type': 'VncInfo',
   'data': {'enabled': 'bool', '*host': 'str',
            '*family': 'NetworkAddressFamily',
            '*service': 'str', '*auth': 'str', '*clients': ['VncClientInfo']} }
-
-##
-# @VncPriAuth:
-#
-# vnc primary authentication method.
-#
-# Since: 2.3
-##
-{ 'enum': 'VncPrimaryAuth',
-  'data': [ 'none', 'vnc', 'ra2', 'ra2ne', 'tight', 'ultra',
-            'tls', 'vencrypt', 'sasl' ] }
-
-##
-# @VncVencryptSubAuth:
-#
-# vnc sub authentication method with vencrypt.
-#
-# Since: 2.3
-##
-{ 'enum': 'VncVencryptSubAuth',
-  'data': [ 'plain',
-            'tls-none',  'x509-none',
-            'tls-vnc',   'x509-vnc',
-            'tls-plain', 'x509-plain',
-            'tls-sasl',  'x509-sasl' ] }
-
-##
-# @VncInfo2:
-#
-# Information about a vnc server
-#
-# @id: vnc server name.
-#
-# @server: A list of @VncBasincInfo describing all listening sockets.
-#          The list can be empty (in case the vnc server is disabled).
-#          It also may have multiple entries: normal + websocket,
-#          possibly also ipv4 + ipv6 in the future.
-#
-# @clients: A list of @VncClientInfo of all currently connected clients.
-#           The list can be empty, for obvious reasons.
-#
-# @auth: The current authentication type used by the server
-#
-# @vencrypt: #optional The vencrypt sub authentication type used by the server,
-#            only specified in case auth == vencrypt.
-#
-# @display: #optional The display device the vnc server is linked to.
-#
-# Since: 2.3
-##
-{ 'struct': 'VncInfo2',
-  'data': { 'id'        : 'str',
-            'server'    : ['VncBasicInfo'],
-            'clients'   : ['VncClientInfo'],
-            'auth'      : 'VncPrimaryAuth',
-            '*vencrypt' : 'VncVencryptSubAuth',
-            '*display'  : 'str' } }
 
 ##
 # @query-vnc:
@@ -944,17 +760,6 @@
 # Since: 0.14.0
 ##
 { 'command': 'query-vnc', 'returns': 'VncInfo' }
-
-##
-# @query-vnc-servers:
-#
-# Returns a list of vnc servers.  The list can be empty.
-#
-# Returns: a list of @VncInfo2
-#
-# Since: 2.3
-##
-{ 'command': 'query-vnc-servers', 'returns': ['VncInfo2'] }
 
 ##
 # @SpiceBasicInfo
@@ -969,7 +774,7 @@
 #
 # Since: 2.1
 ##
-{ 'struct': 'SpiceBasicInfo',
+{ 'type': 'SpiceBasicInfo',
   'data': { 'host': 'str',
             'port': 'str',
             'family': 'NetworkAddressFamily' } }
@@ -983,7 +788,7 @@
 #
 # Since: 2.1
 ##
-{ 'struct': 'SpiceServerInfo',
+{ 'type': 'SpiceServerInfo',
   'base': 'SpiceBasicInfo',
   'data': { '*auth': 'str' } }
 
@@ -995,9 +800,9 @@
 # @connection-id: SPICE connection id number.  All channels with the same id
 #                 belong to the same SPICE session.
 #
-# @channel-type: SPICE channel type number.  "1" is the main control
-#                channel, filter for this one if you want to track spice
-#                sessions only
+# @connection-type: SPICE channel type number.  "1" is the main control
+#                   channel, filter for this one if you want to track spice
+#                   sessions only
 #
 # @channel-id: SPICE channel ID number.  Usually "0", might be different when
 #              multiple channels of the same type exist, such as multiple
@@ -1007,7 +812,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'SpiceChannel',
+{ 'type': 'SpiceChannel',
   'base': 'SpiceBasicInfo',
   'data': {'connection-id': 'int', 'channel-type': 'int', 'channel-id': 'int',
            'tls': 'bool'} }
@@ -1065,7 +870,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'SpiceInfo',
+{ 'type': 'SpiceInfo',
   'data': {'enabled': 'bool', 'migrated': 'bool', '*host': 'str', '*port': 'int',
            '*tls-port': 'int', '*auth': 'str', '*compiled-version': 'str',
            'mouse-mode': 'SpiceQueryMouseMode', '*channels': ['SpiceChannel']} }
@@ -1091,7 +896,7 @@
 # Since: 0.14.0
 #
 ##
-{ 'struct': 'BalloonInfo', 'data': {'actual': 'int' } }
+{ 'type': 'BalloonInfo', 'data': {'actual': 'int' } }
 
 ##
 # @query-balloon:
@@ -1118,7 +923,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'PciMemoryRange', 'data': {'base': 'int', 'limit': 'int'} }
+{ 'type': 'PciMemoryRange', 'data': {'base': 'int', 'limit': 'int'} }
 
 ##
 # @PciMemoryRegion
@@ -1136,80 +941,41 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'PciMemoryRegion',
+{ 'type': 'PciMemoryRegion',
   'data': {'bar': 'int', 'type': 'str', 'address': 'int', 'size': 'int',
            '*prefetch': 'bool', '*mem_type_64': 'bool' } }
-
-##
-# @PciBusInfo:
-#
-# Information about a bus of a PCI Bridge device
-#
-# @number: primary bus interface number.  This should be the number of the
-#          bus the device resides on.
-#
-# @secondary: secondary bus interface number.  This is the number of the
-#             main bus for the bridge
-#
-# @subordinate: This is the highest number bus that resides below the
-#               bridge.
-#
-# @io_range: The PIO range for all devices on this bridge
-#
-# @memory_range: The MMIO range for all devices on this bridge
-#
-# @prefetchable_range: The range of prefetchable MMIO for all devices on
-#                      this bridge
-#
-# Since: 2.4
-##
-{ 'struct': 'PciBusInfo',
-  'data': {'number': 'int', 'secondary': 'int', 'subordinate': 'int',
-           'io_range': 'PciMemoryRange',
-           'memory_range': 'PciMemoryRange',
-           'prefetchable_range': 'PciMemoryRange' } }
 
 ##
 # @PciBridgeInfo:
 #
 # Information about a PCI Bridge device
 #
-# @bus: information about the bus the device resides on
+# @bus.number: primary bus interface number.  This should be the number of the
+#              bus the device resides on.
+#
+# @bus.secondary: secondary bus interface number.  This is the number of the
+#                 main bus for the bridge
+#
+# @bus.subordinate: This is the highest number bus that resides below the
+#                   bridge.
+#
+# @bus.io_range: The PIO range for all devices on this bridge
+#
+# @bus.memory_range: The MMIO range for all devices on this bridge
+#
+# @bus.prefetchable_range: The range of prefetchable MMIO for all devices on
+#                          this bridge
 #
 # @devices: a list of @PciDeviceInfo for each device on this bridge
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'PciBridgeInfo',
-  'data': {'bus': 'PciBusInfo', '*devices': ['PciDeviceInfo']} }
-
-##
-# @PciDeviceClass:
-#
-# Information about the Class of a PCI device
-#
-# @desc: #optional a string description of the device's class
-#
-# @class: the class code of the device
-#
-# Since: 2.4
-##
-{ 'struct': 'PciDeviceClass',
-  'data': {'*desc': 'str', 'class': 'int'} }
-
-##
-# @PciDeviceId:
-#
-# Information about the Id of a PCI device
-#
-# @device: the PCI device id
-#
-# @vendor: the PCI vendor id
-#
-# Since: 2.4
-##
-{ 'struct': 'PciDeviceId',
-  'data': {'device': 'int', 'vendor': 'int'} }
+{ 'type': 'PciBridgeInfo',
+  'data': {'bus': { 'number': 'int', 'secondary': 'int', 'subordinate': 'int',
+                    'io_range': 'PciMemoryRange',
+                    'memory_range': 'PciMemoryRange',
+                    'prefetchable_range': 'PciMemoryRange' },
+           '*devices': ['PciDeviceInfo']} }
 
 ##
 # @PciDeviceInfo:
@@ -1222,9 +988,13 @@
 #
 # @function: the function of the slot used by the device
 #
-# @class_info: the class of the device
+# @class_info.desc: #optional a string description of the device's class
 #
-# @id: the PCI device id
+# @class_info.class: the class code of the device
+#
+# @id.device: the PCI device id
+#
+# @id.vendor: the PCI vendor id
 #
 # @irq: #optional if an IRQ is assigned to the device, the IRQ number
 #
@@ -1239,9 +1009,10 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'PciDeviceInfo',
+{ 'type': 'PciDeviceInfo',
   'data': {'bus': 'int', 'slot': 'int', 'function': 'int',
-           'class_info': 'PciDeviceClass', 'id': 'PciDeviceId',
+           'class_info': {'*desc': 'str', 'class': 'int'},
+           'id': {'device': 'int', 'vendor': 'int'},
            '*irq': 'int', 'qdev_id': 'str', '*pci_bridge': 'PciBridgeInfo',
            'regions': ['PciMemoryRegion']} }
 
@@ -1256,7 +1027,7 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'PciInfo', 'data': {'bus': 'int', 'devices': ['PciDeviceInfo']} }
+{ 'type': 'PciInfo', 'data': {'bus': 'int', 'devices': ['PciDeviceInfo']} }
 
 ##
 # @query-pci:
@@ -1475,7 +1246,7 @@
 #
 # Since: 1.6
 ###
-{ 'struct': 'Abort',
+{ 'type': 'Abort',
   'data': { } }
 
 ##
@@ -1483,19 +1254,11 @@
 #
 # A discriminated record of operations that can be performed with
 # @transaction.
-#
-# Since 1.1
-#
-# drive-backup since 1.6
-# abort since 1.6
-# blockdev-snapshot-internal-sync since 1.7
-# blockdev-backup since 2.3
 ##
 { 'union': 'TransactionAction',
   'data': {
        'blockdev-snapshot-sync': 'BlockdevSnapshot',
        'drive-backup': 'DriveBackup',
-       'blockdev-backup': 'BlockdevBackup',
        'abort': 'Abort',
        'blockdev-snapshot-internal-sync': 'BlockdevSnapshotInternal'
    } }
@@ -1640,7 +1403,7 @@
 #
 # Since: 1.2
 ##
-{ 'struct': 'ObjectPropertyInfo',
+{ 'type': 'ObjectPropertyInfo',
   'data': { 'name': 'str', 'type': 'str' } }
 
 ##
@@ -1695,8 +1458,8 @@
 ##
 { 'command': 'qom-get',
   'data': { 'path': 'str', 'property': 'str' },
-  'returns': '**',
-  'gen': false }
+  'returns': 'visitor',
+  'gen': 'no' }
 
 ##
 # @qom-set:
@@ -1713,8 +1476,8 @@
 # Since: 1.2
 ##
 { 'command': 'qom-set',
-  'data': { 'path': 'str', 'property': 'str', 'value': '**' },
-  'gen': false }
+  'data': { 'path': 'str', 'property': 'str', 'value': 'visitor' },
+  'gen': 'no' }
 
 ##
 # @set_password:
@@ -1770,7 +1533,7 @@
 #
 # Change the VNC server password.
 #
-# @password:  the new password to use with VNC authentication
+# @target:  the new password to use with VNC authentication
 #
 # Since: 1.1
 #
@@ -1825,7 +1588,7 @@
 #
 # Notes: This command is experimental and may change syntax in future releases.
 ##
-{ 'struct': 'ObjectTypeInfo',
+{ 'type': 'ObjectTypeInfo',
   'data': { 'name': 'str' } }
 
 ##
@@ -1857,7 +1620,7 @@
 #
 # Since: 1.2
 ##
-{ 'struct': 'DevicePropertyInfo',
+{ 'type': 'DevicePropertyInfo',
   'data': { 'name': 'str', 'type': 'str', '*description': 'str' } }
 
 ##
@@ -1895,24 +1658,6 @@
 ##
 { 'command': 'migrate',
   'data': {'uri': 'str', '*blk': 'bool', '*inc': 'bool', '*detach': 'bool' } }
-
-##
-# @migrate-incoming
-#
-# Start an incoming migration, the qemu must have been started
-# with -incoming defer
-#
-# @uri: The Uniform Resource Identifier identifying the source or
-#       address to listen on
-#
-# Returns: nothing on success
-#
-# Since: 2.3
-# Note: It's a bad idea to use a string for the uri, but it needs to stay
-# compatible with -incoming and the format of the uri is already exposed
-# above libvirt
-##
-{ 'command': 'migrate-incoming', 'data': {'uri': 'str' } }
 
 # @xen-save-devices-state:
 #
@@ -2037,7 +1782,7 @@
 #
 # Since: 2.0
 ##
-{ 'struct': 'DumpGuestMemoryCapability',
+{ 'type': 'DumpGuestMemoryCapability',
   'data': {
       'formats': ['DumpGuestMemoryFormat'] } }
 
@@ -2077,7 +1822,7 @@
 ##
 { 'command': 'netdev_add',
   'data': {'type': 'str', 'id': 'str', '*props': '**'},
-  'gen': false }
+  'gen': 'no' }
 
 ##
 # @netdev_del:
@@ -2110,8 +1855,8 @@
 # Since: 2.0
 ##
 { 'command': 'object-add',
-  'data': {'qom-type': 'str', 'id': 'str', '*props': '**'},
-  'gen': false }
+  'data': {'qom-type': 'str', 'id': 'str', '*props': 'dict'},
+  'gen': 'no' }
 
 ##
 # @object-del:
@@ -2134,7 +1879,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevNoneOptions',
+{ 'type': 'NetdevNoneOptions',
   'data': { } }
 
 ##
@@ -2154,7 +1899,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetLegacyNicOptions',
+{ 'type': 'NetLegacyNicOptions',
   'data': {
     '*netdev':  'str',
     '*macaddr': 'str',
@@ -2169,7 +1914,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'String',
+{ 'type': 'String',
   'data': {
     'str': 'str' } }
 
@@ -2212,7 +1957,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevUserOptions',
+{ 'type': 'NetdevUserOptions',
   'data': {
     '*hostname':  'str',
     '*restrict':  'bool',
@@ -2264,7 +2009,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevTapOptions',
+{ 'type': 'NetdevTapOptions',
   'data': {
     '*ifname':     'str',
     '*fd':         'str',
@@ -2300,7 +2045,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevSocketOptions',
+{ 'type': 'NetdevSocketOptions',
   'data': {
     '*fd':        'str',
     '*listen':    'str',
@@ -2348,7 +2093,7 @@
 #
 # Since 2.1
 ##
-{ 'struct': 'NetdevL2TPv3Options',
+{ 'type': 'NetdevL2TPv3Options',
   'data': {
     'src':          'str',
     'dst':          'str',
@@ -2380,7 +2125,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevVdeOptions',
+{ 'type': 'NetdevVdeOptions',
   'data': {
     '*sock':  'str',
     '*port':  'uint16',
@@ -2399,7 +2144,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevDumpOptions',
+{ 'type': 'NetdevDumpOptions',
   'data': {
     '*len':  'size',
     '*file': 'str' } }
@@ -2415,7 +2160,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevBridgeOptions',
+{ 'type': 'NetdevBridgeOptions',
   'data': {
     '*br':     'str',
     '*helper': 'str' } }
@@ -2429,7 +2174,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetdevHubPortOptions',
+{ 'type': 'NetdevHubPortOptions',
   'data': {
     'hubid':     'int32' } }
 
@@ -2449,7 +2194,7 @@
 #
 # Since 2.0
 ##
-{ 'struct': 'NetdevNetmapOptions',
+{ 'type': 'NetdevNetmapOptions',
   'data': {
     'ifname':     'str',
     '*devname':    'str' } }
@@ -2463,16 +2208,12 @@
 #
 # @vhostforce: #optional vhost on for non-MSIX virtio guests (default: false).
 #
-# @queues: #optional number of queues to be created for multiqueue vhost-user
-#          (default: 1) (Since 2.4)
-#
 # Since 2.1
 ##
-{ 'struct': 'NetdevVhostUserOptions',
+{ 'type': 'NetdevVhostUserOptions',
   'data': {
     'chardev':        'str',
-    '*vhostforce':    'bool',
-    '*queues':        'uint32' } }
+    '*vhostforce':    'bool' } }
 
 ##
 # @NetClientOptions
@@ -2514,7 +2255,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'NetLegacy',
+{ 'type': 'NetLegacy',
   'data': {
     '*vlan': 'int32',
     '*id':   'str',
@@ -2532,7 +2273,7 @@
 #
 # Since 1.2
 ##
-{ 'struct': 'Netdev',
+{ 'type': 'Netdev',
   'data': {
     'id':   'str',
     'opts': 'NetClientOptions' } }
@@ -2556,7 +2297,7 @@
 #
 # Since 1.3
 ##
-{ 'struct': 'InetSocketAddress',
+{ 'type': 'InetSocketAddress',
   'data': {
     'host': 'str',
     'port': 'str',
@@ -2573,7 +2314,7 @@
 #
 # Since 1.3
 ##
-{ 'struct': 'UnixSocketAddress',
+{ 'type': 'UnixSocketAddress',
   'data': {
     'path': 'str' } }
 
@@ -2638,7 +2379,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'MachineInfo',
+{ 'type': 'MachineInfo',
   'data': { 'name': 'str', '*alias': 'str',
             '*is-default': 'bool', 'cpu-max': 'int' } }
 
@@ -2662,7 +2403,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'CpuDefinitionInfo',
+{ 'type': 'CpuDefinitionInfo',
   'data': { 'name': 'str' } }
 
 ##
@@ -2687,7 +2428,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'AddfdInfo', 'data': {'fdset-id': 'int', 'fd': 'int'} }
+{ 'type': 'AddfdInfo', 'data': {'fdset-id': 'int', 'fd': 'int'} }
 
 ##
 # @add-fd:
@@ -2743,7 +2484,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'FdsetFdInfo',
+{ 'type': 'FdsetFdInfo',
   'data': {'fd': 'int', '*opaque': 'str'} }
 
 ##
@@ -2757,7 +2498,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'FdsetInfo',
+{ 'type': 'FdsetInfo',
   'data': {'fdset-id': 'int', 'fds': ['FdsetFdInfo']} }
 
 ##
@@ -2783,7 +2524,7 @@
 #
 # Since: 1.2.0
 ##
-{ 'struct': 'TargetInfo',
+{ 'type': 'TargetInfo',
   'data': { 'arch': 'str' } }
 
 ##
@@ -2807,7 +2548,6 @@
 # Since: 1.3.0
 #
 # 'unmapped' and 'pause' since 2.0
-# 'ro' and 'kp_comma' since 2.4
 ##
 { 'enum': 'QKeyCode',
   'data': [ 'unmapped',
@@ -2825,8 +2565,7 @@
             'kp_9', 'less', 'f11', 'f12', 'print', 'home', 'pgup', 'pgdn', 'end',
             'left', 'up', 'down', 'right', 'insert', 'delete', 'stop', 'again',
             'props', 'undo', 'front', 'copy', 'open', 'paste', 'find', 'cut',
-            'lf', 'help', 'meta_l', 'meta_r', 'compose', 'pause', 'ro',
-            'kp_comma' ] }
+             'lf', 'help', 'meta_l', 'meta_r', 'compose', 'pause' ] }
 
 ##
 # @KeyValue
@@ -2885,7 +2624,7 @@
 #
 # Since: 1.4
 ##
-{ 'struct': 'ChardevFile', 'data': { '*in' : 'str',
+{ 'type': 'ChardevFile', 'data': { '*in' : 'str',
                                    'out' : 'str' } }
 
 ##
@@ -2899,7 +2638,7 @@
 #
 # Since: 1.4
 ##
-{ 'struct': 'ChardevHostdev', 'data': { 'device' : 'str' } }
+{ 'type': 'ChardevHostdev', 'data': { 'device' : 'str' } }
 
 ##
 # @ChardevSocket:
@@ -2921,7 +2660,7 @@
 #
 # Since: 1.4
 ##
-{ 'struct': 'ChardevSocket', 'data': { 'addr'       : 'SocketAddress',
+{ 'type': 'ChardevSocket', 'data': { 'addr'       : 'SocketAddress',
                                      '*server'    : 'bool',
                                      '*wait'      : 'bool',
                                      '*nodelay'   : 'bool',
@@ -2938,7 +2677,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevUdp', 'data': { 'remote' : 'SocketAddress',
+{ 'type': 'ChardevUdp', 'data': { 'remote' : 'SocketAddress',
                                   '*local' : 'SocketAddress' } }
 
 ##
@@ -2950,7 +2689,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevMux', 'data': { 'chardev' : 'str' } }
+{ 'type': 'ChardevMux', 'data': { 'chardev' : 'str' } }
 
 ##
 # @ChardevStdio:
@@ -2963,7 +2702,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevStdio', 'data': { '*signal' : 'bool' } }
+{ 'type': 'ChardevStdio', 'data': { '*signal' : 'bool' } }
 
 ##
 # @ChardevSpiceChannel:
@@ -2974,7 +2713,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevSpiceChannel', 'data': { 'type'  : 'str' } }
+{ 'type': 'ChardevSpiceChannel', 'data': { 'type'  : 'str' } }
 
 ##
 # @ChardevSpicePort:
@@ -2985,7 +2724,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevSpicePort', 'data': { 'fqdn'  : 'str' } }
+{ 'type': 'ChardevSpicePort', 'data': { 'fqdn'  : 'str' } }
 
 ##
 # @ChardevVC:
@@ -2999,7 +2738,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevVC', 'data': { '*width'  : 'int',
+{ 'type': 'ChardevVC', 'data': { '*width'  : 'int',
                                  '*height' : 'int',
                                  '*cols'   : 'int',
                                  '*rows'   : 'int' } }
@@ -3013,7 +2752,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevRingbuf', 'data': { '*size'  : 'int' } }
+{ 'type': 'ChardevRingbuf', 'data': { '*size'  : 'int' } }
 
 ##
 # @ChardevBackend:
@@ -3022,7 +2761,7 @@
 #
 # Since: 1.4 (testdev since 2.2)
 ##
-{ 'struct': 'ChardevDummy', 'data': { } }
+{ 'type': 'ChardevDummy', 'data': { } }
 
 { 'union': 'ChardevBackend', 'data': { 'file'   : 'ChardevFile',
                                        'serial' : 'ChardevHostdev',
@@ -3055,7 +2794,7 @@
 #
 # Since: 1.4
 ##
-{ 'struct' : 'ChardevReturn', 'data': { '*pty' : 'str' } }
+{ 'type' : 'ChardevReturn', 'data': { '*pty' : 'str' } }
 
 ##
 # @chardev-add:
@@ -3142,7 +2881,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'TPMPassthroughOptions', 'data': { '*path' : 'str',
+{ 'type': 'TPMPassthroughOptions', 'data': { '*path' : 'str',
                                              '*cancel-path' : 'str'} }
 
 ##
@@ -3170,7 +2909,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'TPMInfo',
+{ 'type': 'TPMInfo',
   'data': {'id': 'str',
            'model': 'TpmModel',
            'options': 'TpmTypeOptions' } }
@@ -3232,7 +2971,7 @@
 #
 # Since 1.5
 ##
-{ 'struct': 'AcpiTableOptions',
+{ 'type': 'AcpiTableOptions',
   'data': {
     '*sig':               'str',
     '*rev':               'uint8',
@@ -3278,7 +3017,7 @@
 #
 # Since 1.5
 ##
-{ 'struct': 'CommandLineParameterInfo',
+{ 'type': 'CommandLineParameterInfo',
   'data': { 'name': 'str',
             'type': 'CommandLineParameterType',
             '*help': 'str',
@@ -3295,7 +3034,7 @@
 #
 # Since 1.5
 ##
-{ 'struct': 'CommandLineOptionInfo',
+{ 'type': 'CommandLineOptionInfo',
   'data': { 'option': 'str', 'parameters': ['CommandLineParameterInfo'] } }
 
 ##
@@ -3339,7 +3078,7 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'X86CPUFeatureWordInfo',
+{ 'type': 'X86CPUFeatureWordInfo',
   'data': { 'cpuid-input-eax': 'int',
             '*cpuid-input-ecx': 'int',
             'cpuid-register': 'X86CPURegister32',
@@ -3392,7 +3131,7 @@
 # Since 1.6
 ##
 
-{ 'struct': 'RxFilterInfo',
+{ 'type': 'RxFilterInfo',
   'data': {
     'name':               'str',
     'promiscuous':        'bool',
@@ -3454,7 +3193,7 @@
 #
 # Since: 2.0
 ##
-{ 'struct'  : 'InputKeyEvent',
+{ 'type'  : 'InputKeyEvent',
   'data'  : { 'key'     : 'KeyValue',
               'down'    : 'bool' } }
 
@@ -3468,7 +3207,7 @@
 #
 # Since: 2.0
 ##
-{ 'struct'  : 'InputBtnEvent',
+{ 'type'  : 'InputBtnEvent',
   'data'  : { 'button'  : 'InputButton',
               'down'    : 'bool' } }
 
@@ -3483,7 +3222,7 @@
 #
 # Since: 2.0
 ##
-{ 'struct'  : 'InputMoveEvent',
+{ 'type'  : 'InputMoveEvent',
   'data'  : { 'axis'    : 'InputAxis',
               'value'   : 'int' } }
 
@@ -3511,18 +3250,6 @@
 # Send input event(s) to guest.
 #
 # @console: #optional console to send event(s) to.
-#           This parameter can be used to send the input event to
-#           specific input devices in case (a) multiple input devices
-#           of the same kind are added to the virtual machine and (b)
-#           you have configured input routing (see docs/multiseat.txt)
-#           for those input devices.  If input routing is not
-#           configured this parameter has no effect.
-#           If @console is missing, only devices that aren't associated
-#           with a console are admissible.
-#           If @console is specified, it must exist, and both devices
-#           associated with that console and devices not associated with a
-#           console are admissible, but the former take precedence.
-
 #
 # @events: List of InputEvent union.
 #
@@ -3566,7 +3293,7 @@
 #
 # Since: 2.1
 ##
-{ 'struct': 'NumaNodeOptions',
+{ 'type': 'NumaNodeOptions',
   'data': {
    '*nodeid': 'uint16',
    '*cpus':   ['uint16'],
@@ -3613,7 +3340,7 @@
 # Since: 2.1
 ##
 
-{ 'struct': 'Memdev',
+{ 'type': 'Memdev',
   'data': {
     'size':       'size',
     'merge':      'bool',
@@ -3656,7 +3383,7 @@
 #
 # Since: 2.1
 ##
-{ 'struct': 'PCDIMMDeviceInfo',
+{ 'type': 'PCDIMMDeviceInfo',
   'data': { '*id': 'str',
             'addr': 'int',
             'size': 'int',
@@ -3710,7 +3437,7 @@
 #
 # Since: 2.1
 ##
-{ 'struct': 'ACPIOSTInfo',
+{ 'type': 'ACPIOSTInfo',
   'data'  : { '*device': 'str',
               'slot': 'str',
               'slot-type': 'ACPISlotType',
@@ -3746,14 +3473,10 @@
 #
 # @none: nothing is done
 #
-# @inject-nmi: a non-maskable interrupt is injected into the first VCPU (all
-#              VCPUS on x86) (since 2.4)
-#
 # Since: 2.1
 ##
 { 'enum': 'WatchdogExpirationAction',
-  'data': [ 'reset', 'shutdown', 'poweroff', 'pause', 'debug', 'none',
-            'inject-nmi' ] }
+  'data': [ 'reset', 'shutdown', 'poweroff', 'pause', 'debug', 'none' ] }
 
 ##
 # @IoOperationType
@@ -3792,6 +3515,3 @@
 # Since: 2.1
 ##
 { 'command': 'rtc-reset-reinjection' }
-
-# Rocker ethernet network switch
-{ 'include': 'qapi/rocker.json' }

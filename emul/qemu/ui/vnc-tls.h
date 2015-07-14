@@ -33,6 +33,11 @@
 
 #include "qemu/acl.h"
 
+enum {
+    VNC_WIREMODE_CLEAR,
+    VNC_WIREMODE_TLS,
+};
+
 typedef struct VncDisplayTLS VncDisplayTLS;
 typedef struct VncStateTLS VncStateTLS;
 
@@ -50,6 +55,8 @@ struct VncDisplayTLS {
 
 /* Per client state */
 struct VncStateTLS {
+    /* Whether data is being TLS encrypted yet */
+    int wiremode;
     gnutls_session_t session;
 
     /* Client's Distinguished Name from the x509 cert */

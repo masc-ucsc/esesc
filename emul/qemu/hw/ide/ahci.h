@@ -132,8 +132,6 @@
 #define PORT_CMD_ICC_PARTIAL      (0x2 << 28) /* Put i/f in partial state */
 #define PORT_CMD_ICC_SLUMBER      (0x6 << 28) /* Put i/f in slumber state */
 
-#define PORT_CMD_RO_MASK          0x007dffe0 /* Which CMD bits are read only? */
-
 /* ap->flags bits */
 #define AHCI_FLAG_NO_NCQ                  (1 << 24)
 #define AHCI_FLAG_IGN_IRQ_IF_ERR          (1 << 25) /* ignore IRQ_IF_ERR */
@@ -158,10 +156,7 @@
 #define AHCI_SCR_SCTL_DET                 0xf
 
 #define SATA_FIS_TYPE_REGISTER_H2D        0x27
-#define   SATA_FIS_REG_H2D_UPDATE_COMMAND_REGISTER 0x80
-#define SATA_FIS_TYPE_REGISTER_D2H        0x34
-#define SATA_FIS_TYPE_PIO_SETUP           0x5f
-#define SATA_FIS_TYPE_SDB                 0xA1
+#define SATA_FIS_REG_H2D_UPDATE_COMMAND_REGISTER 0x80
 
 #define AHCI_CMD_HDR_CMD_FIS_LEN           0x1f
 #define AHCI_CMD_HDR_PRDT_LEN              16

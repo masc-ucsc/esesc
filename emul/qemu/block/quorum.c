@@ -18,7 +18,6 @@
 #include "block/block_int.h"
 #include "qapi/qmp/qbool.h"
 #include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qerror.h"
 #include "qapi/qmp/qint.h"
 #include "qapi/qmp/qjson.h"
 #include "qapi/qmp/qlist.h"
@@ -227,7 +226,10 @@ static void quorum_report_bad(QuorumAIOCB *acb, char *node_name, int ret)
 
 static void quorum_report_failure(QuorumAIOCB *acb)
 {
-    const char *reference = bdrv_get_device_or_node_name(acb->common.bs);
+    const char *reference = bdrv_get_device_name(acb->common.bs)[0] ?
+                            bdrv_get_device_name(acb->common.bs) :
+                            acb->common.bs->node_name;
+
     qapi_event_send_quorum_failure(reference, acb->sector_num,
                                    acb->nb_sectors, &error_abort);
 }
@@ -801,8 +803,8 @@ static int quorum_valid_threshold(int threshold, int num_children, Error **errp)
 {
 
     if (threshold < 1) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
-                   "vote-threshold", "value >= 1");
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE,
+                  "vote-threshold", "value >= 1");
         return -ERANGE;
     }
 
@@ -867,18 +869,25 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
     Error *local_err = NULL;
     QemuOpts *opts = NULL;
     bool *opened;
+    QDict *sub = NULL;
+    QList *list = NULL;
+    const QListEntry *lentry;
     int i;
     int ret = 0;
 
     qdict_flatten(options);
+    qdict_extract_subqdict(options, &sub, "children.");
+    qdict_array_split(sub, &list);
 
-    /* count how many different children are present */
-    s->num_children = qdict_array_entries(options, "children.");
-    if (s->num_children < 0) {
-        error_setg(&local_err, "Option children is not a valid array");
+    if (qdict_size(sub)) {
+        error_setg(&local_err, "Invalid option children.%s",
+                   qdict_first(sub)->key);
         ret = -EINVAL;
         goto exit;
     }
+
+    /* count how many different children are present */
+    s->num_children = qlist_size(list);
     if (s->num_children < 2) {
         error_setg(&local_err,
                    "Number of provided children must be greater than 1");
@@ -931,17 +940,37 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
     s->bs = g_new0(BlockDriverState *, s->num_children);
     opened = g_new0(bool, s->num_children);
 
-    for (i = 0; i < s->num_children; i++) {
-        char indexstr[32];
-        ret = snprintf(indexstr, 32, "children.%d", i);
-        assert(ret < 32);
+    for (i = 0, lentry = qlist_first(list); lentry;
+         lentry = qlist_next(lentry), i++) {
+        QDict *d;
+        QString *string;
 
-        ret = bdrv_open_image(&s->bs[i], NULL, options, indexstr, bs,
-                              &child_format, false, &local_err);
+        switch (qobject_type(lentry->value))
+        {
+            /* List of options */
+            case QTYPE_QDICT:
+                d = qobject_to_qdict(lentry->value);
+                QINCREF(d);
+                ret = bdrv_open(&s->bs[i], NULL, NULL, d, flags, NULL,
+                                &local_err);
+                break;
+
+            /* QMP reference */
+            case QTYPE_QSTRING:
+                string = qobject_to_qstring(lentry->value);
+                ret = bdrv_open(&s->bs[i], NULL, qstring_get_str(string), NULL,
+                                flags, NULL, &local_err);
+                break;
+
+            default:
+                error_setg(&local_err, "Specification of child block device %i "
+                           "is invalid", i);
+                ret = -EINVAL;
+        }
+
         if (ret < 0) {
             goto close_exit;
         }
-
         opened[i] = true;
     }
 
@@ -964,6 +993,8 @@ exit:
     if (local_err) {
         error_propagate(errp, local_err);
     }
+    QDECREF(list);
+    QDECREF(sub);
     return ret;
 }
 
@@ -1025,9 +1056,9 @@ static void quorum_refresh_filename(BlockDriverState *bs)
     qdict_put_obj(opts, QUORUM_OPT_VOTE_THRESHOLD,
                   QOBJECT(qint_from_int(s->threshold)));
     qdict_put_obj(opts, QUORUM_OPT_BLKVERIFY,
-                  QOBJECT(qbool_from_bool(s->is_blkverify)));
+                  QOBJECT(qbool_from_int(s->is_blkverify)));
     qdict_put_obj(opts, QUORUM_OPT_REWRITE,
-                  QOBJECT(qbool_from_bool(s->rewrite_corrupted)));
+                  QOBJECT(qbool_from_int(s->rewrite_corrupted)));
     qdict_put_obj(opts, "children", QOBJECT(children));
 
     bs->full_open_options = opts;

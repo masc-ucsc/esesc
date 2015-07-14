@@ -27,8 +27,10 @@
 //#define DEBUG_SLB
 
 #ifdef DEBUG_MMU
+#  define LOG_MMU(...) qemu_log(__VA_ARGS__)
 #  define LOG_MMU_STATE(cpu) log_cpu_state((cpu), 0)
 #else
+#  define LOG_MMU(...) do { } while (0)
 #  define LOG_MMU_STATE(cpu) do { } while (0)
 #endif
 
@@ -350,7 +352,7 @@ uint64_t ppc_hash64_start_access(PowerPCCPU *cpu, target_ulong pte_index)
 void ppc_hash64_stop_access(uint64_t token)
 {
     if (kvmppc_kern_htab) {
-        kvmppc_hash64_free_pteg(token);
+        return kvmppc_hash64_free_pteg(token);
     }
 }
 
@@ -388,24 +390,6 @@ static hwaddr ppc_hash64_pteg_search(CPUPPCState *env, hwaddr hash,
     return -1;
 }
 
-static uint64_t ppc_hash64_page_shift(ppc_slb_t *slb)
-{
-    uint64_t epnshift;
-
-    /* Page size according to the SLB, which we use to generate the
-     * EPN for hash table lookup..  When we implement more recent MMU
-     * extensions this might be different from the actual page size
-     * encoded in the PTE */
-    if ((slb->vsid & SLB_VSID_LLP_MASK) == SLB_VSID_4K) {
-        epnshift = TARGET_PAGE_BITS;
-    } else if ((slb->vsid & SLB_VSID_LLP_MASK) == SLB_VSID_64K) {
-        epnshift = TARGET_PAGE_BITS_64K;
-    } else {
-        epnshift = TARGET_PAGE_BITS_16M;
-    }
-    return epnshift;
-}
-
 static hwaddr ppc_hash64_htab_lookup(CPUPPCState *env,
                                      ppc_slb_t *slb, target_ulong eaddr,
                                      ppc_hash_pte64_t *pte)
@@ -414,7 +398,12 @@ static hwaddr ppc_hash64_htab_lookup(CPUPPCState *env,
     hwaddr hash;
     uint64_t vsid, epnshift, epnmask, epn, ptem;
 
-    epnshift = ppc_hash64_page_shift(slb);
+    /* Page size according to the SLB, which we use to generate the
+     * EPN for hash table lookup..  When we implement more recent MMU
+     * extensions this might be different from the actual page size
+     * encoded in the PTE */
+    epnshift = (slb->vsid & SLB_VSID_L)
+        ? TARGET_PAGE_BITS_16M : TARGET_PAGE_BITS;
     epnmask = ~((1ULL << epnshift) - 1);
 
     if (slb->vsid & SLB_VSID_B) {
@@ -431,14 +420,12 @@ static hwaddr ppc_hash64_htab_lookup(CPUPPCState *env,
     ptem = (slb->vsid & SLB_VSID_PTEM) | ((epn >> 16) & HPTE64_V_AVPN);
 
     /* Page address translation */
-    qemu_log_mask(CPU_LOG_MMU,
-            "htab_base " TARGET_FMT_plx " htab_mask " TARGET_FMT_plx
+    LOG_MMU("htab_base " TARGET_FMT_plx " htab_mask " TARGET_FMT_plx
             " hash " TARGET_FMT_plx "\n",
             env->htab_base, env->htab_mask, hash);
 
     /* Primary PTEG lookup */
-    qemu_log_mask(CPU_LOG_MMU,
-            "0 htab=" TARGET_FMT_plx "/" TARGET_FMT_plx
+    LOG_MMU("0 htab=" TARGET_FMT_plx "/" TARGET_FMT_plx
             " vsid=" TARGET_FMT_lx " ptem=" TARGET_FMT_lx
             " hash=" TARGET_FMT_plx "\n",
             env->htab_base, env->htab_mask, vsid, ptem,  hash);
@@ -446,8 +433,7 @@ static hwaddr ppc_hash64_htab_lookup(CPUPPCState *env,
 
     if (pte_offset == -1) {
         /* Secondary PTEG lookup */
-        qemu_log_mask(CPU_LOG_MMU,
-                "1 htab=" TARGET_FMT_plx "/" TARGET_FMT_plx
+        LOG_MMU("1 htab=" TARGET_FMT_plx "/" TARGET_FMT_plx
                 " vsid=" TARGET_FMT_lx " api=" TARGET_FMT_lx
                 " hash=" TARGET_FMT_plx "\n", env->htab_base,
                 env->htab_mask, vsid, ptem, ~hash);
@@ -461,14 +447,12 @@ static hwaddr ppc_hash64_htab_lookup(CPUPPCState *env,
 static hwaddr ppc_hash64_pte_raddr(ppc_slb_t *slb, ppc_hash_pte64_t pte,
                                    target_ulong eaddr)
 {
-    hwaddr mask;
-    int target_page_bits;
     hwaddr rpn = pte.pte1 & HPTE64_R_RPN;
-    /*
-     * We support 4K, 64K and 16M now
-     */
-    target_page_bits = ppc_hash64_page_shift(slb);
-    mask = (1ULL << target_page_bits) - 1;
+    /* FIXME: Add support for SLLP extended page sizes */
+    int target_page_bits = (slb->vsid & SLB_VSID_L)
+        ? TARGET_PAGE_BITS_16M : TARGET_PAGE_BITS;
+    hwaddr mask = (1ULL << target_page_bits) - 1;
+
     return (rpn & ~mask) | (eaddr & mask);
 }
 
@@ -538,8 +522,7 @@ int ppc_hash64_handle_mmu_fault(PowerPCCPU *cpu, target_ulong eaddr,
         }
         return 1;
     }
-    qemu_log_mask(CPU_LOG_MMU,
-                "found PTE at offset %08" HWADDR_PRIx "\n", pte_offset);
+    LOG_MMU("found PTE at offset %08" HWADDR_PRIx "\n", pte_offset);
 
     /* 5. Check access permissions */
 
@@ -549,7 +532,7 @@ int ppc_hash64_handle_mmu_fault(PowerPCCPU *cpu, target_ulong eaddr,
 
     if ((need_prot[rwx] & ~prot) != 0) {
         /* Access right violation */
-        qemu_log_mask(CPU_LOG_MMU, "PTE access rejected\n");
+        LOG_MMU("PTE access rejected\n");
         if (rwx == 2) {
             cs->exception_index = POWERPC_EXCP_ISI;
             env->error_code = 0x08000000;
@@ -573,7 +556,7 @@ int ppc_hash64_handle_mmu_fault(PowerPCCPU *cpu, target_ulong eaddr,
         return 1;
     }
 
-    qemu_log_mask(CPU_LOG_MMU, "PTE access granted !\n");
+    LOG_MMU("PTE access granted !\n");
 
     /* 6. Update PTE referenced and changed bits if necessary */
 
@@ -632,8 +615,7 @@ void ppc_hash64_store_hpte(CPUPPCState *env,
     CPUState *cs = CPU(ppc_env_get_cpu(env));
 
     if (kvmppc_kern_htab) {
-        kvmppc_hash64_write_pte(env, pte_index, pte0, pte1);
-        return;
+        return kvmppc_hash64_write_pte(env, pte_index, pte0, pte1);
     }
 
     pte_index *= HASH_PTE_SIZE_64;

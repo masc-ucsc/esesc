@@ -26,6 +26,7 @@
 #include "qemu/log.h"
 #include "net/net.h"
 #include "net/checksum.h"
+#include "qapi/qmp/qerror.h"
 
 #include "hw/stream.h"
 
@@ -856,6 +857,14 @@ static ssize_t eth_rx(NetClientState *nc, const uint8_t *buf, size_t size)
     return size;
 }
 
+static void eth_cleanup(NetClientState *nc)
+{
+    /* FIXME.  */
+    XilinxAXIEnet *s = qemu_get_nic_opaque(nc);
+    g_free(s->rxmem);
+    g_free(s);
+}
+
 static size_t
 xilinx_axienet_control_stream_push(StreamSlave *obj, uint8_t *buf, size_t len)
 {
@@ -927,6 +936,7 @@ static NetClientInfo net_xilinx_enet_info = {
     .size = sizeof(NICState),
     .can_receive = eth_can_rx,
     .receive = eth_rx,
+    .cleanup = eth_cleanup,
 };
 
 static void xilinx_enet_realize(DeviceState *dev, Error **errp)

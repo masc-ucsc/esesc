@@ -238,14 +238,6 @@ struct CPUTriCoreState {
 #define MASK_LCX_LCXS 0x000f0000
 #define MASK_LCX_LCX0 0x0000ffff
 
-#define MASK_DBGSR_DE 0x1
-#define MASK_DBGSR_HALT 0x6
-#define MASK_DBGSR_SUSP 0x10
-#define MASK_DBGSR_PREVSUSP 0x20
-#define MASK_DBGSR_PEVT 0x40
-#define MASK_DBGSR_EVTSRC 0x1f00
-
-#define TRICORE_HFLAG_KUU     0x3
 #define TRICORE_HFLAG_UM0     0x00002 /* user mode-0 flag          */
 #define TRICORE_HFLAG_UM1     0x00001 /* user mode-1 flag          */
 #define TRICORE_HFLAG_SM      0x00000 /* kernel mode flag          */
@@ -254,7 +246,6 @@ enum tricore_features {
     TRICORE_FEATURE_13,
     TRICORE_FEATURE_131,
     TRICORE_FEATURE_16,
-    TRICORE_FEATURE_161,
 };
 
 static inline int tricore_feature(CPUTriCoreState *env, int feature)
@@ -386,7 +377,15 @@ static inline void cpu_get_tb_cpu_state(CPUTriCoreState *env, target_ulong *pc,
 
 TriCoreCPU *cpu_tricore_init(const char *cpu_model);
 
-#define cpu_init(cpu_model) CPU(cpu_tricore_init(cpu_model))
+static inline CPUTriCoreState *cpu_init(const char *cpu_model)
+{
+    TriCoreCPU *cpu = cpu_tricore_init(cpu_model);
+    if (cpu == NULL) {
+        return NULL;
+    }
+    return &cpu->env;
+
+}
 
 
 /* helpers.c */
@@ -395,5 +394,10 @@ int cpu_tricore_handle_mmu_fault(CPUState *cpu, target_ulong address,
 #define cpu_handle_mmu_fault cpu_tricore_handle_mmu_fault
 
 #include "exec/exec-all.h"
+
+static inline void cpu_pc_from_tb(CPUTriCoreState *env, TranslationBlock *tb)
+{
+    env->PC = tb->pc;
+}
 
 #endif /*__TRICORE_CPU_H__ */

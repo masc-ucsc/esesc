@@ -123,23 +123,6 @@ void a64_translate_init(void)
 #endif
 }
 
-static inline ARMMMUIdx get_a64_user_mem_index(DisasContext *s)
-{
-    /* Return the mmu_idx to use for A64 "unprivileged load/store" insns:
-     *  if EL1, access as if EL0; otherwise access at current EL
-     */
-    switch (s->mmu_idx) {
-    case ARMMMUIdx_S12NSE1:
-        return ARMMMUIdx_S12NSE0;
-    case ARMMMUIdx_S1SE1:
-        return ARMMMUIdx_S1SE0;
-    case ARMMMUIdx_S2NS:
-        g_assert_not_reached();
-    default:
-        return s->mmu_idx;
-    }
-}
-
 void aarch64_cpu_dump_state(CPUState *cs, FILE *f,
                             fprintf_function cpu_fprintf, int flags)
 {
@@ -197,15 +180,12 @@ static void gen_exception_internal(int excp)
     tcg_temp_free_i32(tcg_excp);
 }
 
-static void gen_exception(int excp, uint32_t syndrome, uint32_t target_el)
+static void gen_exception(int excp, uint32_t syndrome)
 {
     TCGv_i32 tcg_excp = tcg_const_i32(excp);
     TCGv_i32 tcg_syn = tcg_const_i32(syndrome);
-    TCGv_i32 tcg_el = tcg_const_i32(target_el);
 
-    gen_helper_exception_with_syndrome(cpu_env, tcg_excp,
-                                       tcg_syn, tcg_el);
-    tcg_temp_free_i32(tcg_el);
+    gen_helper_exception_with_syndrome(cpu_env, tcg_excp, tcg_syn);
     tcg_temp_free_i32(tcg_syn);
     tcg_temp_free_i32(tcg_excp);
 }
@@ -218,10 +198,10 @@ static void gen_exception_internal_insn(DisasContext *s, int offset, int excp)
 }
 
 static void gen_exception_insn(DisasContext *s, int offset, int excp,
-                               uint32_t syndrome, uint32_t target_el)
+                               uint32_t syndrome)
 {
     gen_a64_set_pc_im(s->pc - offset);
-    gen_exception(excp, syndrome, target_el);
+    gen_exception(excp, syndrome);
     s->is_jmp = DISAS_EXC;
 }
 
@@ -248,8 +228,7 @@ static void gen_step_complete_exception(DisasContext *s)
      * of the exception, and our syndrome information is always correct.
      */
     gen_ss_advance(s);
-    gen_exception(EXCP_UDEF, syn_swstep(s->ss_same_el, 1, s->is_ldex),
-                  default_exception_el(s));
+    gen_exception(EXCP_UDEF, syn_swstep(s->ss_same_el, 1, s->is_ldex));
     s->is_jmp = DISAS_EXC;
 }
 
@@ -296,8 +275,7 @@ static inline void gen_goto_tb(DisasContext *s, int n, uint64_t dest)
 static void unallocated_encoding(DisasContext *s)
 {
     /* Unallocated and reserved encodings are uncategorized */
-    gen_exception_insn(s, 4, EXCP_UDEF, syn_uncategorized(),
-                       default_exception_el(s));
+    gen_exception_insn(s, 4, EXCP_UDEF, syn_uncategorized());
 }
 
 #define unsupported_encoding(s, insn)                                    \
@@ -412,7 +390,7 @@ static TCGv_i64 read_cpu_reg_sp(DisasContext *s, int reg, int sf)
 static inline void assert_fp_access_checked(DisasContext *s)
 {
 #ifdef CONFIG_DEBUG_TCG
-    if (unlikely(!s->fp_access_checked || s->fp_excp_el)) {
+    if (unlikely(!s->fp_access_checked || !s->cpacr_fpen)) {
         fprintf(stderr, "target-arm: FP access check missing for "
                 "instruction 0x%08x\n", s->insn);
         abort();
@@ -972,12 +950,11 @@ static inline bool fp_access_check(DisasContext *s)
     assert(!s->fp_access_checked);
     s->fp_access_checked = true;
 
-    if (!s->fp_excp_el) {
+    if (s->cpacr_fpen) {
         return true;
     }
 
-    gen_exception_insn(s, 4, EXCP_UDEF, syn_fp_access_trap(1, 0xe, false),
-                       s->fp_excp_el);
+    gen_exception_insn(s, 4, EXCP_UDEF, syn_fp_access_trap(1, 0xe, false));
     return false;
 }
 
@@ -1083,7 +1060,7 @@ static void disas_uncond_b_imm(DisasContext *s, uint32_t insn)
 {
     uint64_t addr = s->pc + sextract32(insn, 0, 26) * 4 - 4;
 
-    if (insn & (1U << 31)) {
+    if (insn & (1 << 31)) {
         /* C5.6.26 BL Branch with link */
         tcg_gen_movi_i64(cpu_reg(s, 30), s->pc);
     }
@@ -1102,7 +1079,7 @@ static void disas_comp_b_imm(DisasContext *s, uint32_t insn)
 {
     unsigned int sf, op, rt;
     uint64_t addr;
-    TCGLabel *label_match;
+    int label_match;
     TCGv_i64 tcg_cmp;
 
     sf = extract32(insn, 31, 1);
@@ -1131,7 +1108,7 @@ static void disas_test_b_imm(DisasContext *s, uint32_t insn)
 {
     unsigned int bit_pos, op, rt;
     uint64_t addr;
-    TCGLabel *label_match;
+    int label_match;
     TCGv_i64 tcg_cmp;
 
     bit_pos = (extract32(insn, 31, 1) << 5) | extract32(insn, 19, 5);
@@ -1170,7 +1147,7 @@ static void disas_cond_b_imm(DisasContext *s, uint32_t insn)
 
     if (cond < 0x0e) {
         /* genuinely conditional branches */
-        TCGLabel *label_match = gen_new_label();
+        int label_match = gen_new_label();
         arm_gen_test_cc(cond, label_match);
         gen_goto_tb(s, 0, s->pc);
         gen_set_label(label_match);
@@ -1277,7 +1254,7 @@ static void gen_get_nzcv(TCGv_i64 tcg_rt)
     TCGv_i32 nzcv = tcg_temp_new_i32();
 
     /* build bit 31, N */
-    tcg_gen_andi_i32(nzcv, cpu_NF, (1U << 31));
+    tcg_gen_andi_i32(nzcv, cpu_NF, (1 << 31));
     /* build bit 30, Z */
     tcg_gen_setcondi_i32(TCG_COND_EQ, tmp, cpu_ZF, 0);
     tcg_gen_deposit_i32(nzcv, nzcv, tmp, 30, 1);
@@ -1302,7 +1279,7 @@ static void gen_set_nzcv(TCGv_i64 tcg_rt)
     tcg_gen_trunc_i64_i32(nzcv, tcg_rt);
 
     /* bit 31, N */
-    tcg_gen_andi_i32(cpu_NF, nzcv, (1U << 31));
+    tcg_gen_andi_i32(cpu_NF, nzcv, (1 << 31));
     /* bit 30, Z */
     tcg_gen_andi_i32(cpu_ZF, nzcv, (1 << 30));
     tcg_gen_setcondi_i32(TCG_COND_EQ, cpu_ZF, cpu_ZF, 0);
@@ -1395,7 +1372,7 @@ static void handle_sys(DisasContext *s, uint32_t insn, bool isread,
         break;
     }
 
-    if ((s->tb->cflags & CF_USE_ICOUNT) && (ri->type & ARM_CP_IO)) {
+    if (use_icount && (ri->type & ARM_CP_IO)) {
         gen_io_start();
     }
 
@@ -1426,7 +1403,7 @@ static void handle_sys(DisasContext *s, uint32_t insn, bool isread,
         }
     }
 
-    if ((s->tb->cflags & CF_USE_ICOUNT) && (ri->type & ARM_CP_IO)) {
+    if (use_icount && (ri->type & ARM_CP_IO)) {
         /* I/O operations must end the TB here (whether read or write) */
         gen_io_end();
         s->is_jmp = DISAS_UPDATE;
@@ -1504,8 +1481,7 @@ static void disas_exc(DisasContext *s, uint32_t insn)
         switch (op2_ll) {
         case 1:
             gen_ss_advance(s);
-            gen_exception_insn(s, 0, EXCP_SWI, syn_aa64_svc(imm16),
-                               default_exception_el(s));
+            gen_exception_insn(s, 0, EXCP_SWI, syn_aa64_svc(imm16));
             break;
         case 2:
             if (s->current_el == 0) {
@@ -1518,7 +1494,7 @@ static void disas_exc(DisasContext *s, uint32_t insn)
             gen_a64_set_pc_im(s->pc - 4);
             gen_helper_pre_hvc(cpu_env);
             gen_ss_advance(s);
-            gen_exception_insn(s, 0, EXCP_HVC, syn_aa64_hvc(imm16), 2);
+            gen_exception_insn(s, 0, EXCP_HVC, syn_aa64_hvc(imm16));
             break;
         case 3:
             if (s->current_el == 0) {
@@ -1530,7 +1506,7 @@ static void disas_exc(DisasContext *s, uint32_t insn)
             gen_helper_pre_smc(cpu_env, tmp);
             tcg_temp_free_i32(tmp);
             gen_ss_advance(s);
-            gen_exception_insn(s, 0, EXCP_SMC, syn_aa64_smc(imm16), 3);
+            gen_exception_insn(s, 0, EXCP_SMC, syn_aa64_smc(imm16));
             break;
         default:
             unallocated_encoding(s);
@@ -1543,8 +1519,7 @@ static void disas_exc(DisasContext *s, uint32_t insn)
             break;
         }
         /* BRK */
-        gen_exception_insn(s, 4, EXCP_BKPT, syn_aa64_bkpt(imm16),
-                           default_exception_el(s));
+        gen_exception_insn(s, 4, EXCP_BKPT, syn_aa64_bkpt(imm16));
         break;
     case 2:
         if (op2_ll != 0) {
@@ -1719,8 +1694,8 @@ static void gen_store_exclusive(DisasContext *s, int rd, int rt, int rt2,
      * }
      * env->exclusive_addr = -1;
      */
-    TCGLabel *fail_label = gen_new_label();
-    TCGLabel *done_label = gen_new_label();
+    int fail_label = gen_new_label();
+    int done_label = gen_new_label();
     TCGv_i64 addr = tcg_temp_local_new_i64();
     TCGv_i64 tmp;
 
@@ -1925,7 +1900,7 @@ static void disas_ldst_pair(DisasContext *s, uint32_t insn)
     int rt = extract32(insn, 0, 5);
     int rn = extract32(insn, 5, 5);
     int rt2 = extract32(insn, 10, 5);
-    uint64_t offset = sextract64(insn, 15, 7);
+    int64_t offset = sextract32(insn, 15, 7);
     int index = extract32(insn, 23, 2);
     bool is_vector = extract32(insn, 26, 1);
     bool is_load = extract32(insn, 22, 1);
@@ -2132,7 +2107,7 @@ static void disas_ldst_reg_imm9(DisasContext *s, uint32_t insn)
         }
     } else {
         TCGv_i64 tcg_rt = cpu_reg(s, rt);
-        int memidx = is_unpriv ? get_a64_user_mem_index(s) : get_mem_index(s);
+        int memidx = is_unpriv ? 1 : get_mem_index(s);
 
         if (is_store) {
             do_gpr_st_memidx(s, tcg_rt, tcg_addr, size, memidx);
@@ -2670,12 +2645,11 @@ static void disas_pc_rel_adr(DisasContext *s, uint32_t insn)
 {
     unsigned int page, rd;
     uint64_t base;
-    uint64_t offset;
+    int64_t offset;
 
     page = extract32(insn, 31, 1);
     /* SignExtend(immhi:immlo) -> offset */
-    offset = sextract64(insn, 5, 19);
-    offset = offset << 2 | extract32(insn, 29, 2);
+    offset = ((int64_t)sextract32(insn, 5, 19) << 2) | extract32(insn, 29, 2);
     rd = extract32(insn, 0, 5);
     base = s->pc - 4;
 
@@ -2829,10 +2803,7 @@ static bool logic_imm_decode_wmask(uint64_t *result, unsigned int immn,
      * by r within the element (which is e bits wide)...
      */
     mask = bitmask64(s + 1);
-    if (r) {
-        mask = (mask >> r) | (mask << (e - r));
-        mask &= bitmask64(e);
-    }
+    mask = (mask >> r) | (mask << (e - r));
     /* ...then replicate the element over the whole 64 bit value */
     mask = bitfield_replicate(mask, e);
     *result = mask;
@@ -3545,7 +3516,7 @@ static void disas_adc_sbc(DisasContext *s, uint32_t insn)
 static void disas_cc(DisasContext *s, uint32_t insn)
 {
     unsigned int sf, op, y, cond, rn, nzcv, is_imm;
-    TCGLabel *label_continue = NULL;
+    int label_continue = -1;
     TCGv_i64 tcg_tmp, tcg_y, tcg_rn;
 
     if (!extract32(insn, 29, 1)) {
@@ -3565,7 +3536,7 @@ static void disas_cc(DisasContext *s, uint32_t insn)
     nzcv = extract32(insn, 0, 4);
 
     if (cond < 0x0e) { /* not always */
-        TCGLabel *label_match = gen_new_label();
+        int label_match = gen_new_label();
         label_continue = gen_new_label();
         arm_gen_test_cc(cond, label_match);
         /* nomatch: */
@@ -3638,8 +3609,8 @@ static void disas_cond_select(DisasContext *s, uint32_t insn)
         /* OPTME: we could use movcond here, at the cost of duplicating
          * a lot of the arm_gen_test_cc() logic.
          */
-        TCGLabel *label_match = gen_new_label();
-        TCGLabel *label_continue = gen_new_label();
+        int label_match = gen_new_label();
+        int label_continue = gen_new_label();
 
         arm_gen_test_cc(cond, label_match);
         /* nomatch: */
@@ -4112,7 +4083,7 @@ static void disas_fp_ccomp(DisasContext *s, uint32_t insn)
 {
     unsigned int mos, type, rm, cond, rn, op, nzcv;
     TCGv_i64 tcg_flags;
-    TCGLabel *label_continue = NULL;
+    int label_continue = -1;
 
     mos = extract32(insn, 29, 3);
     type = extract32(insn, 22, 2); /* 0 = single, 1 = double */
@@ -4132,7 +4103,7 @@ static void disas_fp_ccomp(DisasContext *s, uint32_t insn)
     }
 
     if (cond < 0x0e) { /* not always */
-        TCGLabel *label_match = gen_new_label();
+        int label_match = gen_new_label();
         label_continue = gen_new_label();
         arm_gen_test_cc(cond, label_match);
         /* nomatch: */
@@ -4173,7 +4144,7 @@ static void gen_mov_fp2fp(DisasContext *s, int type, int dst, int src)
 static void disas_fp_csel(DisasContext *s, uint32_t insn)
 {
     unsigned int mos, type, rm, cond, rn, rd;
-    TCGLabel *label_continue = NULL;
+    int label_continue = -1;
 
     mos = extract32(insn, 29, 3);
     type = extract32(insn, 22, 2); /* 0 = single, 1 = double */
@@ -4192,7 +4163,7 @@ static void disas_fp_csel(DisasContext *s, uint32_t insn)
     }
 
     if (cond < 0x0e) { /* not always */
-        TCGLabel *label_match = gen_new_label();
+        int label_match = gen_new_label();
         label_continue = gen_new_label();
         arm_gen_test_cc(cond, label_match);
         /* nomatch: */
@@ -10928,6 +10899,7 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
     CPUARMState *env = &cpu->env;
     DisasContext dc1, *dc = &dc1;
     CPUBreakpoint *bp;
+    uint16_t *gen_opc_end;
     int j, lj;
     target_ulong pc_start;
     target_ulong next_page_start;
@@ -10938,26 +10910,26 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
 
     dc->tb = tb;
 
+    gen_opc_end = tcg_ctx.gen_opc_buf + OPC_MAX_SIZE;
+
     dc->is_jmp = DISAS_NEXT;
     dc->pc = pc_start;
     dc->singlestep_enabled = cs->singlestep_enabled;
     dc->condjmp = 0;
 
     dc->aarch64 = 1;
-    dc->el3_is_aa64 = arm_el_is_aa64(env, 3);
     dc->thumb = 0;
     dc->bswap_code = 0;
     dc->condexec_mask = 0;
     dc->condexec_cond = 0;
-    dc->mmu_idx = ARM_TBFLAG_MMUIDX(tb->flags);
-    dc->current_el = arm_mmu_idx_to_el(dc->mmu_idx);
 #if !defined(CONFIG_USER_ONLY)
-    dc->user = (dc->current_el == 0);
+    dc->user = (ARM_TBFLAG_AA64_EL(tb->flags) == 0);
 #endif
-    dc->fp_excp_el = ARM_TBFLAG_FPEXC_EL(tb->flags);
+    dc->cpacr_fpen = ARM_TBFLAG_AA64_FPEN(tb->flags);
     dc->vec_len = 0;
     dc->vec_stride = 0;
     dc->cp_regs = cpu->cp_regs;
+    dc->current_el = arm_current_el(env);
     dc->features = env->features;
 
     /* Single step state. The code-generation logic here is:
@@ -10975,8 +10947,8 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
      *   emit code to generate a software step exception
      *   end the TB
      */
-    dc->ss_active = ARM_TBFLAG_SS_ACTIVE(tb->flags);
-    dc->pstate_ss = ARM_TBFLAG_PSTATE_SS(tb->flags);
+    dc->ss_active = ARM_TBFLAG_AA64_SS_ACTIVE(tb->flags);
+    dc->pstate_ss = ARM_TBFLAG_AA64_PSTATE_SS(tb->flags);
     dc->is_ldex = false;
     dc->ss_same_el = (arm_debug_target_el(env) == dc->current_el);
 
@@ -10990,7 +10962,7 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
         max_insns = CF_COUNT_MASK;
     }
 
-    gen_tb_start(tb);
+    gen_tb_start();
 
     tcg_clear_temp_count();
 
@@ -11008,7 +10980,7 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
         }
 
         if (search_pc) {
-            j = tcg_op_buf_count();
+            j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
             if (lj < j) {
                 lj++;
                 while (lj < j) {
@@ -11040,8 +11012,7 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
              * bits should be zero.
              */
             assert(num_insns == 0);
-            gen_exception(EXCP_UDEF, syn_swstep(dc->ss_same_el, 0, 0),
-                          default_exception_el(dc));
+            gen_exception(EXCP_UDEF, syn_swstep(dc->ss_same_el, 0, 0));
             dc->is_jmp = DISAS_EXC;
             break;
         }
@@ -11059,7 +11030,7 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
          * ensures prefetch aborts occur at the right place.
          */
         num_insns++;
-    } while (!dc->is_jmp && !tcg_op_buf_full() &&
+    } while (!dc->is_jmp && tcg_ctx.gen_opc_ptr < gen_opc_end &&
              !cs->singlestep_enabled &&
              !singlestep &&
              !dc->ss_active &&
@@ -11113,28 +11084,25 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
              */
             gen_a64_set_pc_im(dc->pc);
             gen_helper_wfi(cpu_env);
-            /* The helper doesn't necessarily throw an exception, but we
-             * must go back to the main loop to check for interrupts anyway.
-             */
-            tcg_gen_exit_tb(0);
             break;
         }
     }
 
 done_generating:
     gen_tb_end(tb, num_insns);
+    *tcg_ctx.gen_opc_ptr = INDEX_op_end;
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log("----------------\n");
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
-        log_target_disas(cs, pc_start, dc->pc - pc_start,
+        log_target_disas(env, pc_start, dc->pc - pc_start,
                          4 | (dc->bswap_code << 1));
         qemu_log("\n");
     }
 #endif
     if (search_pc) {
-        j = tcg_op_buf_count();
+        j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
         lj++;
         while (lj <= j) {
             tcg_ctx.gen_opc_instr_start[lj++] = 0;

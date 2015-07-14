@@ -26,7 +26,7 @@ typedef struct EHCIPCIInfo {
     bool companion;
 } EHCIPCIInfo;
 
-static void usb_ehci_pci_realize(PCIDevice *dev, Error **errp)
+static int usb_ehci_pci_initfn(PCIDevice *dev)
 {
     EHCIPCIState *i = PCI_EHCI(dev);
     EHCIState *s = &i->ehci;
@@ -66,6 +66,8 @@ static void usb_ehci_pci_realize(PCIDevice *dev, Error **errp)
 
     usb_ehci_realize(s, DEVICE(dev), NULL);
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->mem);
+
+    return 0;
 }
 
 static void usb_ehci_pci_init(Object *obj)
@@ -99,15 +101,6 @@ static void usb_ehci_pci_exit(PCIDevice *dev)
         g_free(s->irq);
         s->irq = NULL;
     }
-}
-
-static void usb_ehci_pci_reset(DeviceState *dev)
-{
-    PCIDevice *pci_dev = PCI_DEVICE(dev);
-    EHCIPCIState *i = PCI_EHCI(pci_dev);
-    EHCIState *s = &i->ehci;
-
-    ehci_reset(s);
 }
 
 static void usb_ehci_pci_write_config(PCIDevice *dev, uint32_t addr,
@@ -146,13 +139,12 @@ static void ehci_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = usb_ehci_pci_realize;
+    k->init = usb_ehci_pci_initfn;
     k->exit = usb_ehci_pci_exit;
     k->class_id = PCI_CLASS_SERIAL_USB;
     k->config_write = usb_ehci_pci_write_config;
     dc->vmsd = &vmstate_ehci_pci;
     dc->props = ehci_pci_properties;
-    dc->reset = usb_ehci_pci_reset;
 }
 
 static const TypeInfo ehci_pci_type_info = {

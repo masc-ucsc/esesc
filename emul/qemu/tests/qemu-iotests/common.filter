@@ -150,7 +150,7 @@ _filter_win32()
 _filter_qemu_io()
 {
     _filter_win32 | sed -e "s/[0-9]* ops\; [0-9/:. sec]* ([0-9/.inf]* [EPTGMKiBbytes]*\/sec and [0-9/.inf]* ops\/sec)/X ops\; XX:XX:XX.X (XXX YYY\/sec and XXX ops\/sec)/" \
-        -e "s/: line [0-9][0-9]*:  *[0-9][0-9]*\( Aborted\| Killed\)/:\1/" \
+        -e "s/: line [0-9][0-9]*:  *[0-9][0-9]*\( Aborted\)/:\1/" \
         -e "s/qemu-io> //g"
 }
 
@@ -159,7 +159,6 @@ _filter_qemu()
 {
     sed -e "s#\\(^\\|(qemu) \\)$(basename $QEMU_PROG):#\1QEMU_PROG:#" \
         -e 's#^QEMU [0-9]\+\.[0-9]\+\.[0-9]\+ monitor#QEMU X.Y.Z monitor#' \
-        -e '/main-loop: WARNING: I\/O thread spun for [0-9]\+ iterations/d' \
         -e $'s#\r##' # QEMU monitor uses \r\n line endings
 }
 
@@ -168,9 +167,7 @@ _filter_qmp()
 {
     _filter_win32 | \
     sed -e 's#\("\(micro\)\?seconds": \)[0-9]\+#\1 TIMESTAMP#g' \
-        -e 's#^{"QMP":.*}$#QMP_VERSION#' \
-        -e '/^    "QMP": {\s*$/, /^    }\s*$/ c\' \
-        -e '    QMP_VERSION'
+        -e 's#^{"QMP":.*}$#QMP_VERSION#'
 }
 
 # replace driver-specific options in the "Formatting..." line
@@ -192,8 +189,7 @@ _filter_img_create()
         -e "s# block_size=[0-9]\\+##g" \
         -e "s# block_state_zero=\\(on\\|off\\)##g" \
         -e "s# log_size=[0-9]\\+##g" \
-        -e "s/archipelago:a/TEST_DIR\//g" \
-        -e "s# refcount_bits=[0-9]\\+##g"
+        -e "s/archipelago:a/TEST_DIR\//g"
 }
 
 _filter_img_info()
@@ -201,7 +197,6 @@ _filter_img_info()
     sed -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
         -e "s#$TEST_DIR#TEST_DIR#g" \
         -e "s#$IMGFMT#IMGFMT#g" \
-        -e 's#nbd://127.0.0.1:10810$#TEST_DIR/t.IMGFMT#g' \
         -e "/encrypted: yes/d" \
         -e "/cluster_size: [0-9]\\+/d" \
         -e "/table_size: [0-9]\\+/d" \
@@ -226,4 +221,4 @@ _filter_qemu_img_map()
 }
 
 # make sure this script returns success
-true
+/bin/true

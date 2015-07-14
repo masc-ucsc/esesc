@@ -25,7 +25,6 @@
 #include "qemu-common.h"
 #include "qemu/main-loop.h"
 #include "audio.h"
-#include "trace.h"
 
 #if QEMU_GNUC_PREREQ(4, 3)
 #pragma GCC diagnostic ignored "-Waddress"
@@ -34,28 +33,9 @@
 #define AUDIO_CAP "alsa"
 #include "audio_int.h"
 
-typedef struct ALSAConf {
-    int size_in_usec_in;
-    int size_in_usec_out;
-    const char *pcm_name_in;
-    const char *pcm_name_out;
-    unsigned int buffer_size_in;
-    unsigned int period_size_in;
-    unsigned int buffer_size_out;
-    unsigned int period_size_out;
-    unsigned int threshold;
-
-    int buffer_size_in_overridden;
-    int period_size_in_overridden;
-
-    int buffer_size_out_overridden;
-    int period_size_out_overridden;
-} ALSAConf;
-
 struct pollhlp {
     snd_pcm_t *handle;
     struct pollfd *pfds;
-    ALSAConf *conf;
     int count;
     int mask;
 };
@@ -75,6 +55,30 @@ typedef struct ALSAVoiceIn {
     void *pcm_buf;
     struct pollhlp pollhlp;
 } ALSAVoiceIn;
+
+static struct {
+    int size_in_usec_in;
+    int size_in_usec_out;
+    const char *pcm_name_in;
+    const char *pcm_name_out;
+    unsigned int buffer_size_in;
+    unsigned int period_size_in;
+    unsigned int buffer_size_out;
+    unsigned int period_size_out;
+    unsigned int threshold;
+
+    int buffer_size_in_overridden;
+    int period_size_in_overridden;
+
+    int buffer_size_out_overridden;
+    int period_size_out_overridden;
+    int verbose;
+} conf = {
+    .buffer_size_out = 4096,
+    .period_size_out = 1024,
+    .pcm_name_out = "default",
+    .pcm_name_in = "default",
+};
 
 struct alsa_params_req {
     int freq;
@@ -201,7 +205,9 @@ static void alsa_poll_handler (void *opaque)
     }
 
     if (!(revents & hlp->mask)) {
-        trace_alsa_revents(revents);
+        if (conf.verbose) {
+            dolog ("revents = %d\n", revents);
+        }
         return;
     }
 
@@ -260,14 +266,31 @@ static int alsa_poll_helper (snd_pcm_t *handle, struct pollhlp *hlp, int mask)
 
     for (i = 0; i < count; ++i) {
         if (pfds[i].events & POLLIN) {
-            qemu_set_fd_handler (pfds[i].fd, alsa_poll_handler, NULL, hlp);
+            err = qemu_set_fd_handler (pfds[i].fd, alsa_poll_handler,
+                                       NULL, hlp);
         }
         if (pfds[i].events & POLLOUT) {
-            trace_alsa_pollout(i, pfds[i].fd);
-            qemu_set_fd_handler (pfds[i].fd, NULL, alsa_poll_handler, hlp);
+            if (conf.verbose) {
+                dolog ("POLLOUT %d %d\n", i, pfds[i].fd);
+            }
+            err = qemu_set_fd_handler (pfds[i].fd, NULL,
+                                       alsa_poll_handler, hlp);
         }
-        trace_alsa_set_handler(pfds[i].events, i, pfds[i].fd, err);
+        if (conf.verbose) {
+            dolog ("Set handler events=%#x index=%d fd=%d err=%d\n",
+                   pfds[i].events, i, pfds[i].fd, err);
+        }
 
+        if (err) {
+            dolog ("Failed to set handler events=%#x index=%d fd=%d err=%d\n",
+                   pfds[i].events, i, pfds[i].fd, err);
+
+            while (i--) {
+                qemu_set_fd_handler (pfds[i].fd, NULL, NULL, NULL);
+            }
+            g_free (pfds);
+            return -1;
+        }
     }
     hlp->pfds = pfds;
     hlp->count = count;
@@ -453,15 +476,14 @@ static void alsa_set_threshold (snd_pcm_t *handle, snd_pcm_uframes_t threshold)
 }
 
 static int alsa_open (int in, struct alsa_params_req *req,
-                      struct alsa_params_obt *obt, snd_pcm_t **handlep,
-                      ALSAConf *conf)
+                      struct alsa_params_obt *obt, snd_pcm_t **handlep)
 {
     snd_pcm_t *handle;
     snd_pcm_hw_params_t *hw_params;
     int err;
     int size_in_usec;
     unsigned int freq, nchannels;
-    const char *pcm_name = in ? conf->pcm_name_in : conf->pcm_name_out;
+    const char *pcm_name = in ? conf.pcm_name_in : conf.pcm_name_out;
     snd_pcm_uframes_t obt_buffer_size;
     const char *typ = in ? "ADC" : "DAC";
     snd_pcm_format_t obtfmt;
@@ -500,7 +522,7 @@ static int alsa_open (int in, struct alsa_params_req *req,
     }
 
     err = snd_pcm_hw_params_set_format (handle, hw_params, req->fmt);
-    if (err < 0) {
+    if (err < 0 && conf.verbose) {
         alsa_logerr2 (err, typ, "Failed to set format %d\n", req->fmt);
     }
 
@@ -632,7 +654,7 @@ static int alsa_open (int in, struct alsa_params_req *req,
         goto err;
     }
 
-    if (!in && conf->threshold) {
+    if (!in && conf.threshold) {
         snd_pcm_uframes_t threshold;
         int bytes_per_sec;
 
@@ -654,7 +676,7 @@ static int alsa_open (int in, struct alsa_params_req *req,
             break;
         }
 
-        threshold = (conf->threshold * bytes_per_sec) / 1000;
+        threshold = (conf.threshold * bytes_per_sec) / 1000;
         alsa_set_threshold (handle, threshold);
     }
 
@@ -664,9 +686,10 @@ static int alsa_open (int in, struct alsa_params_req *req,
 
     *handlep = handle;
 
-    if (obtfmt != req->fmt ||
+    if (conf.verbose &&
+        (obtfmt != req->fmt ||
          obt->nchannels != req->nchannels ||
-         obt->freq != req->freq) {
+         obt->freq != req->freq)) {
         dolog ("Audio parameters for %s\n", typ);
         alsa_dump_info (req, obt, obtfmt);
     }
@@ -720,7 +743,9 @@ static void alsa_write_pending (ALSAVoiceOut *alsa)
             if (written <= 0) {
                 switch (written) {
                 case 0:
-                    trace_alsa_wrote_zero(len);
+                    if (conf.verbose) {
+                        dolog ("Failed to write %d frames (wrote zero)\n", len);
+                    }
                     return;
 
                 case -EPIPE:
@@ -729,7 +754,9 @@ static void alsa_write_pending (ALSAVoiceOut *alsa)
                                      len);
                         return;
                     }
-                    trace_alsa_xrun_out();
+                    if (conf.verbose) {
+                        dolog ("Recovering from playback xrun\n");
+                    }
                     continue;
 
                 case -ESTRPIPE:
@@ -740,7 +767,9 @@ static void alsa_write_pending (ALSAVoiceOut *alsa)
                                      len);
                         return;
                     }
-                    trace_alsa_resume_out();
+                    if (conf.verbose) {
+                        dolog ("Resuming suspended output stream\n");
+                    }
                     continue;
 
                 case -EAGAIN:
@@ -790,27 +819,25 @@ static void alsa_fini_out (HWVoiceOut *hw)
     alsa->pcm_buf = NULL;
 }
 
-static int alsa_init_out(HWVoiceOut *hw, struct audsettings *as,
-                         void *drv_opaque)
+static int alsa_init_out (HWVoiceOut *hw, struct audsettings *as)
 {
     ALSAVoiceOut *alsa = (ALSAVoiceOut *) hw;
     struct alsa_params_req req;
     struct alsa_params_obt obt;
     snd_pcm_t *handle;
     struct audsettings obt_as;
-    ALSAConf *conf = drv_opaque;
 
     req.fmt = aud_to_alsafmt (as->fmt, as->endianness);
     req.freq = as->freq;
     req.nchannels = as->nchannels;
-    req.period_size = conf->period_size_out;
-    req.buffer_size = conf->buffer_size_out;
-    req.size_in_usec = conf->size_in_usec_out;
+    req.period_size = conf.period_size_out;
+    req.buffer_size = conf.buffer_size_out;
+    req.size_in_usec = conf.size_in_usec_out;
     req.override_mask =
-        (conf->period_size_out_overridden ? 1 : 0) |
-        (conf->buffer_size_out_overridden ? 2 : 0);
+        (conf.period_size_out_overridden ? 1 : 0) |
+        (conf.buffer_size_out_overridden ? 2 : 0);
 
-    if (alsa_open (0, &req, &obt, &handle, conf)) {
+    if (alsa_open (0, &req, &obt, &handle)) {
         return -1;
     }
 
@@ -831,7 +858,6 @@ static int alsa_init_out(HWVoiceOut *hw, struct audsettings *as,
     }
 
     alsa->handle = handle;
-    alsa->pollhlp.conf = conf;
     return 0;
 }
 
@@ -902,26 +928,25 @@ static int alsa_ctl_out (HWVoiceOut *hw, int cmd, ...)
     return -1;
 }
 
-static int alsa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
+static int alsa_init_in (HWVoiceIn *hw, struct audsettings *as)
 {
     ALSAVoiceIn *alsa = (ALSAVoiceIn *) hw;
     struct alsa_params_req req;
     struct alsa_params_obt obt;
     snd_pcm_t *handle;
     struct audsettings obt_as;
-    ALSAConf *conf = drv_opaque;
 
     req.fmt = aud_to_alsafmt (as->fmt, as->endianness);
     req.freq = as->freq;
     req.nchannels = as->nchannels;
-    req.period_size = conf->period_size_in;
-    req.buffer_size = conf->buffer_size_in;
-    req.size_in_usec = conf->size_in_usec_in;
+    req.period_size = conf.period_size_in;
+    req.buffer_size = conf.buffer_size_in;
+    req.size_in_usec = conf.size_in_usec_in;
     req.override_mask =
-        (conf->period_size_in_overridden ? 1 : 0) |
-        (conf->buffer_size_in_overridden ? 2 : 0);
+        (conf.period_size_in_overridden ? 1 : 0) |
+        (conf.buffer_size_in_overridden ? 2 : 0);
 
-    if (alsa_open (1, &req, &obt, &handle, conf)) {
+    if (alsa_open (1, &req, &obt, &handle)) {
         return -1;
     }
 
@@ -942,7 +967,6 @@ static int alsa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
     }
 
     alsa->handle = handle;
-    alsa->pollhlp.conf = conf;
     return 0;
 }
 
@@ -998,10 +1022,14 @@ static int alsa_run_in (HWVoiceIn *hw)
                 dolog ("Failed to resume suspended input stream\n");
                 return 0;
             }
-            trace_alsa_resume_in();
+            if (conf.verbose) {
+                dolog ("Resuming suspended input stream\n");
+            }
             break;
         default:
-            trace_alsa_no_frames(state);
+            if (conf.verbose) {
+                dolog ("No frames available and ALSA state is %d\n", state);
+            }
             return 0;
         }
     }
@@ -1036,7 +1064,9 @@ static int alsa_run_in (HWVoiceIn *hw)
             if (nread <= 0) {
                 switch (nread) {
                 case 0:
-                    trace_alsa_read_zero(len);
+                    if (conf.verbose) {
+                        dolog ("Failed to read %ld frames (read zero)\n", len);
+                    }
                     goto exit;
 
                 case -EPIPE:
@@ -1044,7 +1074,9 @@ static int alsa_run_in (HWVoiceIn *hw)
                         alsa_logerr (nread, "Failed to read %ld frames\n", len);
                         goto exit;
                     }
-                    trace_alsa_xrun_in();
+                    if (conf.verbose) {
+                        dolog ("Recovering from capture xrun\n");
+                    }
                     continue;
 
                 case -EAGAIN:
@@ -1116,84 +1148,81 @@ static int alsa_ctl_in (HWVoiceIn *hw, int cmd, ...)
     return -1;
 }
 
-static ALSAConf glob_conf = {
-    .buffer_size_out = 4096,
-    .period_size_out = 1024,
-    .pcm_name_out = "default",
-    .pcm_name_in = "default",
-};
-
 static void *alsa_audio_init (void)
 {
-    ALSAConf *conf = g_malloc(sizeof(ALSAConf));
-    *conf = glob_conf;
-    return conf;
+    return &conf;
 }
 
 static void alsa_audio_fini (void *opaque)
 {
-    g_free(opaque);
+    (void) opaque;
 }
 
 static struct audio_option alsa_options[] = {
     {
         .name        = "DAC_SIZE_IN_USEC",
         .tag         = AUD_OPT_BOOL,
-        .valp        = &glob_conf.size_in_usec_out,
+        .valp        = &conf.size_in_usec_out,
         .descr       = "DAC period/buffer size in microseconds (otherwise in frames)"
     },
     {
         .name        = "DAC_PERIOD_SIZE",
         .tag         = AUD_OPT_INT,
-        .valp        = &glob_conf.period_size_out,
+        .valp        = &conf.period_size_out,
         .descr       = "DAC period size (0 to go with system default)",
-        .overriddenp = &glob_conf.period_size_out_overridden
+        .overriddenp = &conf.period_size_out_overridden
     },
     {
         .name        = "DAC_BUFFER_SIZE",
         .tag         = AUD_OPT_INT,
-        .valp        = &glob_conf.buffer_size_out,
+        .valp        = &conf.buffer_size_out,
         .descr       = "DAC buffer size (0 to go with system default)",
-        .overriddenp = &glob_conf.buffer_size_out_overridden
+        .overriddenp = &conf.buffer_size_out_overridden
     },
     {
         .name        = "ADC_SIZE_IN_USEC",
         .tag         = AUD_OPT_BOOL,
-        .valp        = &glob_conf.size_in_usec_in,
+        .valp        = &conf.size_in_usec_in,
         .descr       =
         "ADC period/buffer size in microseconds (otherwise in frames)"
     },
     {
         .name        = "ADC_PERIOD_SIZE",
         .tag         = AUD_OPT_INT,
-        .valp        = &glob_conf.period_size_in,
+        .valp        = &conf.period_size_in,
         .descr       = "ADC period size (0 to go with system default)",
-        .overriddenp = &glob_conf.period_size_in_overridden
+        .overriddenp = &conf.period_size_in_overridden
     },
     {
         .name        = "ADC_BUFFER_SIZE",
         .tag         = AUD_OPT_INT,
-        .valp        = &glob_conf.buffer_size_in,
+        .valp        = &conf.buffer_size_in,
         .descr       = "ADC buffer size (0 to go with system default)",
-        .overriddenp = &glob_conf.buffer_size_in_overridden
+        .overriddenp = &conf.buffer_size_in_overridden
     },
     {
         .name        = "THRESHOLD",
         .tag         = AUD_OPT_INT,
-        .valp        = &glob_conf.threshold,
+        .valp        = &conf.threshold,
         .descr       = "(undocumented)"
     },
     {
         .name        = "DAC_DEV",
         .tag         = AUD_OPT_STR,
-        .valp        = &glob_conf.pcm_name_out,
+        .valp        = &conf.pcm_name_out,
         .descr       = "DAC device name (for instance dmix)"
     },
     {
         .name        = "ADC_DEV",
         .tag         = AUD_OPT_STR,
-        .valp        = &glob_conf.pcm_name_in,
+        .valp        = &conf.pcm_name_in,
         .descr       = "ADC device name"
+    },
+    {
+        .name        = "VERBOSE",
+        .tag         = AUD_OPT_BOOL,
+        .valp        = &conf.verbose,
+        .descr       = "Behave in a more verbose way"
     },
     { /* End of list */ }
 };

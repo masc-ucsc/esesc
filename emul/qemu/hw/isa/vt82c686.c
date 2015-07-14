@@ -36,7 +36,7 @@
 
 typedef struct SuperIOConfig
 {
-    uint8_t config[0x100];
+    uint8_t config[0xff];
     uint8_t index;
     uint8_t data;
 } SuperIOConfig;
@@ -47,20 +47,16 @@ typedef struct VT82C686BState {
     SuperIOConfig superio_conf;
 } VT82C686BState;
 
-#define TYPE_VT82C686B_DEVICE "VT82C686B"
-#define VT82C686B_DEVICE(obj) \
-    OBJECT_CHECK(VT82C686BState, (obj), TYPE_VT82C686B_DEVICE)
-
 static void superio_ioport_writeb(void *opaque, hwaddr addr, uint64_t data,
                                   unsigned size)
 {
+    int can_write;
     SuperIOConfig *superio_conf = opaque;
 
     DPRINTF("superio_ioport_writeb  address 0x%x  val 0x%x\n", addr, data);
     if (addr == 0x3f0) {
         superio_conf->index = data & 0xff;
     } else {
-        bool can_write = true;
         /* 0x3f1 */
         switch (superio_conf->index) {
         case 0x00 ... 0xdf:
@@ -72,27 +68,30 @@ static void superio_ioport_writeb(void *opaque, hwaddr addr, uint64_t data,
         case 0xf7:
         case 0xf9 ... 0xfb:
         case 0xfd ... 0xff:
-            can_write = false;
-            break;
-        case 0xe7:
-            if ((data & 0xff) != 0xfe) {
-                DPRINTF("change uart 1 base. unsupported yet\n");
-                can_write = false;
-            }
-            break;
-        case 0xe8:
-            if ((data & 0xff) != 0xbe) {
-                DPRINTF("change uart 2 base. unsupported yet\n");
-                can_write = false;
-            }
+            can_write = 0;
             break;
         default:
-            break;
+            can_write = 1;
 
+            if (can_write) {
+                switch (superio_conf->index) {
+                case 0xe7:
+                    if ((data & 0xff) != 0xfe) {
+                        DPRINTF("chage uart 1 base. unsupported yet\n");
+                    }
+                    break;
+                case 0xe8:
+                    if ((data & 0xff) != 0xbe) {
+                        DPRINTF("chage uart 2 base. unsupported yet\n");
+                    }
+                    break;
+
+                default:
+                    superio_conf->config[superio_conf->index] = data & 0xff;
+                }
+            }
         }
-        if (can_write) {
-            superio_conf->config[superio_conf->index] = data & 0xff;
-        }
+        superio_conf->config[superio_conf->index] = data & 0xff;
     }
 }
 
@@ -118,7 +117,7 @@ static void vt82c686b_reset(void * opaque)
 {
     PCIDevice *d = opaque;
     uint8_t *pci_conf = d->config;
-    VT82C686BState *vt82c = VT82C686B_DEVICE(d);
+    VT82C686BState *vt82c = DO_UPCAST(VT82C686BState, dev, d);
 
     pci_set_long(pci_conf + PCI_CAPABILITY_LIST, 0x000000c0);
     pci_set_word(pci_conf + PCI_COMMAND, PCI_COMMAND_IO | PCI_COMMAND_MEMORY |
@@ -146,7 +145,7 @@ static void vt82c686b_reset(void * opaque)
 static void vt82c686b_write_config(PCIDevice * d, uint32_t address,
                                    uint32_t val, int len)
 {
-    VT82C686BState *vt686 = VT82C686B_DEVICE(d);
+    VT82C686BState *vt686 = DO_UPCAST(VT82C686BState, dev, d);
 
     DPRINTF("vt82c686b_write_config  address 0x%x  val 0x%x len 0x%x\n",
            address, val, len);
@@ -175,18 +174,6 @@ typedef struct VT686AC97State {
 typedef struct VT686MC97State {
     PCIDevice dev;
 } VT686MC97State;
-
-#define TYPE_VT82C686B_PM_DEVICE "VT82C686B_PM"
-#define VT82C686B_PM_DEVICE(obj) \
-    OBJECT_CHECK(VT686PMState, (obj), TYPE_VT82C686B_PM_DEVICE)
-
-#define TYPE_VT82C686B_MC97_DEVICE "VT82C686B_MC97"
-#define VT82C686B_MC97_DEVICE(obj) \
-    OBJECT_CHECK(VT686MC97State, (obj), TYPE_VT82C686B_MC97_DEVICE)
-
-#define TYPE_VT82C686B_AC97_DEVICE "VT82C686B_AC97"
-#define VT82C686B_AC97_DEVICE(obj) \
-    OBJECT_CHECK(VT686AC97State, (obj), TYPE_VT82C686B_AC97_DEVICE)
 
 static void pm_update_sci(VT686PMState *s)
 {
@@ -250,7 +237,7 @@ static const VMStateDescription vmstate_acpi = {
         VMSTATE_UINT16(ar.pm1.evt.en, VT686PMState),
         VMSTATE_UINT16(ar.pm1.cnt.cnt, VT686PMState),
         VMSTATE_STRUCT(apm, VT686PMState, 0, vmstate_apm, APMState),
-        VMSTATE_TIMER_PTR(ar.tmr.timer, VT686PMState),
+        VMSTATE_TIMER(ar.tmr.timer, VT686PMState),
         VMSTATE_INT64(ar.tmr.overflow_time, VT686PMState),
         VMSTATE_END_OF_LIST()
     }
@@ -261,9 +248,9 @@ static const VMStateDescription vmstate_acpi = {
  * just register a PCI device now, functionalities will be implemented later.
  */
 
-static void vt82c686b_ac97_realize(PCIDevice *dev, Error **errp)
+static int vt82c686b_ac97_initfn(PCIDevice *dev)
 {
-    VT686AC97State *s = VT82C686B_AC97_DEVICE(dev);
+    VT686AC97State *s = DO_UPCAST(VT686AC97State, dev, dev);
     uint8_t *pci_conf = s->dev.config;
 
     pci_set_word(pci_conf + PCI_COMMAND, PCI_COMMAND_INVALIDATE |
@@ -271,13 +258,15 @@ static void vt82c686b_ac97_realize(PCIDevice *dev, Error **errp)
     pci_set_word(pci_conf + PCI_STATUS, PCI_STATUS_CAP_LIST |
                  PCI_STATUS_DEVSEL_MEDIUM);
     pci_set_long(pci_conf + PCI_INTERRUPT_PIN, 0x03);
+
+    return 0;
 }
 
 void vt82c686b_ac97_init(PCIBus *bus, int devfn)
 {
     PCIDevice *dev;
 
-    dev = pci_create(bus, devfn, TYPE_VT82C686B_AC97_DEVICE);
+    dev = pci_create(bus, devfn, "VT82C686B_AC97");
     qdev_init_nofail(&dev->qdev);
 }
 
@@ -286,7 +275,7 @@ static void via_ac97_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = vt82c686b_ac97_realize;
+    k->init = vt82c686b_ac97_initfn;
     k->vendor_id = PCI_VENDOR_ID_VIA;
     k->device_id = PCI_DEVICE_ID_VIA_AC97;
     k->revision = 0x50;
@@ -296,28 +285,30 @@ static void via_ac97_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo via_ac97_info = {
-    .name          = TYPE_VT82C686B_AC97_DEVICE,
+    .name          = "VT82C686B_AC97",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(VT686AC97State),
     .class_init    = via_ac97_class_init,
 };
 
-static void vt82c686b_mc97_realize(PCIDevice *dev, Error **errp)
+static int vt82c686b_mc97_initfn(PCIDevice *dev)
 {
-    VT686MC97State *s = VT82C686B_MC97_DEVICE(dev);
+    VT686MC97State *s = DO_UPCAST(VT686MC97State, dev, dev);
     uint8_t *pci_conf = s->dev.config;
 
     pci_set_word(pci_conf + PCI_COMMAND, PCI_COMMAND_INVALIDATE |
                  PCI_COMMAND_VGA_PALETTE);
     pci_set_word(pci_conf + PCI_STATUS, PCI_STATUS_DEVSEL_MEDIUM);
     pci_set_long(pci_conf + PCI_INTERRUPT_PIN, 0x03);
+
+    return 0;
 }
 
 void vt82c686b_mc97_init(PCIBus *bus, int devfn)
 {
     PCIDevice *dev;
 
-    dev = pci_create(bus, devfn, TYPE_VT82C686B_MC97_DEVICE);
+    dev = pci_create(bus, devfn, "VT82C686B_MC97");
     qdev_init_nofail(&dev->qdev);
 }
 
@@ -326,7 +317,7 @@ static void via_mc97_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = vt82c686b_mc97_realize;
+    k->init = vt82c686b_mc97_initfn;
     k->vendor_id = PCI_VENDOR_ID_VIA;
     k->device_id = PCI_DEVICE_ID_VIA_MC97;
     k->class_id = PCI_CLASS_COMMUNICATION_OTHER;
@@ -336,16 +327,16 @@ static void via_mc97_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo via_mc97_info = {
-    .name          = TYPE_VT82C686B_MC97_DEVICE,
+    .name          = "VT82C686B_MC97",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(VT686MC97State),
     .class_init    = via_mc97_class_init,
 };
 
 /* vt82c686 pm init */
-static void vt82c686b_pm_realize(PCIDevice *dev, Error **errp)
+static int vt82c686b_pm_initfn(PCIDevice *dev)
 {
-    VT686PMState *s = VT82C686B_PM_DEVICE(dev);
+    VT686PMState *s = DO_UPCAST(VT686PMState, dev, dev);
     uint8_t *pci_conf;
 
     pci_conf = s->dev.config;
@@ -372,7 +363,9 @@ static void vt82c686b_pm_realize(PCIDevice *dev, Error **errp)
 
     acpi_pm_tmr_init(&s->ar, pm_tmr_timer, &s->io);
     acpi_pm1_evt_init(&s->ar, pm_tmr_timer, &s->io);
-    acpi_pm1_cnt_init(&s->ar, &s->io, false, false, 2);
+    acpi_pm1_cnt_init(&s->ar, &s->io, 2);
+
+    return 0;
 }
 
 I2CBus *vt82c686b_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
@@ -381,10 +374,10 @@ I2CBus *vt82c686b_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
     PCIDevice *dev;
     VT686PMState *s;
 
-    dev = pci_create(bus, devfn, TYPE_VT82C686B_PM_DEVICE);
+    dev = pci_create(bus, devfn, "VT82C686B_PM");
     qdev_prop_set_uint32(&dev->qdev, "smb_io_base", smb_io_base);
 
-    s = VT82C686B_PM_DEVICE(dev);
+    s = DO_UPCAST(VT686PMState, dev, dev);
 
     qdev_init_nofail(&dev->qdev);
 
@@ -401,7 +394,7 @@ static void via_pm_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = vt82c686b_pm_realize;
+    k->init = vt82c686b_pm_initfn;
     k->config_write = pm_write_config;
     k->vendor_id = PCI_VENDOR_ID_VIA;
     k->device_id = PCI_DEVICE_ID_VIA_ACPI;
@@ -414,7 +407,7 @@ static void via_pm_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo via_pm_info = {
-    .name          = TYPE_VT82C686B_PM_DEVICE,
+    .name          = "VT82C686B_PM",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(VT686PMState),
     .class_init    = via_pm_class_init,
@@ -431,16 +424,15 @@ static const VMStateDescription vmstate_via = {
 };
 
 /* init the PCI-to-ISA bridge */
-static void vt82c686b_realize(PCIDevice *d, Error **errp)
+static int vt82c686b_initfn(PCIDevice *d)
 {
-    VT82C686BState *vt82c = VT82C686B_DEVICE(d);
+    VT82C686BState *vt82c = DO_UPCAST(VT82C686BState, dev, d);
     uint8_t *pci_conf;
     ISABus *isa_bus;
     uint8_t *wmask;
     int i;
 
-    isa_bus = isa_bus_new(DEVICE(d), get_system_memory(),
-                          pci_address_space_io(d));
+    isa_bus = isa_bus_new(&d->qdev, pci_address_space_io(d));
 
     pci_conf = d->config;
     pci_config_set_prog_interface(pci_conf, 0x0);
@@ -461,14 +453,15 @@ static void vt82c686b_realize(PCIDevice *d, Error **errp)
                                 &vt82c->superio);
 
     qemu_register_reset(vt82c686b_reset, d);
+
+    return 0;
 }
 
 ISABus *vt82c686b_init(PCIBus *bus, int devfn)
 {
     PCIDevice *d;
 
-    d = pci_create_simple_multifunction(bus, devfn, true,
-                                        TYPE_VT82C686B_DEVICE);
+    d = pci_create_simple_multifunction(bus, devfn, true, "VT82C686B");
 
     return ISA_BUS(qdev_get_child_bus(DEVICE(d), "isa.0"));
 }
@@ -478,7 +471,7 @@ static void via_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = vt82c686b_realize;
+    k->init = vt82c686b_initfn;
     k->config_write = vt82c686b_write_config;
     k->vendor_id = PCI_VENDOR_ID_VIA;
     k->device_id = PCI_DEVICE_ID_VIA_ISA_BRIDGE;
@@ -494,7 +487,7 @@ static void via_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo via_info = {
-    .name          = TYPE_VT82C686B_DEVICE,
+    .name          = "VT82C686B",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(VT82C686BState),
     .class_init    = via_class_init,

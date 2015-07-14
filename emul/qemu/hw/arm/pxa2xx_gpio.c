@@ -137,7 +137,7 @@ static void pxa2xx_gpio_handler_update(PXA2xxGPIOInfo *s) {
         level = s->olevel[i] & s->dir[i];
 
         for (diff = s->prev_level[i] ^ level; diff; diff ^= 1 << bit) {
-            bit = ctz32(diff);
+            bit = ffs(diff) - 1;
             line = bit + 32 * i;
             qemu_set_irq(s->handler[line], (level >> bit) & 1);
         }

@@ -163,17 +163,12 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
         return -1;
     }
 
-    blkconf_blocksizes(&dev->conf);
-    if (dev->conf.logical_block_size != 512) {
-        error_report("logical_block_size must be 512 for IDE");
-        return -1;
-    }
-
     blkconf_serial(&dev->conf, &dev->serial);
     if (kind != IDE_CD) {
         blkconf_geometry(&dev->conf, &dev->chs_trans, 65536, 16, 255, &err);
         if (err) {
-            error_report_err(err);
+            error_report("%s", error_get_pretty(err));
+            error_free(err);
             return -1;
         }
     }

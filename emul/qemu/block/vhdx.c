@@ -1002,9 +1002,9 @@ static int vhdx_open(BlockDriverState *bs, QDict *options, int flags,
     /* TODO: differencing files */
 
     /* Disable migration when VHDX images are used */
-    error_setg(&s->migration_blocker, "The vhdx format used by node '%s' "
-               "does not support live migration",
-               bdrv_get_device_or_node_name(bs));
+    error_set(&s->migration_blocker,
+            QERR_BLOCK_FORMAT_FEATURE_NOT_SUPPORTED,
+            "vhdx", bdrv_get_device_name(bs), "live migration");
     migrate_add_blocker(s->migration_blocker);
 
     return 0;
@@ -1109,9 +1109,8 @@ static coroutine_fn int vhdx_co_readv(BlockDriverState *bs, int64_t sector_num,
             /* check the payload block state */
             switch (s->bat[sinfo.bat_idx] & VHDX_BAT_STATE_BIT_MASK) {
             case PAYLOAD_BLOCK_NOT_PRESENT: /* fall through */
-            case PAYLOAD_BLOCK_UNDEFINED:
-            case PAYLOAD_BLOCK_UNMAPPED:
-            case PAYLOAD_BLOCK_UNMAPPED_v095:
+            case PAYLOAD_BLOCK_UNDEFINED:   /* fall through */
+            case PAYLOAD_BLOCK_UNMAPPED:    /* fall through */
             case PAYLOAD_BLOCK_ZERO:
                 /* return zero */
                 qemu_iovec_memset(&hd_qiov, 0, 0, sinfo.bytes_avail);
@@ -1174,18 +1173,7 @@ static void vhdx_update_bat_table_entry(BlockDriverState *bs, BDRVVHDXState *s,
 {
     /* The BAT entry is a uint64, with 44 bits for the file offset in units of
      * 1MB, and 3 bits for the block state. */
-    if ((state == PAYLOAD_BLOCK_ZERO)        ||
-        (state == PAYLOAD_BLOCK_UNDEFINED)   ||
-        (state == PAYLOAD_BLOCK_NOT_PRESENT) ||
-        (state == PAYLOAD_BLOCK_UNMAPPED)) {
-        s->bat[sinfo->bat_idx]  = 0;  /* For PAYLOAD_BLOCK_ZERO, the
-                                         FileOffsetMB field is denoted as
-                                         'reserved' in the v1.0 spec.  If it is
-                                         non-zero, MS Hyper-V will fail to read
-                                         the disk image */
-    } else {
-        s->bat[sinfo->bat_idx]  = sinfo->file_offset;
-    }
+    s->bat[sinfo->bat_idx]  = sinfo->file_offset;
 
     s->bat[sinfo->bat_idx] |= state & VHDX_BAT_STATE_BIT_MASK;
 
@@ -1269,7 +1257,7 @@ static coroutine_fn int vhdx_co_writev(BlockDriverState *bs, int64_t sector_num,
                         iov1.iov_base = qemu_blockalign(bs, iov1.iov_len);
                         memset(iov1.iov_base, 0, iov1.iov_len);
                         qemu_iovec_concat_iov(&hd_qiov, &iov1, 1, 0,
-                                              iov1.iov_len);
+                                              sinfo.block_offset);
                         sectors_to_write += iov1.iov_len >> BDRV_SECTOR_BITS;
                     }
 
@@ -1285,15 +1273,15 @@ static coroutine_fn int vhdx_co_writev(BlockDriverState *bs, int64_t sector_num,
                         iov2.iov_base = qemu_blockalign(bs, iov2.iov_len);
                         memset(iov2.iov_base, 0, iov2.iov_len);
                         qemu_iovec_concat_iov(&hd_qiov, &iov2, 1, 0,
-                                              iov2.iov_len);
+                                              sinfo.block_offset);
                         sectors_to_write += iov2.iov_len >> BDRV_SECTOR_BITS;
                     }
                 }
+
                 /* fall through */
             case PAYLOAD_BLOCK_NOT_PRESENT: /* fall through */
-            case PAYLOAD_BLOCK_UNMAPPED:
-            case PAYLOAD_BLOCK_UNMAPPED_v095:
-            case PAYLOAD_BLOCK_UNDEFINED:
+            case PAYLOAD_BLOCK_UNMAPPED:    /* fall through */
+            case PAYLOAD_BLOCK_UNDEFINED:   /* fall through */
                 bat_prior_offset = sinfo.file_offset;
                 ret = vhdx_allocate_block(bs, s, &sinfo.file_offset);
                 if (ret < 0) {
@@ -1785,7 +1773,7 @@ static int vhdx_create(const char *filename, QemuOpts *opts, Error **errp)
     log_size = qemu_opt_get_size_del(opts, VHDX_BLOCK_OPT_LOG_SIZE, 0);
     block_size = qemu_opt_get_size_del(opts, VHDX_BLOCK_OPT_BLOCK_SIZE, 0);
     type = qemu_opt_get_del(opts, BLOCK_OPT_SUBFMT);
-    use_zero_blocks = qemu_opt_get_bool_del(opts, VHDX_BLOCK_OPT_ZERO, true);
+    use_zero_blocks = qemu_opt_get_bool_del(opts, VHDX_BLOCK_OPT_ZERO, false);
 
     if (image_size > VHDX_MAX_IMAGE_SIZE) {
         error_setg_errno(errp, EINVAL, "Image size too large; max of 64TB");
@@ -1947,9 +1935,7 @@ static QemuOptsList vhdx_create_opts = {
        {
            .name = VHDX_BLOCK_OPT_ZERO,
            .type = QEMU_OPT_BOOL,
-           .help = "Force use of payload blocks of type 'ZERO'. "\
-                   "Non-standard, but default.  Do not set to 'off' when "\
-                   "using 'qemu-img convert' with subformat=dynamic."
+           .help = "Force use of payload blocks of type 'ZERO'.  Non-standard."
        },
        { NULL }
     }
@@ -1967,7 +1953,6 @@ static BlockDriver bdrv_vhdx = {
     .bdrv_create            = vhdx_create,
     .bdrv_get_info          = vhdx_get_info,
     .bdrv_check             = vhdx_check,
-    .bdrv_has_zero_init     = bdrv_has_zero_init_1,
 
     .create_opts            = &vhdx_create_opts,
 };

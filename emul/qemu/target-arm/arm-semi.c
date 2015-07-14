@@ -27,7 +27,6 @@
 #include <time.h>
 
 #include "cpu.h"
-#include "exec/semihost.h"
 #ifdef CONFIG_USER_ONLY
 #include "qemu.h"
 
@@ -58,10 +57,6 @@
 #define TARGET_SYS_GET_CMDLINE 0x15
 #define TARGET_SYS_HEAPINFO    0x16
 #define TARGET_SYS_EXIT        0x18
-
-/* ADP_Stopped_ApplicationExit is used for exit(0),
- * anything else is implemented as exit(1) */
-#define ADP_Stopped_ApplicationExit     (0x20026)
 
 #ifndef O_BINARY
 #define O_BINARY 0
@@ -436,19 +431,15 @@ uint32_t do_arm_semihosting(CPUARMState *env)
             size_t input_size;
             size_t output_size;
             int status = 0;
-#if !defined(CONFIG_USER_ONLY)
-            const char *cmdline;
-#endif
             GET_ARG(0);
             GET_ARG(1);
             input_size = arg1;
             /* Compute the size of the output string.  */
 #if !defined(CONFIG_USER_ONLY)
-            cmdline = semihosting_get_cmdline();
-            if (cmdline == NULL) {
-                cmdline = ""; /* Default to an empty line. */
-            }
-            output_size = strlen(cmdline) + 1; /* Count terminating 0. */
+            output_size = strlen(ts->boot_info->kernel_filename)
+                        + 1  /* Separating space.  */
+                        + strlen(ts->boot_info->kernel_cmdline)
+                        + 1; /* Terminating null byte.  */
 #else
             unsigned int i;
 
@@ -479,7 +470,9 @@ uint32_t do_arm_semihosting(CPUARMState *env)
 
             /* Copy the command-line arguments.  */
 #if !defined(CONFIG_USER_ONLY)
-            pstrcpy(output_buffer, output_size, cmdline);
+            pstrcpy(output_buffer, output_size, ts->boot_info->kernel_filename);
+            pstrcat(output_buffer, output_size, " ");
+            pstrcat(output_buffer, output_size, ts->boot_info->kernel_cmdline);
 #else
             if (output_size == 1) {
                 /* Empty command-line.  */
@@ -558,11 +551,8 @@ uint32_t do_arm_semihosting(CPUARMState *env)
             return 0;
         }
     case TARGET_SYS_EXIT:
-        /* ARM specifies only Stopped_ApplicationExit as normal
-         * exit, everything else is considered an error */
-        ret = (args == ADP_Stopped_ApplicationExit) ? 0 : 1;
-        gdb_exit(env, ret);
-        exit(ret);
+        gdb_exit(env, 0);
+        exit(0);
     default:
         fprintf(stderr, "qemu: Unsupported SemiHosting SWI 0x%02x\n", nr);
         cpu_dump_state(cs, stderr, fprintf, 0);

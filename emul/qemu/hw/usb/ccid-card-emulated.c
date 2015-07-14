@@ -33,6 +33,7 @@
 
 #include "qemu/thread.h"
 #include "sysemu/char.h"
+#include "monitor/monitor.h"
 #include "ccid.h"
 
 #define DPRINTF(card, lvl, fmt, ...) \

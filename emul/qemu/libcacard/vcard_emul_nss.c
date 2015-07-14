@@ -25,7 +25,7 @@
 #include <prthread.h>
 #include <secerr.h>
 
-#include "glib-compat.h"
+#include "qemu-common.h"
 
 #include "vcard.h"
 #include "card_7816t.h"
@@ -33,7 +33,7 @@
 #include "vreader.h"
 #include "vevent.h"
 
-#include "vcardt_internal.h"
+#include "libcacard/vcardt_internal.h"
 
 
 typedef enum {

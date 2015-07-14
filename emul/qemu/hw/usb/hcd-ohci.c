@@ -1827,12 +1827,11 @@ static USBPortOps ohci_port_ops = {
 static USBBusOps ohci_bus_ops = {
 };
 
-static void usb_ohci_init(OHCIState *ohci, DeviceState *dev,
-                          int num_ports, dma_addr_t localmem_base,
-                          char *masterbus, uint32_t firstport,
-                          AddressSpace *as, Error **errp)
+static int usb_ohci_init(OHCIState *ohci, DeviceState *dev,
+                         int num_ports, dma_addr_t localmem_base,
+                         char *masterbus, uint32_t firstport,
+                         AddressSpace *as)
 {
-    Error *err = NULL;
     int i;
 
     ohci->as = as;
@@ -1858,13 +1857,10 @@ static void usb_ohci_init(OHCIState *ohci, DeviceState *dev,
         for(i = 0; i < num_ports; i++) {
             ports[i] = &ohci->rhport[i].port;
         }
-        usb_register_companion(masterbus, ports, num_ports,
-                               firstport, ohci, &ohci_port_ops,
-                               USB_SPEED_MASK_LOW | USB_SPEED_MASK_FULL,
-                               &err);
-        if (err) {
-            error_propagate(errp, err);
-            return;
+        if (usb_register_companion(masterbus, ports, num_ports,
+                firstport, ohci, &ohci_port_ops,
+                USB_SPEED_MASK_LOW | USB_SPEED_MASK_FULL) != 0) {
+            return -1;
         }
     } else {
         usb_bus_new(&ohci->bus, sizeof(ohci->bus), &ohci_bus_ops, dev);
@@ -1883,6 +1879,9 @@ static void usb_ohci_init(OHCIState *ohci, DeviceState *dev,
     usb_packet_init(&ohci->usb_packet);
 
     ohci->async_td = 0;
+    qemu_register_reset(ohci_reset, ohci);
+
+    return 0;
 }
 
 #define TYPE_PCI_OHCI "pci-ohci"
@@ -1915,24 +1914,22 @@ static void ohci_die(OHCIState *ohci)
                  PCI_STATUS_DETECTED_PARITY);
 }
 
-static void usb_ohci_realize_pci(PCIDevice *dev, Error **errp)
+static int usb_ohci_initfn_pci(PCIDevice *dev)
 {
-    Error *err = NULL;
     OHCIPCIState *ohci = PCI_OHCI(dev);
 
     dev->config[PCI_CLASS_PROG] = 0x10; /* OHCI */
     dev->config[PCI_INTERRUPT_PIN] = 0x01; /* interrupt pin A */
 
-    usb_ohci_init(&ohci->state, DEVICE(dev), ohci->num_ports, 0,
-                  ohci->masterbus, ohci->firstport,
-                  pci_get_address_space(dev), &err);
-    if (err) {
-        error_propagate(errp, err);
-        return;
+    if (usb_ohci_init(&ohci->state, DEVICE(dev), ohci->num_ports, 0,
+                      ohci->masterbus, ohci->firstport,
+                      pci_get_address_space(dev)) != 0) {
+        return -1;
     }
-
     ohci->state.irq = pci_allocate_irq(dev);
+
     pci_register_bar(dev, 0, 0, &ohci->state.mem);
+    return 0;
 }
 
 static void usb_ohci_exit(PCIDevice *dev)
@@ -1952,15 +1949,6 @@ static void usb_ohci_exit(PCIDevice *dev)
     if (!ohci->masterbus) {
         usb_bus_release(&s->bus);
     }
-}
-
-static void usb_ohci_reset_pci(DeviceState *d)
-{
-    PCIDevice *dev = PCI_DEVICE(d);
-    OHCIPCIState *ohci = PCI_OHCI(dev);
-    OHCIState *s = &ohci->state;
-
-    ohci_reset(s);
 }
 
 #define TYPE_SYSBUS_OHCI "sysbus-ohci"
@@ -1983,17 +1971,9 @@ static void ohci_realize_pxa(DeviceState *dev, Error **errp)
 
     /* Cannot fail as we pass NULL for masterbus */
     usb_ohci_init(&s->ohci, dev, s->num_ports, s->dma_offset, NULL, 0,
-                  &address_space_memory, &error_abort);
+                  &address_space_memory);
     sysbus_init_irq(sbd, &s->ohci.irq);
     sysbus_init_mmio(sbd, &s->ohci.mem);
-}
-
-static void usb_ohci_reset_sysbus(DeviceState *dev)
-{
-    OHCISysBusState *s = SYSBUS_OHCI(dev);
-    OHCIState *ohci = &s->ohci;
-
-    ohci_reset(ohci);
 }
 
 static Property ohci_pci_properties[] = {
@@ -2034,9 +2014,8 @@ static const VMStateDescription vmstate_ohci_eof_timer = {
     .version_id = 1,
     .minimum_version_id = 1,
     .pre_load = ohci_eof_timer_pre_load,
-    .needed = ohci_eof_timer_needed,
     .fields = (VMStateField[]) {
-        VMSTATE_TIMER_PTR(eof_timer, OHCIState),
+        VMSTATE_TIMER(eof_timer, OHCIState),
         VMSTATE_END_OF_LIST()
     },
 };
@@ -2082,9 +2061,13 @@ static const VMStateDescription vmstate_ohci_state = {
         VMSTATE_BOOL(async_complete, OHCIState),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (const VMStateDescription*[]) {
-        &vmstate_ohci_eof_timer,
-        NULL
+    .subsections = (VMStateSubsection []) {
+        {
+            .vmsd = &vmstate_ohci_eof_timer,
+            .needed = ohci_eof_timer_needed,
+        } , {
+            /* empty */
+        }
     }
 };
 
@@ -2104,7 +2087,7 @@ static void ohci_pci_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = usb_ohci_realize_pci;
+    k->init = usb_ohci_initfn_pci;
     k->exit = usb_ohci_exit;
     k->vendor_id = PCI_VENDOR_ID_APPLE;
     k->device_id = PCI_DEVICE_ID_APPLE_IPID_USB;
@@ -2114,7 +2097,6 @@ static void ohci_pci_class_init(ObjectClass *klass, void *data)
     dc->props = ohci_pci_properties;
     dc->hotpluggable = false;
     dc->vmsd = &vmstate_ohci;
-    dc->reset = usb_ohci_reset_pci;
 }
 
 static const TypeInfo ohci_pci_info = {
@@ -2138,7 +2120,6 @@ static void ohci_sysbus_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_USB, dc->categories);
     dc->desc = "OHCI USB Controller";
     dc->props = ohci_sysbus_properties;
-    dc->reset = usb_ohci_reset_sysbus;
 }
 
 static const TypeInfo ohci_sysbus_info = {

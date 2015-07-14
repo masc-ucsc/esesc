@@ -20,6 +20,26 @@ typedef uint32_t Elf64_Word;
 typedef uint64_t Elf64_Xword;
 typedef int64_t  Elf64_Sxword;
 
+/* Object attribute values.  */
+enum {
+    /* Not tagged or not using any ABIs affected by the differences.  */
+    Val_GNU_MIPS_ABI_FP_ANY = 0,
+    /* Using hard-float -mdouble-float.  */
+    Val_GNU_MIPS_ABI_FP_DOUBLE = 1,
+    /* Using hard-float -msingle-float.  */
+    Val_GNU_MIPS_ABI_FP_SINGLE = 2,
+    /* Using soft-float.  */
+    Val_GNU_MIPS_ABI_FP_SOFT = 3,
+    /* Using -mips32r2 -mfp64.  */
+    Val_GNU_MIPS_ABI_FP_OLD_64 = 4,
+    /* Using -mfpxx */
+    Val_GNU_MIPS_ABI_FP_XX = 5,
+    /* Using -mips32r2 -mfp64.  */
+    Val_GNU_MIPS_ABI_FP_64 = 6,
+    /* Using -mips32r2 -mfp64 -mno-odd-spreg.  */
+    Val_GNU_MIPS_ABI_FP_64A = 7
+};
+
 /* These constants are for the segment types stored in the image headers */
 #define PT_NULL    0
 #define PT_LOAD    1
@@ -30,8 +50,9 @@ typedef int64_t  Elf64_Sxword;
 #define PT_PHDR    6
 #define PT_LOPROC  0x70000000
 #define PT_HIPROC  0x7fffffff
-#define PT_MIPS_REGINFO		0x70000000
-#define PT_MIPS_OPTIONS		0x70000001
+#define PT_MIPS_REGINFO     0x70000000
+#define PT_MIPS_OPTIONS     0x70000002
+#define PT_MIPS_ABIFLAGS    0x70000003
 
 /* Flags in the e_flags field of the header */
 /* MIPS architecture level. */
@@ -1456,8 +1477,6 @@ typedef struct elf64_shdr {
 #define NT_TASKSTRUCT	4
 #define NT_AUXV		6
 #define NT_PRXFPREG     0x46e62b7f      /* copied from gdb5.1/include/elf/common.h */
-#define NT_S390_VXRS_HIGH 0x30a         /* s390 vector registers 16-31 */
-#define NT_S390_VXRS_LOW  0x309         /* s390 vector registers 0-15 (lower half) */
 #define NT_S390_PREFIX  0x305           /* s390 prefix register */
 #define NT_S390_CTRS    0x304           /* s390 control registers */
 #define NT_S390_TODPREG 0x303           /* s390 TOD programmable register */
@@ -1510,7 +1529,6 @@ struct elf32_fdpic_loadmap {
 #define elf_shdr	elf32_shdr
 #define elf_sym		elf32_sym
 #define elf_addr_t	Elf32_Off
-#define elf_rela  elf32_rela
 
 #ifdef ELF_USES_RELOCA
 # define ELF_RELOC      Elf32_Rela
@@ -1526,7 +1544,6 @@ struct elf32_fdpic_loadmap {
 #define elf_shdr	elf64_shdr
 #define elf_sym		elf64_sym
 #define elf_addr_t	Elf64_Off
-#define elf_rela  elf64_rela
 
 #ifdef ELF_USES_RELOCA
 # define ELF_RELOC      Elf64_Rela

@@ -35,14 +35,14 @@ struct qemu_laiocb {
     size_t nbytes;
     QEMUIOVector *qiov;
     bool is_read;
-    QSIMPLEQ_ENTRY(qemu_laiocb) next;
+    QLIST_ENTRY(qemu_laiocb) node;
 };
 
 typedef struct {
+    struct iocb *iocbs[MAX_QUEUED_IO];
     int plugged;
-    unsigned int n;
-    bool blocked;
-    QSIMPLEQ_HEAD(, qemu_laiocb) pending;
+    unsigned int size;
+    unsigned int idx;
 } LaioQueue;
 
 struct qemu_laio_state {
@@ -58,8 +58,6 @@ struct qemu_laio_state {
     int event_idx;
     int event_max;
 };
-
-static void ioq_submit(struct qemu_laio_state *s);
 
 static inline ssize_t io_event_ret(struct io_event *ev)
 {
@@ -137,10 +135,6 @@ static void qemu_laio_completion_bh(void *opaque)
 
         qemu_laio_process_completion(s, laiocb);
     }
-
-    if (!s->io_q.plugged && !QSIMPLEQ_EMPTY(&s->io_q.pending)) {
-        ioq_submit(s);
-    }
 }
 
 static void qemu_laio_completion_cb(EventNotifier *e)
@@ -178,41 +172,50 @@ static const AIOCBInfo laio_aiocb_info = {
 
 static void ioq_init(LaioQueue *io_q)
 {
-    QSIMPLEQ_INIT(&io_q->pending);
+    io_q->size = MAX_QUEUED_IO;
+    io_q->idx = 0;
     io_q->plugged = 0;
-    io_q->n = 0;
-    io_q->blocked = false;
 }
 
-static void ioq_submit(struct qemu_laio_state *s)
+static int ioq_submit(struct qemu_laio_state *s)
 {
-    int ret, len;
-    struct qemu_laiocb *aiocb;
-    struct iocb *iocbs[MAX_QUEUED_IO];
-    QSIMPLEQ_HEAD(, qemu_laiocb) completed;
+    int ret, i = 0;
+    int len = s->io_q.idx;
 
     do {
-        len = 0;
-        QSIMPLEQ_FOREACH(aiocb, &s->io_q.pending, next) {
-            iocbs[len++] = &aiocb->iocb;
-            if (len == MAX_QUEUED_IO) {
-                break;
-            }
-        }
+        ret = io_submit(s->ctx, len, s->io_q.iocbs);
+    } while (i++ < 3 && ret == -EAGAIN);
 
-        ret = io_submit(s->ctx, len, iocbs);
-        if (ret == -EAGAIN) {
-            break;
-        }
-        if (ret < 0) {
-            abort();
-        }
+    /* empty io queue */
+    s->io_q.idx = 0;
 
-        s->io_q.n -= ret;
-        aiocb = container_of(iocbs[ret - 1], struct qemu_laiocb, iocb);
-        QSIMPLEQ_SPLIT_AFTER(&s->io_q.pending, aiocb, next, &completed);
-    } while (ret == len && !QSIMPLEQ_EMPTY(&s->io_q.pending));
-    s->io_q.blocked = (s->io_q.n > 0);
+    if (ret < 0) {
+        i = 0;
+    } else {
+        i = ret;
+    }
+
+    for (; i < len; i++) {
+        struct qemu_laiocb *laiocb =
+            container_of(s->io_q.iocbs[i], struct qemu_laiocb, iocb);
+
+        laiocb->ret = (ret < 0) ? ret : -EIO;
+        qemu_laio_process_completion(s, laiocb);
+    }
+    return ret;
+}
+
+static void ioq_enqueue(struct qemu_laio_state *s, struct iocb *iocb)
+{
+    unsigned int idx = s->io_q.idx;
+
+    s->io_q.iocbs[idx++] = iocb;
+    s->io_q.idx = idx;
+
+    /* submit immediately if queue is full */
+    if (idx == s->io_q.size) {
+        ioq_submit(s);
+    }
 }
 
 void laio_io_plug(BlockDriverState *bs, void *aio_ctx)
@@ -222,19 +225,22 @@ void laio_io_plug(BlockDriverState *bs, void *aio_ctx)
     s->io_q.plugged++;
 }
 
-void laio_io_unplug(BlockDriverState *bs, void *aio_ctx, bool unplug)
+int laio_io_unplug(BlockDriverState *bs, void *aio_ctx, bool unplug)
 {
     struct qemu_laio_state *s = aio_ctx;
+    int ret = 0;
 
     assert(s->io_q.plugged > 0 || !unplug);
 
     if (unplug && --s->io_q.plugged > 0) {
-        return;
+        return 0;
     }
 
-    if (!s->io_q.blocked && !QSIMPLEQ_EMPTY(&s->io_q.pending)) {
-        ioq_submit(s);
+    if (s->io_q.idx > 0) {
+        ret = ioq_submit(s);
     }
+
+    return ret;
 }
 
 BlockAIOCB *laio_submit(BlockDriverState *bs, void *aio_ctx, int fd,
@@ -270,11 +276,12 @@ BlockAIOCB *laio_submit(BlockDriverState *bs, void *aio_ctx, int fd,
     }
     io_set_eventfd(&laiocb->iocb, event_notifier_get_fd(&s->e));
 
-    QSIMPLEQ_INSERT_TAIL(&s->io_q.pending, laiocb, next);
-    s->io_q.n++;
-    if (!s->io_q.blocked &&
-        (!s->io_q.plugged || s->io_q.n >= MAX_QUEUED_IO)) {
-        ioq_submit(s);
+    if (!s->io_q.plugged) {
+        if (io_submit(s->ctx, 1, &iocbs) < 0) {
+            goto out_free_aiocb;
+        }
+    } else {
+        ioq_enqueue(s, iocbs);
     }
     return &laiocb->common;
 

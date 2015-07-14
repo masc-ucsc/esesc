@@ -96,17 +96,6 @@ const unsigned kDoubleExponentBits = 11;
 const unsigned kFloatMantissaBits = 23;
 const unsigned kFloatExponentBits = 8;
 
-// Floating-point infinity values.
-extern const float kFP32PositiveInfinity;
-extern const float kFP32NegativeInfinity;
-extern const double kFP64PositiveInfinity;
-extern const double kFP64NegativeInfinity;
-
-// The default NaN values (for FPCR.DN=1).
-extern const double kFP64DefaultNaN;
-extern const float kFP32DefaultNaN;
-
-
 enum LSDataSize {
   LSByte        = 0,
   LSHalfword    = 1,
@@ -151,33 +140,33 @@ enum Reg31Mode {
 
 class Instruction {
  public:
-  Instr InstructionBits() const {
+  inline Instr InstructionBits() const {
     return *(reinterpret_cast<const Instr*>(this));
   }
 
-  void SetInstructionBits(Instr new_instr) {
+  inline void SetInstructionBits(Instr new_instr) {
     *(reinterpret_cast<Instr*>(this)) = new_instr;
   }
 
-  int Bit(int pos) const {
+  inline int Bit(int pos) const {
     return (InstructionBits() >> pos) & 1;
   }
 
-  uint32_t Bits(int msb, int lsb) const {
+  inline uint32_t Bits(int msb, int lsb) const {
     return unsigned_bitextract_32(msb, lsb, InstructionBits());
   }
 
-  int32_t SignedBits(int msb, int lsb) const {
+  inline int32_t SignedBits(int msb, int lsb) const {
     int32_t bits = *(reinterpret_cast<const int32_t*>(this));
     return signed_bitextract_32(msb, lsb, bits);
   }
 
-  Instr Mask(uint32_t mask) const {
+  inline Instr Mask(uint32_t mask) const {
     return InstructionBits() & mask;
   }
 
   #define DEFINE_GETTER(Name, HighBit, LowBit, Func)             \
-  int64_t Name() const { return Func(HighBit, LowBit); }
+  inline int64_t Name() const { return Func(HighBit, LowBit); }
   INSTRUCTION_FIELDS_LIST(DEFINE_GETTER)
   #undef DEFINE_GETTER
 
@@ -193,64 +182,56 @@ class Instruction {
   float ImmFP32() const;
   double ImmFP64() const;
 
-  LSDataSize SizeLSPair() const {
+  inline LSDataSize SizeLSPair() const {
     return CalcLSPairDataSize(
              static_cast<LoadStorePairOp>(Mask(LoadStorePairMask)));
   }
 
   // Helpers.
-  bool IsCondBranchImm() const {
+  inline bool IsCondBranchImm() const {
     return Mask(ConditionalBranchFMask) == ConditionalBranchFixed;
   }
 
-  bool IsUncondBranchImm() const {
+  inline bool IsUncondBranchImm() const {
     return Mask(UnconditionalBranchFMask) == UnconditionalBranchFixed;
   }
 
-  bool IsCompareBranch() const {
+  inline bool IsCompareBranch() const {
     return Mask(CompareBranchFMask) == CompareBranchFixed;
   }
 
-  bool IsTestBranch() const {
+  inline bool IsTestBranch() const {
     return Mask(TestBranchFMask) == TestBranchFixed;
   }
 
-  bool IsPCRelAddressing() const {
+  inline bool IsPCRelAddressing() const {
     return Mask(PCRelAddressingFMask) == PCRelAddressingFixed;
   }
 
-  bool IsLogicalImmediate() const {
+  inline bool IsLogicalImmediate() const {
     return Mask(LogicalImmediateFMask) == LogicalImmediateFixed;
   }
 
-  bool IsAddSubImmediate() const {
+  inline bool IsAddSubImmediate() const {
     return Mask(AddSubImmediateFMask) == AddSubImmediateFixed;
   }
 
-  bool IsAddSubExtended() const {
+  inline bool IsAddSubExtended() const {
     return Mask(AddSubExtendedFMask) == AddSubExtendedFixed;
   }
 
-  bool IsLoadOrStore() const {
+  inline bool IsLoadOrStore() const {
     return Mask(LoadStoreAnyFMask) == LoadStoreAnyFixed;
   }
 
-  bool IsLoad() const;
-  bool IsStore() const;
-
-  bool IsLoadLiteral() const {
-    // This includes PRFM_lit.
-    return Mask(LoadLiteralFMask) == LoadLiteralFixed;
-  }
-
-  bool IsMovn() const {
+  inline bool IsMovn() const {
     return (Mask(MoveWideImmediateMask) == MOVN_x) ||
            (Mask(MoveWideImmediateMask) == MOVN_w);
   }
 
   // Indicate whether Rd can be the stack pointer or the zero register. This
   // does not check that the instruction actually has an Rd field.
-  Reg31Mode RdMode() const {
+  inline Reg31Mode RdMode() const {
     // The following instructions use sp or wsp as Rd:
     //  Add/sub (immediate) when not setting the flags.
     //  Add/sub (extended) when not setting the flags.
@@ -279,7 +260,7 @@ class Instruction {
 
   // Indicate whether Rn can be the stack pointer or the zero register. This
   // does not check that the instruction actually has an Rn field.
-  Reg31Mode RnMode() const {
+  inline Reg31Mode RnMode() const {
     // The following instructions use sp or wsp as Rn:
     //  All loads and stores.
     //  Add/sub (immediate).
@@ -291,7 +272,7 @@ class Instruction {
     return Reg31IsZeroRegister;
   }
 
-  ImmBranchType BranchType() const {
+  inline ImmBranchType BranchType() const {
     if (IsCondBranchImm()) {
       return CondBranchType;
     } else if (IsUncondBranchImm()) {
@@ -315,66 +296,55 @@ class Instruction {
   // Patch a literal load instruction to load from 'source'.
   void SetImmLLiteral(const Instruction* source);
 
-  // Calculate the address of a literal referred to by a load-literal
-  // instruction, and return it as the specified type.
-  //
-  // The literal itself is safely mutable only if the backing buffer is safely
-  // mutable.
-  template <typename T>
-  T LiteralAddress() const {
-    uint64_t base_raw = reinterpret_cast<uintptr_t>(this);
-    ptrdiff_t offset = ImmLLiteral() << kLiteralEntrySizeLog2;
-    uint64_t address_raw = base_raw + offset;
-
-    // Cast the address using a C-style cast. A reinterpret_cast would be
-    // appropriate, but it can't cast one integral type to another.
-    T address = (T)(address_raw);
-
-    // Assert that the address can be represented by the specified type.
-    VIXL_ASSERT((uint64_t)(address) == address_raw);
-
-    return address;
+  inline uint8_t* LiteralAddress() const {
+    int offset = ImmLLiteral() << kLiteralEntrySizeLog2;
+    const uint8_t* address = reinterpret_cast<const uint8_t*>(this) + offset;
+    // Note that the result is safely mutable only if the backing buffer is
+    // safely mutable.
+    return const_cast<uint8_t*>(address);
   }
 
-  uint32_t Literal32() const {
+  inline uint32_t Literal32() const {
     uint32_t literal;
-    memcpy(&literal, LiteralAddress<const void*>(), sizeof(literal));
+    memcpy(&literal, LiteralAddress(), sizeof(literal));
+
     return literal;
   }
 
-  uint64_t Literal64() const {
+  inline uint64_t Literal64() const {
     uint64_t literal;
-    memcpy(&literal, LiteralAddress<const void*>(), sizeof(literal));
+    memcpy(&literal, LiteralAddress(), sizeof(literal));
+
     return literal;
   }
 
-  float LiteralFP32() const {
+  inline float LiteralFP32() const {
     return rawbits_to_float(Literal32());
   }
 
-  double LiteralFP64() const {
+  inline double LiteralFP64() const {
     return rawbits_to_double(Literal64());
   }
 
-  const Instruction* NextInstruction() const {
+  inline const Instruction* NextInstruction() const {
     return this + kInstructionSize;
   }
 
-  const Instruction* InstructionAtOffset(int64_t offset) const {
+  inline const Instruction* InstructionAtOffset(int64_t offset) const {
     VIXL_ASSERT(IsWordAligned(this + offset));
     return this + offset;
   }
 
-  template<typename T> static Instruction* Cast(T src) {
+  template<typename T> static inline Instruction* Cast(T src) {
     return reinterpret_cast<Instruction*>(src);
   }
 
-  template<typename T> static const Instruction* CastConst(T src) {
+  template<typename T> static inline const Instruction* CastConst(T src) {
     return reinterpret_cast<const Instruction*>(src);
   }
 
  private:
-  int ImmBranch() const;
+  inline int ImmBranch() const;
 
   void SetPCRelImmTarget(const Instruction* target);
   void SetBranchImmTarget(const Instruction* target);

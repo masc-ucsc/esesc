@@ -51,12 +51,21 @@ typedef struct NetSocketState {
 static void net_socket_accept(void *opaque);
 static void net_socket_writable(void *opaque);
 
+/* Only read packets from socket when peer can receive them */
+static int net_socket_can_send(void *opaque)
+{
+    NetSocketState *s = opaque;
+
+    return qemu_can_send_packet(&s->nc);
+}
+
 static void net_socket_update_fd_handler(NetSocketState *s)
 {
-    qemu_set_fd_handler(s->fd,
-                        s->read_poll ? s->send_fn : NULL,
-                        s->write_poll ? net_socket_writable : NULL,
-                        s);
+    qemu_set_fd_handler2(s->fd,
+                         s->read_poll  ? net_socket_can_send : NULL,
+                         s->read_poll  ? s->send_fn : NULL,
+                         s->write_poll ? net_socket_writable : NULL,
+                         s);
 }
 
 static void net_socket_read_poll(NetSocketState *s, bool enable)
@@ -133,15 +142,6 @@ static ssize_t net_socket_receive_dgram(NetClientState *nc, const uint8_t *buf, 
     return ret;
 }
 
-static void net_socket_send_completed(NetClientState *nc, ssize_t len)
-{
-    NetSocketState *s = DO_UPCAST(NetSocketState, nc, nc);
-
-    if (!s->read_poll) {
-        net_socket_read_poll(s, true);
-    }
-}
-
 static void net_socket_send(void *opaque)
 {
     NetSocketState *s = opaque;
@@ -211,13 +211,9 @@ static void net_socket_send(void *opaque)
             buf += l;
             size -= l;
             if (s->index >= s->packet_len) {
+                qemu_send_packet(&s->nc, s->buf, s->packet_len);
                 s->index = 0;
                 s->state = 0;
-                if (qemu_send_packet_async(&s->nc, s->buf, size,
-                                           net_socket_send_completed) == 0) {
-                    net_socket_read_poll(s, false);
-                    break;
-                }
             }
             break;
         }
@@ -238,10 +234,7 @@ static void net_socket_send_dgram(void *opaque)
         net_socket_write_poll(s, false);
         return;
     }
-    if (qemu_send_packet_async(&s->nc, s->buf, size,
-                               net_socket_send_completed) == 0) {
-        net_socket_read_poll(s, false);
-    }
+    qemu_send_packet(&s->nc, s->buf, size);
 }
 
 static int net_socket_mcast_create(struct sockaddr_in *mcastaddr, struct in_addr *localaddr)
@@ -700,10 +693,8 @@ static int net_socket_udp_init(NetClientState *peer,
 }
 
 int net_init_socket(const NetClientOptions *opts, const char *name,
-                    NetClientState *peer, Error **errp)
+                    NetClientState *peer)
 {
-    /* FIXME error_setg(errp, ...) on failure */
-    Error *err = NULL;
     const NetdevSocketOptions *sock;
 
     assert(opts->kind == NET_CLIENT_OPTIONS_KIND_SOCKET);
@@ -724,9 +715,8 @@ int net_init_socket(const NetClientOptions *opts, const char *name,
     if (sock->has_fd) {
         int fd;
 
-        fd = monitor_fd_param(cur_mon, sock->fd, &err);
+        fd = monitor_handle_fd_param(cur_mon, sock->fd);
         if (fd == -1) {
-            error_report_err(err);
             return -1;
         }
         qemu_set_nonblock(fd);

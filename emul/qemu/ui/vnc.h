@@ -150,15 +150,13 @@ typedef enum VncSharePolicy {
 struct VncDisplay
 {
     QTAILQ_HEAD(, VncState) clients;
-    int num_connecting;
-    int num_shared;
     int num_exclusive;
-    int connections_limit;
     VncSharePolicy share_policy;
     int lsock;
 #ifdef CONFIG_VNC_WS
     int lwebsock;
-    bool ws_enabled;
+    bool websocket;
+    char *ws_display;
 #endif
     DisplaySurface *ds;
     DisplayChangeListener dcl;
@@ -173,19 +171,14 @@ struct VncDisplay
     struct VncSurface guest;   /* guest visible surface (aka ds->surface) */
     pixman_image_t *server;    /* vnc server surface */
 
-    const char *id;
-    QTAILQ_ENTRY(VncDisplay) next;
-    bool enabled;
-    bool is_unix;
+    char *display;
     char *password;
     time_t expires;
     int auth;
-    int subauth; /* Used by VeNCrypt */
-    int ws_auth; /* Used by websockets */
-    bool ws_tls; /* Used by websockets */
     bool lossy;
     bool non_adaptive;
 #ifdef CONFIG_VNC_TLS
+    int subauth; /* Used by VeNCrypt */
     VncDisplayTLS tls;
 #endif
 #ifdef CONFIG_VNC_SASL
@@ -286,15 +279,18 @@ struct VncState
     int minor;
 
     int auth;
-    int subauth; /* Used by VeNCrypt */
     char challenge[VNC_AUTH_CHALLENGE_SIZE];
 #ifdef CONFIG_VNC_TLS
+    int subauth; /* Used by VeNCrypt */
     VncStateTLS tls;
 #endif
 #ifdef CONFIG_VNC_SASL
     VncStateSASL sasl;
 #endif
 #ifdef CONFIG_VNC_WS
+#ifdef CONFIG_VNC_TLS
+    VncStateTLS ws_tls;
+#endif /* CONFIG_VNC_TLS */
     bool encode_ws;
     bool websocket;
 #endif /* CONFIG_VNC_WS */
@@ -306,8 +302,6 @@ struct VncState
 #ifdef CONFIG_VNC_WS
     Buffer ws_input;
     Buffer ws_output;
-    size_t ws_payload_remain;
-    WsMask ws_payload_mask;
 #endif
     /* current output mode information */
     VncWritePixels *write_pixels;

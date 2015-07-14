@@ -51,10 +51,18 @@
 #define ETHLITE_IRQ         1
 #define UARTLITE_IRQ        3
 
+static void machine_cpu_reset(MicroBlazeCPU *cpu)
+{
+    CPUMBState *env = &cpu->env;
+
+    env->pvr.regs[10] = 0x0c000000; /* spartan 3a dsp family.  */
+}
+
 static void
 petalogix_s3adsp1800_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
+    const char *cpu_model = machine->cpu_model;
     DeviceState *dev;
     MicroBlazeCPU *cpu;
     DriveInfo *dinfo;
@@ -65,8 +73,11 @@ petalogix_s3adsp1800_init(MachineState *machine)
     qemu_irq irq[32];
     MemoryRegion *sysmem = get_system_memory();
 
-    cpu = MICROBLAZE_CPU(object_new(TYPE_MICROBLAZE_CPU));
-    object_property_set_bool(OBJECT(cpu), true, "realized", &error_abort);
+    /* init CPUs */
+    if (cpu_model == NULL) {
+        cpu_model = "microblaze";
+    }
+    cpu = cpu_mb_init(cpu_model);
 
     /* Attach emulated BRAM through the LMB.  */
     memory_region_init_ram(phys_lmb_bram, NULL,
@@ -121,7 +132,7 @@ petalogix_s3adsp1800_init(MachineState *machine)
     microblaze_load_kernel(cpu, ddr_base, ram_size,
                            machine->initrd_filename,
                            BINARY_DEVICE_TREE_FILE,
-                           NULL);
+                           machine_cpu_reset);
 }
 
 static QEMUMachine petalogix_s3adsp1800_machine = {

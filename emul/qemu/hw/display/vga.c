@@ -177,6 +177,7 @@ static void vga_update_memory_access(VGACommonState *s)
             size = 0x8000;
             break;
         }
+        base += isa_mem_base;
         memory_region_init_alias(&s->chain4_alias, memory_region_owner(&s->vram),
                                  "vga.chain4", &s->vram, offset, size);
         memory_region_add_subregion_overlap(s->legacy_address_space, base,
@@ -1435,8 +1436,6 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
     uint8_t *d;
     uint32_t v, addr1, addr;
     vga_draw_line_func *vga_draw_line = NULL;
-    bool share_surface;
-    pixman_format_code_t format;
 #ifdef HOST_WORDS_BIGENDIAN
     bool byteswap = !s->big_endian_fb;
 #else
@@ -1480,42 +1479,21 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
     }
 
     depth = s->get_bpp(s);
-
-    /*
-     * Check whether we can share the surface with the backend
-     * or whether we need a shadow surface. We share native
-     * endian surfaces for 15bpp and above and byteswapped
-     * surfaces for 24bpp and above.
-     */
-    format = qemu_default_pixman_format(depth, !byteswap);
-    if (format) {
-        share_surface = dpy_gfx_check_format(s->con, format)
-            && !s->force_shadow;
-    } else {
-        share_surface = false;
-    }
     if (s->line_offset != s->last_line_offset ||
         disp_width != s->last_width ||
         height != s->last_height ||
         s->last_depth != depth ||
-        s->last_byteswap != byteswap ||
-        share_surface != is_buffer_shared(surface)) {
-        if (share_surface) {
+        s->last_byteswap != byteswap) {
+        if (depth == 32 || (depth == 16 && !byteswap)) {
+            pixman_format_code_t format =
+                qemu_default_pixman_format(depth, !byteswap);
             surface = qemu_create_displaysurface_from(disp_width,
                     height, format, s->line_offset,
                     s->vram_ptr + (s->start_addr * 4));
             dpy_gfx_replace_surface(s->con, surface);
-#ifdef DEBUG_VGA
-            printf("VGA: Using shared surface for depth=%d swap=%d\n",
-                   depth, byteswap);
-#endif
         } else {
             qemu_console_resize(s->con, disp_width, height);
             surface = qemu_console_surface(s->con);
-#ifdef DEBUG_VGA
-            printf("VGA: Using shadow surface for depth=%d swap=%d\n",
-                   depth, byteswap);
-#endif
         }
         s->last_scr_width = disp_width;
         s->last_scr_height = height;
@@ -1997,7 +1975,7 @@ static void vga_mem_write(void *opaque, hwaddr addr,
 {
     VGACommonState *s = opaque;
 
-    vga_mem_writeb(s, addr, data);
+    return vga_mem_writeb(s, addr, data);
 }
 
 const MemoryRegionOps vga_mem_ops = {
@@ -2031,11 +2009,10 @@ static bool vga_endian_state_needed(void *opaque)
     return s->default_endian_fb != s->big_endian_fb;
 }
 
-static const VMStateDescription vmstate_vga_endian = {
+const VMStateDescription vmstate_vga_endian = {
     .name = "vga.endian",
     .version_id = 1,
     .minimum_version_id = 1,
-    .needed = vga_endian_state_needed,
     .fields = (VMStateField[]) {
         VMSTATE_BOOL(big_endian_fb, VGACommonState),
         VMSTATE_END_OF_LIST()
@@ -2079,9 +2056,13 @@ const VMStateDescription vmstate_vga_common = {
         VMSTATE_UINT32(vbe_bank_mask, VGACommonState),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (const VMStateDescription*[]) {
-        &vmstate_vga_endian,
-        NULL
+    .subsections = (VMStateSubsection []) {
+        {
+            .vmsd = &vmstate_vga_endian,
+            .needed = vga_endian_state_needed,
+        }, {
+            /* empty */
+        }
     }
 };
 
@@ -2090,17 +2071,6 @@ static const GraphicHwOps vga_ops = {
     .gfx_update  = vga_update_display,
     .text_update = vga_update_text,
 };
-
-static inline uint32_t uint_clamp(uint32_t val, uint32_t vmin, uint32_t vmax)
-{
-    if (val < vmin) {
-        return vmin;
-    }
-    if (val > vmax) {
-        return vmax;
-    }
-    return val;
-}
 
 void vga_common_init(VGACommonState *s, Object *obj, bool global_vmstate)
 {
@@ -2129,10 +2099,13 @@ void vga_common_init(VGACommonState *s, Object *obj, bool global_vmstate)
         expand4to8[i] = v;
     }
 
-    s->vram_size_mb = uint_clamp(s->vram_size_mb, 1, 512);
-    s->vram_size_mb = pow2ceil(s->vram_size_mb);
-    s->vram_size = s->vram_size_mb << 20;
-
+    /* valid range: 1 MB -> 256 MB */
+    s->vram_size = 1024 * 1024;
+    while (s->vram_size < (s->vram_size_mb << 20) &&
+           s->vram_size < (256 << 20)) {
+        s->vram_size <<= 1;
+    }
+    s->vram_size_mb = s->vram_size >> 20;
     if (!s->vbe_size) {
         s->vbe_size = s->vram_size;
     }
@@ -2222,7 +2195,7 @@ void vga_init(VGACommonState *s, Object *obj, MemoryRegion *address_space,
 
     vga_io_memory = vga_init_io(s, obj, &vga_ports, &vbe_ports);
     memory_region_add_subregion_overlap(address_space,
-                                        0x000a0000,
+                                        isa_mem_base + 0x000a0000,
                                         vga_io_memory,
                                         1);
     memory_region_set_coalescing(vga_io_memory);

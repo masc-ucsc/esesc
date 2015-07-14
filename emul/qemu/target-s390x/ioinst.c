@@ -1,7 +1,7 @@
 /*
  * I/O instructions for S/390
  *
- * Copyright 2012, 2015 IBM Corp.
+ * Copyright 2012 IBM Corp.
  * Author(s): Cornelia Huck <cornelia.huck@de.ibm.com>
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or (at
@@ -14,7 +14,6 @@
 #include "cpu.h"
 #include "ioinst.h"
 #include "trace.h"
-#include "hw/s390x/s390-pci-bus.h"
 
 int ioinst_disassemble_sch_ident(uint32_t value, int *m, int *cssid, int *ssid,
                                  int *schid)
@@ -129,12 +128,12 @@ void ioinst_handle_hsch(S390CPU *cpu, uint64_t reg1)
 
 static int ioinst_schib_valid(SCHIB *schib)
 {
-    if ((be16_to_cpu(schib->pmcw.flags) & PMCW_FLAGS_MASK_INVALID) ||
-        (be32_to_cpu(schib->pmcw.chars) & PMCW_CHARS_MASK_INVALID)) {
+    if ((schib->pmcw.flags & PMCW_FLAGS_MASK_INVALID) ||
+        (schib->pmcw.chars & PMCW_CHARS_MASK_INVALID)) {
         return 0;
     }
     /* Disallow extended measurements for now. */
-    if (be32_to_cpu(schib->pmcw.chars) & PMCW_CHARS_MASK_XMWME) {
+    if (schib->pmcw.chars & PMCW_CHARS_MASK_XMWME) {
         return 0;
     }
     return 1;
@@ -144,30 +143,32 @@ void ioinst_handle_msch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
 {
     int cssid, ssid, schid, m;
     SubchDev *sch;
-    SCHIB schib;
+    SCHIB *schib;
     uint64_t addr;
     int ret = -ENODEV;
     int cc;
+    hwaddr len = sizeof(*schib);
     CPUS390XState *env = &cpu->env;
-    uint8_t ar;
 
-    addr = decode_basedisp_s(env, ipb, &ar);
+    addr = decode_basedisp_s(env, ipb);
     if (addr & 3) {
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return;
     }
-    if (s390_cpu_virt_mem_read(cpu, addr, ar, &schib, sizeof(schib))) {
-        return;
+    schib = s390_cpu_physical_memory_map(env, addr, &len, 0);
+    if (!schib || len != sizeof(*schib)) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        goto out;
     }
     if (ioinst_disassemble_sch_ident(reg1, &m, &cssid, &ssid, &schid) ||
-        !ioinst_schib_valid(&schib)) {
+        !ioinst_schib_valid(schib)) {
         program_interrupt(env, PGM_OPERAND, 2);
-        return;
+        goto out;
     }
     trace_ioinst_sch_id("msch", cssid, ssid, schid);
     sch = css_find_subch(m, cssid, ssid, schid);
     if (sch && css_subch_visible(sch)) {
-        ret = css_do_msch(sch, &schib);
+        ret = css_do_msch(sch, schib);
     }
     switch (ret) {
     case -ENODEV:
@@ -184,6 +185,9 @@ void ioinst_handle_msch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
         break;
     }
     setcc(cpu, cc);
+
+out:
+    s390_cpu_physical_memory_unmap(env, schib, len, 0);
 }
 
 static void copy_orb_from_guest(ORB *dest, const ORB *src)
@@ -211,26 +215,28 @@ void ioinst_handle_ssch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
 {
     int cssid, ssid, schid, m;
     SubchDev *sch;
-    ORB orig_orb, orb;
+    ORB *orig_orb, orb;
     uint64_t addr;
     int ret = -ENODEV;
     int cc;
+    hwaddr len = sizeof(*orig_orb);
     CPUS390XState *env = &cpu->env;
-    uint8_t ar;
 
-    addr = decode_basedisp_s(env, ipb, &ar);
+    addr = decode_basedisp_s(env, ipb);
     if (addr & 3) {
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return;
     }
-    if (s390_cpu_virt_mem_read(cpu, addr, ar, &orig_orb, sizeof(orb))) {
-        return;
+    orig_orb = s390_cpu_physical_memory_map(env, addr, &len, 0);
+    if (!orig_orb || len != sizeof(*orig_orb)) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        goto out;
     }
-    copy_orb_from_guest(&orb, &orig_orb);
+    copy_orb_from_guest(&orb, orig_orb);
     if (ioinst_disassemble_sch_ident(reg1, &m, &cssid, &ssid, &schid) ||
         !ioinst_orb_valid(&orb)) {
         program_interrupt(env, PGM_OPERAND, 2);
-        return;
+        goto out;
     }
     trace_ioinst_sch_id("ssch", cssid, ssid, schid);
     sch = css_find_subch(m, cssid, ssid, schid);
@@ -252,31 +258,35 @@ void ioinst_handle_ssch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
         break;
     }
     setcc(cpu, cc);
+
+out:
+    s390_cpu_physical_memory_unmap(env, orig_orb, len, 0);
 }
 
 void ioinst_handle_stcrw(S390CPU *cpu, uint32_t ipb)
 {
-    CRW crw;
+    CRW *crw;
     uint64_t addr;
     int cc;
+    hwaddr len = sizeof(*crw);
     CPUS390XState *env = &cpu->env;
-    uint8_t ar;
 
-    addr = decode_basedisp_s(env, ipb, &ar);
+    addr = decode_basedisp_s(env, ipb);
     if (addr & 3) {
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return;
     }
-
-    cc = css_do_stcrw(&crw);
-    /* 0 - crw stored, 1 - zeroes stored */
-
-    if (s390_cpu_virt_mem_write(cpu, addr, ar, &crw, sizeof(crw)) == 0) {
-        setcc(cpu, cc);
-    } else if (cc == 0) {
-        /* Write failed: requeue CRW since STCRW is a suppressing instruction */
-        css_undo_stcrw(&crw);
+    crw = s390_cpu_physical_memory_map(env, addr, &len, 1);
+    if (!crw || len != sizeof(*crw)) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        goto out;
     }
+    cc = css_do_stcrw(crw);
+    /* 0 - crw stored, 1 - zeroes stored */
+    setcc(cpu, cc);
+
+out:
+    s390_cpu_physical_memory_unmap(env, crw, len, 1);
 }
 
 void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
@@ -285,32 +295,30 @@ void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
     SubchDev *sch;
     uint64_t addr;
     int cc;
-    SCHIB schib;
+    SCHIB *schib;
+    hwaddr len = sizeof(*schib);
     CPUS390XState *env = &cpu->env;
-    uint8_t ar;
 
-    addr = decode_basedisp_s(env, ipb, &ar);
+    addr = decode_basedisp_s(env, ipb);
     if (addr & 3) {
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return;
     }
+    schib = s390_cpu_physical_memory_map(env, addr, &len, 1);
+    if (!schib || len != sizeof(*schib)) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        goto out;
+    }
 
     if (ioinst_disassemble_sch_ident(reg1, &m, &cssid, &ssid, &schid)) {
-        /*
-         * As operand exceptions have a lower priority than access exceptions,
-         * we check whether the memory area is writeable (injecting the
-         * access execption if it is not) first.
-         */
-        if (!s390_cpu_virt_mem_check_write(cpu, addr, ar, sizeof(schib))) {
-            program_interrupt(env, PGM_OPERAND, 2);
-        }
-        return;
+        program_interrupt(env, PGM_OPERAND, 2);
+        goto out;
     }
     trace_ioinst_sch_id("stsch", cssid, ssid, schid);
     sch = css_find_subch(m, cssid, ssid, schid);
     if (sch) {
         if (css_subch_visible(sch)) {
-            css_do_stsch(sch, &schib);
+            css_do_stsch(sch, schib);
             cc = 0;
         } else {
             /* Indicate no more subchannels in this css/ss */
@@ -321,67 +329,53 @@ void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
             cc = 3; /* No more subchannels in this css/ss */
         } else {
             /* Store an empty schib. */
-            memset(&schib, 0, sizeof(schib));
+            memset(schib, 0, sizeof(*schib));
             cc = 0;
         }
     }
-    if (cc != 3) {
-        if (s390_cpu_virt_mem_write(cpu, addr, ar, &schib,
-                                    sizeof(schib)) != 0) {
-            return;
-        }
-    } else {
-        /* Access exceptions have a higher priority than cc3 */
-        if (s390_cpu_virt_mem_check_write(cpu, addr, ar, sizeof(schib)) != 0) {
-            return;
-        }
-    }
     setcc(cpu, cc);
+
+out:
+    s390_cpu_physical_memory_unmap(env, schib, len, 1);
 }
 
-int ioinst_handle_tsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb)
+int ioinst_handle_tsch(CPUS390XState *env, uint64_t reg1, uint32_t ipb)
 {
-    CPUS390XState *env = &cpu->env;
     int cssid, ssid, schid, m;
     SubchDev *sch;
-    IRB irb;
+    IRB *irb;
     uint64_t addr;
-    int cc, irb_len;
-    uint8_t ar;
+    int ret = -ENODEV;
+    int cc;
+    hwaddr len = sizeof(*irb);
 
     if (ioinst_disassemble_sch_ident(reg1, &m, &cssid, &ssid, &schid)) {
         program_interrupt(env, PGM_OPERAND, 2);
         return -EIO;
     }
     trace_ioinst_sch_id("tsch", cssid, ssid, schid);
-    addr = decode_basedisp_s(env, ipb, &ar);
+    addr = decode_basedisp_s(env, ipb);
     if (addr & 3) {
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return -EIO;
     }
-
+    irb = s390_cpu_physical_memory_map(env, addr, &len, 1);
+    if (!irb || len != sizeof(*irb)) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        cc = -EIO;
+        goto out;
+    }
     sch = css_find_subch(m, cssid, ssid, schid);
     if (sch && css_subch_visible(sch)) {
-        cc = css_do_tsch_get_irb(sch, &irb, &irb_len);
+        ret = css_do_tsch(sch, irb);
+        /* 0 - status pending, 1 - not status pending */
+        cc = ret;
     } else {
         cc = 3;
     }
-    /* 0 - status pending, 1 - not status pending, 3 - not operational */
-    if (cc != 3) {
-        if (s390_cpu_virt_mem_write(cpu, addr, ar, &irb, irb_len) != 0) {
-            return -EFAULT;
-        }
-        css_do_tsch_update_subch(sch);
-    } else {
-        irb_len = sizeof(irb) - sizeof(irb.emw);
-        /* Access exceptions have a higher priority than cc3 */
-        if (s390_cpu_virt_mem_check_write(cpu, addr, ar, irb_len) != 0) {
-            return -EFAULT;
-        }
-    }
-
-    setcc(cpu, cc);
-    return 0;
+out:
+    s390_cpu_physical_memory_unmap(env, irb, sizeof(*irb), 1);
+    return cc;
 }
 
 typedef struct ChscReq {
@@ -404,7 +398,6 @@ typedef struct ChscResp {
 #define CHSC_SCPD 0x0002
 #define CHSC_SCSC 0x0010
 #define CHSC_SDA  0x0031
-#define CHSC_SEI  0x000e
 
 #define CHSC_SCPD_0_M 0x20000000
 #define CHSC_SCPD_0_C 0x10000000
@@ -573,53 +566,6 @@ out:
     res->param = 0;
 }
 
-static int chsc_sei_nt0_get_event(void *res)
-{
-    /* no events yet */
-    return 1;
-}
-
-static int chsc_sei_nt0_have_event(void)
-{
-    /* no events yet */
-    return 0;
-}
-
-#define CHSC_SEI_NT0    (1ULL << 63)
-#define CHSC_SEI_NT2    (1ULL << 61)
-static void ioinst_handle_chsc_sei(ChscReq *req, ChscResp *res)
-{
-    uint64_t selection_mask = ldq_p(&req->param1);
-    uint8_t *res_flags = (uint8_t *)res->data;
-    int have_event = 0;
-    int have_more = 0;
-
-    /* regarding architecture nt0 can not be masked */
-    have_event = !chsc_sei_nt0_get_event(res);
-    have_more = chsc_sei_nt0_have_event();
-
-    if (selection_mask & CHSC_SEI_NT2) {
-        if (!have_event) {
-            have_event = !chsc_sei_nt2_get_event(res);
-        }
-
-        if (!have_more) {
-            have_more = chsc_sei_nt2_have_event();
-        }
-    }
-
-    if (have_event) {
-        res->code = cpu_to_be16(0x0001);
-        if (have_more) {
-            (*res_flags) |= 0x80;
-        } else {
-            (*res_flags) &= ~0x80;
-        }
-    } else {
-        res->code = cpu_to_be16(0x0004);
-    }
-}
-
 static void ioinst_handle_chsc_unimplemented(ChscResp *res)
 {
     res->len = cpu_to_be16(CHSC_MIN_RESP_LEN);
@@ -635,8 +581,8 @@ void ioinst_handle_chsc(S390CPU *cpu, uint32_t ipb)
     int reg;
     uint16_t len;
     uint16_t command;
+    hwaddr map_size = TARGET_PAGE_SIZE;
     CPUS390XState *env = &cpu->env;
-    uint8_t buf[TARGET_PAGE_SIZE];
 
     trace_ioinst("chsc");
     reg = (ipb >> 20) & 0x00f;
@@ -646,20 +592,16 @@ void ioinst_handle_chsc(S390CPU *cpu, uint32_t ipb)
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return;
     }
-    /*
-     * Reading sizeof(ChscReq) bytes is currently enough for all of our
-     * present CHSC sub-handlers ... if we ever need more, we should take
-     * care of req->len here first.
-     */
-    if (s390_cpu_virt_mem_read(cpu, addr, reg, buf, sizeof(ChscReq))) {
-        return;
+    req = s390_cpu_physical_memory_map(env, addr, &map_size, 1);
+    if (!req || map_size != TARGET_PAGE_SIZE) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        goto out;
     }
-    req = (ChscReq *)buf;
     len = be16_to_cpu(req->len);
     /* Length field valid? */
     if ((len < 16) || (len > 4088) || (len & 7)) {
         program_interrupt(env, PGM_OPERAND, 2);
-        return;
+        goto out;
     }
     memset((char *)req + len, 0, TARGET_PAGE_SIZE - len);
     res = (void *)((char *)req + len);
@@ -675,32 +617,26 @@ void ioinst_handle_chsc(S390CPU *cpu, uint32_t ipb)
     case CHSC_SDA:
         ioinst_handle_chsc_sda(req, res);
         break;
-    case CHSC_SEI:
-        ioinst_handle_chsc_sei(req, res);
-        break;
     default:
         ioinst_handle_chsc_unimplemented(res);
         break;
     }
 
-    if (!s390_cpu_virt_mem_write(cpu, addr + len, reg, res,
-                                 be16_to_cpu(res->len))) {
-        setcc(cpu, 0);    /* Command execution complete */
-    }
+    setcc(cpu, 0);    /* Command execution complete */
+out:
+    s390_cpu_physical_memory_unmap(env, req, map_size, 1);
 }
 
-int ioinst_handle_tpi(S390CPU *cpu, uint32_t ipb)
+int ioinst_handle_tpi(CPUS390XState *env, uint32_t ipb)
 {
-    CPUS390XState *env = &cpu->env;
     uint64_t addr;
     int lowcore;
-    IOIntCode int_code;
-    hwaddr len;
+    IOIntCode *int_code;
+    hwaddr len, orig_len;
     int ret;
-    uint8_t ar;
 
     trace_ioinst("tpi");
-    addr = decode_basedisp_s(env, ipb, &ar);
+    addr = decode_basedisp_s(env, ipb);
     if (addr & 3) {
         program_interrupt(env, PGM_SPECIFICATION, 2);
         return -EIO;
@@ -708,10 +644,16 @@ int ioinst_handle_tpi(S390CPU *cpu, uint32_t ipb)
 
     lowcore = addr ? 0 : 1;
     len = lowcore ? 8 /* two words */ : 12 /* three words */;
-    ret = css_do_tpi(&int_code, lowcore);
-    if (ret == 1) {
-        s390_cpu_virt_mem_write(cpu, lowcore ? 184 : addr, ar, &int_code, len);
+    orig_len = len;
+    int_code = s390_cpu_physical_memory_map(env, addr, &len, 1);
+    if (!int_code || (len != orig_len)) {
+        program_interrupt(env, PGM_ADDRESSING, 2);
+        ret = -EIO;
+        goto out;
     }
+    ret = css_do_tpi(int_code, lowcore);
+out:
+    s390_cpu_physical_memory_unmap(env, int_code, len, 1);
     return ret;
 }
 

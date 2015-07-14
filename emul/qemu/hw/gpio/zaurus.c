@@ -65,7 +65,7 @@ static inline void scoop_gpio_handler_update(ScoopInfo *s) {
     level = s->gpio_level & s->gpio_dir;
 
     for (diff = s->prev_level ^ level; diff; diff ^= 1 << bit) {
-        bit = ctz32(diff);
+        bit = ffs(diff) - 1;
         qemu_set_irq(s->handler[bit], (level >> bit) & 1);
     }
 

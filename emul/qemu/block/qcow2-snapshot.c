@@ -25,7 +25,6 @@
 #include "qemu-common.h"
 #include "block/block_int.h"
 #include "block/qcow2.h"
-#include "qemu/error-report.h"
 
 void qcow2_free_snapshots(BlockDriverState *bs)
 {
@@ -352,8 +351,10 @@ int qcow2_snapshot_create(BlockDriverState *bs, QEMUSnapshotInfo *sn_info)
 
     memset(sn, 0, sizeof(*sn));
 
-    /* Generate an ID */
-    find_new_snapshot_id(bs, sn_info->id_str, sizeof(sn_info->id_str));
+    /* Generate an ID if it wasn't passed */
+    if (sn_info->id_str[0] == '\0') {
+        find_new_snapshot_id(bs, sn_info->id_str, sizeof(sn_info->id_str));
+    }
 
     /* Check that the ID is unique */
     if (find_snapshot_by_id_and_name(bs, sn_info->id_str, NULL) >= 0) {
@@ -701,7 +702,7 @@ int qcow2_snapshot_load_tmp(BlockDriverState *bs,
     sn = &s->snapshots[snapshot_index];
 
     /* Allocate and read in the snapshot's L1 table */
-    if (sn->l1_size > QCOW_MAX_L1_SIZE / sizeof(uint64_t)) {
+    if (sn->l1_size > QCOW_MAX_L1_SIZE) {
         error_setg(errp, "Snapshot L1 table too large");
         return -EFBIG;
     }

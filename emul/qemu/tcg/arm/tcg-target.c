@@ -1038,12 +1038,14 @@ static void tcg_out_call(TCGContext *s, tcg_insn_unit *addr)
     }
 }
 
-static inline void tcg_out_goto_label(TCGContext *s, int cond, TCGLabel *l)
+static inline void tcg_out_goto_label(TCGContext *s, int cond, int label_index)
 {
+    TCGLabel *l = &s->labels[label_index];
+
     if (l->has_value) {
         tcg_out_goto(s, cond, l->u.value_ptr);
     } else {
-        tcg_out_reloc(s, s->code_ptr, R_ARM_PC24, l, 0);
+        tcg_out_reloc(s, s->code_ptr, R_ARM_PC24, label_index, 0);
         tcg_out_b_noaddr(s, cond);
     }
 }
@@ -1221,19 +1223,20 @@ static TCGReg tcg_out_tlb_read(TCGContext *s, TCGReg addrlo, TCGReg addrhi,
 /* Record the context of a call to the out of line helper code for the slow
    path for a load or store, so that we can later generate the correct
    helper code.  */
-static void add_qemu_ldst_label(TCGContext *s, bool is_ld, TCGMemOpIdx oi,
+static void add_qemu_ldst_label(TCGContext *s, bool is_ld, TCGMemOp opc,
                                 TCGReg datalo, TCGReg datahi, TCGReg addrlo,
-                                TCGReg addrhi, tcg_insn_unit *raddr,
-                                tcg_insn_unit *label_ptr)
+                                TCGReg addrhi, int mem_index,
+                                tcg_insn_unit *raddr, tcg_insn_unit *label_ptr)
 {
     TCGLabelQemuLdst *label = new_ldst_label(s);
 
     label->is_ld = is_ld;
-    label->oi = oi;
+    label->opc = opc;
     label->datalo_reg = datalo;
     label->datahi_reg = datahi;
     label->addrlo_reg = addrlo;
     label->addrhi_reg = addrhi;
+    label->mem_index = mem_index;
     label->raddr = raddr;
     label->label_ptr[0] = label_ptr;
 }
@@ -1241,8 +1244,7 @@ static void add_qemu_ldst_label(TCGContext *s, bool is_ld, TCGMemOpIdx oi,
 static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 {
     TCGReg argreg, datalo, datahi;
-    TCGMemOpIdx oi = lb->oi;
-    TCGMemOp opc = get_memop(oi);
+    TCGMemOp opc = lb->opc;
     void *func;
 
     reloc_pc24(lb->label_ptr[0], s->code_ptr);
@@ -1253,16 +1255,16 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     } else {
         argreg = tcg_out_arg_reg32(s, argreg, lb->addrlo_reg);
     }
-    argreg = tcg_out_arg_imm32(s, argreg, oi);
+    argreg = tcg_out_arg_imm32(s, argreg, lb->mem_index);
     argreg = tcg_out_arg_reg32(s, argreg, TCG_REG_R14);
 
     /* For armv6 we can use the canonical unsigned helpers and minimize
        icache usage.  For pre-armv6, use the signed helpers since we do
        not have a single insn sign-extend.  */
     if (use_armv6_instructions) {
-        func = qemu_ld_helpers[opc & (MO_BSWAP | MO_SIZE)];
+        func = qemu_ld_helpers[opc & ~MO_SIGN];
     } else {
-        func = qemu_ld_helpers[opc & (MO_BSWAP | MO_SSIZE)];
+        func = qemu_ld_helpers[opc];
         if (opc & MO_SIGN) {
             opc = MO_UL;
         }
@@ -1302,8 +1304,7 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 {
     TCGReg argreg, datalo, datahi;
-    TCGMemOpIdx oi = lb->oi;
-    TCGMemOp opc = get_memop(oi);
+    TCGMemOp opc = lb->opc;
 
     reloc_pc24(lb->label_ptr[0], s->code_ptr);
 
@@ -1333,11 +1334,11 @@ static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
         break;
     }
 
-    argreg = tcg_out_arg_imm32(s, argreg, oi);
+    argreg = tcg_out_arg_imm32(s, argreg, lb->mem_index);
     argreg = tcg_out_arg_reg32(s, argreg, TCG_REG_R14);
 
     /* Tail-call to the helper, which will return to the fast path.  */
-    tcg_out_goto(s, COND_AL, qemu_st_helpers[opc & (MO_BSWAP | MO_SIZE)]);
+    tcg_out_goto(s, COND_AL, qemu_st_helpers[opc]);
 }
 #endif /* SOFTMMU */
 
@@ -1464,7 +1465,6 @@ static inline void tcg_out_qemu_ld_direct(TCGContext *s, TCGMemOp opc,
 static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is64)
 {
     TCGReg addrlo, datalo, datahi, addrhi __attribute__((unused));
-    TCGMemOpIdx oi;
     TCGMemOp opc;
 #ifdef CONFIG_SOFTMMU
     int mem_index;
@@ -1476,11 +1476,10 @@ static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is64)
     datahi = (is64 ? *args++ : 0);
     addrlo = *args++;
     addrhi = (TARGET_LONG_BITS == 64 ? *args++ : 0);
-    oi = *args++;
-    opc = get_memop(oi);
+    opc = *args++;
 
 #ifdef CONFIG_SOFTMMU
-    mem_index = get_mmuidx(oi);
+    mem_index = *args;
     addend = tcg_out_tlb_read(s, addrlo, addrhi, opc & MO_SIZE, mem_index, 1);
 
     /* This a conditional BL only to load a pointer within this opcode into LR
@@ -1490,8 +1489,8 @@ static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is64)
 
     tcg_out_qemu_ld_index(s, opc, datalo, datahi, addrlo, addend);
 
-    add_qemu_ldst_label(s, true, oi, datalo, datahi, addrlo, addrhi,
-                        s->code_ptr, label_ptr);
+    add_qemu_ldst_label(s, true, opc, datalo, datahi, addrlo, addrhi,
+                        mem_index, s->code_ptr, label_ptr);
 #else /* !CONFIG_SOFTMMU */
     if (GUEST_BASE) {
         tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP, GUEST_BASE);
@@ -1595,7 +1594,6 @@ static inline void tcg_out_qemu_st_direct(TCGContext *s, TCGMemOp opc,
 static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
 {
     TCGReg addrlo, datalo, datahi, addrhi __attribute__((unused));
-    TCGMemOpIdx oi;
     TCGMemOp opc;
 #ifdef CONFIG_SOFTMMU
     int mem_index;
@@ -1607,11 +1605,10 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
     datahi = (is64 ? *args++ : 0);
     addrlo = *args++;
     addrhi = (TARGET_LONG_BITS == 64 ? *args++ : 0);
-    oi = *args++;
-    opc = get_memop(oi);
+    opc = *args++;
 
 #ifdef CONFIG_SOFTMMU
-    mem_index = get_mmuidx(oi);
+    mem_index = *args;
     addend = tcg_out_tlb_read(s, addrlo, addrhi, opc & MO_SIZE, mem_index, 0);
 
     tcg_out_qemu_st_index(s, COND_EQ, opc, datalo, datahi, addrlo, addend);
@@ -1620,8 +1617,8 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
     label_ptr = s->code_ptr;
     tcg_out_bl_noaddr(s, COND_NE);
 
-    add_qemu_ldst_label(s, false, oi, datalo, datahi, addrlo, addrhi,
-                        s->code_ptr, label_ptr);
+    add_qemu_ldst_label(s, false, opc, datalo, datahi, addrlo, addrhi,
+                        mem_index, s->code_ptr, label_ptr);
 #else /* !CONFIG_SOFTMMU */
     if (GUEST_BASE) {
         tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP, GUEST_BASE);
@@ -1660,7 +1657,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         s->tb_next_offset[args[0]] = tcg_current_code_size(s);
         break;
     case INDEX_op_br:
-        tcg_out_goto_label(s, COND_AL, arg_label(args[0]));
+        tcg_out_goto_label(s, COND_AL, args[0]);
         break;
 
     case INDEX_op_ld8u_i32:
@@ -1824,8 +1821,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     case INDEX_op_brcond_i32:
         tcg_out_dat_rIN(s, COND_AL, ARITH_CMP, ARITH_CMN, 0,
                        args[0], args[1], const_args[1]);
-        tcg_out_goto_label(s, tcg_cond_to_arm_cond[args[2]],
-                           arg_label(args[3]));
+        tcg_out_goto_label(s, tcg_cond_to_arm_cond[args[2]], args[3]);
         break;
     case INDEX_op_brcond2_i32:
         /* The resulting conditions are:
@@ -1840,8 +1836,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
                         args[1], args[3], const_args[3]);
         tcg_out_dat_rIN(s, COND_EQ, ARITH_CMP, ARITH_CMN, 0,
                         args[0], args[2], const_args[2]);
-        tcg_out_goto_label(s, tcg_cond_to_arm_cond[args[4]],
-                           arg_label(args[5]));
+        tcg_out_goto_label(s, tcg_cond_to_arm_cond[args[4]], args[5]);
         break;
     case INDEX_op_setcond_i32:
         tcg_out_dat_rIN(s, COND_AL, ARITH_CMP, ARITH_CMN, 0,

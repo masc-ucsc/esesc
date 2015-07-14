@@ -30,7 +30,7 @@
 #include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
 
-static DriveInfo *add_init_drive(const char *optstr)
+DriveInfo *add_init_drive(const char *optstr)
 {
     DriveInfo *dinfo;
     QemuOpts *opts;
@@ -50,7 +50,7 @@ static DriveInfo *add_init_drive(const char *optstr)
     return dinfo;
 }
 
-void hmp_drive_add(Monitor *mon, const QDict *qdict)
+void drive_hot_add(Monitor *mon, const QDict *qdict)
 {
     DriveInfo *dinfo = NULL;
     const char *opts = qdict_get_str(qdict, "opts");
@@ -69,8 +69,9 @@ void hmp_drive_add(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "OK\n");
         break;
     default:
-        monitor_printf(mon, "Can't hot-add drive to type %d\n", dinfo->type);
-        goto err;
+        if (pci_drive_hot_add(mon, qdict, dinfo)) {
+            goto err;
+        }
     }
     return;
 

@@ -1,6 +1,5 @@
 check.log
 check.time
-common.env
 *.out.bad
 *.notrun
 socket_scm_helper

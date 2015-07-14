@@ -289,7 +289,6 @@ typedef struct IDEDMAOps IDEDMAOps;
 #define ATAPI_INT_REASON_TAG            0xf8
 
 /* same constants as bochs */
-#define ASC_NO_SEEK_COMPLETE                 0x02
 #define ASC_ILLEGAL_OPCODE                   0x20
 #define ASC_LOGICAL_BLOCK_OOR                0x21
 #define ASC_INV_FIELD_IN_CMD_PACKET          0x24
@@ -297,7 +296,6 @@ typedef struct IDEDMAOps IDEDMAOps;
 #define ASC_INCOMPATIBLE_FORMAT              0x30
 #define ASC_MEDIUM_NOT_PRESENT               0x3a
 #define ASC_SAVING_PARAMETERS_NOT_SUPPORTED  0x39
-#define ASC_DATA_PHASE_ERROR                 0x4b
 #define ASC_MEDIA_REMOVAL_PREVENTED          0x53
 
 #define CFA_NO_ERROR            0x00
@@ -436,9 +434,10 @@ struct IDEDMAOps {
     DMAInt32Func *prepare_buf;
     DMAu32Func *commit_buf;
     DMAIntFunc *rw_buf;
-    DMAVoidFunc *restart_dma;
+    DMAIntFunc *set_unit;
     DMAStopFunc *set_inactive;
     DMAVoidFunc *cmd_done;
+    DMARestartFunc *restart_cb;
     DMAVoidFunc *reset;
 };
 
@@ -454,8 +453,6 @@ struct IDEBus {
     IDEDevice *master;
     IDEDevice *slave;
     IDEState ifs[2];
-    QEMUBH *bh;
-
     int bus_id;
     int max_units;
     IDEDMA *dma;
@@ -464,9 +461,6 @@ struct IDEBus {
     qemu_irq irq;
 
     int error_status;
-    uint8_t retry_unit;
-    int64_t retry_sector_num;
-    uint32_t retry_nsector;
 };
 
 #define TYPE_IDE_DEVICE "ide-device"
@@ -526,9 +520,6 @@ extern const VMStateDescription vmstate_ide_drive;
 #define VMSTATE_IDE_DRIVES(_field, _state) \
     VMSTATE_STRUCT_ARRAY(_field, _state, 2, 3, vmstate_ide_drive, IDEState)
 
-#define VMSTATE_IDE_DRIVE(_field, _state) \
-    VMSTATE_STRUCT(_field, _state, 1, vmstate_ide_drive, IDEState)
-
 void ide_bus_reset(IDEBus *bus);
 int64_t ide_get_sector(IDEState *s);
 void ide_set_sector(IDEState *s, int64_t sector_num);
@@ -538,7 +529,6 @@ void ide_dma_error(IDEState *s);
 
 void ide_atapi_cmd_ok(IDEState *s);
 void ide_atapi_cmd_error(IDEState *s, int sense_key, int asc);
-void ide_atapi_dma_restart(IDEState *s);
 void ide_atapi_io_error(IDEState *s, int ret);
 
 void ide_ioport_write(void *opaque, uint32_t addr, uint32_t val);
@@ -557,9 +547,12 @@ int ide_init_drive(IDEState *s, BlockBackend *blk, IDEDriveKind kind,
                    int chs_trans);
 void ide_init2(IDEBus *bus, qemu_irq irq);
 void ide_init_ioport(IDEBus *bus, ISADevice *isa, int iobase, int iobase2);
-void ide_register_restart_cb(IDEBus *bus);
 
 void ide_exec_cmd(IDEBus *bus, uint32_t val);
+void ide_dma_cb(void *opaque, int ret);
+void ide_sector_write(IDEState *s);
+void ide_sector_read(IDEState *s);
+void ide_flush_cache(IDEState *s);
 
 void ide_transfer_start(IDEState *s, uint8_t *buf, int size,
                         EndTransferFunc *end_transfer_func);

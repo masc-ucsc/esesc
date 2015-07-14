@@ -363,6 +363,14 @@ static inline void gen_mov_reg_C(TCGv reg, TCGv_i32 src)
     tcg_gen_andi_tl(reg, reg, 0x1);
 }
 
+static inline void gen_op_addi_cc(TCGv dst, TCGv src1, target_long src2)
+{
+    tcg_gen_mov_tl(cpu_cc_src, src1);
+    tcg_gen_movi_tl(cpu_cc_src2, src2);
+    tcg_gen_addi_tl(cpu_cc_dst, cpu_cc_src, src2);
+    tcg_gen_mov_tl(dst, cpu_cc_dst);
+}
+
 static inline void gen_op_add_cc(TCGv dst, TCGv src1, TCGv src2)
 {
     tcg_gen_mov_tl(cpu_cc_src, src1);
@@ -492,6 +500,22 @@ static void gen_op_addx_int(DisasContext *dc, TCGv dst, TCGv src1,
         tcg_gen_movi_i32(cpu_cc_op, CC_OP_ADDX);
         dc->cc_op = CC_OP_ADDX;
     }
+}
+
+static inline void gen_op_subi_cc(TCGv dst, TCGv src1, target_long src2, DisasContext *dc)
+{
+    tcg_gen_mov_tl(cpu_cc_src, src1);
+    tcg_gen_movi_tl(cpu_cc_src2, src2);
+    if (src2 == 0) {
+        tcg_gen_mov_tl(cpu_cc_dst, src1);
+        tcg_gen_movi_i32(cpu_cc_op, CC_OP_LOGIC);
+        dc->cc_op = CC_OP_LOGIC;
+    } else {
+        tcg_gen_subi_tl(cpu_cc_dst, cpu_cc_src, src2);
+        tcg_gen_movi_i32(cpu_cc_op, CC_OP_SUB);
+        dc->cc_op = CC_OP_SUB;
+    }
+    tcg_gen_mov_tl(dst, cpu_cc_dst);
 }
 
 static inline void gen_op_sub_cc(TCGv dst, TCGv src1, TCGv src2)
@@ -945,7 +969,9 @@ static inline void gen_op_eval_fbo(TCGv dst, TCGv src,
 static inline void gen_branch2(DisasContext *dc, target_ulong pc1,
                                target_ulong pc2, TCGv r_cond)
 {
-    TCGLabel *l1 = gen_new_label();
+    int l1;
+
+    l1 = gen_new_label();
 
     tcg_gen_brcondi_tl(TCG_COND_EQ, r_cond, 0, l1);
 
@@ -958,7 +984,9 @@ static inline void gen_branch2(DisasContext *dc, target_ulong pc1,
 static inline void gen_branch_a(DisasContext *dc, target_ulong pc1,
                                 target_ulong pc2, TCGv r_cond)
 {
-    TCGLabel *l1 = gen_new_label();
+    int l1;
+
+    l1 = gen_new_label();
 
     tcg_gen_brcondi_tl(TCG_COND_EQ, r_cond, 0, l1);
 
@@ -2296,7 +2324,6 @@ static void gen_fmovq(DisasContext *dc, DisasCompare *cmp, int rd, int rs)
     gen_update_fprs_dirty(qd);
 }
 
-#ifndef CONFIG_USER_ONLY
 static inline void gen_load_trap_state_at_tl(TCGv_ptr r_tsptr, TCGv_ptr cpu_env)
 {
     TCGv_i32 r_tl = tcg_temp_new_i32();
@@ -2321,7 +2348,6 @@ static inline void gen_load_trap_state_at_tl(TCGv_ptr r_tsptr, TCGv_ptr cpu_env)
 
     tcg_temp_free_i32(r_tl);
 }
-#endif
 
 static void gen_edge(DisasContext *dc, TCGv dst, TCGv s1, TCGv s2,
                      int width, bool cc, bool left)
@@ -2601,8 +2627,7 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
             if (xop == 0x3a) {  /* generate trap */
                 int cond = GET_FIELD(insn, 3, 6);
                 TCGv_i32 trap;
-                TCGLabel *l1 = NULL;
-                int mask;
+                int l1 = -1, mask;
 
                 if (cond == 0) {
                     /* Trap never.  */
@@ -5220,6 +5245,7 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
     CPUState *cs = CPU(cpu);
     CPUSPARCState *env = &cpu->env;
     target_ulong pc_start, last_pc;
+    uint16_t *gen_opc_end;
     DisasContext dc1, *dc = &dc1;
     CPUBreakpoint *bp;
     int j, lj = -1;
@@ -5239,12 +5265,13 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
     dc->fpu_enabled = tb_fpu_enabled(tb->flags);
     dc->address_mask_32bit = tb_am_enabled(tb->flags);
     dc->singlestep = (cs->singlestep_enabled || singlestep);
+    gen_opc_end = tcg_ctx.gen_opc_buf + OPC_MAX_SIZE;
 
     num_insns = 0;
     max_insns = tb->cflags & CF_COUNT_MASK;
     if (max_insns == 0)
         max_insns = CF_COUNT_MASK;
-    gen_tb_start(tb);
+    gen_tb_start();
     do {
         if (unlikely(!QTAILQ_EMPTY(&cs->breakpoints))) {
             QTAILQ_FOREACH(bp, &cs->breakpoints, entry) {
@@ -5260,7 +5287,7 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
         }
         if (spc) {
             qemu_log("Search PC...\n");
-            j = tcg_op_buf_count();
+            j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
             if (lj < j) {
                 lj++;
                 while (lj < j)
@@ -5293,7 +5320,7 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
         if (dc->singlestep) {
             break;
         }
-    } while (!tcg_op_buf_full() &&
+    } while ((tcg_ctx.gen_opc_ptr < gen_opc_end) &&
              (dc->pc - pc_start) < (TARGET_PAGE_SIZE - 32) &&
              num_insns < max_insns);
 
@@ -5315,9 +5342,9 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
         }
     }
     gen_tb_end(tb, num_insns);
-
+    *tcg_ctx.gen_opc_ptr = INDEX_op_end;
     if (spc) {
-        j = tcg_op_buf_count();
+        j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
         lj++;
         while (lj <= j)
             tcg_ctx.gen_opc_instr_start[lj++] = 0;
@@ -5334,7 +5361,7 @@ static inline void gen_intermediate_code_internal(SPARCCPU *cpu,
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log("--------------\n");
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
-        log_target_disas(cs, pc_start, last_pc + 4 - pc_start, 0);
+        log_target_disas(env, pc_start, last_pc + 4 - pc_start, 0);
         qemu_log("\n");
     }
 #endif

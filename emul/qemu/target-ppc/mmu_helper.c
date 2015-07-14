@@ -32,8 +32,10 @@
 //#define FLUSH_ALL_TLBS
 
 #ifdef DEBUG_MMU
+#  define LOG_MMU(...) qemu_log(__VA_ARGS__)
 #  define LOG_MMU_STATE(cpu) log_cpu_state((cpu), 0)
 #else
+#  define LOG_MMU(...) do { } while (0)
 #  define LOG_MMU_STATE(cpu) do { } while (0)
 #endif
 
@@ -174,10 +176,10 @@ static inline int ppc6xx_tlb_pte_check(mmu_ctx_t *ctx, target_ulong pte0,
             ret = check_prot(ctx->prot, rw, type);
             if (ret == 0) {
                 /* Access granted */
-                qemu_log_mask(CPU_LOG_MMU, "PTE access granted !\n");
+                LOG_MMU("PTE access granted !\n");
             } else {
                 /* Access right violation */
-                qemu_log_mask(CPU_LOG_MMU, "PTE access rejected\n");
+                LOG_MMU("PTE access rejected\n");
             }
         }
     }
@@ -478,9 +480,8 @@ static inline int get_segment_6xx_tlb(CPUPPCState *env, mmu_ctx_t *ctx,
     ctx->nx = sr & 0x10000000 ? 1 : 0;
     vsid = sr & 0x00FFFFFF;
     target_page_bits = TARGET_PAGE_BITS;
-    qemu_log_mask(CPU_LOG_MMU,
-            "Check segment v=" TARGET_FMT_lx " %d " TARGET_FMT_lx
-            " nip=" TARGET_FMT_lx " lr=" TARGET_FMT_lx
+    LOG_MMU("Check segment v=" TARGET_FMT_lx " %d " TARGET_FMT_lx " nip="
+            TARGET_FMT_lx " lr=" TARGET_FMT_lx
             " ir=%d dr=%d pr=%d %d t=%d\n",
             eaddr, (int)(eaddr >> 28), sr, env->nip, env->lr, (int)msr_ir,
             (int)msr_dr, pr != 0 ? 1 : 0, rw, type);
@@ -488,16 +489,14 @@ static inline int get_segment_6xx_tlb(CPUPPCState *env, mmu_ctx_t *ctx,
     hash = vsid ^ pgidx;
     ctx->ptem = (vsid << 7) | (pgidx >> 10);
 
-    qemu_log_mask(CPU_LOG_MMU,
-            "pte segment: key=%d ds %d nx %d vsid " TARGET_FMT_lx "\n",
+    LOG_MMU("pte segment: key=%d ds %d nx %d vsid " TARGET_FMT_lx "\n",
             ctx->key, ds, ctx->nx, vsid);
     ret = -1;
     if (!ds) {
         /* Check if instruction fetch is allowed, if needed */
         if (type != ACCESS_CODE || ctx->nx == 0) {
             /* Page address translation */
-            qemu_log_mask(CPU_LOG_MMU, "htab_base " TARGET_FMT_plx
-                    " htab_mask " TARGET_FMT_plx
+            LOG_MMU("htab_base " TARGET_FMT_plx " htab_mask " TARGET_FMT_plx
                     " hash " TARGET_FMT_plx "\n",
                     env->htab_base, env->htab_mask, hash);
             ctx->hash[0] = hash;
@@ -528,13 +527,13 @@ static inline int get_segment_6xx_tlb(CPUPPCState *env, mmu_ctx_t *ctx,
             }
 #endif
         } else {
-            qemu_log_mask(CPU_LOG_MMU, "No access allowed\n");
+            LOG_MMU("No access allowed\n");
             ret = -3;
         }
     } else {
         target_ulong sr;
 
-        qemu_log_mask(CPU_LOG_MMU, "direct store...\n");
+        LOG_MMU("direct store...\n");
         /* Direct-store segment : absolutely *BUGGY* for now */
 
         /* Direct-store implies a 32-bit MMU.
@@ -2036,26 +2035,31 @@ void ppc_tlb_invalidate_one(CPUPPCState *env, target_ulong addr)
 /* Special registers manipulation */
 void ppc_store_sdr1(CPUPPCState *env, target_ulong value)
 {
-    qemu_log_mask(CPU_LOG_MMU, "%s: " TARGET_FMT_lx "\n", __func__, value);
-    assert(!env->external_htab);
-    env->spr[SPR_SDR1] = value;
-#if defined(TARGET_PPC64)
-    if (env->mmu_model & POWERPC_MMU_64) {
-        target_ulong htabsize = value & SDR_64_HTABSIZE;
+    PowerPCCPU *cpu = ppc_env_get_cpu(env);
 
-        if (htabsize > 28) {
-            fprintf(stderr, "Invalid HTABSIZE 0x" TARGET_FMT_lx
-                    " stored in SDR1\n", htabsize);
-            htabsize = 28;
-        }
-        env->htab_mask = (1ULL << (htabsize + 18 - 7)) - 1;
-        env->htab_base = value & SDR_64_HTABORG;
-    } else
+    LOG_MMU("%s: " TARGET_FMT_lx "\n", __func__, value);
+    assert(!env->external_htab);
+    if (env->spr[SPR_SDR1] != value) {
+        env->spr[SPR_SDR1] = value;
+#if defined(TARGET_PPC64)
+        if (env->mmu_model & POWERPC_MMU_64) {
+            target_ulong htabsize = value & SDR_64_HTABSIZE;
+
+            if (htabsize > 28) {
+                fprintf(stderr, "Invalid HTABSIZE 0x" TARGET_FMT_lx
+                        " stored in SDR1\n", htabsize);
+                htabsize = 28;
+            }
+            env->htab_mask = (1ULL << (htabsize + 18 - 7)) - 1;
+            env->htab_base = value & SDR_64_HTABORG;
+        } else
 #endif /* defined(TARGET_PPC64) */
-    {
-        /* FIXME: Should check for valid HTABMASK values */
-        env->htab_mask = ((value & SDR_32_HTABMASK) << 16) | 0xFFFF;
-        env->htab_base = value & SDR_32_HTABORG;
+        {
+            /* FIXME: Should check for valid HTABMASK values */
+            env->htab_mask = ((value & SDR_32_HTABMASK) << 16) | 0xFFFF;
+            env->htab_base = value & SDR_32_HTABORG;
+        }
+        tlb_flush(CPU(cpu), 1);
     }
 }
 
@@ -2075,8 +2079,7 @@ void helper_store_sr(CPUPPCState *env, target_ulong srnum, target_ulong value)
 {
     PowerPCCPU *cpu = ppc_env_get_cpu(env);
 
-    qemu_log_mask(CPU_LOG_MMU,
-            "%s: reg=%d " TARGET_FMT_lx " " TARGET_FMT_lx "\n", __func__,
+    LOG_MMU("%s: reg=%d " TARGET_FMT_lx " " TARGET_FMT_lx "\n", __func__,
             (int)srnum, value, env->sr[srnum]);
 #if defined(TARGET_PPC64)
     if (env->mmu_model & POWERPC_MMU_64) {

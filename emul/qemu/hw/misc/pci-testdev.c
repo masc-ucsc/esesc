@@ -233,7 +233,7 @@ static const MemoryRegionOps pci_testdev_pio_ops = {
     },
 };
 
-static void pci_testdev_realize(PCIDevice *pci_dev, Error **errp)
+static int pci_testdev_init(PCIDevice *pci_dev)
 {
     PCITestDevState *d = PCI_TEST_DEV(pci_dev);
     uint8_t *pci_conf;
@@ -275,6 +275,8 @@ static void pci_testdev_realize(PCIDevice *pci_dev, Error **errp)
         assert(r >= 0);
         test->hasnotifier = true;
     }
+
+    return 0;
 }
 
 static void
@@ -304,7 +306,7 @@ static void pci_testdev_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = pci_testdev_realize;
+    k->init = pci_testdev_init;
     k->exit = pci_testdev_uninit;
     k->vendor_id = PCI_VENDOR_ID_REDHAT;
     k->device_id = PCI_DEVICE_ID_REDHAT_TEST;

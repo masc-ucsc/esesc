@@ -714,7 +714,9 @@ int xen_be_init(void)
         return -1;
     }
 
-    qemu_set_fd_handler(xs_fileno(xenstore), xenstore_update, NULL, NULL);
+    if (qemu_set_fd_handler(xs_fileno(xenstore), xenstore_update, NULL, NULL) < 0) {
+        goto err;
+    }
 
     if (xen_xc == XC_HANDLER_INITIAL_VALUE) {
         /* Check if xen_init() have been called */

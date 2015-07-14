@@ -1,12 +1,6 @@
 #ifndef HW_COMPAT_H
 #define HW_COMPAT_H
 
-#define HW_COMPAT_2_3 \
-        /* empty */
-
-#define HW_COMPAT_2_2 \
-        /* empty */
-
 #define HW_COMPAT_2_1 \
         {\
             .driver   = "intel-hda",\
@@ -36,6 +30,6 @@
             .driver   = "virtio-pci",\
             .property = "virtio-pci-bus-master-bug-migration",\
             .value    = "on",\
-        },
+        }
 
 #endif /* HW_COMPAT_H */

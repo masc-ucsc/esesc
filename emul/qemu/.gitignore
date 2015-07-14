@@ -37,8 +37,14 @@
 /qemu-tech.html
 /qemu-doc.info
 /qemu-tech.info
+/qemu.1
+/qemu.pod
+/qemu-img.1
+/qemu-img.pod
 /qemu-img
 /qemu-nbd
+/qemu-nbd.8
+/qemu-nbd.pod
 /qemu-options.def
 /qemu-options.texi
 /qemu-img-cmds.texi
@@ -50,7 +56,8 @@
 /qmp-commands.txt
 /vscclient
 /fsdev/virtfs-proxy-helper
-*.[1-9]
+/fsdev/virtfs-proxy-helper.1
+/fsdev/virtfs-proxy-helper.pod
 *.a
 *.aux
 *.cp
@@ -63,7 +70,6 @@
 *.ky
 *.log
 *.pdf
-*.pod
 *.cps
 *.fns
 *.kys

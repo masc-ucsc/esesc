@@ -11,7 +11,7 @@
 #include "s390-ccw.h"
 #include "virtio.h"
 
-static struct vring block;
+struct vring block;
 
 static char chsc_page[PAGE_SIZE] __attribute__((__aligned__(PAGE_SIZE)));
 
@@ -362,7 +362,6 @@ void virtio_setup_block(struct subchannel_id schid)
     struct vq_config_block config = {};
 
     blk_cfg.blk_size = 0; /* mark "illegal" - setup started... */
-    guessed_disk_nature = false;
 
     virtio_reset(schid);
 
@@ -379,10 +378,10 @@ void virtio_setup_block(struct subchannel_id schid)
     if (run_ccw(schid, CCW_CMD_READ_CONF, &blk_cfg, sizeof(blk_cfg))) {
         virtio_panic("Could not get block device configuration\n");
     }
-    vring_init(&block, config.num, ring_area,
+    vring_init(&block, config.num, (void *)(100 * 1024 * 1024),
                KVM_S390_VIRTIO_RING_ALIGN);
 
-    info.queue = (unsigned long long) ring_area;
+    info.queue = (100ULL * 1024ULL* 1024ULL);
     info.align = KVM_S390_VIRTIO_RING_ALIGN;
     info.index = 0;
     info.num = config.num;

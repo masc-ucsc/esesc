@@ -9,7 +9,6 @@
 #include <libslirp.h>
 
 #include "monitor/monitor.h"
-#include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 
 #ifdef DEBUG

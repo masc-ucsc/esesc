@@ -298,7 +298,8 @@ static int32_t scsi_send_command(SCSIRequest *req, uint8_t *cmd)
 #endif
 
     if (r->req.cmd.xfer == 0) {
-        g_free(r->buf);
+        if (r->buf != NULL)
+            g_free(r->buf);
         r->buflen = 0;
         r->buf = NULL;
         /* The request is used as the AIO opaque value, so add a ref.  */
@@ -313,7 +314,8 @@ static int32_t scsi_send_command(SCSIRequest *req, uint8_t *cmd)
     }
 
     if (r->buflen != r->req.cmd.xfer) {
-        g_free(r->buf);
+        if (r->buf != NULL)
+            g_free(r->buf);
         r->buf = g_malloc(r->req.cmd.xfer);
         r->buflen = r->req.cmd.xfer;
     }

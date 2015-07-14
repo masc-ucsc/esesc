@@ -1,7 +1,6 @@
 #include "net/net.h"
 #include "hw/qdev.h"
 #include "qapi/qmp/qerror.h"
-#include "qemu/error-report.h"
 #include "sysemu/block-backend.h"
 #include "hw/block/block.h"
 #include "net/hub.h"
@@ -124,64 +123,6 @@ PropertyInfo qdev_prop_bit = {
     .description = "on/off",
     .get   = prop_get_bit,
     .set   = prop_set_bit,
-};
-
-/* Bit64 */
-
-static uint64_t qdev_get_prop_mask64(Property *prop)
-{
-    assert(prop->info == &qdev_prop_bit);
-    return 0x1ull << prop->bitnr;
-}
-
-static void bit64_prop_set(DeviceState *dev, Property *props, bool val)
-{
-    uint64_t *p = qdev_get_prop_ptr(dev, props);
-    uint64_t mask = qdev_get_prop_mask64(props);
-    if (val) {
-        *p |= mask;
-    } else {
-        *p &= ~mask;
-    }
-}
-
-static void prop_get_bit64(Object *obj, Visitor *v, void *opaque,
-                           const char *name, Error **errp)
-{
-    DeviceState *dev = DEVICE(obj);
-    Property *prop = opaque;
-    uint64_t *p = qdev_get_prop_ptr(dev, prop);
-    bool value = (*p & qdev_get_prop_mask64(prop)) != 0;
-
-    visit_type_bool(v, &value, name, errp);
-}
-
-static void prop_set_bit64(Object *obj, Visitor *v, void *opaque,
-                           const char *name, Error **errp)
-{
-    DeviceState *dev = DEVICE(obj);
-    Property *prop = opaque;
-    Error *local_err = NULL;
-    bool value;
-
-    if (dev->realized) {
-        qdev_prop_set_after_realize(dev, name, errp);
-        return;
-    }
-
-    visit_type_bool(v, &value, name, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
-    bit64_prop_set(dev, prop, value);
-}
-
-PropertyInfo qdev_prop_bit64 = {
-    .name  = "bool",
-    .description = "on/off",
-    .get   = prop_get_bit64,
-    .set   = prop_set_bit64,
 };
 
 /* --- bool --- */
@@ -571,8 +512,8 @@ static void set_pci_devfn(Object *obj, Visitor *v, void *opaque,
         if (local_err) {
             error_propagate(errp, local_err);
         } else if (value < -1 || value > 255) {
-            error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
-                       name ? name : "null", "pci_devfn");
+            error_set(errp, QERR_INVALID_PARAMETER_VALUE, name ? name : "null",
+                      "pci_devfn");
         } else {
             *ptr = value;
         }
@@ -639,10 +580,9 @@ static void set_blocksize(Object *obj, Visitor *v, void *opaque,
         error_propagate(errp, local_err);
         return;
     }
-    /* value of 0 means "unset" */
-    if (value && (value < min || value > max)) {
-        error_setg(errp, QERR_PROPERTY_VALUE_OUT_OF_RANGE,
-                   dev->id ? : "", name, (int64_t)value, min, max);
+    if (value < min || value > max) {
+        error_set(errp, QERR_PROPERTY_VALUE_OUT_OF_RANGE,
+                  dev->id?:"", name, (int64_t)value, min, max);
         return;
     }
 
@@ -924,8 +864,8 @@ void error_set_from_qdev_prop_error(Error **errp, int ret, DeviceState *dev,
         break;
     default:
     case -EINVAL:
-        error_setg(errp, QERR_PROPERTY_VALUE_BAD,
-                   object_get_typename(OBJECT(dev)), prop->name, value);
+        error_set(errp, QERR_PROPERTY_VALUE_BAD,
+                  object_get_typename(OBJECT(dev)), prop->name, value);
         break;
     case -ENOENT:
         error_setg(errp, "Property '%s.%s' can't find value '%s'",
@@ -1050,8 +990,8 @@ int qdev_prop_check_globals(void)
     return ret;
 }
 
-static void qdev_prop_set_globals_for_type(DeviceState *dev,
-                                const char *typename)
+void qdev_prop_set_globals_for_type(DeviceState *dev, const char *typename,
+                                    Error **errp)
 {
     GlobalProperty *prop;
 
@@ -1064,22 +1004,25 @@ static void qdev_prop_set_globals_for_type(DeviceState *dev,
         prop->used = true;
         object_property_parse(OBJECT(dev), prop->value, prop->property, &err);
         if (err != NULL) {
-            assert(prop->user_provided);
-            error_report("Warning: global %s.%s=%s ignored (%s)",
-                         prop->driver, prop->property, prop->value,
-                         error_get_pretty(err));
-            error_free(err);
+            error_propagate(errp, err);
             return;
         }
     }
 }
 
-void qdev_prop_set_globals(DeviceState *dev)
+void qdev_prop_set_globals(DeviceState *dev, Error **errp)
 {
     ObjectClass *class = object_get_class(OBJECT(dev));
 
     do {
-        qdev_prop_set_globals_for_type(dev, object_class_get_name(class));
+        Error *err = NULL;
+
+        qdev_prop_set_globals_for_type(dev, object_class_get_name(class),
+                                       &err);
+        if (err != NULL) {
+            error_propagate(errp, err);
+            return;
+        }
         class = object_class_get_parent(class);
     } while (class);
 }

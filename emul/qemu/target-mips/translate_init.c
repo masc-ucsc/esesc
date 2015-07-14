@@ -389,39 +389,44 @@ static const mips_def_t mips_defs[] =
         .mmu_type = MMU_TYPE_R4000,
     },
     {
-        /* A generic CPU providing MIPS32 Release 5 features.
-           FIXME: Eventually this should be replaced by a real CPU model. */
-        .name = "mips32r5-generic",
-        .CP0_PRid = 0x00019700,
-        .CP0_Config0 = MIPS_CONFIG0 | (0x1 << CP0C0_AR) |
+        .name = "P5600",
+        .CP0_PRid = 0x0001A820,
+        .CP0_Config0 = MIPS_CONFIG0 | (1 << CP0C0_MM) | (0x1 << CP0C0_AR) |
                     (MMU_TYPE_R4000 << CP0C0_MT),
-        .CP0_Config1 = MIPS_CONFIG1 | (1 << CP0C1_FP) | (15 << CP0C1_MMU) |
-                       (0 << CP0C1_IS) | (3 << CP0C1_IL) | (1 << CP0C1_IA) |
-                       (0 << CP0C1_DS) | (3 << CP0C1_DL) | (1 << CP0C1_DA) |
-                       (1 << CP0C1_CA),
+        .CP0_Config1 = MIPS_CONFIG1 | (0x3F << CP0C1_MMU) |
+                       (2 << CP0C1_IS) | (4 << CP0C1_IL) | (3 << CP0C1_IA) |
+                       (2 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA) |
+                       (1 << CP0C1_PC) | (1 << CP0C1_FP),
         .CP0_Config2 = MIPS_CONFIG2,
         .CP0_Config3 = MIPS_CONFIG3 | (1U << CP0C3_M) | (1 << CP0C3_MSAP) |
-                       (1 << CP0C3_LPA),
-        .CP0_Config4 = MIPS_CONFIG4 | (1U << CP0C4_M),
+                       (1 << CP0C3_BP) | (1 << CP0C3_BI) | (1 << CP0C3_PW) |
+                       (1 << CP0C3_ULRI) | (1 << CP0C3_RXI) | (1 << CP0C3_LPA),
+        .CP0_Config4 = MIPS_CONFIG4 | (1U << CP0C4_M) | (2 << CP0C4_IE) |
+                       (0x1C << CP0C4_KScrExist),
         .CP0_Config4_rw_bitmask = 0,
-        .CP0_Config5 = MIPS_CONFIG5 | (1 << CP0C5_UFR) | (1 << CP0C5_LLB) |
-                       (1 << CP0C5_MVH),
+        .CP0_Config5 = MIPS_CONFIG5 | (1 << CP0C5_MVH) | (1 << CP0C5_LLB) |
+                       (1 << CP0C5_MRP) | (1 << CP0C5_UFR),
         .CP0_Config5_rw_bitmask = (0 << CP0C5_M) | (1 << CP0C5_K) |
                                   (1 << CP0C5_CV) | (0 << CP0C5_EVA) |
-                                  (1 << CP0C5_MSAEn) | (1 << CP0C5_UFR) |
+                                  (1 << CP0C5_MSAEn) | (1 << CP0C5_UFE) |
+                                  (1 << CP0C5_FRE) | (1 << CP0C5_UFR) |
                                   (0 << CP0C5_NFExists),
+        .CP0_PageGrain_rw_bitmask = 1 << CP0PG_ELPA,
         .CP0_LLAddr_rw_bitmask = 0,
         .CP0_LLAddr_shift = 4,
         .SYNCI_Step = 32,
         .CCRes = 2,
-        .CP0_Status_rw_bitmask = 0x3778FF1F,
-        .CP0_PageGrain_rw_bitmask = (1 << CP0PG_ELPA),
-        .CP1_fcr0 = (1 << FCR0_UFRP) | (1 << FCR0_F64) | (1 << FCR0_L) |
-                    (1 << FCR0_W) | (1 << FCR0_D) | (1 << FCR0_S) |
-                    (0x93 << FCR0_PRID),
+        .CP0_Status_rw_bitmask = 0x3C4AFF1F,
+        .CP0_PageGrain_rw_bitmask = (1 << CP0PG_RIE) | (1 << CP0PG_XIE) |
+                    (1 << CP0PG_ELPA) | (1 << CP0PG_IEC),
+        .CP1_fcr0 = (1 << FCR0_FREP) | (1 << FCR0_UFRP) | (1 << FCR0_F64) |
+		    (1 << FCR0_L) | (1 << FCR0_W) | (1 << FCR0_D) |
+		    (1 << FCR0_S) |
+                    (0x03 << FCR0_PRID) | (0x20 << FCR0_REV),
+        .MSAIR = 0x03 << MSAIR_ProcID | 0x20 << MSAIR_Rev,
         .SEGBITS = 32,
         .PABITS = 40,
-        .insn_flags = CPU_MIPS32R5 | ASE_MIPS16 | ASE_MSA,
+        .insn_flags = CPU_MIPS32R5 | ASE_MSA,
         .mmu_type = MMU_TYPE_R4000,
     },
     {
@@ -437,14 +442,14 @@ static const mips_def_t mips_defs[] =
                        (2 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA) |
                        (0 << CP0C1_PC) | (1 << CP0C1_WR) | (1 << CP0C1_EP),
         .CP0_Config2 = MIPS_CONFIG2,
-        .CP0_Config3 = MIPS_CONFIG3 | (1 << CP0C3_BP) | (1 << CP0C3_BI) |
-                       (2 << CP0C3_ISA) | (1 << CP0C3_ULRI) |
-                       (1 << CP0C3_RXI) | (1U << CP0C3_M),
+        .CP0_Config3 = MIPS_CONFIG3 | (1 << CP0C3_RXI) | (1 << CP0C3_BP) |
+                       (1 << CP0C3_BI) | (1 << CP0C3_ULRI) | (1 << CP0C3_MSAP) |
+                       (1U << CP0C3_M),
         .CP0_Config4 = MIPS_CONFIG4 | (0xfc << CP0C4_KScrExist) |
                        (3 << CP0C4_IE) | (1U << CP0C4_M),
         .CP0_Config5 = MIPS_CONFIG5 | (1 << CP0C5_LLB),
         .CP0_Config5_rw_bitmask = (1 << CP0C5_SBRI) | (1 << CP0C5_FRE) |
-                                  (1 << CP0C5_UFE),
+                                  (1 << CP0C5_UFE) | (1 << CP0C5_MSAEn),
         .CP0_LLAddr_rw_bitmask = 0,
         .CP0_LLAddr_shift = 0,
         .SYNCI_Step = 32,
@@ -458,7 +463,7 @@ static const mips_def_t mips_defs[] =
                     (0x00 << FCR0_PRID) | (0x0 << FCR0_REV),
         .SEGBITS = 32,
         .PABITS = 32,
-        .insn_flags = CPU_MIPS32R6 | ASE_MICROMIPS,
+        .insn_flags = CPU_MIPS32R6 | ASE_MSA,
         .mmu_type = MMU_TYPE_R4000,
     },
 #if defined(TARGET_MIPS64)
@@ -514,7 +519,7 @@ static const mips_def_t mips_defs[] =
         .CP0_LLAddr_shift = 4,
         .SYNCI_Step = 32,
         .CCRes = 2,
-        .CP0_Status_rw_bitmask = 0x12F8FFFF,
+        .CP0_Status_rw_bitmask = 0x32F8FFFF,
         .SEGBITS = 42,
         .PABITS = 36,
         .insn_flags = CPU_MIPS64,
@@ -612,7 +617,7 @@ static const mips_def_t mips_defs[] =
         .CP0_LLAddr_shift = 4,
         .SYNCI_Step = 32,
         .CCRes = 2,
-        .CP0_Status_rw_bitmask = 0x12F8FFFF,
+        .CP0_Status_rw_bitmask = 0x32F8FFFF,
         .SEGBITS = 42,
         .PABITS = 36,
         .insn_flags = CPU_MIPS64R2,
@@ -643,26 +648,25 @@ static const mips_def_t mips_defs[] =
         .mmu_type = MMU_TYPE_R4000,
     },
     {
-        /* A generic CPU supporting MIPS64 Release 6 ISA.
-           FIXME: Support IEEE 754-2008 FP.
-                  Eventually this should be replaced by a real CPU model. */
-        .name = "MIPS64R6-generic",
-        .CP0_PRid = 0x00010000,
+        /* FIXME: Support IEEE 754-2008 FP and Virtual Core
+         */
+        .name = "I6400",
+        .CP0_PRid = 0x0001A904,
         .CP0_Config0 = MIPS_CONFIG0 | (0x2 << CP0C0_AR) | (0x2 << CP0C0_AT) |
                        (MMU_TYPE_R4000 << CP0C0_MT),
-        .CP0_Config1 = MIPS_CONFIG1 | (1 << CP0C1_FP) | (63 << CP0C1_MMU) |
-                       (2 << CP0C1_IS) | (4 << CP0C1_IL) | (3 << CP0C1_IA) |
-                       (2 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA) |
+        .CP0_Config1 = MIPS_CONFIG1 | (1 << CP0C1_FP) | (0x1F << CP0C1_MMU) |
+                       (2 << CP0C1_IS) | (5 << CP0C1_IL) | (3 << CP0C1_IA) |
+                       (2 << CP0C1_DS) | (5 << CP0C1_DL) | (3 << CP0C1_DA) |
                        (0 << CP0C1_PC) | (1 << CP0C1_WR) | (1 << CP0C1_EP),
         .CP0_Config2 = MIPS_CONFIG2,
-        .CP0_Config3 = MIPS_CONFIG3 | (1 << CP0C3_RXI) | (1 << CP0C3_BP) |
-                       (1 << CP0C3_BI) | (1 << CP0C3_ULRI) | (1 << CP0C3_LPA) |
-                       (1U << CP0C3_M),
+        .CP0_Config3 = MIPS_CONFIG3 | (1U << CP0C3_M) | (1 << CP0C3_MSAP) |
+                       (1 << CP0C3_BP) | (1 << CP0C3_BI) | (1 << CP0C3_ULRI) |
+                       (1 << CP0C3_RXI) | (1 << CP0C3_LPA),
         .CP0_Config4 = MIPS_CONFIG4 | (0xfc << CP0C4_KScrExist) |
-                       (3 << CP0C4_IE) | (1 << CP0C4_M),
-        .CP0_Config5 = MIPS_CONFIG5 | (1 << CP0C5_LLB),
-        .CP0_Config5_rw_bitmask = (1 << CP0C5_SBRI) | (1 << CP0C5_FRE) |
-                                  (1 << CP0C5_UFE),
+                       (3 << CP0C4_IE) | (1U << CP0C4_M),
+        .CP0_Config5 = MIPS_CONFIG5 | (1 << CP0C5_VP) | (1 << CP0C5_LLB),
+        .CP0_Config5_rw_bitmask = (1 << CP0C5_MSAEn) | (1 << CP0C5_SBRI) |
+                                  (1 << CP0C5_FRE) | (1 << CP0C5_UFE),
         .CP0_LLAddr_rw_bitmask = 0,
         .CP0_LLAddr_shift = 0,
         .SYNCI_Step = 32,
@@ -673,10 +677,11 @@ static const mips_def_t mips_defs[] =
         .CP0_PageGrain_rw_bitmask = (1 << CP0PG_ELPA),
         .CP1_fcr0 = (1 << FCR0_FREP) | (1 << FCR0_F64) | (1 << FCR0_L) |
                     (1 << FCR0_W) | (1 << FCR0_D) | (1 << FCR0_S) |
-                    (0x00 << FCR0_PRID) | (0x0 << FCR0_REV),
-        .SEGBITS = 42,
+                    (0x03 << FCR0_PRID) | (0x20 << FCR0_REV),
+        .MSAIR = 0x03 << MSAIR_ProcID | 0x20 << MSAIR_Rev,
+        .SEGBITS = 48,
         .PABITS = 48,
-        .insn_flags = CPU_MIPS64R6,
+        .insn_flags = CPU_MIPS64R6 | ASE_MSA,
         .mmu_type = MMU_TYPE_R4000,
     },
     {
@@ -857,19 +862,11 @@ static void mvp_init (CPUMIPSState *env, const mips_def_t *def)
 
 static void msa_reset(CPUMIPSState *env)
 {
-#ifdef CONFIG_USER_ONLY
-    /* MSA access enabled */
-    env->CP0_Config5 |= 1 << CP0C5_MSAEn;
-    env->CP0_Status |= (1 << CP0St_CU1) | (1 << CP0St_FR);
-#endif
-
     /* MSA CSR:
        - non-signaling floating point exception mode off (NX bit is 0)
        - Cause, Enables, and Flags are all 0
        - round to nearest / ties to even (RM bits are 0) */
     env->active_tc.msacsr = 0;
-
-    restore_msa_fp_status(env);
 
     /* tininess detected after rounding.*/
     set_float_detect_tininess(float_tininess_after_rounding,
@@ -877,6 +874,14 @@ static void msa_reset(CPUMIPSState *env)
 
     /* clear float_status exception flags */
     set_float_exception_flags(0, &env->active_tc.msa_fp_status);
+
+    /* set float_status rounding mode */
+    set_float_rounding_mode(float_round_nearest_even,
+                            &env->active_tc.msa_fp_status);
+
+    /* set float_status flush modes */
+    set_flush_to_zero(0, &env->active_tc.msa_fp_status);
+    set_flush_inputs_to_zero(0, &env->active_tc.msa_fp_status);
 
     /* clear float_status nan mode */
     set_default_nan_mode(0, &env->active_tc.msa_fp_status);

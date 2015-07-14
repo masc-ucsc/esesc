@@ -15,7 +15,7 @@
 #include "virtio.h"
 
 typedef uint64_t block_number_t;
-#define NULL_BLOCK_NR 0xffffffffffffffffULL
+#define NULL_BLOCK_NR 0xffffffffffffffff
 
 #define FREE_SPACE_FILLER '\xAA'
 

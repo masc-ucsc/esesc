@@ -45,13 +45,11 @@
 #include "hw/usb.h"
 #include "hw/cpu/icc_bus.h"
 #include "qemu/error-report.h"
-#include "migration/migration.h"
 
 /* ICH9 AHCI has 6 ports */
 #define MAX_SATA_PORTS     6
 
 static bool has_acpi_build = true;
-static bool rsdp_in_ram = true;
 static bool smbios_defaults = true;
 static bool smbios_legacy_mode;
 static bool smbios_uuid_encoded = true;
@@ -80,6 +78,7 @@ static void pc_q35_init(MachineState *machine)
     GSIState *gsi_state;
     ISABus *isa_bus;
     int pci_enabled = 1;
+    qemu_irq *cpu_irq;
     qemu_irq *gsi;
     qemu_irq *i8259;
     int i;
@@ -89,7 +88,6 @@ static void pc_q35_init(MachineState *machine)
     PcGuestInfo *guest_info;
     ram_addr_t lowmem;
     DriveInfo *hd[MAX_SATA_PORTS];
-    MachineClass *mc = MACHINE_GET_CLASS(machine);
 
     /* Check whether RAM fits below 4G (leaving 1/2 GByte for IO memory
      * and 256 Mbytes for PCI Express Enhanced Configuration Access Mapping
@@ -156,7 +154,6 @@ static void pc_q35_init(MachineState *machine)
     guest_info->isapc_ram_fw = false;
     guest_info->has_acpi_build = has_acpi_build;
     guest_info->has_reserved_memory = has_reserved_memory;
-    guest_info->rsdp_in_ram = rsdp_in_ram;
 
     /* Migration was not supported in 2.0 for Q35, so do not bother
      * with this hack (see hw/i386/acpi-build.c).
@@ -164,6 +161,7 @@ static void pc_q35_init(MachineState *machine)
     guest_info->legacy_acpi_table_size = 0;
 
     if (smbios_defaults) {
+        MachineClass *mc = MACHINE_GET_CLASS(machine);
         /* These values are guest ABI, do not change */
         smbios_set_defaults("QEMU", "Standard PC (Q35 + ICH9, 2009)",
                             mc->name, smbios_legacy_mode, smbios_uuid_encoded);
@@ -230,7 +228,8 @@ static void pc_q35_init(MachineState *machine)
     } else if (xen_enabled()) {
         i8259 = xen_interrupt_controller_init();
     } else {
-        i8259 = i8259_init(isa_bus, pc_allocate_cpu_irq());
+        cpu_irq = pc_allocate_cpu_irq();
+        i8259 = i8259_init(isa_bus, cpu_irq[0]);
     }
 
     for (i = 0; i < ISA_NUM_IRQS; i++) {
@@ -249,7 +248,7 @@ static void pc_q35_init(MachineState *machine)
     }
 
     /* init basic PC hardware */
-    pc_basic_device_init(isa_bus, gsi, &rtc_state, !mc->no_floppy, &floppy,
+    pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy,
                          (pc_machine->vmport != ON_OFF_AUTO_ON), 0xff0104);
 
     /* connect pm stuff to lpc */
@@ -266,7 +265,7 @@ static void pc_q35_init(MachineState *machine)
     ide_drive_get(hd, ICH_AHCI(ahci)->ahci.ports);
     ahci_ide_create_devs(ahci, hd);
 
-    if (usb_enabled()) {
+    if (usb_enabled(false)) {
         /* Should we create 6 UHCI according to ich9 spec? */
         ehci_create_ich9_with_companions(host_bus, 0x1d);
     }
@@ -288,41 +287,10 @@ static void pc_q35_init(MachineState *machine)
     }
 }
 
-static void pc_compat_2_3(MachineState *machine)
-{
-    savevm_skip_section_footers();
-}
-
-static void pc_compat_2_2(MachineState *machine)
-{
-    pc_compat_2_3(machine);
-    rsdp_in_ram = false;
-    x86_cpu_compat_set_features("kvm64", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("kvm32", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Conroe", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Penryn", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Nehalem", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Westmere", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("SandyBridge", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Haswell", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Broadwell", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Opteron_G1", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Opteron_G2", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Opteron_G3", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Opteron_G4", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Opteron_G5", FEAT_1_EDX, 0, CPUID_VME);
-    x86_cpu_compat_set_features("Haswell", FEAT_1_ECX, 0, CPUID_EXT_F16C);
-    x86_cpu_compat_set_features("Haswell", FEAT_1_ECX, 0, CPUID_EXT_RDRAND);
-    x86_cpu_compat_set_features("Broadwell", FEAT_1_ECX, 0, CPUID_EXT_F16C);
-    x86_cpu_compat_set_features("Broadwell", FEAT_1_ECX, 0, CPUID_EXT_RDRAND);
-    machine->suppress_vmdesc = true;
-}
-
 static void pc_compat_2_1(MachineState *machine)
 {
     PCMachineState *pcms = PC_MACHINE(machine);
 
-    pc_compat_2_2(machine);
     pcms->enforce_aligned_dimm = false;
     smbios_uuid_encoded = false;
     x86_cpu_compat_set_features("coreduo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
@@ -366,120 +334,144 @@ static void pc_compat_1_4(MachineState *machine)
     x86_cpu_compat_set_features("Westmere", FEAT_1_ECX, 0, CPUID_EXT_PCLMULQDQ);
 }
 
-#define DEFINE_Q35_MACHINE(suffix, name, compatfn, optionfn) \
-    static void pc_init_##suffix(MachineState *machine) \
-    { \
-        void (*compat)(MachineState *m) = (compatfn); \
-        if (compat) { \
-            compat(machine); \
-        } \
-        pc_q35_init(machine); \
-    } \
-    DEFINE_PC_MACHINE(suffix, name, pc_init_##suffix, optionfn)
-
-
-static void pc_q35_machine_options(MachineClass *m)
+static void pc_q35_init_2_1(MachineState *machine)
 {
-    pc_default_machine_options(m);
-    m->family = "pc_q35";
-    m->desc = "Standard PC (Q35 + ICH9, 2009)";
-    m->hot_add_cpu = pc_hot_add_cpu;
-    m->units_per_default_bus = 1;
+    pc_compat_2_1(machine);
+    pc_q35_init(machine);
 }
 
-static void pc_q35_2_4_machine_options(MachineClass *m)
+static void pc_q35_init_2_0(MachineState *machine)
 {
-    pc_q35_machine_options(m);
-    m->default_machine_opts = "firmware=bios-256k.bin";
-    m->default_display = "std";
-    m->no_floppy = 1;
-    m->alias = "q35";
+    pc_compat_2_0(machine);
+    pc_q35_init(machine);
 }
 
-DEFINE_Q35_MACHINE(v2_4, "pc-q35-2.4", NULL,
-                   pc_q35_2_4_machine_options);
-
-
-static void pc_q35_2_3_machine_options(MachineClass *m)
+static void pc_q35_init_1_7(MachineState *machine)
 {
-    pc_q35_2_4_machine_options(m);
-    m->no_floppy = 0;
-    m->alias = NULL;
-    SET_MACHINE_COMPAT(m, PC_COMPAT_2_3);
+    pc_compat_1_7(machine);
+    pc_q35_init(machine);
 }
 
-DEFINE_Q35_MACHINE(v2_3, "pc-q35-2.3", pc_compat_2_3,
-                   pc_q35_2_3_machine_options);
-
-
-static void pc_q35_2_2_machine_options(MachineClass *m)
+static void pc_q35_init_1_6(MachineState *machine)
 {
-    pc_q35_2_3_machine_options(m);
-    SET_MACHINE_COMPAT(m, PC_COMPAT_2_2);
+    pc_compat_1_6(machine);
+    pc_q35_init(machine);
 }
 
-DEFINE_Q35_MACHINE(v2_2, "pc-q35-2.2", pc_compat_2_2,
-                   pc_q35_2_2_machine_options);
-
-
-static void pc_q35_2_1_machine_options(MachineClass *m)
+static void pc_q35_init_1_5(MachineState *machine)
 {
-    pc_q35_2_2_machine_options(m);
-    m->default_display = NULL;
-    SET_MACHINE_COMPAT(m, PC_COMPAT_2_1);
+    pc_compat_1_5(machine);
+    pc_q35_init(machine);
 }
 
-DEFINE_Q35_MACHINE(v2_1, "pc-q35-2.1", pc_compat_2_1,
-                   pc_q35_2_1_machine_options);
-
-
-static void pc_q35_2_0_machine_options(MachineClass *m)
+static void pc_q35_init_1_4(MachineState *machine)
 {
-    pc_q35_2_1_machine_options(m);
-    SET_MACHINE_COMPAT(m, PC_COMPAT_2_0);
+    pc_compat_1_4(machine);
+    pc_q35_init(machine);
 }
 
-DEFINE_Q35_MACHINE(v2_0, "pc-q35-2.0", pc_compat_2_0,
-                   pc_q35_2_0_machine_options);
+#define PC_Q35_MACHINE_OPTIONS \
+    PC_DEFAULT_MACHINE_OPTIONS, \
+    .family = "pc_q35", \
+    .desc = "Standard PC (Q35 + ICH9, 2009)", \
+    .hot_add_cpu = pc_hot_add_cpu, \
+    .units_per_default_bus = 1
 
+#define PC_Q35_2_2_MACHINE_OPTIONS                      \
+    PC_Q35_MACHINE_OPTIONS,                             \
+    .default_machine_opts = "firmware=bios-256k.bin",   \
+    .default_display = "std"
 
-static void pc_q35_1_7_machine_options(MachineClass *m)
+static QEMUMachine pc_q35_machine_v2_2 = {
+    PC_Q35_2_2_MACHINE_OPTIONS,
+    .name = "pc-q35-2.2",
+    .alias = "q35",
+    .init = pc_q35_init,
+};
+
+#define PC_Q35_2_1_MACHINE_OPTIONS                      \
+    PC_Q35_MACHINE_OPTIONS,                             \
+    .default_machine_opts = "firmware=bios-256k.bin"
+
+static QEMUMachine pc_q35_machine_v2_1 = {
+    PC_Q35_2_1_MACHINE_OPTIONS,
+    .name = "pc-q35-2.1",
+    .init = pc_q35_init_2_1,
+    .compat_props = (GlobalProperty[]) {
+        HW_COMPAT_2_1,
+        { /* end of list */ }
+    },
+};
+
+#define PC_Q35_2_0_MACHINE_OPTIONS PC_Q35_2_1_MACHINE_OPTIONS
+
+static QEMUMachine pc_q35_machine_v2_0 = {
+    PC_Q35_2_0_MACHINE_OPTIONS,
+    .name = "pc-q35-2.0",
+    .init = pc_q35_init_2_0,
+    .compat_props = (GlobalProperty[]) {
+        PC_COMPAT_2_0,
+        { /* end of list */ }
+    },
+};
+
+#define PC_Q35_1_7_MACHINE_OPTIONS PC_Q35_MACHINE_OPTIONS
+
+static QEMUMachine pc_q35_machine_v1_7 = {
+    PC_Q35_1_7_MACHINE_OPTIONS,
+    .name = "pc-q35-1.7",
+    .init = pc_q35_init_1_7,
+    .compat_props = (GlobalProperty[]) {
+        PC_COMPAT_1_7,
+        { /* end of list */ }
+    },
+};
+
+#define PC_Q35_1_6_MACHINE_OPTIONS PC_Q35_MACHINE_OPTIONS
+
+static QEMUMachine pc_q35_machine_v1_6 = {
+    PC_Q35_1_6_MACHINE_OPTIONS,
+    .name = "pc-q35-1.6",
+    .init = pc_q35_init_1_6,
+    .compat_props = (GlobalProperty[]) {
+        PC_COMPAT_1_6,
+        { /* end of list */ }
+    },
+};
+
+static QEMUMachine pc_q35_machine_v1_5 = {
+    PC_Q35_1_6_MACHINE_OPTIONS,
+    .name = "pc-q35-1.5",
+    .init = pc_q35_init_1_5,
+    .compat_props = (GlobalProperty[]) {
+        PC_COMPAT_1_5,
+        { /* end of list */ }
+    },
+};
+
+#define PC_Q35_1_4_MACHINE_OPTIONS \
+    PC_Q35_1_6_MACHINE_OPTIONS, \
+    .hot_add_cpu = NULL
+
+static QEMUMachine pc_q35_machine_v1_4 = {
+    PC_Q35_1_4_MACHINE_OPTIONS,
+    .name = "pc-q35-1.4",
+    .init = pc_q35_init_1_4,
+    .compat_props = (GlobalProperty[]) {
+        PC_COMPAT_1_4,
+        { /* end of list */ }
+    },
+};
+
+static void pc_q35_machine_init(void)
 {
-    pc_q35_2_0_machine_options(m);
-    m->default_machine_opts = NULL;
-    SET_MACHINE_COMPAT(m, PC_COMPAT_1_7);
+    qemu_register_pc_machine(&pc_q35_machine_v2_2);
+    qemu_register_pc_machine(&pc_q35_machine_v2_1);
+    qemu_register_pc_machine(&pc_q35_machine_v2_0);
+    qemu_register_pc_machine(&pc_q35_machine_v1_7);
+    qemu_register_pc_machine(&pc_q35_machine_v1_6);
+    qemu_register_pc_machine(&pc_q35_machine_v1_5);
+    qemu_register_pc_machine(&pc_q35_machine_v1_4);
 }
 
-DEFINE_Q35_MACHINE(v1_7, "pc-q35-1.7", pc_compat_1_7,
-                   pc_q35_1_7_machine_options);
-
-
-static void pc_q35_1_6_machine_options(MachineClass *m)
-{
-    pc_q35_machine_options(m);
-    SET_MACHINE_COMPAT(m, PC_COMPAT_1_6);
-}
-
-DEFINE_Q35_MACHINE(v1_6, "pc-q35-1.6", pc_compat_1_6,
-                   pc_q35_1_6_machine_options);
-
-
-static void pc_q35_1_5_machine_options(MachineClass *m)
-{
-    pc_q35_1_6_machine_options(m);
-    SET_MACHINE_COMPAT(m, PC_COMPAT_1_5);
-}
-
-DEFINE_Q35_MACHINE(v1_5, "pc-q35-1.5", pc_compat_1_5,
-                   pc_q35_1_5_machine_options);
-
-
-static void pc_q35_1_4_machine_options(MachineClass *m)
-{
-    pc_q35_1_5_machine_options(m);
-    m->hot_add_cpu = NULL;
-    SET_MACHINE_COMPAT(m, PC_COMPAT_1_4);
-}
-
-DEFINE_Q35_MACHINE(v1_4, "pc-q35-1.4", pc_compat_1_4,
-                   pc_q35_1_4_machine_options);
+machine_init(pc_q35_machine_init);

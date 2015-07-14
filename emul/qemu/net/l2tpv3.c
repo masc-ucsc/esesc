@@ -28,6 +28,7 @@
 #include "config-host.h"
 #include "net/net.h"
 #include "clients.h"
+#include "monitor/monitor.h"
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qemu/option.h"
@@ -132,15 +133,17 @@ typedef struct NetL2TPV3State {
 
 } NetL2TPV3State;
 
+static int l2tpv3_can_send(void *opaque);
 static void net_l2tpv3_send(void *opaque);
 static void l2tpv3_writable(void *opaque);
 
 static void l2tpv3_update_fd_handler(NetL2TPV3State *s)
 {
-    qemu_set_fd_handler(s->fd,
-                        s->read_poll ? net_l2tpv3_send : NULL,
-                        s->write_poll ? l2tpv3_writable : NULL,
-                        s);
+    qemu_set_fd_handler2(s->fd,
+                         s->read_poll ? l2tpv3_can_send : NULL,
+                         s->read_poll ? net_l2tpv3_send     : NULL,
+                         s->write_poll ? l2tpv3_writable : NULL,
+                         s);
 }
 
 static void l2tpv3_read_poll(NetL2TPV3State *s, bool enable)
@@ -164,6 +167,13 @@ static void l2tpv3_writable(void *opaque)
     NetL2TPV3State *s = opaque;
     l2tpv3_write_poll(s, false);
     qemu_flush_queued_packets(&s->nc);
+}
+
+static int l2tpv3_can_send(void *opaque)
+{
+    NetL2TPV3State *s = opaque;
+
+    return qemu_can_send_packet(&s->nc);
 }
 
 static void l2tpv3_send_completed(NetClientState *nc, ssize_t len)
@@ -479,12 +489,12 @@ static struct mmsghdr *build_l2tpv3_vector(NetL2TPV3State *s, int count)
     struct iovec *iov;
     struct mmsghdr *msgvec, *result;
 
-    msgvec = g_new(struct mmsghdr, count);
+    msgvec = g_malloc(sizeof(struct mmsghdr) * count);
     result = msgvec;
     for (i = 0; i < count ; i++) {
         msgvec->msg_hdr.msg_name = NULL;
         msgvec->msg_hdr.msg_namelen = 0;
-        iov =  g_new(struct iovec, IOVSIZE);
+        iov =  g_malloc(sizeof(struct iovec) * IOVSIZE);
         msgvec->msg_hdr.msg_iov = iov;
         iov->iov_base = g_malloc(s->header_size);
         iov->iov_len = s->header_size;
@@ -526,9 +536,10 @@ static NetClientInfo net_l2tpv3_info = {
 
 int net_init_l2tpv3(const NetClientOptions *opts,
                     const char *name,
-                    NetClientState *peer, Error **errp)
+                    NetClientState *peer)
 {
-    /* FIXME error_setg(errp, ...) on failure */
+
+
     const NetdevL2TPv3Options *l2tpv3;
     NetL2TPV3State *s;
     NetClientState *nc;
@@ -684,7 +695,8 @@ int net_init_l2tpv3(const NetClientOptions *opts,
         goto outerr;
     }
 
-    s->dgram_dst = g_new0(struct sockaddr_storage, 1);
+    s->dgram_dst = g_malloc(sizeof(struct sockaddr_storage));
+    memset(s->dgram_dst, '\0' , sizeof(struct sockaddr_storage));
     memcpy(s->dgram_dst, result->ai_addr, result->ai_addrlen);
     s->dst_size = result->ai_addrlen;
 
@@ -718,7 +730,7 @@ int net_init_l2tpv3(const NetClientOptions *opts,
     }
 
     s->msgvec = build_l2tpv3_vector(s, MAX_L2TPV3_MSGCNT);
-    s->vec = g_new(struct iovec, MAX_L2TPV3_IOVCNT);
+    s->vec = g_malloc(sizeof(struct iovec) * MAX_L2TPV3_IOVCNT);
     s->header_buf = g_malloc(s->header_size);
 
     qemu_set_nonblock(fd);

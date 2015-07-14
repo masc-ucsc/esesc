@@ -31,12 +31,18 @@ static void machine_set_accel(Object *obj, const char *value, Error **errp)
     ms->accel = g_strdup(value);
 }
 
+static bool machine_get_kernel_irqchip(Object *obj, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    return ms->kernel_irqchip;
+}
+
 static void machine_set_kernel_irqchip(Object *obj, bool value, Error **errp)
 {
     MachineState *ms = MACHINE(obj);
 
-    ms->kernel_irqchip_allowed = value;
-    ms->kernel_irqchip_required = value;
+    ms->kernel_irqchip = value;
 }
 
 static void machine_get_kvm_shadow_mem(Object *obj, Visitor *v,
@@ -223,7 +229,6 @@ static void machine_set_usb(Object *obj, bool value, Error **errp)
     MachineState *ms = MACHINE(obj);
 
     ms->usb = value;
-    ms->usb_disabled = !value;
 }
 
 static char *machine_get_firmware(Object *obj, Error **errp)
@@ -255,20 +260,6 @@ static void machine_set_iommu(Object *obj, bool value, Error **errp)
     ms->iommu = value;
 }
 
-static void machine_set_suppress_vmdesc(Object *obj, bool value, Error **errp)
-{
-    MachineState *ms = MACHINE(obj);
-
-    ms->suppress_vmdesc = value;
-}
-
-static bool machine_get_suppress_vmdesc(Object *obj, Error **errp)
-{
-    MachineState *ms = MACHINE(obj);
-
-    return ms->suppress_vmdesc;
-}
-
 static int error_on_sysbus_device(SysBusDevice *sbdev, void *opaque)
 {
     error_report("Option '-device %s' cannot be handled by this machine",
@@ -294,118 +285,54 @@ static void machine_init_notify(Notifier *notifier, void *data)
     foreach_dynamic_sysbus_device(error_on_sysbus_device, NULL);
 }
 
-static void machine_class_init(ObjectClass *oc, void *data)
-{
-    MachineClass *mc = MACHINE_CLASS(oc);
-
-    /* Default 128 MB as guest ram size */
-    mc->default_ram_size = 128 * M_BYTE;
-}
-
 static void machine_initfn(Object *obj)
 {
     MachineState *ms = MACHINE(obj);
 
-    ms->kernel_irqchip_allowed = true;
-    ms->kvm_shadow_mem = -1;
-    ms->dump_guest_core = true;
-    ms->mem_merge = true;
-
     object_property_add_str(obj, "accel",
                             machine_get_accel, machine_set_accel, NULL);
-    object_property_set_description(obj, "accel",
-                                    "Accelerator list",
-                                    NULL);
     object_property_add_bool(obj, "kernel-irqchip",
-                             NULL,
+                             machine_get_kernel_irqchip,
                              machine_set_kernel_irqchip,
                              NULL);
-    object_property_set_description(obj, "kernel-irqchip",
-                                    "Use KVM in-kernel irqchip",
-                                    NULL);
     object_property_add(obj, "kvm-shadow-mem", "int",
                         machine_get_kvm_shadow_mem,
                         machine_set_kvm_shadow_mem,
                         NULL, NULL, NULL);
-    object_property_set_description(obj, "kvm-shadow-mem",
-                                    "KVM shadow MMU size",
-                                    NULL);
     object_property_add_str(obj, "kernel",
                             machine_get_kernel, machine_set_kernel, NULL);
-    object_property_set_description(obj, "kernel",
-                                    "Linux kernel image file",
-                                    NULL);
     object_property_add_str(obj, "initrd",
                             machine_get_initrd, machine_set_initrd, NULL);
-    object_property_set_description(obj, "initrd",
-                                    "Linux initial ramdisk file",
-                                    NULL);
     object_property_add_str(obj, "append",
                             machine_get_append, machine_set_append, NULL);
-    object_property_set_description(obj, "append",
-                                    "Linux kernel command line",
-                                    NULL);
     object_property_add_str(obj, "dtb",
                             machine_get_dtb, machine_set_dtb, NULL);
-    object_property_set_description(obj, "dtb",
-                                    "Linux kernel device tree file",
-                                    NULL);
     object_property_add_str(obj, "dumpdtb",
                             machine_get_dumpdtb, machine_set_dumpdtb, NULL);
-    object_property_set_description(obj, "dumpdtb",
-                                    "Dump current dtb to a file and quit",
-                                    NULL);
     object_property_add(obj, "phandle-start", "int",
                         machine_get_phandle_start,
                         machine_set_phandle_start,
                         NULL, NULL, NULL);
-    object_property_set_description(obj, "phandle-start",
-                                    "The first phandle ID we may generate dynamically",
-                                    NULL);
     object_property_add_str(obj, "dt-compatible",
                             machine_get_dt_compatible,
                             machine_set_dt_compatible,
                             NULL);
-    object_property_set_description(obj, "dt-compatible",
-                                    "Overrides the \"compatible\" property of the dt root node",
-                                    NULL);
     object_property_add_bool(obj, "dump-guest-core",
                              machine_get_dump_guest_core,
                              machine_set_dump_guest_core,
                              NULL);
-    object_property_set_description(obj, "dump-guest-core",
-                                    "Include guest memory in  a core dump",
-                                    NULL);
     object_property_add_bool(obj, "mem-merge",
                              machine_get_mem_merge,
                              machine_set_mem_merge, NULL);
-    object_property_set_description(obj, "mem-merge",
-                                    "Enable/disable memory merge support",
-                                    NULL);
     object_property_add_bool(obj, "usb",
                              machine_get_usb,
                              machine_set_usb, NULL);
-    object_property_set_description(obj, "usb",
-                                    "Set on/off to enable/disable usb",
-                                    NULL);
     object_property_add_str(obj, "firmware",
                             machine_get_firmware,
                             machine_set_firmware, NULL);
-    object_property_set_description(obj, "firmware",
-                                    "Firmware image",
-                                    NULL);
     object_property_add_bool(obj, "iommu",
                              machine_get_iommu,
                              machine_set_iommu, NULL);
-    object_property_set_description(obj, "iommu",
-                                    "Set on/off to enable/disable Intel IOMMU (VT-d)",
-                                    NULL);
-    object_property_add_bool(obj, "suppress-vmdesc",
-                             machine_get_suppress_vmdesc,
-                             machine_set_suppress_vmdesc, NULL);
-    object_property_set_description(obj, "suppress-vmdesc",
-                                    "Set on to disable self-describing migration",
-                                    NULL);
 
     /* Register notifier when init is done for sysbus sanity checks */
     ms->sysbus_notifier.notify = machine_init_notify;
@@ -426,52 +353,11 @@ static void machine_finalize(Object *obj)
     g_free(ms->firmware);
 }
 
-bool machine_usb(MachineState *machine)
-{
-    return machine->usb;
-}
-
-bool machine_iommu(MachineState *machine)
-{
-    return machine->iommu;
-}
-
-bool machine_kernel_irqchip_allowed(MachineState *machine)
-{
-    return machine->kernel_irqchip_allowed;
-}
-
-bool machine_kernel_irqchip_required(MachineState *machine)
-{
-    return machine->kernel_irqchip_required;
-}
-
-int machine_kvm_shadow_mem(MachineState *machine)
-{
-    return machine->kvm_shadow_mem;
-}
-
-int machine_phandle_start(MachineState *machine)
-{
-    return machine->phandle_start;
-}
-
-bool machine_dump_guest_core(MachineState *machine)
-{
-    return machine->dump_guest_core;
-}
-
-bool machine_mem_merge(MachineState *machine)
-{
-    return machine->mem_merge;
-}
-
 static const TypeInfo machine_info = {
     .name = TYPE_MACHINE,
     .parent = TYPE_OBJECT,
     .abstract = true,
     .class_size = sizeof(MachineClass),
-    .class_init    = machine_class_init,
     .instance_size = sizeof(MachineState),
     .instance_init = machine_initfn,
     .instance_finalize = machine_finalize,

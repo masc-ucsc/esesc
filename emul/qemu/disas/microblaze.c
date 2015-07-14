@@ -275,7 +275,7 @@ enum microblaze_instr_type {
 
 #define MAX_OPCODES 280
 
-static struct op_code_struct {
+struct op_code_struct {
   const char *name;
   short inst_type; /* registers and immediate values involved */
   short inst_offset_type; /* immediate vals offset from PC? (= 1 for branches) */
@@ -567,9 +567,10 @@ static struct op_code_struct {
 };
 
 /* prefix for register names */
-static const char register_prefix[] = "r";
-static const char fsl_register_prefix[] = "rfsl";
-static const char pvr_register_prefix[] = "rpvr";
+char register_prefix[] = "r";
+char special_register_prefix[] = "spr";
+char fsl_register_prefix[] = "rfsl";
+char pvr_register_prefix[] = "rpvr";
 
 
 /* #defines for valid immediate range */
@@ -737,9 +738,7 @@ get_field_special (long instr, struct op_code_struct * op)
    default :
      {
        if ( ((((instr & IMM_MASK) >> IMM_LOW) ^ op->immval_mask) & 0xE000) == REG_PVR_MASK) {
-	  sprintf(tmpstr, "%s%u", pvr_register_prefix,
-                 (unsigned short)(((instr & IMM_MASK) >> IMM_LOW) ^
-                                  op->immval_mask) ^ REG_PVR_MASK);
+	 sprintf(tmpstr, "%spvr%d", register_prefix, (unsigned short)(((instr & IMM_MASK) >> IMM_LOW) ^ op->immval_mask) ^ REG_PVR_MASK);
 	 return(strdup(tmpstr));
        } else {
 	 strcpy(spr, "pc");

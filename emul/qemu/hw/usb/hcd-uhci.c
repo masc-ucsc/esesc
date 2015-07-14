@@ -66,7 +66,7 @@ struct UHCIInfo {
     uint16_t   device_id;
     uint8_t    revision;
     uint8_t    irq_pin;
-    void       (*realize)(PCIDevice *dev, Error **errp);
+    int        (*initfn)(PCIDevice *dev);
     bool       unplug;
 };
 
@@ -153,9 +153,6 @@ typedef struct UHCI_QH {
 static void uhci_async_cancel(UHCIAsync *async);
 static void uhci_queue_fill(UHCIQueue *q, UHCI_TD *td);
 static void uhci_resume(void *opaque);
-
-#define TYPE_UHCI "pci-uhci-usb"
-#define UHCI(obj) OBJECT_CHECK(UHCIState, (obj), TYPE_UHCI)
 
 static inline int32_t uhci_queue_token(UHCI_TD *td)
 {
@@ -351,10 +348,9 @@ static void uhci_update_irq(UHCIState *s)
     pci_set_irq(&s->dev, level);
 }
 
-static void uhci_reset(DeviceState *dev)
+static void uhci_reset(void *opaque)
 {
-    PCIDevice *d = PCI_DEVICE(dev);
-    UHCIState *s = UHCI(d);
+    UHCIState *s = opaque;
     uint8_t *pci_conf;
     int i;
     UHCIPort *port;
@@ -366,7 +362,7 @@ static void uhci_reset(DeviceState *dev)
     pci_conf[0x6a] = 0x01; /* usb clock */
     pci_conf[0x6b] = 0x00;
     s->cmd = 0;
-    s->status = UHCI_STS_HCHALTED;
+    s->status = 0;
     s->status2 = 0;
     s->intr = 0;
     s->fl_base_addr = 0;
@@ -423,7 +419,7 @@ static const VMStateDescription vmstate_uhci = {
         VMSTATE_UINT32(fl_base_addr, UHCIState),
         VMSTATE_UINT8(sof_timing, UHCIState),
         VMSTATE_UINT8(status2, UHCIState),
-        VMSTATE_TIMER_PTR(frame_timer, UHCIState),
+        VMSTATE_TIMER(frame_timer, UHCIState),
         VMSTATE_INT64_V(expire_time, UHCIState, 2),
         VMSTATE_UINT32_V(pending_int_mask, UHCIState, 3),
         VMSTATE_END_OF_LIST()
@@ -458,11 +454,11 @@ static void uhci_port_write(void *opaque, hwaddr addr,
                 port = &s->ports[i];
                 usb_device_reset(port->port.dev);
             }
-            uhci_reset(DEVICE(s));
+            uhci_reset(s);
             return;
         }
         if (val & UHCI_CMD_HCRESET) {
-            uhci_reset(DEVICE(s));
+            uhci_reset(s);
             return;
         }
         s->cmd = val;
@@ -1194,12 +1190,11 @@ static USBPortOps uhci_port_ops = {
 static USBBusOps uhci_bus_ops = {
 };
 
-static void usb_uhci_common_realize(PCIDevice *dev, Error **errp)
+static int usb_uhci_common_initfn(PCIDevice *dev)
 {
-    Error *err = NULL;
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(dev);
     UHCIPCIDeviceClass *u = container_of(pc, UHCIPCIDeviceClass, parent_class);
-    UHCIState *s = UHCI(dev);
+    UHCIState *s = DO_UPCAST(UHCIState, dev, dev);
     uint8_t *pci_conf = s->dev.config;
     int i;
 
@@ -1214,13 +1209,10 @@ static void usb_uhci_common_realize(PCIDevice *dev, Error **errp)
         for(i = 0; i < NB_PORTS; i++) {
             ports[i] = &s->ports[i].port;
         }
-        usb_register_companion(s->masterbus, ports, NB_PORTS,
-                               s->firstport, s, &uhci_port_ops,
-                               USB_SPEED_MASK_LOW | USB_SPEED_MASK_FULL,
-                               &err);
-        if (err) {
-            error_propagate(errp, err);
-            return;
+        if (usb_register_companion(s->masterbus, ports, NB_PORTS,
+                s->firstport, s, &uhci_port_ops,
+                USB_SPEED_MASK_LOW | USB_SPEED_MASK_FULL) != 0) {
+            return -1;
         }
     } else {
         usb_bus_new(&s->bus, sizeof(s->bus), &uhci_bus_ops, DEVICE(dev));
@@ -1234,17 +1226,21 @@ static void usb_uhci_common_realize(PCIDevice *dev, Error **errp)
     s->num_ports_vmstate = NB_PORTS;
     QTAILQ_INIT(&s->queues);
 
+    qemu_register_reset(uhci_reset, s);
+
     memory_region_init_io(&s->io_bar, OBJECT(s), &uhci_ioport_ops, s,
                           "uhci", 0x20);
 
     /* Use region 4 for consistency with real hardware.  BSD guests seem
        to rely on this.  */
     pci_register_bar(&s->dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &s->io_bar);
+
+    return 0;
 }
 
-static void usb_uhci_vt82c686b_realize(PCIDevice *dev, Error **errp)
+static int usb_uhci_vt82c686b_initfn(PCIDevice *dev)
 {
-    UHCIState *s = UHCI(dev);
+    UHCIState *s = DO_UPCAST(UHCIState, dev, dev);
     uint8_t *pci_conf = s->dev.config;
 
     /* USB misc control 1/2 */
@@ -1254,12 +1250,12 @@ static void usb_uhci_vt82c686b_realize(PCIDevice *dev, Error **errp)
     /* USB legacy support  */
     pci_set_long(pci_conf + 0xc0,0x00002000);
 
-    usb_uhci_common_realize(dev, errp);
+    return usb_uhci_common_initfn(dev);
 }
 
 static void usb_uhci_exit(PCIDevice *dev)
 {
-    UHCIState *s = UHCI(dev);
+    UHCIState *s = DO_UPCAST(UHCIState, dev, dev);
 
     trace_usb_uhci_exit();
 
@@ -1297,34 +1293,16 @@ static void uhci_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
-
-    k->class_id  = PCI_CLASS_SERIAL_USB;
-    dc->vmsd = &vmstate_uhci;
-    dc->reset = uhci_reset;
-    set_bit(DEVICE_CATEGORY_USB, dc->categories);
-}
-
-static const TypeInfo uhci_pci_type_info = {
-    .name = TYPE_UHCI,
-    .parent = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(UHCIState),
-    .class_size    = sizeof(UHCIPCIDeviceClass),
-    .abstract = true,
-    .class_init = uhci_class_init,
-};
-
-static void uhci_data_class_init(ObjectClass *klass, void *data)
-{
-    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
-    DeviceClass *dc = DEVICE_CLASS(klass);
     UHCIPCIDeviceClass *u = container_of(k, UHCIPCIDeviceClass, parent_class);
     UHCIInfo *info = data;
 
-    k->realize = info->realize ? info->realize : usb_uhci_common_realize;
+    k->init = info->initfn ? info->initfn : usb_uhci_common_initfn;
     k->exit = info->unplug ? usb_uhci_exit : NULL;
     k->vendor_id = info->vendor_id;
     k->device_id = info->device_id;
     k->revision  = info->revision;
+    k->class_id  = PCI_CLASS_SERIAL_USB;
+    dc->vmsd = &vmstate_uhci;
     if (!info->unplug) {
         /* uhci controllers in companion setups can't be hotplugged */
         dc->hotpluggable = false;
@@ -1332,6 +1310,7 @@ static void uhci_data_class_init(ObjectClass *klass, void *data)
     } else {
         dc->props = uhci_properties_standalone;
     }
+    set_bit(DEVICE_CATEGORY_USB, dc->categories);
     u->info = *info;
 }
 
@@ -1356,7 +1335,7 @@ static UHCIInfo uhci_info[] = {
         .device_id = PCI_DEVICE_ID_VIA_UHCI,
         .revision  = 0x01,
         .irq_pin   = 3,
-        .realize   = usb_uhci_vt82c686b_realize,
+        .initfn    = usb_uhci_vt82c686b_initfn,
         .unplug    = true,
     },{
         .name      = "ich9-usb-uhci1", /* 00:1d.0 */
@@ -1406,12 +1385,12 @@ static UHCIInfo uhci_info[] = {
 static void uhci_register_types(void)
 {
     TypeInfo uhci_type_info = {
-        .parent        = TYPE_UHCI,
-        .class_init    = uhci_data_class_init,
+        .parent        = TYPE_PCI_DEVICE,
+        .instance_size = sizeof(UHCIState),
+        .class_size    = sizeof(UHCIPCIDeviceClass),
+        .class_init    = uhci_class_init,
     };
     int i;
-
-    type_register_static(&uhci_pci_type_info);
 
     for (i = 0; i < ARRAY_SIZE(uhci_info); i++) {
         uhci_type_info.name = uhci_info[i].name;

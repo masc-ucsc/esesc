@@ -116,7 +116,6 @@ static void quiesce_class_init(ObjectClass *klass, void *data)
 
     dc->reset = quiesce_reset;
     dc->vmsd = &vmstate_sclpquiesce;
-    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     k->init = quiesce_init;
 
     k->get_send_mask = send_mask;

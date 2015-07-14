@@ -74,8 +74,8 @@ static void rng_random_opened(RngBackend *b, Error **errp)
     RndRandom *s = RNG_RANDOM(b);
 
     if (s->filename == NULL) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
-                   "filename", "a valid filename");
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE,
+                  "filename", "a valid filename");
     } else {
         s->fd = qemu_open(s->filename, O_RDONLY | O_NONBLOCK);
         if (s->fd == -1) {
@@ -88,7 +88,11 @@ static char *rng_random_get_filename(Object *obj, Error **errp)
 {
     RndRandom *s = RNG_RANDOM(obj);
 
-    return g_strdup(s->filename);
+    if (s->filename) {
+        return g_strdup(s->filename);
+    }
+
+    return NULL;
 }
 
 static void rng_random_set_filename(Object *obj, const char *filename,
@@ -98,7 +102,7 @@ static void rng_random_set_filename(Object *obj, const char *filename,
     RndRandom *s = RNG_RANDOM(obj);
 
     if (b->opened) {
-        error_setg(errp, QERR_PERMISSION_DENIED);
+        error_set(errp, QERR_PERMISSION_DENIED);
         return;
     }
 

@@ -342,9 +342,8 @@ static void test_i440fx_firmware(FirmwareTestFixture *fixture,
     g_assert(fw_pathname != NULL);
 
     /* Better hope the user didn't put metacharacters in TMPDIR and co. */
-    cmdline = g_strdup_printf("-S %s%s", fixture->is_bios
-                                         ? "-bios "
-                                         : "-drive if=pflash,format=raw,file=",
+    cmdline = g_strdup_printf("-S %s %s",
+                              fixture->is_bios ? "-bios" : "-pflash",
                               fw_pathname);
     g_test_message("qemu cmdline: %s", cmdline);
     qtest_start(cmdline);
@@ -383,8 +382,8 @@ static void add_firmware_test(const char *testpath,
                               void (*setup_fixture)(FirmwareTestFixture *f,
                                                     gconstpointer test_data))
 {
-    qtest_add(testpath, FirmwareTestFixture, NULL, setup_fixture,
-              test_i440fx_firmware, NULL);
+    g_test_add(testpath, FirmwareTestFixture, NULL, setup_fixture,
+               test_i440fx_firmware, NULL);
 }
 
 static void request_bios(FirmwareTestFixture *fixture,
@@ -408,10 +407,10 @@ int main(int argc, char **argv)
 
     data.num_cpus = 1;
 
-    qtest_add_data_func("i440fx/defaults", &data, test_i440fx_defaults);
-    qtest_add_data_func("i440fx/pam", &data, test_i440fx_pam);
-    add_firmware_test("i440fx/firmware/bios", request_bios);
-    add_firmware_test("i440fx/firmware/pflash", request_pflash);
+    g_test_add_data_func("/i440fx/defaults", &data, test_i440fx_defaults);
+    g_test_add_data_func("/i440fx/pam", &data, test_i440fx_pam);
+    add_firmware_test("/i440fx/firmware/bios", request_bios);
+    add_firmware_test("/i440fx/firmware/pflash", request_pflash);
 
     ret = g_test_run();
     return ret;

@@ -96,7 +96,7 @@ static int max7310_tx(I2CSlave *i2c, uint8_t data)
     case 0x01:	/* Output port */
         for (diff = (data ^ s->level) & ~s->direction; diff;
                         diff &= ~(1 << line)) {
-            line = ctz32(diff);
+            line = ffs(diff) - 1;
             if (s->handler[line])
                 qemu_set_irq(s->handler[line], (data >> line) & 1);
         }

@@ -53,7 +53,6 @@
 #include "qemu/error-report.h"
 #include "hw/empty_slot.h"
 #include "sysemu/kvm.h"
-#include "exec/semihost.h"
 
 //#define DEBUG_BOARD_INIT
 
@@ -98,7 +97,7 @@ typedef struct {
 static ISADevice *pit;
 
 static struct _loaderparams {
-    int ram_size, ram_low_size;
+    int ram_size;
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *initrd_filename;
@@ -636,8 +635,8 @@ static void write_bootloader (CPUMIPSState *env, uint8_t *base,
     /* Second part of the bootloader */
     p = (uint32_t *) (base + 0x580);
 
-    if (semihosting_get_argc()) {
-        /* Preserve a0 content as arguments have been passed */
+    if (semihosting_enabled) {
+        /* Preserve a0 content when semihosting is enabled. */
         stl_p(p++, 0x00000000);                         /* nop */
     } else {
         stl_p(p++, 0x24040002);                         /* addiu a0, zero, 2 */
@@ -648,8 +647,8 @@ static void write_bootloader (CPUMIPSState *env, uint8_t *base,
     stl_p(p++, 0x34a50000 | (ENVP_ADDR & 0xffff));               /* ori a1, a1, low(ENVP_ADDR) */
     stl_p(p++, 0x3c060000 | (((ENVP_ADDR + 8) >> 16) & 0xffff)); /* lui a2, high(ENVP_ADDR + 8) */
     stl_p(p++, 0x34c60000 | ((ENVP_ADDR + 8) & 0xffff));         /* ori a2, a2, low(ENVP_ADDR + 8) */
-    stl_p(p++, 0x3c070000 | (loaderparams.ram_low_size >> 16));     /* lui a3, high(ram_low_size) */
-    stl_p(p++, 0x34e70000 | (loaderparams.ram_low_size & 0xffff));  /* ori a3, a3, low(ram_low_size) */
+    stl_p(p++, 0x3c070000 | (loaderparams.ram_size >> 16));     /* lui a3, high(ram_size) */
+    stl_p(p++, 0x34e70000 | (loaderparams.ram_size & 0xffff));  /* ori a3, a3, low(ram_size) */
 
     /* Load BAR registers as done by YAMON */
     stl_p(p++, 0x3c09b400);                                      /* lui t1, 0xb400 */
@@ -858,10 +857,8 @@ static int64_t load_kernel (void)
     }
 
     prom_set(prom_buf, prom_index++, "memsize");
-    prom_set(prom_buf, prom_index++, "%u", loaderparams.ram_low_size);
-
-    prom_set(prom_buf, prom_index++, "ememsize");
-    prom_set(prom_buf, prom_index++, "%u", loaderparams.ram_size);
+    prom_set(prom_buf, prom_index++, "%i",
+             MIN(loaderparams.ram_size, 256 << 20));
 
     prom_set(prom_buf, prom_index++, "modetty0");
     prom_set(prom_buf, prom_index++, "38400n8r");
@@ -870,7 +867,6 @@ static int64_t load_kernel (void)
     rom_add_blob_fixed("prom", prom_buf, prom_size,
                        cpu_mips_kseg0_to_phys(NULL, ENVP_ADDR));
 
-    g_free(prom_buf);
     return kernel_entry;
 }
 
@@ -1003,8 +999,9 @@ void mips_malta_init(MachineState *machine)
     }
 
     /* register RAM at high address where it is undisturbed by IO */
-    memory_region_allocate_system_memory(ram_high, NULL, "mips_malta.ram",
-                                         ram_size);
+    memory_region_init_ram(ram_high, NULL, "mips_malta.ram", ram_size,
+                           &error_abort);
+    vmstate_register_ram_global(ram_high);
     memory_region_add_subregion(system_memory, 0x80000000, ram_high);
 
     /* alias for pre IO hole access */
@@ -1063,8 +1060,7 @@ void mips_malta_init(MachineState *machine)
         }
 
         /* Write a small bootloader to the flash location. */
-        loaderparams.ram_size = ram_size;
-        loaderparams.ram_low_size = ram_low_size;
+        loaderparams.ram_size = ram_low_size;
         loaderparams.kernel_filename = kernel_filename;
         loaderparams.kernel_cmdline = kernel_cmdline;
         loaderparams.initrd_filename = initrd_filename;
@@ -1171,7 +1167,7 @@ void mips_malta_init(MachineState *machine)
     pci_piix4_ide_init(pci_bus, hd, piix4_devfn + 1);
     pci_create_simple(pci_bus, piix4_devfn + 2, "piix4-usb-uhci");
     smbus = piix4_pm_init(pci_bus, piix4_devfn + 3, 0x1100,
-                          isa_get_irq(NULL, 9), NULL, 0, NULL);
+                          isa_get_irq(NULL, 9), NULL, 0, NULL, NULL);
     smbus_eeprom_init(smbus, 8, smbus_eeprom_buf, smbus_eeprom_size);
     g_free(smbus_eeprom_buf);
     pit = pit_init(isa_bus, 0x40, 0, NULL);
@@ -1182,9 +1178,10 @@ void mips_malta_init(MachineState *machine)
     isa_create_simple(isa_bus, "i8042");
 
     rtc_init(isa_bus, 2000, NULL);
-    serial_hds_isa_init(isa_bus, 2);
-    parallel_hds_isa_init(isa_bus, 1);
-
+    serial_isa_init(isa_bus, 0, serial_hds[0]);
+    serial_isa_init(isa_bus, 1, serial_hds[1]);
+    if (parallel_hds[0])
+        parallel_init(isa_bus, 0, parallel_hds[0]);
     for(i = 0; i < MAX_FD; i++) {
         fd[i] = drive_get(IF_FLOPPY, 0, i);
     }

@@ -50,12 +50,14 @@ Descriptions of section entries:
 
 General Project Administration
 ------------------------------
+M: Anthony Liguori <aliguori@amazon.com>
 M: Peter Maydell <peter.maydell@linaro.org>
 
 Responsible Disclosure, Reporting Security Issues
 ------------------------------
 W: http://wiki.qemu.org/SecurityProcess
 M: Michael S. Tsirkin <mst@redhat.com>
+M: Anthony Liguori <aliguori@amazon.com>
 L: secalert@redhat.com
 
 Guest CPU cores (TCG):
@@ -96,12 +98,8 @@ LM32
 M: Michael Walle <michael@walle.cc>
 S: Maintained
 F: target-lm32/
-F: disas/lm32.c
 F: hw/lm32/
-F: hw/*/lm32_*
-F: hw/*/milkymist-*
-F: include/hw/char/lm32_juart.h
-F: include/hw/lm32/
+F: hw/char/lm32_*
 F: tests/tcg/lm32/
 
 M68K
@@ -157,7 +155,6 @@ F: hw/sh4/
 
 SPARC
 M: Blue Swirl <blauwirbel@gmail.com>
-M: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
 S: Maintained
 F: target-sparc/
 F: hw/sparc/
@@ -172,8 +169,7 @@ F: hw/unicore32/
 X86
 M: Paolo Bonzini <pbonzini@redhat.com>
 M: Richard Henderson <rth@twiddle.net>
-M: Eduardo Habkost <ehabkost@redhat.com>
-S: Maintained
+S: Odd Fixes
 F: target-i386/
 F: hw/i386/
 
@@ -356,13 +352,6 @@ F: hw/misc/zynq_slcr.c
 F: hw/*/cadence_*
 F: hw/ssi/xilinx_spips.c
 
-ARM ACPI Subsystem
-M: Shannon Zhao <zhaoshenglong@huawei.com>
-M: Shannon Zhao <shannon.zhao@linaro.org>
-S: Maintained
-F: hw/arm/virt-acpi-build.c
-F: include/hw/arm/virt-acpi-build.h
-
 CRIS Machines
 -------------
 Axis Dev88
@@ -493,8 +482,7 @@ F: hw/ppc/prep.c
 F: hw/pci-host/prep.[hc]
 F: hw/isa/pc87312.[hc]
 
-sPAPR (pseries)
-M: David Gibson <david@gibson.dropbear.id.au>
+sPAPR
 M: Alexander Graf <agraf@suse.de>
 L: qemu-ppc@nongnu.org
 S: Supported
@@ -526,13 +514,11 @@ SPARC Machines
 --------------
 Sun4m
 M: Blue Swirl <blauwirbel@gmail.com>
-M: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
 S: Maintained
 F: hw/sparc/sun4m.c
 
 Sun4u
 M: Blue Swirl <blauwirbel@gmail.com>
-M: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
 S: Maintained
 F: hw/sparc64/sun4u.c
 
@@ -548,7 +534,6 @@ S390 Virtio
 M: Alexander Graf <agraf@suse.de>
 S: Maintained
 F: hw/s390x/s390-*.c
-X: hw/s390x/*pci*.[hc]
 
 S390 Virtio-ccw
 M: Cornelia Huck <cornelia.huck@de.ibm.com>
@@ -559,7 +544,6 @@ F: hw/s390x/s390-virtio-ccw.c
 F: hw/s390x/css.[hc]
 F: hw/s390x/sclp*.[hc]
 F: hw/s390x/ipl*.[hc]
-F: hw/s390x/*pci*.[hc]
 F: include/hw/s390x/
 F: pc-bios/s390-ccw/
 T: git git://github.com/cohuck/qemu virtio-ccw-upstr
@@ -575,6 +559,7 @@ F: hw/unicore32/
 X86 Machines
 ------------
 PC
+M: Anthony Liguori <aliguori@amazon.com>
 M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
 F: include/hw/i386/
@@ -608,31 +593,12 @@ F: hw/net/opencores_eth.c
 
 Devices
 -------
-EDU
-M: Jiri Slaby <jslaby@suse.cz>
-S: Maintained
-F: hw/misc/edu.c
-
 IDE
-M: John Snow <jsnow@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
+M: Kevin Wolf <kwolf@redhat.com>
+M: Stefan Hajnoczi <stefanha@redhat.com>
+S: Odd Fixes
 F: include/hw/ide.h
 F: hw/ide/
-F: hw/block/block.c
-F: hw/block/cdrom.c
-F: hw/block/hd-geometry.c
-F: tests/ide-test.c
-F: tests/ahci-test.c
-T: git git://github.com/jnsnow/qemu.git ide
-
-Floppy
-M: John Snow <jsnow@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: hw/block/fdc.c
-F: include/hw/block/fdc.h
-T: git git://github.com/jnsnow/qemu.git ide
 
 OMAP
 M: Peter Maydell <peter.maydell@linaro.org>
@@ -644,19 +610,7 @@ M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
 F: include/hw/pci/*
 F: hw/pci/*
-
-ACPI
-M: Michael S. Tsirkin <mst@redhat.com>
-M: Igor Mammedov <imammedo@redhat.com>
-S: Supported
-F: include/hw/acpi/*
-F: hw/mem/*
 F: hw/acpi/*
-F: hw/i386/acpi-build.[hc]
-F: hw/i386/*dsl
-F: hw/arm/virt-acpi-build.c
-F: include/hw/arm/virt-acpi-build.h
-F: scripts/acpi*py
 
 ppc4xx
 M: Alexander Graf <agraf@suse.de>
@@ -703,7 +657,7 @@ F: hw/usb/dev-serial.c
 VFIO
 M: Alex Williamson <alex.williamson@redhat.com>
 S: Supported
-F: hw/vfio/*
+F: hw/misc/vfio.c
 
 vhost
 M: Michael S. Tsirkin <mst@redhat.com>
@@ -711,10 +665,10 @@ S: Supported
 F: hw/*/*vhost*
 
 virtio
+M: Anthony Liguori <aliguori@amazon.com>
 M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
 F: hw/*/virtio*
-F: net/vhost-user.c
 
 virtio-9p
 M: Aneesh Kumar K.V <aneesh.kumar@linux.vnet.ibm.com>
@@ -725,13 +679,10 @@ F: tests/virtio-9p-test.c
 T: git git://github.com/kvaneesh/QEMU.git
 
 virtio-blk
+M: Kevin Wolf <kwolf@redhat.com>
 M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: hw/block/virtio-blk.c
-F: hw/block/dataplane/*
-F: hw/virtio/dataplane/*
-T: git git://github.com/stefanha/qemu.git block
 
 virtio-ccw
 M: Cornelia Huck <cornelia.huck@de.ibm.com>
@@ -740,36 +691,20 @@ S: Supported
 F: hw/s390x/virtio-ccw.[hc]
 T: git git://github.com/cohuck/qemu virtio-ccw-upstr
 
-virtio-input
-M: Gerd Hoffmann <kraxel@redhat.com>
-S: Maintained
-F: hw/input/virtio-input*.c
-F: include/hw/virtio/virtio-input.h
-
 virtio-serial
 M: Amit Shah <amit.shah@redhat.com>
 S: Supported
 F: hw/char/virtio-serial-bus.c
 F: hw/char/virtio-console.c
-F: include/hw/virtio/virtio-serial.h
-
-virtio-rng
-M: Amit Shah <amit.shah@redhat.com>
-S: Supported
-F: hw/virtio/virtio-rng.c
-F: include/hw/virtio/virtio-rng.h
-F: backends/rng*.c
 
 nvme
 M: Keith Busch <keith.busch@intel.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: hw/block/nvme*
 F: tests/nvme-test.c
 
 megasas
 M: Hannes Reinecke <hare@suse.de>
-L: qemu-block@nongnu.org
 S: Supported
 F: hw/scsi/megasas.c
 F: hw/scsi/mfi.h
@@ -787,15 +722,10 @@ S: Maintained
 F: hw/net/vmxnet*
 F: hw/scsi/vmw_pvscsi*
 
-Rocker
-M: Scott Feldman <sfeldma@gmail.com>
-M: Jiri Pirko <jiri@resnulli.us>
-S: Maintained
-F: hw/net/rocker/
-
 Subsystems
 ----------
 Audio
+M: Vassili Karpov (malc) <av1474@comtv.ru>
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
 F: audio/
@@ -804,50 +734,24 @@ F: tests/ac97-test.c
 F: tests/es1370-test.c
 F: tests/intel-hda-test.c
 
-Block layer core
+Block
 M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block*
-F: block/
-F: hw/block/
-F: include/block/
-F: qemu-img*
-F: qemu-io*
-F: tests/qemu-iotests/
-T: git git://repo.or.cz/qemu/kevin.git block
-
-Block I/O path
 M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: async.c
 F: aio-*.c
-F: block/io.c
-F: migration/block*
+F: block*
+F: block/
+F: hw/block/
+F: qemu-img*
+F: qemu-io*
+F: tests/image-fuzzer/
+F: tests/qemu-iotests/
+T: git git://repo.or.cz/qemu/kevin.git block
 T: git git://github.com/stefanha/qemu.git block
 
-Block Jobs
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: blockjob.c
-F: include/block/blockjob.h
-F: block/backup.c
-F: block/commit.c
-F: block/stream.h
-F: block/mirror.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
-
-Block QAPI, monitor, command line
-M: Markus Armbruster <armbru@redhat.com>
-S: Supported
-F: blockdev.c
-F: block/qapi.c
-F: qapi/block*.json
-T: git git://repo.or.cz/qemu/armbru.git block-next
-
 Character Devices
+M: Anthony Liguori <aliguori@amazon.com>
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
 F: qemu-char.c
@@ -858,11 +762,6 @@ Character Devices (Braille)
 M: Samuel Thibault <samuel.thibault@ens-lyon.org>
 S: Maintained
 F: backends/baum.c
-
-Coverity model
-M: Markus Armbruster <armbru@redhat.com>
-S: Supported
-F: scripts/coverity-model.c
 
 CPU
 M: Andreas Färber <afaerber@suse.de>
@@ -908,6 +807,7 @@ F: audio/spiceaudio.c
 F: hw/display/qxl*
 
 Graphics
+M: Anthony Liguori <aliguori@amazon.com>
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Odd Fixes
 F: ui/
@@ -919,6 +819,7 @@ S: Odd Fixes
 F: ui/cocoa.m
 
 Main loop
+M: Anthony Liguori <aliguori@amazon.com>
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
 F: cpus.c
@@ -935,8 +836,8 @@ F: hmp-commands.hx
 T: git git://repo.or.cz/qemu/qmp-unstable.git queue/qmp
 
 Network device layer
+M: Anthony Liguori <aliguori@amazon.com>
 M: Stefan Hajnoczi <stefanha@redhat.com>
-M: Jason Wang <jasowang@redhat.com>
 S: Maintained
 F: net/
 T: git git://github.com/stefanha/qemu.git net
@@ -957,33 +858,21 @@ F: nbd.*
 F: qemu-nbd.c
 T: git git://github.com/bonzini/qemu.git nbd-next
 
-NUMA
-M: Eduardo Habkost <ehabkost@redhat.com>
-S: Maintained
-F: numa.c
-F: include/sysemu/numa.h
-K: numa|NUMA
-K: srat|SRAT
-T: git git://github.com/ehabkost/qemu.git numa
-
 QAPI
-M: Markus Armbruster <armbru@redhat.com>
+M: Luiz Capitulino <lcapitulino@redhat.com>
 M: Michael Roth <mdroth@linux.vnet.ibm.com>
-S: Supported
+S: Maintained
 F: qapi/
-X: qapi/*.json
 F: tests/qapi-schema/
-F: scripts/qapi*
-F: docs/qapi*
-T: git git://repo.or.cz/qemu/armbru.git qapi-next
+T: git git://repo.or.cz/qemu/qmp-unstable.git queue/qmp
 
 QAPI Schema
 M: Eric Blake <eblake@redhat.com>
+M: Luiz Capitulino <lcapitulino@redhat.com>
 M: Markus Armbruster <armbru@redhat.com>
 S: Supported
 F: qapi-schema.json
-F: qapi/*.json
-T: git git://repo.or.cz/qemu/armbru.git qapi-next
+T: git git://repo.or.cz/qemu/qmp-unstable.git queue/qmp
 
 QObject
 M: Luiz Capitulino <lcapitulino@redhat.com>
@@ -998,6 +887,7 @@ F: qga/
 T: git git://github.com/mdroth/qemu.git qga
 
 QOM
+M: Anthony Liguori <aliguori@amazon.com>
 M: Andreas Färber <afaerber@suse.de>
 S: Supported
 T: git git://github.com/afaerber/qemu-cpu.git qom-next
@@ -1008,14 +898,13 @@ X: qom/cpu.c
 F: tests/qom-test.c
 
 QMP
-M: Markus Armbruster <armbru@redhat.com>
-S: Supported
+M: Luiz Capitulino <lcapitulino@redhat.com>
+S: Maintained
 F: qmp.c
 F: monitor.c
 F: qmp-commands.hx
-F: docs/qmp/
-F: scripts/qmp/
-T: git git://repo.or.cz/qemu/armbru.git qapi-next
+F: QMP/
+T: git git://repo.or.cz/qemu/qmp-unstable.git queue/qmp
 
 SLIRP
 M: Jan Kiszka <jan.kiszka@siemens.com>
@@ -1039,12 +928,12 @@ F: scripts/checkpatch.pl
 
 Migration
 M: Juan Quintela <quintela@redhat.com>
-M: Amit Shah <amit.shah@redhat.com>
 S: Maintained
 F: include/migration/
-F: migration/
-F: scripts/vmstate-static-checker.py
-F: tests/vmstate-static-checker-data/
+F: migration*
+F: savevm.c
+F: arch_init.c
+F: vmstate.c
 
 Seccomp
 M: Eduardo Otubo <eduardo.otubo@profitbricks.com>
@@ -1157,38 +1046,28 @@ Block drivers
 -------------
 VMDK
 M: Fam Zheng <famz@redhat.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: block/vmdk.c
 
 RBD
 M: Josh Durgin <josh.durgin@inktank.com>
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: block/rbd.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
 Sheepdog
 M: Hitoshi Mitake <mitake.hitoshi@lab.ntt.co.jp>
 M: Liu Yuan <namei.unix@gmail.com>
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
 L: sheepdog@lists.wpkg.org
 S: Supported
 F: block/sheepdog.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
 VHDX
 M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: block/vhdx*
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
 VDI
 M: Stefan Weil <sw@weilnetz.de>
-L: qemu-block@nongnu.org
 S: Maintained
 F: block/vdi.c
 
@@ -1196,144 +1075,26 @@ iSCSI
 M: Ronnie Sahlberg <ronniesahlberg@gmail.com>
 M: Paolo Bonzini <pbonzini@redhat.com>
 M: Peter Lieven <pl@kamp.de>
-L: qemu-block@nongnu.org
 S: Supported
 F: block/iscsi.c
 
 NFS
-M: Jeff Cody <jcody@redhat.com>
 M: Peter Lieven <pl@kamp.de>
-L: qemu-block@nongnu.org
 S: Maintained
 F: block/nfs.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
 SSH
 M: Richard W.M. Jones <rjones@redhat.com>
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
 S: Supported
 F: block/ssh.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
 ARCHIPELAGO
+M: Chrysostomos Nanakos <cnanakos@grnet.gr>
 M: Chrysostomos Nanakos <chris@include.gr>
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
 S: Maintained
 F: block/archipelago.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
-
-CURL
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/curl.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
-
-GLUSTER
-M: Jeff Cody <jcody@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/gluster.c
-T: git git://github.com/codyprime/qemu-kvm-jtc.git block
-
-Null Block Driver
-M: Fam Zheng <famz@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/null.c
 
 Bootdevice
 M: Gonglei <arei.gonglei@huawei.com>
 S: Maintained
 F: bootdevice.c
-
-Quorum
-M: Alberto Garcia <berto@igalia.com>
-S: Supported
-F: block/quorum.c
-L: qemu-block@nongnu.org
-
-blkverify
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/blkverify.c
-
-bochs
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/bochs.c
-
-cloop
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/cloop.c
-
-dmg
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/dmg.c
-
-parallels
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/parallels.c
-
-qed
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/qed.c
-
-raw
-M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/linux-aio.c
-F: block/raw-aio.h
-F: block/raw-posix.c
-F: block/raw-win32.c
-F: block/raw_bsd.c
-F: block/win32-aio.c
-
-qcow2
-M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/qcow2*
-
-qcow
-M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/qcow.c
-
-blkdebug
-M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/blkdebug.c
-
-vpc
-M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/vpc.c
-
-vvfat
-M: Kevin Wolf <kwolf@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: block/vvfat.c
-
-Image format fuzzer
-M: Stefan Hajnoczi <stefanha@redhat.com>
-L: qemu-block@nongnu.org
-S: Supported
-F: tests/image-fuzzer/

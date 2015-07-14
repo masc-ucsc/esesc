@@ -82,6 +82,7 @@
 
 static const VMStateDescription vmstate_ich9_ahci = {
     .name = "ich9_ahci",
+    .unmigratable = 1, /* Still buggy under I/O load */
     .version_id = 1,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, AHCIPCIState),
@@ -97,7 +98,7 @@ static void pci_ich9_reset(DeviceState *dev)
     ahci_reset(&d->ahci);
 }
 
-static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
+static int pci_ich9_ahci_init(PCIDevice *dev)
 {
     struct AHCIPCIState *d;
     int sata_cap_offset;
@@ -122,11 +123,10 @@ static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
     pci_register_bar(dev, ICH9_MEM_BAR, PCI_BASE_ADDRESS_SPACE_MEMORY,
                      &d->ahci.mem);
 
-    sata_cap_offset = pci_add_capability2(dev, PCI_CAP_ID_SATA,
-                                          ICH9_SATA_CAP_OFFSET, SATA_CAP_SIZE,
-                                          errp);
+    sata_cap_offset = pci_add_capability(dev, PCI_CAP_ID_SATA,
+                                         ICH9_SATA_CAP_OFFSET, SATA_CAP_SIZE);
     if (sata_cap_offset < 0) {
-        return;
+        return sata_cap_offset;
     }
 
     sata_cap = dev->config + sata_cap_offset;
@@ -139,6 +139,8 @@ static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
      * should be PMCAP, the Intel ICH9 data sheet specifies that the ICH9
      * AHCI device puts the MSI capability first, pointing to 0x80. */
     msi_init(dev, ICH9_MSI_CAP_OFFSET, 1, true, false);
+
+    return 0;
 }
 
 static void pci_ich9_uninit(PCIDevice *dev)
@@ -156,7 +158,7 @@ static void ich_ahci_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize = pci_ich9_ahci_realize;
+    k->init = pci_ich9_ahci_init;
     k->exit = pci_ich9_uninit;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82801IR;

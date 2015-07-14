@@ -23,6 +23,7 @@
  */
 
 #include "sysemu/sysemu.h"
+#include "monitor/monitor.h"
 #include "ui/console.h"
 #include "qapi/error.h"
 #include "qmp-commands.h"
@@ -56,6 +57,8 @@ struct QEMUPutLEDEntry {
 
 static QTAILQ_HEAD(, QEMUPutLEDEntry) led_handlers =
     QTAILQ_HEAD_INITIALIZER(led_handlers);
+static QTAILQ_HEAD(, QEMUPutMouseEntry) mouse_handlers =
+    QTAILQ_HEAD_INITIALIZER(mouse_handlers);
 
 int index_from_key(const char *key)
 {
@@ -138,6 +141,12 @@ QEMUPutKbdEntry *qemu_add_kbd_event_handler(QEMUPutKBDEvent *func, void *opaque)
                                            &legacy_kbd_handler);
     qemu_input_handler_activate(entry->s);
     return entry;
+}
+
+void qemu_remove_kbd_event_handler(QEMUPutKbdEntry *entry)
+{
+    qemu_input_handler_unregister(entry->s);
+    g_free(entry);
 }
 
 static void legacy_mouse_event(DeviceState *dev, QemuConsole *src,

@@ -1,7 +1,7 @@
 /*
  * QTest testcase for USB xHCI controller
  *
- * Copyright (c) 2014 HUAWEI TECHNOLOGIES CO., LTD.
+ * Copyright (c) 2014 HUAWEI TECHNOLOGIES CO.,LTD.
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
     qtest_add_func("/xhci/pci/hotplug/usb-uas", test_usb_uas_hotplug);
 
     qtest_start("-device nec-usb-xhci,id=xhci"
-                " -drive id=drive0,if=none,file=/dev/null,format=raw");
+                " -drive id=drive0,if=none,file=/dev/null");
     ret = g_test_run();
     qtest_end();
 

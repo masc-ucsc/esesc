@@ -351,10 +351,8 @@ static inline void init_thread(struct target_pt_regs *_regs, struct image_info *
 
     _regs->gpr[1] = infop->start_stack;
 #if defined(TARGET_PPC64) && !defined(TARGET_ABI32)
-    get_user_u64(entry, infop->entry);
-    entry += infop->load_addr;
-    get_user_u64(toc, infop->entry + 8);
-    toc += infop->load_addr;
+    entry = ldq_raw(infop->entry) + infop->load_addr;
+    toc = ldq_raw(infop->entry + 8) + infop->load_addr;
     _regs->gpr[2] = toc;
     infop->entry = entry;
 #endif
@@ -367,9 +365,8 @@ static inline void init_thread(struct target_pt_regs *_regs, struct image_info *
     get_user_ual(_regs->gpr[3], pos);
     pos += sizeof(abi_ulong);
     _regs->gpr[4] = pos;
-    for (tmp = 1; tmp != 0; pos += sizeof(abi_ulong)) {
-        get_user_ual(tmp, pos);
-    }
+    for (tmp = 1; tmp != 0; pos += sizeof(abi_ulong))
+        tmp = ldl(pos);
     _regs->gpr[5] = pos;
 }
 

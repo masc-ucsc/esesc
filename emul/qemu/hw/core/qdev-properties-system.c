@@ -35,15 +35,15 @@ static void get_pointer(Object *obj, Visitor *v, Property *prop,
 }
 
 static void set_pointer(Object *obj, Visitor *v, Property *prop,
-                        void (*parse)(DeviceState *dev, const char *str,
-                                      void **ptr, const char *propname,
-                                      Error **errp),
+                        int (*parse)(DeviceState *dev, const char *str,
+                                     void **ptr),
                         const char *name, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     Error *local_err = NULL;
     void **ptr = qdev_get_prop_ptr(dev, prop);
     char *str;
+    int ret;
 
     if (dev->realized) {
         qdev_prop_set_after_realize(dev, name, errp);
@@ -60,38 +60,26 @@ static void set_pointer(Object *obj, Visitor *v, Property *prop,
         *ptr = NULL;
         return;
     }
-    parse(dev, str, ptr, prop->name, errp);
+    ret = parse(dev, str, ptr);
+    error_set_from_qdev_prop_error(errp, ret, dev, prop, str);
     g_free(str);
 }
 
 /* --- drive --- */
 
-static void parse_drive(DeviceState *dev, const char *str, void **ptr,
-                        const char *propname, Error **errp)
+static int parse_drive(DeviceState *dev, const char *str, void **ptr)
 {
     BlockBackend *blk;
 
     blk = blk_by_name(str);
     if (!blk) {
-        error_setg(errp, "Property '%s.%s' can't find value '%s'",
-                   object_get_typename(OBJECT(dev)), propname, str);
-        return;
+        return -ENOENT;
     }
     if (blk_attach_dev(blk, dev) < 0) {
-        DriveInfo *dinfo = blk_legacy_dinfo(blk);
-
-        if (dinfo->type != IF_NONE) {
-            error_setg(errp, "Drive '%s' is already in use because "
-                       "it has been automatically connected to another "
-                       "device (did you need 'if=none' in the drive options?)",
-                       str);
-        } else {
-            error_setg(errp, "Drive '%s' is already in use by another device",
-                       str);
-        }
-        return;
+        return -EEXIST;
     }
     *ptr = blk;
+    return 0;
 }
 
 static void release_drive(Object *obj, const char *name, void *opaque)
@@ -133,21 +121,17 @@ PropertyInfo qdev_prop_drive = {
 
 /* --- character device --- */
 
-static void parse_chr(DeviceState *dev, const char *str, void **ptr,
-                      const char *propname, Error **errp)
+static int parse_chr(DeviceState *dev, const char *str, void **ptr)
 {
     CharDriverState *chr = qemu_chr_find(str);
     if (chr == NULL) {
-        error_setg(errp, "Property '%s.%s' can't find value '%s'",
-                   object_get_typename(OBJECT(dev)), propname, str);
-        return;
+        return -ENOENT;
     }
     if (qemu_chr_fe_claim(chr) != 0) {
-        error_setg(errp, "Property '%s.%s' can't take value '%s', it's in use",
-                  object_get_typename(OBJECT(dev)), propname, str);
-        return;
+        return -EEXIST;
     }
     *ptr = chr;
+    return 0;
 }
 
 static void release_chr(Object *obj, const char *name, void *opaque)
@@ -193,69 +177,42 @@ PropertyInfo qdev_prop_chr = {
 };
 
 /* --- netdev device --- */
-static void get_netdev(Object *obj, Visitor *v, void *opaque,
-                       const char *name, Error **errp)
-{
-    DeviceState *dev = DEVICE(obj);
-    Property *prop = opaque;
-    NICPeers *peers_ptr = qdev_get_prop_ptr(dev, prop);
-    char *p = g_strdup(peers_ptr->ncs[0] ? peers_ptr->ncs[0]->name : "");
 
-    visit_type_str(v, &p, name, errp);
-    g_free(p);
-}
-
-static void set_netdev(Object *obj, Visitor *v, void *opaque,
-                       const char *name, Error **errp)
+static int parse_netdev(DeviceState *dev, const char *str, void **ptr)
 {
-    DeviceState *dev = DEVICE(obj);
-    Property *prop = opaque;
-    NICPeers *peers_ptr = qdev_get_prop_ptr(dev, prop);
+    NICPeers *peers_ptr = (NICPeers *)ptr;
     NetClientState **ncs = peers_ptr->ncs;
     NetClientState *peers[MAX_QUEUE_NUM];
-    Error *local_err = NULL;
-    int queues, err = 0, i = 0;
-    char *str;
-
-    if (dev->realized) {
-        qdev_prop_set_after_realize(dev, name, errp);
-        return;
-    }
-
-    visit_type_str(v, &str, name, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    int queues, i = 0;
+    int ret;
 
     queues = qemu_find_net_clients_except(str, peers,
                                           NET_CLIENT_OPTIONS_KIND_NIC,
                                           MAX_QUEUE_NUM);
     if (queues == 0) {
-        err = -ENOENT;
-        goto out;
+        ret = -ENOENT;
+        goto err;
     }
 
     if (queues > MAX_QUEUE_NUM) {
-        error_setg(errp, "queues of backend '%s'(%d) exceeds QEMU limitation(%d)",
-                   str, queues, MAX_QUEUE_NUM);
-        goto out;
+        ret = -E2BIG;
+        goto err;
     }
 
     for (i = 0; i < queues; i++) {
         if (peers[i] == NULL) {
-            err = -ENOENT;
-            goto out;
+            ret = -ENOENT;
+            goto err;
         }
 
         if (peers[i]->peer) {
-            err = -EEXIST;
-            goto out;
+            ret = -EEXIST;
+            goto err;
         }
 
         if (ncs[i]) {
-            err = -EINVAL;
-            goto out;
+            ret = -EINVAL;
+            goto err;
         }
 
         ncs[i] = peers[i];
@@ -264,9 +221,30 @@ static void set_netdev(Object *obj, Visitor *v, void *opaque,
 
     peers_ptr->queues = queues;
 
-out:
-    error_set_from_qdev_prop_error(errp, err, dev, prop, str);
-    g_free(str);
+    return 0;
+
+err:
+    return ret;
+}
+
+static char *print_netdev(void *ptr)
+{
+    NetClientState *netdev = ptr;
+    const char *val = netdev->name ? netdev->name : "";
+
+    return g_strdup(val);
+}
+
+static void get_netdev(Object *obj, Visitor *v, void *opaque,
+                       const char *name, Error **errp)
+{
+    get_pointer(obj, v, opaque, print_netdev, name, errp);
+}
+
+static void set_netdev(Object *obj, Visitor *v, void *opaque,
+                       const char *name, Error **errp)
+{
+    set_pointer(obj, v, opaque, parse_netdev, name, errp);
 }
 
 PropertyInfo qdev_prop_netdev = {
@@ -342,8 +320,8 @@ static void set_vlan(Object *obj, Visitor *v, void *opaque,
 
     hubport = net_hub_port_find(id);
     if (!hubport) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
-                   name, prop->info->name);
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE,
+                  name, prop->info->name);
         return;
     }
     *ptr = hubport;
@@ -357,25 +335,27 @@ PropertyInfo qdev_prop_vlan = {
     .set   = set_vlan,
 };
 
-void qdev_prop_set_drive(DeviceState *dev, const char *name,
-                         BlockBackend *value, Error **errp)
+int qdev_prop_set_drive(DeviceState *dev, const char *name,
+                        BlockBackend *value)
 {
-    object_property_set_str(OBJECT(dev), value ? blk_name(value) : "",
-                            name, errp);
+    Error *err = NULL;
+    object_property_set_str(OBJECT(dev),
+                            value ? blk_name(value) : "", name, &err);
+    if (err) {
+        qerror_report_err(err);
+        error_free(err);
+        return -1;
+    }
+    return 0;
 }
 
 void qdev_prop_set_drive_nofail(DeviceState *dev, const char *name,
                                 BlockBackend *value)
 {
-    Error *err = NULL;
-
-    qdev_prop_set_drive(dev, name, value, &err);
-    if (err) {
-        error_report_err(err);
+    if (qdev_prop_set_drive(dev, name, value) < 0) {
         exit(1);
     }
 }
-
 void qdev_prop_set_chr(DeviceState *dev, const char *name,
                        CharDriverState *value)
 {
@@ -405,7 +385,7 @@ void qdev_set_nic_properties(DeviceState *dev, NICInfo *nd)
     nd->instantiated = 1;
 }
 
-static int qdev_add_one_global(void *opaque, QemuOpts *opts, Error **errp)
+static int qdev_add_one_global(QemuOpts *opts, void *opaque)
 {
     GlobalProperty *g;
 
@@ -420,6 +400,5 @@ static int qdev_add_one_global(void *opaque, QemuOpts *opts, Error **errp)
 
 void qemu_add_globals(void)
 {
-    qemu_opts_foreach(qemu_find_opts("global"),
-                      qdev_add_one_global, NULL, NULL);
+    qemu_opts_foreach(qemu_find_opts("global"), qdev_add_one_global, NULL, 0);
 }

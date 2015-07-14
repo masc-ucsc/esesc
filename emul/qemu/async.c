@@ -44,12 +44,10 @@ struct QEMUBH {
 QEMUBH *aio_bh_new(AioContext *ctx, QEMUBHFunc *cb, void *opaque)
 {
     QEMUBH *bh;
-    bh = g_new(QEMUBH, 1);
-    *bh = (QEMUBH){
-        .ctx = ctx,
-        .cb = cb,
-        .opaque = opaque,
-    };
+    bh = g_malloc0(sizeof(QEMUBH));
+    bh->ctx = ctx;
+    bh->cb = cb;
+    bh->opaque = opaque;
     qemu_mutex_lock(&ctx->bh_lock);
     bh->next = ctx->first_bh;
     /* Make sure that the members are ready before putting bh into list */
@@ -72,13 +70,12 @@ int aio_bh_poll(AioContext *ctx)
         /* Make sure that fetching bh happens before accessing its members */
         smp_read_barrier_depends();
         next = bh->next;
-        /* The atomic_xchg is paired with the one in qemu_bh_schedule.  The
-         * implicit memory barrier ensures that the callback sees all writes
-         * done by the scheduling thread.  It also ensures that the scheduling
-         * thread sees the zero before bh->cb has run, and thus will call
-         * aio_notify again if necessary.
-         */
-        if (!bh->deleted && atomic_xchg(&bh->scheduled, 0)) {
+        if (!bh->deleted && bh->scheduled) {
+            bh->scheduled = 0;
+            /* Paired with write barrier in bh schedule to ensure reading for
+             * idle & callbacks coming after bh's scheduling.
+             */
+            smp_rmb();
             if (!bh->idle)
                 ret = 1;
             bh->idle = 0;
@@ -109,28 +106,33 @@ int aio_bh_poll(AioContext *ctx)
 
 void qemu_bh_schedule_idle(QEMUBH *bh)
 {
+    if (bh->scheduled)
+        return;
     bh->idle = 1;
     /* Make sure that idle & any writes needed by the callback are done
      * before the locations are read in the aio_bh_poll.
      */
-    atomic_mb_set(&bh->scheduled, 1);
+    smp_wmb();
+    bh->scheduled = 1;
 }
 
 void qemu_bh_schedule(QEMUBH *bh)
 {
     AioContext *ctx;
 
+    if (bh->scheduled)
+        return;
     ctx = bh->ctx;
     bh->idle = 0;
-    /* The memory barrier implicit in atomic_xchg makes sure that:
+    /* Make sure that:
      * 1. idle & any writes needed by the callback are done before the
      *    locations are read in the aio_bh_poll.
      * 2. ctx is loaded before scheduled is set and the callback has a chance
      *    to execute.
      */
-    if (atomic_xchg(&bh->scheduled, 1) == 0) {
-        aio_notify(ctx);
-    }
+    smp_mb();
+    bh->scheduled = 1;
+    aio_notify(ctx);
 }
 
 
@@ -230,6 +232,7 @@ aio_ctx_finalize(GSource     *source)
     event_notifier_cleanup(&ctx->notifier);
     rfifolock_destroy(&ctx->lock);
     qemu_mutex_destroy(&ctx->bh_lock);
+    g_array_free(ctx->pollfds, TRUE);
     timerlistgroup_deinit(&ctx->tlg);
 }
 
@@ -297,10 +300,10 @@ AioContext *aio_context_new(Error **errp)
         error_setg_errno(errp, -ret, "Failed to initialize event notifier");
         return NULL;
     }
-    g_source_set_can_recurse(&ctx->source, true);
     aio_set_event_notifier(ctx, &ctx->notifier,
                            (EventNotifierHandler *)
                            event_notifier_test_and_clear);
+    ctx->pollfds = g_array_new(FALSE, FALSE, sizeof(GPollFD));
     ctx->thread_pool = NULL;
     qemu_mutex_init(&ctx->bh_lock);
     rfifolock_init(&ctx->lock, aio_rfifolock_cb, ctx);

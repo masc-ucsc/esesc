@@ -29,7 +29,6 @@
 #include "trace.h"
 #include "block/thread-pool.h"
 #include "qemu/iov.h"
-#include "qapi/qmp/qstring.h"
 #include <windows.h>
 #include <winioctl.h>
 
@@ -102,7 +101,7 @@ static int aio_worker(void *arg)
     switch (aiocb->aio_type & QEMU_AIO_TYPE_MASK) {
     case QEMU_AIO_READ:
         count = handle_aiocb_rw(aiocb);
-        if (count < aiocb->aio_nbytes) {
+        if (count < aiocb->aio_nbytes && aiocb->bs->growable) {
             /* A short read means that we have reached EOF. Pad the buffer
              * with zeros for bytes after EOF. */
             iov_memset(aiocb->aio_iov, aiocb->aio_niov, count,
@@ -541,7 +540,7 @@ static QemuOptsList raw_create_opts = {
     }
 };
 
-BlockDriver bdrv_file = {
+static BlockDriver bdrv_file = {
     .format_name	= "file",
     .protocol_name	= "file",
     .instance_size	= sizeof(BDRVRawState),
