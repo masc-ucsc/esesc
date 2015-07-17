@@ -22,6 +22,10 @@
 #include "exec/helper-proto.h"
 #include "exec/softmmu-semi.h"
 
+#ifdef CONFIG_ESESC
+#include "esesc_qemu_bm.h"
+#endif
+
 typedef enum UHI_Op {
     UHI_exit = 1,
     UHI_open = 2,
@@ -258,6 +262,10 @@ void helper_do_semihosting(CPUMIPSState *env)
     switch (op) {
     case UHI_exit:
         qemu_log("UHI(%d): exit(%d)\n", op, (int)gpr[4]);
+#ifdef CONFIG_ESESC
+        QEMUReader_finish(0); 
+        pthread_exit(NULL);
+#endif
         exit(gpr[4]);
     case UHI_open:
         GET_TARGET_STRING(p, gpr[4]);

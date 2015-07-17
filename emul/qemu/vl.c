@@ -124,6 +124,10 @@ int main(int argc, char **argv)
 #define MAX_VIRTIO_CONSOLES 1
 #define MAX_SCLP_CONSOLES 1
 
+#ifdef CONFIG_ESESC
+#include "esesc_qemu_bm.h"
+#endif
+
 static const char *data_dir[16];
 static int data_dir_idx;
 const char *bios_name = NULL;
@@ -2738,7 +2742,13 @@ out:
     return 0;
 }
 
+#ifdef CONFIG_ESESC
+int qemuesesc_main(int argc, char **argv, char **envp);
+
+int qemuesesc_main(int argc, char **argv, char **envp)
+#else
 int main(int argc, char **argv, char **envp)
+#endif
 {
     int i;
     int snapshot, linux_boot;
