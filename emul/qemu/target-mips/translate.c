@@ -2733,6 +2733,7 @@ static void gen_shift_imm(DisasContext *ctx, uint32_t opc,
     if (rt == 0) {
         /* If no destination, treat it as a NOP. */
         MIPS_DEBUG("NOP");
+        ESESC_TRACE_ALU(ctx->pc, iAALU, rs, 0, rt);
         return;
     }
     ESESC_TRACE_ALU(ctx->pc, iAALU, rs, 0, rt);
@@ -3362,6 +3363,7 @@ static inline void gen_pcrel(DisasContext *ctx, int rs, int16_t imm)
         }
         break;
     }
+    ESESC_TRACE_ALU(ctx->pc, iAALU, rs, 0, rs);
 }
 
 static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
@@ -4531,6 +4533,7 @@ static void gen_trap (DisasContext *ctx, uint32_t opc,
         generate_exception(ctx, EXCP_TRAP);
         gen_set_label(l1);
     }
+    ESESC_TRACE_ALU(ctx->pc, iAALU, rs, 0, rt);
     tcg_temp_free(t0);
     tcg_temp_free(t1);
 }
@@ -11109,6 +11112,7 @@ static void gen_rdhwr(DisasContext *ctx, int rt, int rd)
         gen_store_gpr(t0, rt);
         break;
     case 1:
+        ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
         save_cpu_state(ctx, 1);
         gen_helper_rdhwr_synci_step(t0, cpu_env);
         gen_store_gpr(t0, rt);
@@ -13431,6 +13435,7 @@ static void gen_pool32axf (CPUMIPSState *env, DisasContext *ctx, int rt, int rs)
     case 0x2d:
         switch (minor) {
         case SYNC:
+            ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
             /* NOP */
             break;
         case SYSCALL:
@@ -14306,6 +14311,7 @@ static void decode_micromips32_opc (CPUMIPSState *env, DisasContext *ctx,
         case SYNCI:
             /* Break the TB to be able to sync copied instructions
                immediately */
+            ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
             ctx->bstate = BS_STOP;
             break;
         case BC2F:
@@ -16622,6 +16628,33 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
     }
 
     if (bcond_compute == 0) {
+#ifdef CONFIG_ESESC
+      int link = 0;
+      int use_btarget = 0;
+
+      if (opc == OPC_JIALC || opc == OPC_BALC)
+        link = 1;
+
+      if (opc == OPC_JIC || opc == OPC_JIALC)
+        use_btarget = 1;
+
+      if (rs == 31 || rt == 31) {
+        if (use_btarget)
+          ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+        else
+          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+      }else if (link) {
+        if (use_btarget)
+          ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_LCALL, rs, rt<0?0:rt, 31);
+        else
+          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LCALL, rs, rt<0?0:rt, 31);
+      }else{
+        if (use_btarget)
+          ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_LJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
+        else
+          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
+      }
+#endif
         /* Uncoditional compact branch */
         switch (opc) {
         case OPC_JIALC:
@@ -16765,9 +16798,15 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
             goto out;
         }
 
+#ifdef CONFIG_ESESC
+        ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+#endif
         /* Generating branch here as compact branches don't have delay slot */
         gen_goto_tb(ctx, 1, ctx->btarget);
         gen_set_label(fs);
+#ifdef CONFIG_ESESC
+        ESESC_TRACE_LCTRL(ctx->pc,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+#endif
 
         ctx->hflags |= MIPS_HFLAG_FBNSLOT;
         MIPS_DEBUG("Compact conditional branch");
@@ -16802,8 +16841,8 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
             tcg_gen_ext32s_tl(cpu_gpr[rd], t0);
             tcg_temp_free(t1);
             tcg_temp_free(t0);
+            ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
         }
-        ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
         break;
     case OPC_MULT ... OPC_DIVU:
         op2 = MASK_R6_MULDIV(ctx->opcode);
@@ -16862,8 +16901,8 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
             tcg_gen_add_tl(cpu_gpr[rd], t0, t1);
             tcg_temp_free(t1);
             tcg_temp_free(t0);
+            ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
         }
-        ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
         break;
     case R6_OPC_DCLO:
     case R6_OPC_DCLZ:
@@ -17079,6 +17118,7 @@ static void decode_opc_special(CPUMIPSState *env, DisasContext *ctx)
         }
         break;
     case OPC_SYSCALL:
+        ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
         generate_exception(ctx, EXCP_SYSCALL);
         ctx->bstate = BS_STOP;
         break;
@@ -17086,6 +17126,7 @@ static void decode_opc_special(CPUMIPSState *env, DisasContext *ctx)
         generate_exception(ctx, EXCP_BREAK);
         break;
     case OPC_SYNC:
+        ESESC_TRACE_ALU(ctx->pc, iRALU, 0, 0, LREG_InvalidOutput);
         check_insn(ctx, ISA_MIPS2);
         /* Treat as NOP. */
         break;
@@ -17275,6 +17316,7 @@ static void decode_opc_special3_r6(CPUMIPSState *env, DisasContext *ctx)
             generate_exception(ctx, EXCP_RI);
         }
         /* Treat as NOP. */
+	ESESC_TRACE_MEM(ctx->pc,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
         break;
     case R6_OPC_CACHE:
         /* Treat as NOP. */
