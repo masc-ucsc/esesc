@@ -3228,6 +3228,7 @@ static void gen_HILO(DisasContext *ctx, uint32_t opc, int acc, int reg)
 
     if (reg == 0 && (opc == OPC_MFHI || opc == OPC_MFLO)) {
         /* Treat as NOP. */
+        ESESC_TRACE_ALU(ctx->pc, iAALU, 0, 0, LREG_InvalidOutput);
         MIPS_DEBUG("NOP");
         return;
     }
@@ -3290,6 +3291,7 @@ static void gen_HILO(DisasContext *ctx, uint32_t opc, int acc, int reg)
         opn = "mtlo";
         break;
     }
+    //ESESC_TRACE_ALU(ctx->pc, iAALU, 0, 0, (int)reg);
     (void)opn; /* avoid a compiler warning */
     MIPS_DEBUG("%s %s", opn, regnames[reg]);
 }
@@ -3630,6 +3632,7 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
         check_dsp(ctx);
     }
 
+    ESESC_TRACE_ALU(ctx->pc, iRALU, rs, rt, 0);
     switch (opc) {
     case OPC_DIV:
         {
@@ -3919,6 +3922,7 @@ static void gen_cl (DisasContext *ctx, uint32_t opc,
 {
     const char *opn = "CLx";
     TCGv t0;
+    ESESC_TRACE_ALU(ctx->pc, iAALU, rs, 0, rd);
 
     if (rd == 0) {
         /* Treat as NOP. */
@@ -3965,9 +3969,11 @@ static void gen_loongson_integer(DisasContext *ctx, uint32_t opc,
 
     if (rd == 0) {
         /* Treat as NOP. */
+        ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, LREG_InvalidOutput);
         MIPS_DEBUG("NOP");
         return;
     }
+    ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
 
     switch (opc) {
     case OPC_MULT_G_2E:
@@ -4177,6 +4183,8 @@ static void gen_loongson_multimedia(DisasContext *ctx, int rd, int rs, int rt)
     const char *opn = "loongson_cp2";
     uint32_t opc, shift_max;
     TCGv_i64 t0, t1;
+
+    ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
 
     opc = MASK_LMI(ctx->opcode);
     switch (opc) {
@@ -9254,7 +9262,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         }
         opn = "add.s";
         optype = BINOP;
-        ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SUB_S:
         {
@@ -9270,7 +9277,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         }
         opn = "sub.s";
         optype = BINOP;
-        ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MUL_S:
         {
@@ -9286,7 +9292,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         }
         opn = "mul.s";
         optype = BINOP;
-        ESESC_TRACE_ALU(ctx->pc, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_DIV_S:
         {
@@ -9313,7 +9318,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
         }
         opn = "sqrt.s";
-        ESESC_TRACE_ALU(ctx->pc, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_ABS_S:
         {
@@ -9325,7 +9329,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
         }
         opn = "abs.s";
-        ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MOV_S:
         {
@@ -9336,7 +9339,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
         }
         opn = "mov.s";
-        ESESC_TRACE_ALU(ctx->pc, iRALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_NEG_S:
         {
@@ -14171,6 +14173,7 @@ static void decode_micromips32_opc (CPUMIPSState *env, DisasContext *ctx,
                     }
                     break;
                 case PREFX:
+	                ESESC_TRACE_MEM(ctx->pc,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
                     break;
                 default:
                     goto pool32f_invalid;
@@ -14420,6 +14423,7 @@ static void decode_micromips32_opc (CPUMIPSState *env, DisasContext *ctx,
             break;
 #endif
         case PREF:
+	        ESESC_TRACE_MEM(ctx->pc,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
             /* Treat as no-op */
             break;
         default:
@@ -19464,11 +19468,13 @@ static void decode_opc(CPUMIPSState *env, DisasContext *ctx)
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
         check_cp0_enabled(ctx);
         check_insn(ctx, ISA_MIPS3 | ISA_MIPS32);
+	    ESESC_TRACE_MEM(ctx->pc,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
         /* Treat as NOP. */
         break;
     case OPC_PREF:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
         check_insn(ctx, ISA_MIPS4 | ISA_MIPS32);
+	    ESESC_TRACE_MEM(ctx->pc,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
         /* Treat as NOP. */
         break;
 
@@ -19575,6 +19581,7 @@ static void decode_opc(CPUMIPSState *env, DisasContext *ctx)
                 case R6_OPC_CMP_SUNE_S:
                 case R6_OPC_CMP_SNE_S:
                     gen_r6_cmp_s(ctx, ctx->opcode & 0x1f, rt, rd, sa);
+                    ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+rd, 0, LREG_FP0+sa);
                     break;
                 case R6_OPC_CMP_AF_D:
                 case R6_OPC_CMP_UN_D:
@@ -19599,6 +19606,7 @@ static void decode_opc(CPUMIPSState *env, DisasContext *ctx)
                 case R6_OPC_CMP_SUNE_D:
                 case R6_OPC_CMP_SNE_D:
                     gen_r6_cmp_d(ctx, ctx->opcode & 0x1f, rt, rd, sa);
+                    ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+rd, 0, LREG_FP0+sa);
                     break;
                 default:
                     gen_farith(ctx, ctx->opcode & FOP(0x3f, 0x1f),
