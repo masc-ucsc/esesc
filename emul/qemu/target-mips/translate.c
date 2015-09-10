@@ -3291,7 +3291,7 @@ static void gen_HILO(DisasContext *ctx, uint32_t opc, int acc, int reg)
         opn = "mtlo";
         break;
     }
-    //ESESC_TRACE_ALU(ctx->pc, iAALU, 0, 0, (int)reg);
+    ESESC_TRACE_ALU(ctx->pc, iAALU, 0, 0, LREG_InvalidOutput);
     (void)opn; /* avoid a compiler warning */
     MIPS_DEBUG("%s %s", opn, regnames[reg]);
 }
@@ -9249,6 +9249,53 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
     uint32_t func = ctx->opcode & 0x3f;
     switch (op1) {
     case OPC_ADD_S:
+    case OPC_SUB_S:
+    case OPC_ADD_D:
+    case OPC_SUB_D:
+        optype = BINOP;
+	break;	
+    case OPC_MUL_S:
+        opn = "mul.s";
+	break;
+    case OPC_MUL_D:
+        opn = "mul.d";
+	break;
+    case OPC_DIV_S:
+        opn = "div.s";
+	break;
+    case OPC_DIV_D:
+        opn = "div.d";
+	break;
+    case OPC_MUL_PS:
+        opn = "mul.ps";
+	break;
+    case OPC_MULR_PS:
+        opn = "mulr.ps";
+	break;
+    default:
+	break;
+    }
+
+    if (strstr(opn,"div")!=0) {
+      ESESC_TRACE_ALU(ctx->pc, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
+    }else if (strstr(opn,"mul")!=0) {
+      ESESC_TRACE_ALU(ctx->pc, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
+    }else{
+      switch (optype) {
+        case BINOP:
+          ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
+          break;
+        case CMPOP:
+          ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_InvalidOutput);
+          break;
+        default:
+          ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
+          break;
+      }
+    }
+
+    switch (op1) {
+    case OPC_ADD_S:
         {
             TCGv_i32 fp0 = tcg_temp_new_i32();
             TCGv_i32 fp1 = tcg_temp_new_i32();
@@ -10695,23 +10742,6 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         return;
     }
 
-    if (strstr(opn,"div")!=0) {
-      ESESC_TRACE_ALU(ctx->pc, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
-    }else if (strstr(opn,"mul")!=0) {
-      ESESC_TRACE_ALU(ctx->pc, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
-    }else{
-      switch (optype) {
-        case BINOP:
-          ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
-          break;
-        case CMPOP:
-          ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_InvalidOutput);
-          break;
-        default:
-          ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
-          break;
-      }
-    }
 
     (void)opn; /* avoid a compiler warning */
     switch (optype) {
@@ -16835,6 +16865,7 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
     switch (op1) {
     case OPC_LSA:
         if (rd != 0) {
+            ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
             int imm2 = extract32(ctx->opcode, 6, 3);
             TCGv t0 = tcg_temp_new();
             TCGv t1 = tcg_temp_new();
@@ -16845,7 +16876,6 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
             tcg_gen_ext32s_tl(cpu_gpr[rd], t0);
             tcg_temp_free(t1);
             tcg_temp_free(t0);
-            ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
         }
         break;
     case OPC_MULT ... OPC_DIVU:
@@ -16896,6 +16926,7 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
     case OPC_DLSA:
         check_mips_64(ctx);
         if (rd != 0) {
+            ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
             int imm2 = extract32(ctx->opcode, 6, 3);
             TCGv t0 = tcg_temp_new();
             TCGv t1 = tcg_temp_new();
@@ -16905,7 +16936,6 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
             tcg_gen_add_tl(cpu_gpr[rd], t0, t1);
             tcg_temp_free(t1);
             tcg_temp_free(t0);
-            ESESC_TRACE_ALU(ctx->pc, iAALU, rs, rt, rd);
         }
         break;
     case R6_OPC_DCLO:
@@ -17995,8 +18025,8 @@ static void decode_opc_special3(CPUMIPSState *env, DisasContext *ctx)
         break;
 #endif
     case OPC_RDHWR:
+        ESESC_TRACE_ALU(ctx->pc, iAALU, rd, 0, rt);
         gen_rdhwr(ctx, rt, rd);
-        ESESC_TRACE_ALU(ctx->pc, iAALU, rt, 0, rd);
         break;
     case OPC_FORK:
         check_insn(ctx, ASE_MT);
