@@ -268,12 +268,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     }
     lastpc  = dinst->getPC();
 
-
-
-
     I(!missInst);
 
     dinst->setFetchTime();
+    bucket->push(dinst);
+        
 #ifdef USE_FUSE
     if(dinst->getInst()->isControl()) {
       RegType src1 = dinst->getInst()->getSrc1();
@@ -285,7 +284,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       }
     }
 #endif
-    bucket->push(dinst);
         
     if(dinst->getInst()->isControl()) {
       bool stall_fetch = processBranch(dinst, n2Fetch,&tempmaxbb);

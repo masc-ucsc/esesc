@@ -47,23 +47,30 @@ DInst *LSQFull::executing(DInst *dinst)
   I(dinst->getAddr());
 
   AddrType tag = calcWord(dinst);
+
+  const Instruction *inst = dinst->getInst();
+  DInst *faulty = 0;
+
+#if 0
   AddrDInstQMap::const_iterator instIt = instMap.begin();
   I(instIt != instMap.end());
 
   I(!dinst->isExecuted());
 
-  const Instruction *inst = dinst->getInst();
-
-  DInst *faulty = 0;
   while(instIt != instMap.end()) {
     if (instIt->first != tag){
       instIt++;
       continue; 
     }
+#endif
+  std::pair<AddrDInstQMap::iterator, AddrDInstQMap::iterator> ret;
+  ret = instMap.equal_range(tag);
+  for (AddrDInstQMap::iterator instIt=ret.first; instIt!=ret.second; ++instIt) {
+    I(instIt->first == tag);
+
     //inst->dump("Executed");
     DInst *qdinst = instIt->second;
     if(qdinst == dinst) {
-      instIt++;
       continue;
     }
 
@@ -88,10 +95,7 @@ DInst *LSQFull::executing(DInst *dinst)
         stldForwarding.inc(dinst->getStatsFlag());
       }
     }
-
-    instIt++;
   }
-
 
   I(!dinst->isExecuted()); // first clear, then mark executed
   return faulty;
