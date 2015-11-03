@@ -154,8 +154,6 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op
   I(dest<LREG_MAX);
   I(dest2<LREG_MAX);
 
-  MSG("fid=%d adding pc=%llx",fid,pc);
-
   while (tsfifo[fid].full()) {
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
