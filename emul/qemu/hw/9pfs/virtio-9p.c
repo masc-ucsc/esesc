@@ -11,16 +11,17 @@
  *
  */
 
-#include "hw/virtio.h"
-#include "hw/pc.h"
-#include "qemu_socket.h"
-#include "hw/virtio-pci.h"
+#include "hw/virtio/virtio.h"
+#include "hw/i386/pc.h"
+#include "qemu/error-report.h"
+#include "qemu/iov.h"
+#include "qemu/sockets.h"
 #include "virtio-9p.h"
 #include "fsdev/qemu-fsdev.h"
 #include "virtio-9p-xattr.h"
 #include "virtio-9p-coth.h"
 #include "trace.h"
-#include "migration.h"
+#include "migration/migration.h"
 
 int open_fd_hw;
 int total_open_fd;
@@ -300,9 +301,7 @@ static int v9fs_xattr_fid_clunk(V9fsPDU *pdu, V9fsFidState *fidp)
 free_out:
     v9fs_string_free(&fidp->fs.xattr.name);
 free_value:
-    if (fidp->fs.xattr.value) {
-        g_free(fidp->fs.xattr.value);
-    }
+    g_free(fidp->fs.xattr.value);
     return retval;
 }
 
@@ -327,7 +326,7 @@ static int free_fid(V9fsPDU *pdu, V9fsFidState *fidp)
     return retval;
 }
 
-static void put_fid(V9fsPDU *pdu, V9fsFidState *fidp)
+static int put_fid(V9fsPDU *pdu, V9fsFidState *fidp)
 {
     BUG_ON(!fidp->ref);
     fidp->ref--;
@@ -348,8 +347,9 @@ static void put_fid(V9fsPDU *pdu, V9fsFidState *fidp)
                 pdu->s->migration_blocker = NULL;
             }
         }
-        free_fid(pdu, fidp);
+        return free_fid(pdu, fidp);
     }
+    return 0;
 }
 
 static V9fsFidState *clunk_fid(V9fsState *s, int32_t fid)
@@ -505,7 +505,6 @@ static void virtfs_reset(V9fsPDU *pdu)
         error_report("9pfs:%s: One or more uncluncked fids "
                      "found during reset", __func__);
     }
-    return;
 }
 
 #define P9_QID_TYPE_DIR         0x80
@@ -632,7 +631,7 @@ static void complete_pdu(V9fsState *s, V9fsPDU *pdu, ssize_t len)
     virtqueue_push(s->vq, &pdu->elem, len);
 
     /* FIXME: we should batch these completions */
-    virtio_notify(&s->vdev, s->vq);
+    virtio_notify(VIRTIO_DEVICE(s), s->vq);
 
     /* Now wakeup anybody waiting in flush for this request */
     qemu_co_queue_next(&pdu->complete);
@@ -659,7 +658,7 @@ static mode_t v9mode_to_mode(uint32_t mode, V9fsString *extension)
         ret |= S_IFIFO;
     }
     if (mode & P9_STAT_MODE_DEVICE) {
-        if (extension && extension->data[0] == 'c') {
+        if (extension->size && extension->data[0] == 'c') {
             ret |= S_IFCHR;
         } else {
             ret |= S_IFBLK;
@@ -934,7 +933,6 @@ static void v9fs_version(void *opaque)
 out:
     complete_pdu(s, pdu, offset);
     v9fs_string_free(&version);
-    return;
 }
 
 static void v9fs_attach(void *opaque)
@@ -983,11 +981,17 @@ static void v9fs_attach(void *opaque)
     err += offset;
     trace_v9fs_attach_return(pdu->tag, pdu->id,
                              qid.type, qid.version, qid.path);
-    s->root_fid = fid;
-    /* disable migration */
-    error_set(&s->migration_blocker, QERR_VIRTFS_FEATURE_BLOCKS_MIGRATION,
-              s->ctx.fs_root, s->tag);
-    migrate_add_blocker(s->migration_blocker);
+    /*
+     * disable migration if we haven't done already.
+     * attach could get called multiple times for the same export.
+     */
+    if (!s->migration_blocker) {
+        s->root_fid = fid;
+        error_setg(&s->migration_blocker,
+                   "Migration is disabled when VirtFS export path '%s' is mounted in the guest using mount_tag '%s'",
+                   s->ctx.fs_root ? s->ctx.fs_root : "NULL", s->tag);
+        migrate_add_blocker(s->migration_blocker);
+    }
 out:
     put_fid(pdu, fidp);
 out_nofid:
@@ -1077,10 +1081,18 @@ static void v9fs_getattr(void *opaque)
     /*  fill st_gen if requested and supported by underlying fs */
     if (request_mask & P9_STATS_GEN) {
         retval = v9fs_co_st_gen(pdu, &fidp->path, stbuf.st_mode, &v9stat_dotl);
-        if (retval < 0) {
+        switch (retval) {
+        case 0:
+            /* we have valid st_gen: update result mask */
+            v9stat_dotl.st_result_mask |= P9_STATS_GEN;
+            break;
+        case -EINTR:
+            /* request cancelled, e.g. by Tflush */
             goto out;
+        default:
+            /* failed to get st_gen: not fatal, ignore */
+            break;
         }
-        v9stat_dotl.st_result_mask |= P9_STATS_GEN;
     }
     retval = pdu_marshal(pdu, offset, "A", &v9stat_dotl);
     if (retval < 0) {
@@ -1309,7 +1321,6 @@ out_nofid:
         g_free(wnames);
         g_free(qids);
     }
-    return;
 }
 
 static int32_t get_iounit(V9fsPDU *pdu, V9fsPath *path)
@@ -1349,7 +1360,9 @@ static void v9fs_open(void *opaque)
     if (s->proto_version == V9FS_PROTO_2000L) {
         err = pdu_unmarshal(pdu, offset, "dd", &fid, &mode);
     } else {
-        err = pdu_unmarshal(pdu, offset, "db", &fid, &mode);
+        uint8_t modebyte;
+        err = pdu_unmarshal(pdu, offset, "db", &fid, &modebyte);
+        mode = modebyte;
     }
     if (err < 0) {
         goto out_nofid;
@@ -1391,7 +1404,6 @@ static void v9fs_open(void *opaque)
                 err = -EROFS;
                 goto out;
             }
-            flags |= O_NOATIME;
         }
         err = v9fs_co_open(pdu, fidp, flags);
         if (err < 0) {
@@ -1534,9 +1546,10 @@ static void v9fs_clunk(void *opaque)
      * free the fid.
      */
     fidp->ref++;
-    err = offset;
-
-    put_fid(pdu, fidp);
+    err = put_fid(pdu, fidp);
+    if (!err) {
+        err = offset;
+    }
 out_nofid:
     complete_pdu(s, pdu, err);
 }
@@ -1647,7 +1660,7 @@ out:
  * with qemu_iovec_destroy().
  */
 static void v9fs_init_qiov_from_pdu(QEMUIOVector *qiov, V9fsPDU *pdu,
-                                    uint64_t skip, size_t size,
+                                    size_t skip, size_t size,
                                     bool is_write)
 {
     QEMUIOVector elem;
@@ -1664,7 +1677,7 @@ static void v9fs_init_qiov_from_pdu(QEMUIOVector *qiov, V9fsPDU *pdu,
 
     qemu_iovec_init_external(&elem, iov, niov);
     qemu_iovec_init(qiov, niov);
-    qemu_iovec_copy(qiov, &elem, skip, size);
+    qemu_iovec_concat(qiov, &elem, skip, size);
 }
 
 static void v9fs_read(void *opaque)
@@ -1714,7 +1727,7 @@ static void v9fs_read(void *opaque)
         qemu_iovec_init(&qiov, qiov_full.niov);
         do {
             qemu_iovec_reset(&qiov);
-            qemu_iovec_copy(&qiov, &qiov_full, count, qiov_full.size - count);
+            qemu_iovec_concat(&qiov, &qiov_full, count, qiov_full.size - count);
             if (0) {
                 print_sg(qiov.iov, qiov.niov);
             }
@@ -1939,7 +1952,8 @@ static void v9fs_write(void *opaque)
 
     err = pdu_unmarshal(pdu, offset, "dqd", &fid, &off, &count);
     if (err < 0) {
-        return complete_pdu(s, pdu, err);
+        complete_pdu(s, pdu, err);
+        return;
     }
     offset += err;
     v9fs_init_qiov_from_pdu(&qiov_full, pdu, offset, count, true);
@@ -1969,7 +1983,7 @@ static void v9fs_write(void *opaque)
     qemu_iovec_init(&qiov, qiov_full.niov);
     do {
         qemu_iovec_reset(&qiov);
-        qemu_iovec_copy(&qiov, &qiov_full, total, qiov_full.size - total);
+        qemu_iovec_concat(&qiov, &qiov_full, total, qiov_full.size - total);
         if (0) {
             print_sg(qiov.iov, qiov.niov);
         }
@@ -2251,7 +2265,6 @@ static void v9fs_flush(void *opaque)
         free_pdu(pdu->s, cancel_pdu);
     }
     complete_pdu(s, pdu, 7);
-    return;
 }
 
 static void v9fs_link(void *opaque)
@@ -2757,7 +2770,6 @@ out:
     put_fid(pdu, fidp);
 out_nofid:
     complete_pdu(s, pdu, retval);
-    return;
 }
 
 static void v9fs_mknod(void *opaque)
@@ -3100,11 +3112,7 @@ static void v9fs_xattrcreate(void *opaque)
     xattr_fidp->fs.xattr.flags = flags;
     v9fs_string_init(&xattr_fidp->fs.xattr.name);
     v9fs_string_copy(&xattr_fidp->fs.xattr.name, &name);
-    if (size) {
-        xattr_fidp->fs.xattr.value = g_malloc(size);
-    } else {
-        xattr_fidp->fs.xattr.value = NULL;
-    }
+    xattr_fidp->fs.xattr.value = g_malloc(size);
     err = offset;
     put_fid(pdu, file_fidp);
 out_nofid:
@@ -3254,23 +3262,33 @@ void handle_9p_output(VirtIODevice *vdev, VirtQueue *vq)
 
     while ((pdu = alloc_pdu(s)) &&
             (len = virtqueue_pop(vq, &pdu->elem)) != 0) {
-        uint8_t *ptr;
+        struct {
+            uint32_t size_le;
+            uint8_t id;
+            uint16_t tag_le;
+        } QEMU_PACKED out;
+        int len;
+
         pdu->s = s;
         BUG_ON(pdu->elem.out_num == 0 || pdu->elem.in_num == 0);
-        BUG_ON(pdu->elem.out_sg[0].iov_len < 7);
+        QEMU_BUILD_BUG_ON(sizeof out != 7);
 
-        ptr = pdu->elem.out_sg[0].iov_base;
+        len = iov_to_buf(pdu->elem.out_sg, pdu->elem.out_num, 0,
+                         &out, sizeof out);
+        BUG_ON(len != sizeof out);
 
-        memcpy(&pdu->size, ptr, 4);
-        pdu->id = ptr[4];
-        memcpy(&pdu->tag, ptr + 5, 2);
+        pdu->size = le32_to_cpu(out.size_le);
+
+        pdu->id = out.id;
+        pdu->tag = le16_to_cpu(out.tag_le);
+
         qemu_co_queue_init(&pdu->complete);
         submit_pdu(s, pdu);
     }
     free_pdu(s, pdu);
 }
 
-void virtio_9p_set_fd_limit(void)
+static void __attribute__((__constructor__)) virtio_9p_set_fd_limit(void)
 {
     struct rlimit rlim;
     if (getrlimit(RLIMIT_NOFILE, &rlim) < 0) {

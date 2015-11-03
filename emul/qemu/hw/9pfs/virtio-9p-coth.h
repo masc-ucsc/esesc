@@ -15,14 +15,14 @@
 #ifndef _QEMU_VIRTIO_9P_COTH_H
 #define _QEMU_VIRTIO_9P_COTH_H
 
-#include "qemu-thread.h"
-#include "qemu-coroutine.h"
+#include "qemu/thread.h"
+#include "block/coroutine.h"
 #include "virtio-9p.h"
 #include <glib.h>
 
 typedef struct V9fsThPool {
-    int rfd;
-    int wfd;
+    EventNotifier e;
+
     GThreadPool *pool;
     GAsyncQueue *completed;
 } V9fsThPool;

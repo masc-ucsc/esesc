@@ -43,7 +43,7 @@
 /* }}} */
 
 std::vector<TaskHandler::EmulSimuMapping >   TaskHandler::allmaps;
-bool TaskHandler::terminate_all;
+volatile bool TaskHandler::terminate_all;
 pthread_mutex_t TaskHandler::mutex;
 
 FlowID* TaskHandler::running;
@@ -93,25 +93,6 @@ void TaskHandler::report(const char *str) {
 void TaskHandler::addEmul(EmulInterface *eint, FlowID fid) {
   /* add a new emulator to the system {{{1 */
 
-
-  /* Commented out by Alamelu, who thinks this does not support 
-     interleaving
-
-
-  // By default, all the threads are active. If there are no
-  // instructions, blui.poweroff would be called when execute is
-  // called the first time
-  int num_flows = eint->getNumFlows();
-
-  // Set the starting offset for the EmulInterface
-  //eint->setFirstFlow(emulas.size()); //FIXME : Will not work when we have a GPU (A GPU has 1 interface, many flows);
-
-  for(int i=0;i<num_flows;i++) {// FIXME: Do we need to keep eint per flow? For CPU we only have one eint.
-  emulas.push_back(eint);
-  }
-
-   */
-
   FlowID nemul = SescConf->getRecordSize("","cpuemul");
 
   if (emulas.empty()){
@@ -124,41 +105,11 @@ void TaskHandler::addEmul(EmulInterface *eint, FlowID fid) {
 
   emulas.erase (emulas.begin()+fid);
   emulas.insert(emulas.begin()+fid, eint);
-    
-  
-
-  /*
-  // IF DEBUG
-  for(FlowID i=0;i<nemul;i++)
-  {
-    if (emulas.at(i) != 0x0)
-      MSG("Emul[%d] = %s", i, (emulas.at(i))->getSection());   
-  }
-  */
 }
 /* }}} */
 
 void TaskHandler::addEmulShared(EmulInterface *eint) {
   /* add a new emulator to the system {{{1 */
-
-
-  /* Commented out by Alamelu, who thinks this does not support 
-     interleaving
-
-
-  // By default, all the threads are active. If there are no
-  // instructions, blui.poweroff would be called when execute is
-  // called the first time
-  int num_flows = eint->getNumFlows();
-
-  // Set the starting offset for the EmulInterface
-  //eint->setFirstFlow(emulas.size()); //FIXME : Will not work when we have a GPU (A GPU has 1 interface, many flows);
-
-  for(int i=0;i<num_flows;i++) {// FIXME: Do we need to keep eint per flow? For CPU we only have one eint.
-  emulas.push_back(eint);
-  }
-
-   */
 
   FlowID nemul = SescConf->getRecordSize("","cpuemul");
 
@@ -190,10 +141,9 @@ void TaskHandler::addEmulShared(EmulInterface *eint) {
 }
 /* }}} */
 
-
 void TaskHandler::addSimu(GProcessor *gproc) {
   /* add a new simulator to the system {{{1 */
-  I(cpus.size() == static_cast<size_t>(gproc->getId()));
+  I(cpus.size() == static_cast<size_t>(gproc->getID()));
   cpus.push_back(gproc);
 }
 /* }}} */
@@ -228,12 +178,11 @@ FlowID TaskHandler::resumeThread(FlowID uid, FlowID fid) {
   allmaps[fid].simu->setActive();
   running[running_size] = fid;
   running_size++;
-/*
-  fprintf(stderr,"CPUResume: running_size = %d : running->",running_size);
+
+  fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
   for (int i = 0; i < running_size; i++)
-    fprintf(stderr,"%d->",running[i]);
+    fprintf(stderr,"%d:",running[i]);
   fprintf(stderr,"\n");
-*/
 
   pthread_mutex_unlock (&mutex);
   return (fid);
@@ -294,23 +243,19 @@ FlowID TaskHandler::resumeThread(FlowID fid) {
     return (GPU_fid);
   }  
 
-
-
   allmaps[GPU_fid].active = true;
   allmaps[GPU_fid].simu->setActive();
 
   // Make sure that the fid is not in the running queue
   // This might happen if the execution is very slow. 
   
-   running[running_size] = GPU_fid;
-   running_size++;
+  running[running_size] = GPU_fid;
+  running_size++;
 
-/*
-   fprintf(stderr,"GPUResume: running_size = %d : running->",running_size);
-   for (int i = 0; i < running_size; i++)
-     fprintf(stderr,"%d->",running[i]);
-   fprintf(stderr,"\n");
-*/
+  fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
+  for (int i = 0; i < running_size; i++)
+    fprintf(stderr,"%d:",running[i]);
+  fprintf(stderr,"\n");
 
 //  allmaps[GPU_fid].emul->getSampler()-> startMode(GPU_fid);
   pthread_mutex_unlock (&mutex);
@@ -334,20 +279,27 @@ void TaskHandler::syncRunning(){
 }
 /* }}} */
 
-
 void TaskHandler::removeFromRunning(FlowID fid){
   /* remove fid from the running queue {{{1 */
   //pthread_mutex_lock (&mutex);
+ 
   for (size_t i=0;i<running_size;i++){
-    if (running[i] == fid){
-      if (i < running_size-1)
-        //(memmove((void *)running[i],(const void *)running[i+1],(running_size-(i+1))*sizeof(FlowID)));
-        for (size_t j = i; j<running_size-1; j++){
-          running[j] = running[j+1];
-        }
-      running_size--;
-      i = running_size+10;
+    if (running[i] != fid)
+      continue;
+
+    if (i < running_size-1) {
+      for (size_t j = i; j<running_size-1; j++){
+        running[j] = running[j+1];
+      }
     }
+    running_size--;
+
+    fprintf(stderr,"removeFromRunning: fid=%d running_size=%d : running=",fid,running_size);
+    for (int j = 0; j < running_size; j++)
+      fprintf(stderr,"%d:",running[j]);
+    fprintf(stderr,"\n");
+
+    break;
   }
 
   if (allmaps[fid].active){
@@ -371,8 +323,6 @@ void TaskHandler::pauseThread(FlowID fid){
     return;
   }
 
-  //IS(MSG("TaskHandler::pauseThread(%d)",fid));
-  //running_size--;
   removeFromRunning(fid);
   allmaps[fid].active = false;
   allmaps[fid].simu->clearActive();
@@ -390,9 +340,9 @@ void TaskHandler::terminate()
   for(size_t i = 0; i<allmaps.size();i++) {
     if (!allmaps[i].active)
       continue;
+    allmaps[i].emul->getSampler()->stop();
     allmaps[i].active = false;
   }
-
   
   //GStats::stopAll(1);
 
@@ -415,13 +365,7 @@ void TaskHandler::boot()
   /* main simulation loop {{{1 */
 {
   while(!terminate_all) {
-    for(size_t i =0;i<running_size;i++) {
-      FlowID fid = running[i];
-      GProcessor *simu = allmaps[fid].simu;
-      simu->fetch(fid);
-      simu->execute();
-    }
-    if (running_size == 0) {
+    if (unlikely(running_size == 0)) {
       bool needIncreaseClock = false;
       for(AllMapsType::iterator it=allmaps.begin();it!=allmaps.end();it++) {
         EmuSampler::EmuMode m = (*it).emul->getSampler()->getMode();
@@ -433,6 +377,10 @@ void TaskHandler::boot()
       if (needIncreaseClock)
         EventScheduler::advanceClock();
     }else{
+      for(size_t i =0;i<running_size;i++) {
+        FlowID fid = running[i];
+        allmaps[fid].simu->advance_clock(fid);
+      }
       EventScheduler::advanceClock();
     }
   }
@@ -468,8 +416,8 @@ void TaskHandler::plugEnd()
     MSG("ERROR: There are more emul (%zu) than cpu flows (%zu) available. Increase the number of cores or emulas can starve", emulas.size(), nCPUThreads);
     SescConf->notCorrect();
   }else if(emulas.size() < nCPUThreads) {
-    MSG("Warning: There are more cores than threads (%zu vs %zu). Powering down unusable cores", emulas.size(), nCPUThreads);
-    //FIXME: Where are they actually powered down?
+    if(emulas.size() !=0)
+      MSG("Warning: There are more cores than threads (%zu vs %zu). Powering down unusable cores", emulas.size(), nCPUThreads);
   }
 
   allmaps.resize(emulas.size());

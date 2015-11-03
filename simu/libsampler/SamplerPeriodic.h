@@ -56,12 +56,8 @@ protected:
 
   GStatsCntr  *dsync;
   GStatsMax  *threadProgressedTime;
-  static GStatsMax  *progressedTime;
 
   static int32_t PerfSampleLeftForTemp; 
-
-  bool isItDone();
-  void allDone();
 
   void coordinateWithOthersAndNextMode(FlowID fid);
   void syncTimeAndTimingModes(FlowID fid);
@@ -71,7 +67,7 @@ protected:
   void syncTimeAndSamples(FlowID fid);
   void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
 
-  void updateCPI();
+  void updateCPI(FlowID id);
   void updateCPIHist();
   void insertNewCPI();
   void computeEstCPI();
@@ -89,7 +85,7 @@ public:
   SamplerPeriodic(const char *name, const char *section, EmulInterface *emu, FlowID fid);
   virtual ~SamplerPeriodic();
 
-  void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env);
+  uint64_t queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest, int dest2, void *dummy);
 
   void dumpThreadProgressedTime(FlowID fid);
   float getSamplingRatio() {return static_cast<float>(nInstTiming)/static_cast<float>(nInstRabbit + nInstWarmup + nInstDetail + nInstTiming);};

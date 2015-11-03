@@ -62,8 +62,8 @@
 #define TARGET_NR_getpagesize         64 /* Common                                      */
 #define TARGET_NR_msync               65 /* Common in newer 1.3.x revs...               */
 #define TARGET_NR_vfork               66 /* Common                                      */
-#define TARGET_NR_pread               67 /* Linux Specific                              */
-#define TARGET_NR_pwrite              68 /* Linux Specific                              */
+#define TARGET_NR_pread64             67 /* Linux Specific */
+#define TARGET_NR_pwrite64            68 /* Linux Specific */
 #define TARGET_NR_geteuid32           69 /* Linux sparc32, sbrk under SunOS             */
 #define TARGET_NR_getegid32           70 /* Linux sparc32, sstk under SunOS             */
 #define TARGET_NR_mmap                71 /* Common                                      */
@@ -200,6 +200,8 @@
 #define TARGET_NR__newselect         230 /* Linux Specific                              */
 #define TARGET_NR_time               231 /* Linux Specific                              */
 #define TARGET_NR_stime              233 /* Linux Specific                              */
+#define TARGET_NR_statfs64           234 /* Linux Specific                              */
+#define TARGET_NR_fstatfs64          235 /* Linux Specific                              */
 #define TARGET_NR__llseek            236 /* Linux Specific                              */
 #define TARGET_NR_mlock              237
 #define TARGET_NR_munlock            238
@@ -300,3 +302,10 @@
 #define TARGET_NR_open_by_handle_at     333
 #define TARGET_NR_clock_adjtime         334
 #define TARGET_NR_syncfs                335
+#define TARGET_NR_sendmmsg              336
+#define TARGET_NR_setns                 337
+#define TARGET_NR_process_vm_readv      338
+#define TARGET_NR_process_vm_writev     339
+#define TARGET_NR_kern_features         340
+#define TARGET_NR_kcmp                  341
+#define TARGET_NR_finit_module          342

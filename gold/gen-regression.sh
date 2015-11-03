@@ -20,8 +20,8 @@ cp $esescDir/gold/tables/* $buildDir/regression/tables
 #
 #Run ESESC to get new output to compare against.gold.craftyen-brick. Writes output to the compiled
 #ESESC directory.
-sh $esescDir/gold/exe/maketable.sh SLOW NULL $buildDir $esescDir
-sh $esescDir/gold/exe/maketable.sh FAST NULL $buildDir $esescDir
+sh $esescDir/gold/exe/report_to_table.sh SLOW NULL $buildDir $esescDir
+sh $esescDir/gold/exe/report_to_table.sh FAST NULL $buildDir $esescDir
 
 #Call cmptab-eq(equal) to compare the new outputs against the golden brick should not
 #be equal to the golden brick output

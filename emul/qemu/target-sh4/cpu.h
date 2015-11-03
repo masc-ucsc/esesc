@@ -23,7 +23,6 @@
 #include "qemu-common.h"
 
 #define TARGET_LONG_BITS 32
-#define TARGET_HAS_ICE 1
 
 #define ELF_MACHINE	EM_SH
 
@@ -37,29 +36,29 @@
 #define SH_CPU_SH7750_ALL (SH_CPU_SH7750 | SH_CPU_SH7750S | SH_CPU_SH7750R)
 #define SH_CPU_SH7751_ALL (SH_CPU_SH7751 | SH_CPU_SH7751R)
 
-#define CPUState struct CPUSH4State
+#define CPUArchState struct CPUSH4State
 
-#include "cpu-defs.h"
+#include "exec/cpu-defs.h"
 
-#include "softfloat.h"
+#include "fpu/softfloat.h"
 
 #define TARGET_PAGE_BITS 12	/* 4k XXXXX */
 
 #define TARGET_PHYS_ADDR_SPACE_BITS 32
 #define TARGET_VIRT_ADDR_SPACE_BITS 32
 
-#define SR_MD (1 << 30)
-#define SR_RB (1 << 29)
-#define SR_BL (1 << 28)
-#define SR_FD (1 << 15)
-#define SR_M  (1 << 9)
-#define SR_Q  (1 << 8)
-#define SR_I3 (1 << 7)
-#define SR_I2 (1 << 6)
-#define SR_I1 (1 << 5)
-#define SR_I0 (1 << 4)
-#define SR_S  (1 << 1)
-#define SR_T  (1 << 0)
+#define SR_MD 30
+#define SR_RB 29
+#define SR_BL 28
+#define SR_FD 15
+#define SR_M  9
+#define SR_Q  8
+#define SR_I3 7
+#define SR_I2 6
+#define SR_I1 5
+#define SR_I0 4
+#define SR_S  1
+#define SR_T  0
 
 #define FPSCR_MASK             (0x003fffff)
 #define FPSCR_FR               (1 << 21)
@@ -139,7 +138,10 @@ typedef struct CPUSH4State {
     uint32_t flags;		/* general execution flags */
     uint32_t gregs[24];		/* general registers */
     float32 fregs[32];		/* floating point registers */
-    uint32_t sr;		/* status register */
+    uint32_t sr;                /* status register (with T split out) */
+    uint32_t sr_m;              /* M bit of status register */
+    uint32_t sr_q;              /* Q bit of status register */
+    uint32_t sr_t;              /* T bit of status register */
     uint32_t ssr;		/* saved status register */
     uint32_t spc;		/* saved program counter */
     uint32_t gbr;		/* global base register */
@@ -156,9 +158,6 @@ typedef struct CPUSH4State {
 
     /* float point status register */
     float_status fp_status;
-
-    /* The features that we should emulate. See sh_features above.  */
-    uint32_t features;
 
     /* Those belong to the specific unit (SH7750) but are handled here */
     uint32_t mmucr;		/* MMU control register */
@@ -178,10 +177,11 @@ typedef struct CPUSH4State {
 
     CPU_COMMON
 
+    /* Fields from here on are preserved over CPU reset. */
     int id;			/* CPU model */
-    uint32_t pvr;		/* Processor Version Register */
-    uint32_t prr;		/* Processor Revision Register */
-    uint32_t cvr;		/* Cache Version Register */
+
+    /* The features that we should emulate. See sh_features above.  */
+    uint32_t features;
 
     void *intc_handle;
     int in_sleep;		/* SR_BL ignored during sleep */
@@ -189,48 +189,43 @@ typedef struct CPUSH4State {
     memory_content **movcal_backup_tail;
 } CPUSH4State;
 
-CPUSH4State *cpu_sh4_init(const char *cpu_model);
-int cpu_sh4_exec(CPUSH4State * s);
+#include "cpu-qom.h"
+
+void sh4_translate_init(void);
+SuperHCPU *cpu_sh4_init(const char *cpu_model);
+int cpu_sh4_exec(CPUState *s);
 int cpu_sh4_signal_handler(int host_signum, void *pinfo,
                            void *puc);
-int cpu_sh4_handle_mmu_fault(CPUSH4State * env, target_ulong address, int rw,
-                             int mmu_idx);
-#define cpu_handle_mmu_fault cpu_sh4_handle_mmu_fault
-void do_interrupt(CPUSH4State * env);
+int superh_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
+                                int mmu_idx);
 
 void sh4_cpu_list(FILE *f, fprintf_function cpu_fprintf);
 #if !defined(CONFIG_USER_ONLY)
 void cpu_sh4_invalidate_tlb(CPUSH4State *s);
 uint32_t cpu_sh4_read_mmaped_itlb_addr(CPUSH4State *s,
-                                       target_phys_addr_t addr);
-void cpu_sh4_write_mmaped_itlb_addr(CPUSH4State *s, target_phys_addr_t addr,
+                                       hwaddr addr);
+void cpu_sh4_write_mmaped_itlb_addr(CPUSH4State *s, hwaddr addr,
                                     uint32_t mem_value);
 uint32_t cpu_sh4_read_mmaped_itlb_data(CPUSH4State *s,
-                                       target_phys_addr_t addr);
-void cpu_sh4_write_mmaped_itlb_data(CPUSH4State *s, target_phys_addr_t addr,
+                                       hwaddr addr);
+void cpu_sh4_write_mmaped_itlb_data(CPUSH4State *s, hwaddr addr,
                                     uint32_t mem_value);
 uint32_t cpu_sh4_read_mmaped_utlb_addr(CPUSH4State *s,
-                                       target_phys_addr_t addr);
-void cpu_sh4_write_mmaped_utlb_addr(CPUSH4State *s, target_phys_addr_t addr,
+                                       hwaddr addr);
+void cpu_sh4_write_mmaped_utlb_addr(CPUSH4State *s, hwaddr addr,
                                     uint32_t mem_value);
 uint32_t cpu_sh4_read_mmaped_utlb_data(CPUSH4State *s,
-                                       target_phys_addr_t addr);
-void cpu_sh4_write_mmaped_utlb_data(CPUSH4State *s, target_phys_addr_t addr,
+                                       hwaddr addr);
+void cpu_sh4_write_mmaped_utlb_data(CPUSH4State *s, hwaddr addr,
                                     uint32_t mem_value);
 #endif
 
 int cpu_sh4_is_cached(CPUSH4State * env, target_ulong addr);
 
-static inline void cpu_set_tls(CPUSH4State *env, target_ulong newtls)
-{
-  env->gbr = newtls;
-}
-
 void cpu_load_tlb(CPUSH4State * env);
 
-#include "softfloat.h"
+#define cpu_init(cpu_model) CPU(cpu_sh4_init(cpu_model))
 
-#define cpu_init cpu_sh4_init
 #define cpu_exec cpu_sh4_exec
 #define cpu_gen_code cpu_sh4_gen_code
 #define cpu_signal_handler cpu_sh4_signal_handler
@@ -240,21 +235,12 @@ void cpu_load_tlb(CPUSH4State * env);
 #define MMU_MODE0_SUFFIX _kernel
 #define MMU_MODE1_SUFFIX _user
 #define MMU_USER_IDX 1
-static inline int cpu_mmu_index (CPUState *env)
+static inline int cpu_mmu_index (CPUSH4State *env)
 {
-    return (env->sr & SR_MD) == 0 ? 1 : 0;
+    return (env->sr & (1u << SR_MD)) == 0 ? 1 : 0;
 }
 
-#if defined(CONFIG_USER_ONLY)
-static inline void cpu_clone_regs(CPUState *env, target_ulong newsp)
-{
-    if (newsp)
-        env->gregs[15] = newsp;
-    env->gregs[0] = 0;
-}
-#endif
-
-#include "cpu-all.h"
+#include "exec/cpu-all.h"
 
 /* Memory access type */
 enum {
@@ -348,7 +334,22 @@ static inline int cpu_ptel_pr (uint32_t ptel)
 
 #define TB_FLAG_PENDING_MOVCA  (1 << 4)
 
-static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
+static inline target_ulong cpu_read_sr(CPUSH4State *env)
+{
+    return env->sr | (env->sr_m << SR_M) |
+                     (env->sr_q << SR_Q) |
+                     (env->sr_t << SR_T);
+}
+
+static inline void cpu_write_sr(CPUSH4State *env, target_ulong sr)
+{
+    env->sr_m = (sr >> SR_M) & 1;
+    env->sr_q = (sr >> SR_Q) & 1;
+    env->sr_t = (sr >> SR_T) & 1;
+    env->sr = sr & ~((1u << SR_M) | (1u << SR_Q) | (1u << SR_T));
+}
+
+static inline void cpu_get_tb_cpu_state(CPUSH4State *env, target_ulong *pc,
                                         target_ulong *cs_base, int *flags)
 {
     *pc = env->pc;
@@ -356,22 +357,11 @@ static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
     *flags = (env->flags & (DELAY_SLOT | DELAY_SLOT_CONDITIONAL
                     | DELAY_SLOT_TRUE | DELAY_SLOT_CLEARME))   /* Bits  0- 3 */
             | (env->fpscr & (FPSCR_FR | FPSCR_SZ | FPSCR_PR))  /* Bits 19-21 */
-            | (env->sr & (SR_MD | SR_RB))                      /* Bits 29-30 */
-            | (env->sr & SR_FD)                                /* Bit 15 */
+            | (env->sr & ((1u << SR_MD) | (1u << SR_RB)))      /* Bits 29-30 */
+            | (env->sr & (1u << SR_FD))                        /* Bit 15 */
             | (env->movcal_backup ? TB_FLAG_PENDING_MOVCA : 0); /* Bit 4 */
 }
 
-static inline bool cpu_has_work(CPUState *env)
-{
-    return env->interrupt_request & CPU_INTERRUPT_HARD;
-}
-
-#include "exec-all.h"
-
-static inline void cpu_pc_from_tb(CPUState *env, TranslationBlock *tb)
-{
-    env->pc = tb->pc;
-    env->flags = tb->flags;
-}
+#include "exec/exec-all.h"
 
 #endif				/* _CPU_SH4_H */

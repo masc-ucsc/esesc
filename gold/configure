@@ -1,7 +1,0 @@
-#!/bin/bash
-
-#If main/esesc executable not made, make it
-(cd $2 && cd ../ && make esesc -j2)
-
-#Copy gen-gold, gen-regression, setup script to build directory
-cp $1/*.sh $2

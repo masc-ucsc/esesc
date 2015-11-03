@@ -1,4 +1,3 @@
-#if 0
 // Contributed by Jose Renau
 //
 // The ESESC/BSD License
@@ -33,19 +32,15 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <iostream>
 #include "SescConf.h"
 #include "MemorySystem.h"
 #include "MarkovPrefetcher.h"
+#include "CacheCore.h"
 
-static pool < std::queue<MemRequest *> > activeMemReqPool(128,"MarkovPrefetcherer");
-static AddrType TESTdata[11];
-
-
-MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
-             ,const char *section
-             ,const char *name)
-  : MemObj(section, name)
-  ,gms(current)
+MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current,const char *section,const char *name)
+   // {{{1 constructor
+  :MemObj(section, name)
   ,halfMiss("%s:halfMiss", name)
   ,miss("%s:miss", name)
   ,hit("%s:hits", name)
@@ -53,51 +48,42 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
   ,accesses("%s:accesses", name)
 {
   MemObj *lower_level = NULL;
+  lower_level = current->declareMemoryObj(section, "lowerLevel");
+  /*
+     SescConf->isInt(section, "depth");
+     depth = SescConf->getInt(section, "depth");
 
+     SescConf->isInt(section, "width");
+     width = SescConf->getInt(section, "width");
 
-  SescConf->isInt(section, "depth");
-  depth = SescConf->getInt(section, "depth");
-
-  SescConf->isInt(section, "width");
-  width = SescConf->getInt(section, "width");
-
-  const char *Section = SescConf->getCharPtr(section, "nextLevel");
-  if (Section) {
-    lineSize = SescConf->getInt(Section, "bsize");
-  }
-
+     const char *Section = SescConf->getCharPtr(section, "nextLevel");
+     */
   const char *buffSection = SescConf->getCharPtr(section, "buffCache");
   if (buffSection) {
     buff = BuffType::create(buffSection, "", name);
+    lineSize  = buff->getLineSize();
 
-    SescConf->isInt(buffSection, "numPorts");
-    numBuffPorts = SescConf->getInt(buffSection, "numPorts");
+    SescConf->isInt(buffSection, "bkNumPorts");
+    numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
 
-    SescConf->isInt(buffSection, "portOccp");
-    buffPortOccp = SescConf->getInt(buffSection, "portOccp");
+    SescConf->isInt(buffSection, "bkPortOccp");
+    buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
+
+    //SescConf->isInt(buffSection, "bsize");
+    //lineSize = SescConf->getInt(buffSection,"bsize");
   }
 
-  const char *streamSection = SescConf->getCharPtr(section, "streamCache");
-  if (streamSection) {
-    char tableName[128];
-    sprintf(tableName, "%sPrefTable", name);
-    table = MarkovTable::create(streamSection, "", tableName);
+  //defaultMask  = ~(lineSize-1);
 
-    GMSG(tEntrySize != SescConf->getInt(streamSection, "BSize"),
-   "The prefetch buffer streamBSize field in the configuration file should be %d.", tEntrySize);
+  numBuffPorts = SescConf->getInt(buffSection, "bkNumPorts");
+  buffPortOccp = SescConf->getInt(buffSection, "bkPortOccp");
 
-    SescConf->isInt(streamSection, "numPorts");
-    numTablePorts = SescConf->getInt(streamSection, "numPorts");
-
-    SescConf->isInt(streamSection, "portOccp");
-    tablePortOccp = SescConf->getInt(streamSection, "portOccp");
-  }
-
-  defaultMask  = ~(buff->getLineSize()-1);
+  //defaultMask  = ~(buff->getLineSize()-1);
 
   char portName[128];
   sprintf(portName, "%s_buff", name);
-  buffPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
+  dataPort  = PortGeneric::create(portName, numBuffPorts, buffPortOccp);
+  cmdPort = PortGeneric::create(portName, numBuffPorts, 1);
 
   sprintf(portName, "%s_table", name);
   tablePort = PortGeneric::create(portName, numTablePorts, tablePortOccp);
@@ -106,195 +92,144 @@ MarkovPrefetcher::MarkovPrefetcher(MemorySystem* current
   lastAddr = 0;
 
   I(current);
-  lower_level = current->declareMemoryObj(section, k_lowerLevel);
+
   if (lower_level != NULL)
     addLowerLevel(lower_level);
-
 }
+// 1}}}
 
-void MarkovPrefetcher::access(MemRequest *mreq)
+void MarkovPrefetcher::doReq(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
   uint32_t paddr = mreq->getAddr() & defaultMask;
+  insertTable(paddr); //NOTE miss
 
-  if (mreq->getMemOperation() == MemRead
-      || mreq->getMemOperation() == MemReadW) {
-    read(mreq);
-    insertTable(paddr);
-  }else{
-      bLine *l = buff->readLine(paddr);
-      if(l)
-  l->invalidate();
-    mreq->goDown(0, lowerLevel[0]);
-  }
-  accesses.inc();
+  TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleReq(mreq, when); 
 }
+/* }}} */
 
-void MarkovPrefetcher::read(MemRequest *mreq)
+void MarkovPrefetcher::doDisp(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
   uint32_t paddr = mreq->getAddr() & defaultMask;
-  bLine *l = buff->readLine(paddr);
+  insertTable(paddr); //NOTE miss
 
-  if(l) { //hit
-    hit.inc();
-    mreq->goUpAbs(nextBuffSlot());
-    return;
-  }
-
-  penFetchSet::iterator it = pendingFetches.find(paddr);
-  if(it != pendingFetches.end()) { // half-miss
-    //LOG("GHBP: half-miss on %08lx", paddr);
-    halfMiss.inc();
-    penReqMapper::iterator itR = pendingRequests.find(paddr);
-
-    if (itR == pendingRequests.end()) {
-      pendingRequests[paddr] = activeMemReqPool.out();
-      itR = pendingRequests.find(paddr);
-    }
-
-    I(itR != pendingRequests.end());
-
-    (*itR).second->push(mreq);
-    return;
-  }
-
-  //LOG("GHBP: miss on [%08lx]", paddr);
-  miss.inc();
-  mreq->goDown(0, lowerLevel[0]);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleDisp(mreq, when);  
 }
+/* }}} */
+
+void MarkovPrefetcher::doReqAck(MemRequest *mreq)
+  /* data is coming back {{{1 */
+{
+  if (mreq->isHomeNode()) {
+    predictions.inc();
+    pendingFetches.insert(mreq->getAddr());
+    return;
+  }
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  router->scheduleReqAck(mreq, when);   
+}
+/* }}} */
+
+void MarkovPrefetcher::doSetState(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
+{
+  router->sendSetStateAll(mreq, mreq->getAction(), delay); 
+}
+/* }}} */
+
+void MarkovPrefetcher::doSetStateAck(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
+{
+  router->scheduleSetStateAck(mreq, delay);
+}
+/* }}} */
+
+bool MarkovPrefetcher::isBusy(AddrType addr) const
+/* always can accept writes {{{1 */
+{
+  return false;
+}
+/* }}} */
+
+TimeDelta_t MarkovPrefetcher::ffread(AddrType addr)
+  /* fast forward reads {{{1 */
+{ 
+  return delay;
+}
+/* }}} */
+
+TimeDelta_t MarkovPrefetcher::ffwrite(AddrType addr)
+  /* fast forward writes {{{1 */
+{ 
+  return delay;
+}
+/* }}} */
 
 void MarkovPrefetcher::prefetch(AddrType prefAddr, Time_t lat)
 {
   uint32_t paddr = prefAddr & defaultMask;
 
-  if(!buff->readLine(paddr)) { // it is not in the buff
-    penFetchSet::iterator it = pendingFetches.find(paddr);
-    if(it == pendingFetches.end()) {
-      CBMemRequest *r;
-
-      r = CBMemRequest::create(lat, lowerLevel[0], MemRead, paddr,
-             processAckCB::create(this, paddr));
-      if(lat != 0) { // if lat=0, the req might not exist anymore at this point
-  r->markPrefetch();
-      }
-
-      predictions.inc();
-      pendingFetches.insert(paddr);
-    }
-  }
-}
-
-
-void MarkovPrefetcher::returnAccess(MemRequest *mreq)
-{
-  mreq->goUp(0);
-}
-
-bool MarkovPrefetcher::canAcceptStore(AddrType addr)
-{
-  return true;
-}
-
-void MarkovPrefetcher::invalidate(AddrType addr,uint16_t size,MemObj *oc)
-{
-  uint32_t paddr = addr & defaultMask;
-   nextBuffSlot();
-
-   bLine *l = buff->readLine(paddr);
-   if(l)
-     l->invalidate();
-}
-
-Time_t MarkovPrefetcher::getNextFreeCycle() const
-{
-  return cachePort->nextSlot(); 
-}
-
-void MarkovPrefetcher::processAck(AddrType addr)
-{
-  uint32_t paddr = addr & defaultMask;
-
-  penFetchSet::iterator itF = pendingFetches.find(paddr);
-  if(itF == pendingFetches.end())
+  if(buff->readLine(paddr))
     return;
 
-  buff->fillLine(paddr);
-
-  penReqMapper::iterator it = pendingRequests.find(paddr);
-
-  if(it != pendingRequests.end()) {
-    //LOG("GHBP: returnAccess [%08lx]", paddr);
-    std::queue<MemRequest *> *tmpReqQueue;
-    tmpReqQueue = (*it).second;
-    while (tmpReqQueue->size()) {
-      tmpReqQueue->front()->goUpAbs(nextBuffSlot());
-      tmpReqQueue->pop();
-    }
-    pendingRequests.erase(paddr);
-    activeMemReqPool.in(tmpReqQueue);
+  penFetchSet::iterator it = pendingFetches.find(paddr);
+  if(it == pendingFetches.end()) {
+    MemRequest *mreq = MemRequest::createReqRead(this, paddr, false); // FIXME, not in the stats
+    router->scheduleReqAckAbs(mreq, missDelay); //Send out the prefetch!
   }
-  pendingFetches.erase(paddr);
 }
 
-void MarkovPrefetcher::insertTable(AddrType addr){
-  uint32_t tag = table->calcTag(addr);
+void MarkovPrefetcher::insertTable(AddrType addr)
+{
+  static int flag_first = false;
+  int i, j;
+  if (flag_first == false){
+    for(i = 0; i < num_rows; i++){
+      for(j=0;j <num_columns; j++){
+        Markov_Table[i][0] = 0;
+      }
+    }
+    flag_first = true;
+  }
+
+  static int prev_row = 0;
+  int row = -1;
+
   Time_t lat = 0;
-
-  if(tag){
-
-    tEntry = table->readLine(addr);
-
-    if(tEntry){
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr1,lat);
-
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr2,lat);
-
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr3,lat);
-
-      lat = nextTableSlot() - globalClock;
-      prefetch(tEntry->predAddr4,lat);
-
-
-      //LOG("Prefetch %d", tEntry->predAddr1);
-      //LOG("Prefetch %d", tEntry->predAddr2);
-    }else{
-      tEntry = table->fillLine(addr);
+  //check if current address is in the table.
+  for(i = 0; i < num_rows; i++){
+    if(Markov_Table[i][0] == addr){
+      row = i;
+      break;
+    }else if(Markov_Table[i][0] == 0){ //found a blank spot in the table
+      Markov_Table[i][0] = addr;
+      printf("HELLO");
+      break;
     }
-
-    LOG("last Addr %d", lastAddr);
-    tEntry = table->readLine(lastAddr);
-
-    //update last entry
-    tEntry->predAddr4 = tEntry->predAddr3;
-    tEntry->predAddr3 = tEntry->predAddr2;
-    tEntry->predAddr2 = tEntry->predAddr1;
-    tEntry->predAddr1 = addr;
-
-    lastAddr = addr;
-  }
-}
-
-void MarkovPrefetcher::TESTinsertTable(AddrType addr){
-
-  TESTdata[0] = 10000;
-  TESTdata[1] = 20000;
-  TESTdata[2] = 30000;
-  TESTdata[3] = 40000;
-  TESTdata[4] = 30000;
-  TESTdata[5] = 10000;
-  TESTdata[6] = 30000;
-  TESTdata[7] = 40000;
-  TESTdata[8] = 20000;
-  TESTdata[9] = 30000;
-  TESTdata[10] = 10000;
-
-  for(int32_t i = 0; i < 11; i++) {
-    AddrType d = TESTdata[i];
-    LOG("Addr %d", d);
-    insertTable(d);
   }
 
+  if(row != -1){ //if we hit the table
+    lat = nextTableSlot() - globalClock;
+    if(Markov_Table[row][1] != 0)
+      prefetch(Markov_Table[row][1],lat);
+    if(Markov_Table[row][2] != 0)
+      prefetch(Markov_Table[row][2],lat);
+  }else{
+    printf("FIX ME: Not enough table space");
+  }
+
+  if(Markov_Table[prev_row][1] == 0){
+    Markov_Table[prev_row][1] = addr;
+  }else if(Markov_Table[prev_row][2] == 0){
+    Markov_Table[prev_row][2] = addr;
+  }else{
+    Markov_Table[prev_row][1] = Markov_Table[prev_row][2];
+    Markov_Table[prev_row][2] = addr;
+  }
+
+  prev_row = row;
 }
-#endif
+

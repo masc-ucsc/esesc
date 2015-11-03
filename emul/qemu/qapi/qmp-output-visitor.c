@@ -11,11 +11,11 @@
  *
  */
 
-#include "qmp-output-visitor.h"
-#include "qemu-queue.h"
+#include "qapi/qmp-output-visitor.h"
+#include "qapi/visitor-impl.h"
+#include "qemu/queue.h"
 #include "qemu-common.h"
-#include "qemu-objects.h"
-#include "qerror.h"
+#include "qapi/qmp/types.h"
 
 typedef struct QStackEntry
 {
@@ -65,6 +65,12 @@ static QObject *qmp_output_pop(QmpOutputVisitor *qov)
 static QObject *qmp_output_first(QmpOutputVisitor *qov)
 {
     QStackEntry *e = QTAILQ_LAST(&qov->stack, QStack);
+
+    /* FIXME - find a better way to deal with NULL values */
+    if (!e) {
+        return NULL;
+    }
+
     return e->value;
 }
 
@@ -159,7 +165,7 @@ static void qmp_output_type_bool(Visitor *v, bool *obj, const char *name,
                                  Error **errp)
 {
     QmpOutputVisitor *qov = to_qov(v);
-    qmp_output_add(qov, name, qbool_from_int(*obj));
+    qmp_output_add(qov, name, qbool_from_bool(*obj));
 }
 
 static void qmp_output_type_str(Visitor *v, char **obj, const char *name,
@@ -180,25 +186,6 @@ static void qmp_output_type_number(Visitor *v, double *obj, const char *name,
     qmp_output_add(qov, name, qfloat_from_double(*obj));
 }
 
-static void qmp_output_type_enum(Visitor *v, int *obj, const char *strings[],
-                                 const char *kind, const char *name,
-                                 Error **errp)
-{
-    int i = 0;
-    int value = *obj;
-    char *enum_str;
-
-    assert(strings);
-    while (strings[i++] != NULL);
-    if (value < 0 || value >= i - 1) {
-        error_set(errp, QERR_INVALID_PARAMETER, name ? name : "null");
-        return;
-    }
-
-    enum_str = (char *)strings[value];
-    qmp_output_type_str(v, &enum_str, name, errp);
-}
-
 QObject *qmp_output_get_qobject(QmpOutputVisitor *qov)
 {
     QObject *obj = qmp_output_first(qov);
@@ -217,14 +204,16 @@ void qmp_output_visitor_cleanup(QmpOutputVisitor *v)
 {
     QStackEntry *e, *tmp;
 
+    /* The bottom QStackEntry, if any, owns the root QObject. See the
+     * qmp_output_push_obj() invocations in qmp_output_add_obj(). */
+    QObject *root = QTAILQ_EMPTY(&v->stack) ? NULL : qmp_output_first(v);
+
     QTAILQ_FOREACH_SAFE(e, &v->stack, node, tmp) {
         QTAILQ_REMOVE(&v->stack, e, node);
-        if (e->value) {
-            qobject_decref(e->value);
-        }
         g_free(e);
     }
 
+    qobject_decref(root);
     g_free(v);
 }
 
@@ -239,7 +228,7 @@ QmpOutputVisitor *qmp_output_visitor_new(void)
     v->visitor.start_list = qmp_output_start_list;
     v->visitor.next_list = qmp_output_next_list;
     v->visitor.end_list = qmp_output_end_list;
-    v->visitor.type_enum = qmp_output_type_enum;
+    v->visitor.type_enum = output_type_enum;
     v->visitor.type_int = qmp_output_type_int;
     v->visitor.type_bool = qmp_output_type_bool;
     v->visitor.type_str = qmp_output_type_str;

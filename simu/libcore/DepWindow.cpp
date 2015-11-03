@@ -43,23 +43,13 @@
 #include "GProcessor.h"
 
 DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName)
-  :gproc(gp)
-  ,srcCluster(aCluster)
-  ,Id(gp->getId())
-  ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getId()))
-  ,WakeUpDelay(SescConf->getInt(clusterName, "wakeupDelay"))
+  :srcCluster(aCluster)
+  ,Id(gp->getID())
+  ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getID()))
   ,SchedDelay(SescConf->getInt(clusterName, "schedDelay"))
-  ,RegFileDelay(SescConf->getInt(clusterName, "regFileDelay"))
   ,wrForwardBus("P(%d)_%s_wrForwardBus",Id, clusterName)
 {
   char cadena[100];
-  sprintf(cadena,"P(%d)_%s_wakeUp", Id, clusterName);
-  wakeUpPort = PortGeneric::create(cadena
-                                 ,SescConf->getInt(clusterName, "wakeUpNumPorts")
-                                 ,SescConf->getInt(clusterName, "wakeUpPortOccp"));
-
-  SescConf->isInt(clusterName, "wakeupDelay");
-  SescConf->isBetween(clusterName, "wakeupDelay", 0, 1024);
 
   sprintf(cadena,"P(%d)_%s_sched", Id, clusterName);
   schedPort = PortGeneric::create(cadena
@@ -72,9 +62,6 @@ DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName)
 
   SescConf->isInt("cpusimu"    , "interClusterLat",Id);
   SescConf->isBetween("cpusimu" , "interClusterLat", 0, 1024,Id);
-
-  SescConf->isInt(clusterName    , "regFileDelay");
-  SescConf->isBetween(clusterName , "regFileDelay", 0, 1024);
 }
 
 DepWindow::~DepWindow() {
@@ -90,67 +77,33 @@ void DepWindow::addInst(DInst *dinst) {
   I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
 
   if (!dinst->hasDeps()) {
-    dinst->setWakeUpTime(wakeUpPort->nextSlot(dinst->getStatsFlag()) + WakeUpDelay);
     preSelect(dinst);
-  }
-}
-
-// Look for dependent instructions on the same cluster (do not wakeup,
-// just get the time)
-void DepWindow::wakeUpDeps(DInst *dinst) {
-  I(!dinst->hasDeps());
-
-  // Even if it does not wakeup instructions the port is used
-  Time_t wakeUpTime= wakeUpPort->nextSlot(dinst->getStatsFlag());
-  //dinst->dump("Clearing:");
-  dinst->clearRATEntry(); // Not much impact for OoO, mostly for InOrder
-
-  if (!dinst->hasPending())
-    return;
-
-  // NEVER HERE FOR in-order cores
-
-  wakeUpTime += WakeUpDelay;
-
-  I(dinst->getCluster());
-  I(srcCluster == dinst->getCluster());
-
-  I(dinst->hasPending());
-  for(const DInstNext *it = dinst->getFirst();
-       it ;
-       it = it->getNext() ) {
-    DInst *dstReady = it->getDInst();
-
-    const Cluster *dstCluster = dstReady->getCluster();
-    I(dstCluster); // all the instructions should have a resource after rename stage
-
-    if (dstCluster == srcCluster && dstReady->getWakeUpTime() < wakeUpTime)
-      dstReady->setWakeUpTime(wakeUpTime);
   }
 }
 
 void DepWindow::preSelect(DInst *dinst) {
   // At the end of the wakeUp, we can start to read the register file
-  I(dinst->getWakeUpTime());
   I(!dinst->hasDeps());
 
-  Time_t wakeUpTime = dinst->getWakeUpTime() + RegFileDelay;
-
-  IS(dinst->setWakeUpTime(0));
+  dinst->setWakeUpTime(globalClock);
   dinst->markIssued();
   I(dinst->getCluster());
-  dinst->clearRATEntry(); 
 
-  Resource::selectCB::scheduleAbs(wakeUpTime, dinst->getClusterResource(), dinst);
+  dinst->getCluster()->select(dinst);
 }
 
 void DepWindow::select(DInst *dinst) {
-  I(!dinst->getWakeUpTime());
 
   Time_t schedTime = schedPort->nextSlot(dinst->getStatsFlag()) + SchedDelay;
+  if (dinst->hasInterCluster())
+    schedTime += InterClusterLat;
 
   I(srcCluster == dinst->getCluster());
-  //dinst->executingCB.scheduleAbs(schedTime);
+  if (schedTime == globalClock) {
+    if (!dinst->isRenamed())
+      schedTime++;
+  }
+
   Resource::executingCB::scheduleAbs(schedTime, dinst->getClusterResource(), dinst);
 }
 
@@ -160,8 +113,8 @@ void DepWindow::executed(DInst *dinst) {
 
   I(!dinst->hasDeps());
 
-  //dinst->dump("Clearing2:");
-  dinst->clearRATEntry();
+  dinst->markExecuted();
+  dinst->clearRATEntry(); 
 
   if (!dinst->hasPending())
     return;
@@ -171,28 +124,11 @@ void DepWindow::executed(DInst *dinst) {
   I(dinst->getCluster());
   I(srcCluster == dinst->getCluster());
 
-  // Only until reaches last. The instructions that are from another processor
-  // should be added again to the dependence chain so that MemRequest::ack can
-  // awake them (other processor instructions)
-
-  const DInst *stopAtDst = 0;
-
   I(dinst->isIssued());
   while (dinst->hasPending()) {
-
-    if (stopAtDst == dinst->getFirstPending())
-      break;
     DInst *dstReady = dinst->getNextPending();
     I(dstReady);
 
-#if 0
-    if (!dstReady->isIssued()) {
-      I(dinst->getInst()->isStore());
-
-      I(!dstReady->hasDeps());
-      continue;
-    }
-#endif
     I(!dstReady->isExecuted());
 
     if (!dstReady->hasDeps()) {
@@ -201,13 +137,10 @@ void DepWindow::executed(DInst *dinst) {
       const Cluster *dstCluster = dstReady->getCluster();
       I(dstCluster);
 
-      Time_t when = wakeUpPort->nextSlot(dinst->getStatsFlag());
       if (dstCluster != srcCluster) {
         wrForwardBus.inc(dinst->getStatsFlag());
-        when += InterClusterLat;
+        dinst->markInterCluster();
       }
-
-      dstReady->setWakeUpTime(when);
 
       preSelect(dstReady);
     }

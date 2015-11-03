@@ -16,8 +16,14 @@ struct target_pt_regs {
     target_psw_t psw;
     abi_ulong gprs[TARGET_NUM_GPRS];
     abi_ulong orig_gpr2;
-    unsigned short ilc;
+    unsigned short ilen;
     unsigned short trap;
 };
 
 #define UNAME_MACHINE "s390x"
+#define UNAME_MINIMUM_RELEASE "2.6.32"
+
+#define TARGET_CLONE_BACKWARDS2
+#define TARGET_MINSIGSTKSZ        2048
+#define TARGET_MLOCKALL_MCL_CURRENT 1
+#define TARGET_MLOCKALL_MCL_FUTURE  2

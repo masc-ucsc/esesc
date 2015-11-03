@@ -23,74 +23,69 @@
  * THE SOFTWARE.
  */
 #include "qemu-common.h"
-#include "qemu_socket.h"
-#include "qemu-coroutine.h"
+#include "qemu/sockets.h"
+#include "block/coroutine.h"
+#include "qemu/iov.h"
+#include "qemu/main-loop.h"
 
-int coroutine_fn qemu_co_recvv(int sockfd, struct iovec *iov,
-                               int len, int iov_offset)
+ssize_t coroutine_fn
+qemu_co_sendv_recvv(int sockfd, struct iovec *iov, unsigned iov_cnt,
+                    size_t offset, size_t bytes, bool do_send)
 {
-    int total = 0;
-    int ret;
-    while (len) {
-        ret = qemu_recvv(sockfd, iov, len, iov_offset + total);
-        if (ret < 0) {
-            if (errno == EAGAIN) {
+    size_t done = 0;
+    ssize_t ret;
+    int err;
+    while (done < bytes) {
+        ret = iov_send_recv(sockfd, iov, iov_cnt,
+                            offset + done, bytes - done, do_send);
+        if (ret > 0) {
+            done += ret;
+        } else if (ret < 0) {
+            err = socket_error();
+            if (err == EAGAIN || err == EWOULDBLOCK) {
                 qemu_coroutine_yield();
-                continue;
+            } else if (done == 0) {
+                return -err;
+            } else {
+                break;
             }
-            if (total == 0) {
-                total = -1;
-            }
+        } else if (ret == 0 && !do_send) {
+            /* write (send) should never return 0.
+             * read (recv) returns 0 for end-of-file (-data).
+             * In both cases there's little point retrying,
+             * but we do for write anyway, just in case */
             break;
         }
-        if (ret == 0) {
-            break;
-        }
-        total += ret, len -= ret;
     }
-
-    return total;
+    return done;
 }
 
-int coroutine_fn qemu_co_sendv(int sockfd, struct iovec *iov,
-                               int len, int iov_offset)
+ssize_t coroutine_fn
+qemu_co_send_recv(int sockfd, void *buf, size_t bytes, bool do_send)
 {
-    int total = 0;
-    int ret;
-    while (len) {
-        ret = qemu_sendv(sockfd, iov, len, iov_offset + total);
-        if (ret < 0) {
-            if (errno == EAGAIN) {
-                qemu_coroutine_yield();
-                continue;
-            }
-            if (total == 0) {
-                total = -1;
-            }
-            break;
-        }
-        total += ret, len -= ret;
-    }
-
-    return total;
+    struct iovec iov = { .iov_base = buf, .iov_len = bytes };
+    return qemu_co_sendv_recvv(sockfd, &iov, 1, 0, bytes, do_send);
 }
 
-int coroutine_fn qemu_co_recv(int sockfd, void *buf, int len)
+typedef struct {
+    Coroutine *co;
+    int fd;
+} FDYieldUntilData;
+
+static void fd_coroutine_enter(void *opaque)
 {
-    struct iovec iov;
-
-    iov.iov_base = buf;
-    iov.iov_len = len;
-
-    return qemu_co_recvv(sockfd, &iov, len, 0);
+    FDYieldUntilData *data = opaque;
+    qemu_set_fd_handler(data->fd, NULL, NULL, NULL);
+    qemu_coroutine_enter(data->co, NULL);
 }
 
-int coroutine_fn qemu_co_send(int sockfd, void *buf, int len)
+void coroutine_fn yield_until_fd_readable(int fd)
 {
-    struct iovec iov;
+    FDYieldUntilData data;
 
-    iov.iov_base = buf;
-    iov.iov_len = len;
-
-    return qemu_co_sendv(sockfd, &iov, len, 0);
+    assert(qemu_in_coroutine());
+    data.co = qemu_coroutine_self();
+    data.fd = fd;
+    qemu_set_fd_handler(fd, fd_coroutine_enter, NULL, &data);
+    qemu_coroutine_yield();
 }

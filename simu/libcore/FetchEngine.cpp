@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -43,18 +43,18 @@
 #include "MemObj.h"
 #include "MemRequest.h"
 #include "GMemorySystem.h"
-//#include "GProcessor.h"
 
 #include "Pipeline.h"
+extern bool MIMDmode;
 
 
 FetchEngine::FetchEngine(FlowID id
-  ,GProcessor *gproc_
   ,GMemorySystem *gms_
   ,FetchEngine *fe)
   :gms(gms_)
-  ,gproc(gproc_)
   ,avgBranchTime("P(%d)_FetchEngine_avgBranchTime", id)
+  ,avgBranchTime2("P(%d)_FetchEngine_avgBranchTime2", id)
+  ,avgFetchTime("P(%d)_FetchEngine_avgFetchTime", id)
   ,nDelayInst1("P(%d)_FetchEngine:nDelayInst1", id)
   ,nDelayInst2("P(%d)_FetchEngine:nDelayInst2", id) // Not enough BB/LVIDs per cycle
   ,nDelayInst3("P(%d)_FetchEngine:nDelayInst3", id) // bpredDelay
@@ -69,42 +69,54 @@ FetchEngine::FetchEngine(FlowID id
   // Constraints
   SescConf->isInt("cpusimu", "fetchWidth",id);
   SescConf->isBetween("cpusimu", "fetchWidth", 1, 1024, id);
+  SescConf->isPower2("cpusimu", "fetchWidth", id);
   FetchWidth = SescConf->getInt("cpusimu", "fetchWidth", id);
+  FetchWidthBits = log2i(FetchWidth);
+
+  AlignedFetch   = SescConf->getBool("cpusimu","alignedFetch", id);
 
   SescConf->isBetween("cpusimu", "bb4Cycle",0,1024,id);
   BB4Cycle = SescConf->getInt("cpusimu", "bb4Cycle",id);
   if( BB4Cycle == 0 )
     BB4Cycle = USHRT_MAX;
-  SescConf->isBetween("cpusimu", "bpredDelay",1,1024,id);
-  bpredDelay = SescConf->getInt("cpusimu", "bpredDelay",id);
 
   const char *bpredSection = SescConf->getCharPtr("cpusimu","bpred",id);
 
-  if( fe )
-    bpred = new BPredictor(id, FetchWidth, bpredSection, fe->bpred);
+  BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
+
+  if (BTACDelay)
+    SescConf->isBetween("cpusimu", "bpredDelay",1,BTACDelay,id);
   else
-    bpred = new BPredictor(id, FetchWidth, bpredSection);
+    SescConf->isBetween("cpusimu", "bpredDelay",1,1024,id);
+
+  bpredDelay = SescConf->getInt("cpusimu", "bpredDelay",id);
+
+
+  if( fe )
+    bpred = new BPredictor(id, FetchWidth, bpredSection, "", fe->bpred);
+  else
+    bpred = new BPredictor(id, FetchWidth, bpredSection, "");
 
   SescConf->isInt(bpredSection, "BTACDelay");
   SescConf->isBetween(bpredSection, "BTACDelay", 0, 1024);
 
-  BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
 
-  //Supporting multiple SPs (processing elements) in the processor
-  if(SescConf->checkInt("cpusimu", "sp_per_sm", id)) {
-    numSP = SescConf->getInt("cpusimu", "sp_per_sm", id); 
-  } else {
-    // What about an SMT-like processor?
-    numSP = 1;
-  } 
-
-  missInst  = new bool[numSP];
-  lastd     = new DInst* [numSP];
-  cbPending = new CallbackContainer[numSP];
-
-  for (uint32_t i = 0; i < numSP; i++){
-    missInst[i]      = false;
+  if (BTACDelay!=0) {
+    if (SescConf->checkCharPtr("cpusimu","bpred2",id)) {
+      bpredSection = SescConf->getCharPtr("cpusimu","bpred2",id);
+      if( fe )
+        bpred2 = new BPredictor(id, FetchWidth, bpredSection, "2", fe->bpred2);
+      else
+        bpred2 = new BPredictor(id, FetchWidth, bpredSection, "2");
+    }else{
+      bpred2 = 0;
+    }
+  }else{
+    bpred2 = 0;
   }
+
+  lastd     = 0;
+  missInst  = false;
 
   // Get some icache L1 parameters
   enableICache = SescConf->getBool("cpusimu","enableICache", id);
@@ -126,130 +138,183 @@ FetchEngine::FetchEngine(FlowID id
       IL1HitDelay = 1; // 1 cycle if impossible to find the information required
     }
   }
+
+  lastMissTime = 0;
 }
 
 FetchEngine::~FetchEngine() {
   delete bpred;
 }
 
-bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetched, uint16_t* to_delete_maxbb) {
+bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch, uint16_t* to_delete_maxbb) {
   const Instruction *inst = dinst->getInst();
-  Time_t missFetchTime=0;
 
   I(dinst->getInst()->isControl()); // getAddr is target only for br/jmp
   PredType prediction     = bpred->predict(dinst, true);
 
   if(prediction == CorrectPrediction) {
-    if( dinst->isTaken() ) {
-      bool dobreak = false;
-      // Only when the branch is taken check maxBB
-      if (bpredDelay > 1) {
-        // Block fetching (not really a miss, but the taken takes time).
-        missFetchTime = globalClock;
-        setMissInst(dinst);
-        unBlockFetchBPredDelayCB::schedule(bpredDelay-1, this , dinst, missFetchTime);
-        dobreak = true;
-      }
+    if( !dinst->isTaken() ) 
+      return false;
 
-      if( maxBB <= 1 ) {
-        // No instructions fetched (stall)
-        if (!missInst[dinst->getPE()]) {
-          nDelayInst2.add(n2Fetched, dinst->getStatsFlag());
-          //I(0);
-          return true;
-        }
-      }
-      maxBB--;
-      return dobreak;
+    maxBB--;
+
+    // Only when the branch is taken check maxBB
+    if (bpredDelay > 1) {
+      // Block fetching (not really a miss, but the taken takes time).
+      setMissInst(dinst);
+      unBlockFetchBPredDelayCB::schedule(bpredDelay-1, this , dinst, globalClock);
+      return true;
     }
+
+    if( maxBB < 1 ) {
+      // No instructions fetched (stall)
+      nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
+      return true;
+    }
+
     return false;
   }
 
-  I(!missInst[dinst->getPE()]);
-  I(missFetchTime==0);
-
-  missFetchTime = globalClock;
-
   //MSG("2: Dinst not taken Adding PC %x ID %llu\t  ",dinst->getPC(), dinst->getID());
   setMissInst(dinst);
+  Time_t n = (globalClock-lastMissTime);
+  avgFetchTime.sample(n, dinst->getStatsFlag());
 
-  if( BTACDelay ) {
-    if( prediction == NoBTBPrediction && inst->doesJump2Label() ) {
-      nBTAC.inc(dinst->getStatsFlag());
+  if( inst->doesJump2Label() ) {
+    nBTAC.inc(dinst->getStatsFlag());
+    unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
+  }else if( bpred2) {
+    nBTAC.inc(dinst->getStatsFlag());
+    if (bpred2->predict2(dinst, true) == CorrectPrediction) {
       unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
     }else{
-      dinst->lockFetch(this); // blocked fetch (awaked in Resources)
+      dinst->lockFetch(this);
     }
   }else{
-    dinst->lockFetch(this); // blocked fetch (awaked in Resources)
+    dinst->lockFetch(this);
   }
 
   return true;
 }
 
-void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DInst* oldinst, int32_t n2Fetched, uint16_t maxbb) {
+// #define USE_FUSE
+
+void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch, uint16_t maxbb) {
 
   uint16_t tempmaxbb = maxbb; // FIXME: delete me
-  bool getStatsFlag = false;
 
-  if (oldinst) {
-    if (missInst[oldinst->getPE()]) {
-      if (lastd[oldinst->getPE()] != oldinst) {
-        cbPending[oldinst->getPE()].add(realfetchCB::create(this,bucket,eint,fid,oldinst,n2Fetched,tempmaxbb));
-      }else{
-        I(0);
+  AddrType lastpc = 0;
+  bool     lastdiff = false;
+
+#ifdef USE_FUSE
+  RegType  last_dest = LREG_R0;
+  RegType  last_src1 = LREG_R0;
+  RegType  last_src2 = LREG_R0;
+#endif
+
+  do {
+    DInst *dinst = 0;
+    dinst = eint->executeHead(fid);
+    if (dinst == 0) {
+      //if (fid)
+      //I(0);
+      break;
+    }
+
+#ifdef USE_FUSE
+    if (/*!dinst->getStatsFlag() && */dinst->getPC() == 0) {
+      if (dinst->getInst()->isLoad()) {
+        MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());
+        dinst->scrap(eint);
+        dinst = 0;
+      } else if (dinst->getInst()->isStore()) {
+        MemRequest::sendReqWriteWarmup(gms->getDL1(), dinst->getAddr());
+        dinst->scrap(eint);
+        dinst = 0;
       }
-      return;
     }
-    
-    if(oldinst->getInst()->isControl()) {
-      processBranch(oldinst, n2Fetched,&tempmaxbb);
+    if (dinst == 0) { // Drain cache (mostly) during warmup. FIXME: add a drain cache method?
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      EventScheduler::advanceClock();
+      continue;
     }
+#endif
+    if (lastpc == 0) {
+      if (AlignedFetch) {
+        n2Fetch -= ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
+      }
+      n2Fetch--;
+      lastdiff = false;
+    }else{
+      if ((lastpc+4) != dinst->getPC()) {
+        //        n2Fetch -= (dinst->getPC()-lastpc)>>2;
+        n2Fetch--;
+        if (lastdiff) {
+          n2Fetch--; // Missed NOP
+        }
+        lastdiff = true;
+      }else{
+        n2Fetch--;
+        lastdiff = false;
+      }
+    }
+    lastpc  = dinst->getPC();
 
-   bucket->push(oldinst);
-   n2Fetched--;
+    I(!missInst);
 
-  } else {
-    do {
-      DInst *dinst = eint->executeHead(fid);
-      if (dinst == 0) {
-        //if (fid)
-          //I(0);
+    dinst->setFetchTime();
+    bucket->push(dinst);
+        
+#ifdef USE_FUSE
+    if(dinst->getInst()->isControl()) {
+      RegType src1 = dinst->getInst()->getSrc1();
+      if (dinst->getInst()->doesJump2Label() && dinst->getInst()->getSrc2() == LREG_R0 
+          && (src1 == last_dest || src1 == last_src1 || src1 == last_src2 || src1 == LREG_R0) ) {
+        //MSG("pc %x fusion with previous", dinst->getPC());
+        dinst->scrap(eint);
+        continue;
+      }
+    }
+#endif
+        
+    if(dinst->getInst()->isControl()) {
+      bool stall_fetch = processBranch(dinst, n2Fetch,&tempmaxbb);
+      if (stall_fetch) {
+        //bucket->push(dinst);
         break;
       }
-      getStatsFlag |= dinst->getStatsFlag();
+      I(!missInst);
+    }else{
+      //bucket->push(dinst);
+    }
+#ifdef USE_FUSE
+    last_dest = dinst->getInst()->getDst1();
+    last_src1 = dinst->getInst()->getSrc1();
+    last_src2 = dinst->getInst()->getSrc2();
+#endif
 
-      if (missInst[dinst->getPE()]) {
-        I(lastd[dinst->getPE()] != dinst);
-        //MSG("Oops! FID: %d PE: %d is locked now..Adding DInst ID %d to a list of callback[%d]", (int) fid, (int) dinst->getPE(), (int) dinst->getID(),(int) dinst->getPE()); 
-        cbPending[dinst->getPE()].add(realfetchCB::create(this,bucket,eint,fid,dinst,n2Fetched,tempmaxbb));
-        return;
-      }
-
-
-      bucket->push(dinst);
-      n2Fetched--;
-
-      if(dinst->getInst()->isControl()) {
-        bool stall_fetch = processBranch(dinst, n2Fetched,&tempmaxbb);
-        if (stall_fetch) {
-          break;
-        }
-        I(!missInst[dinst->getPE()]);
-      }
-
-      // Fetch uses getHead, ROB retires getTail
-    } while(n2Fetched>0);
-  }
-
-  uint16_t tmp = FetchWidth - n2Fetched;
-
-  nFetched.add(tmp, getStatsFlag);
+    // Fetch uses getHead, ROB retires getTail
+  } while(n2Fetch>0);
 
   if(enableICache && !bucket->empty()) {
-    MemRequest::sendReqRead(gms->getIL1(), bucket->top(), bucket->top()->getPC(), &(bucket->markFetchedCB));
+    nFetched.add(FetchWidth - n2Fetch, bucket->top()->getStatsFlag());
+    MemRequest::sendReqRead(gms->getIL1(), bucket->top()->getStatsFlag(), bucket->top()->getPC(), &(bucket->markFetchedCB));
   }else{
     bucket->markFetchedCB.schedule(IL1HitDelay);
+#if 0
+    if (bucket->top() != NULL)
+    MSG("@%lld: Bucket [%p] (Top ID = %d) to be markFetched after %d cycles i.e. @%lld"
+        ,(long long int)globalClock
+        , bucket
+        , (int) bucket->top()->getID()
+        , IL1HitDelay
+        , (long long int)(globalClock)+IL1HitDelay
+        );
+#endif
   }
 
 }
@@ -257,10 +322,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
 void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
 
   // Reset the max number of BB to fetch in this cycle (decreased in processBranch)
-  maxBB = BB4Cycle; 
+  maxBB = BB4Cycle;
 
-  // You pass maxBB because there may be many fetches calls to realfetch in one cycle (thanks to the callbacks) 
-  realfetch(bucket, eint, fid, NULL, FetchWidth,maxBB);
+  // You pass maxBB because there may be many fetches calls to realfetch in one cycle
+  // (thanks to the callbacks)
+  realfetch(bucket, eint, fid, FetchWidth,maxBB);
 
 }
 
@@ -272,9 +338,10 @@ void FetchEngine::dump(const char *str) const {
 }
 
 void FetchEngine::unBlockFetchBPredDelay(DInst* dinst, Time_t missFetchTime) {
-  clearMissInst(dinst);
+  clearMissInst(dinst, missFetchTime);
 
   Time_t n = (globalClock-missFetchTime);
+  avgBranchTime2.sample(n, dinst->getStatsFlag()); // Not short branches
   //n *= FetchWidth; // FOR CPU
   n *= 1; //FOR GPU
 
@@ -283,31 +350,34 @@ void FetchEngine::unBlockFetchBPredDelay(DInst* dinst, Time_t missFetchTime) {
 
 
 void FetchEngine::unBlockFetch(DInst* dinst, Time_t missFetchTime) {
-  clearMissInst(dinst);
+  clearMissInst(dinst, missFetchTime);
 
   I(missFetchTime != 0);
   Time_t n = (globalClock-missFetchTime);
-  avgBranchTime.sample(n, dinst->getStatsFlag());
+  avgBranchTime.sample(n, dinst->getStatsFlag()); // Not short branches
   //n *= FetchWidth;  //FOR CPU
-  n *= 1; //FOR GPU
+  n *= 1; //FOR GPU and for MIMD
   nDelayInst1.add(n, dinst->getStatsFlag());
+
+  lastMissTime = globalClock;
 }
 
 
-void FetchEngine::clearMissInst(DInst * dinst) {
-  //MSG("\t\t\t\t\tCPU: %d\tU:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getId(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
-  missInst[dinst->getPE()] = false;
+void FetchEngine::clearMissInst(DInst * dinst, Time_t missFetchTime){
 
-  I(lastd[ dinst->getPE()] == dinst);
-  //cbPending[dinst->getPE()].call();
-  cbPending[dinst->getPE()].mycall();
+  //MSG("\t\t\t\t\tCPU: %d\tU:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getID(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
+  missInst = false;
+
+  I(lastd == dinst);
+  cbPending.mycall();
 }
 
 void FetchEngine::setMissInst(DInst * dinst) {
-  //MSG("CPU: %d\tL:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getId(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
+  //MSG("CPU: %d\tL:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getID(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
 
-  I(!missInst[dinst->getPE()]);
-  missInst[dinst->getPE()] = true;
-  lastd[dinst->getPE()] = dinst;
-} 
+  I(!missInst);
+
+  missInst      = true;
+  lastd         = dinst;
+}
 

@@ -119,14 +119,14 @@ void Metrics::updateTiming(){
 	double maxV = DBL_MIN;
 	double minV = DBL_MAX;
 	for(size_t i=0;i<(*Temperature).size();i++){
-		(*MaxT)[i]->sample((*Temperature)[i]);
-		chipMaxT->sample((*Temperature)[i]);
+		(*MaxT)[i]->sample((*Temperature)[i], true);
+		chipMaxT->sample((*Temperature)[i], true);
 
 		maxV = (*Temperature)[i] > maxV ? (*Temperature)[i] : maxV;
 		minV = (*Temperature)[i] < minV ? (*Temperature)[i] : minV;
 	} 
-   chipGradT->sample(maxV  - minV) ;// Gradients at each time snapshot
-   chipAvgT->sample(maxV);
+   chipGradT->sample(maxV  - minV, true) ;// Gradients at each time snapshot
+   chipAvgT->sample(maxV, true);
    //chipMaxTHist->sample(maxV);
 
 
@@ -145,23 +145,23 @@ void Metrics::updateFITs(double timeinterval, ThermTrace *trace){
 
 	for(size_t i=0;i<(*Temperature).size();i++){
 		double em   = exp(EM1/(*Temperature)[i]) * scaleFactor ;
-		(*EM_fit)[i]->sample( timeinterval/em);
+		(*EM_fit)[i]->sample( timeinterval/em, true);
 
 		double sm   = exp(SM1/(*Temperature)[i]) * pow((MDT - (*Temperature)[i]),-IMC)  * scaleFactorSM ;
-		(*SM_fit)[i]->sample((timeinterval/sm));
+		(*SM_fit)[i]->sample((timeinterval/sm), true);
 
 		//printf("sM:%ld, sM2:%lf, interv:%lf, sm:%lf temp:%lf \n", static_cast<uint64_t>((1/sm) * timeinterval), ((1/sm) * timeinterval), timeinterval, sm, (*Temperature)[i]);
 		double tddb = exp(TD3/(*Temperature)[i]) * pow(pow((1/VDE),(*Temperature)[i]),TD2)
 			* pow(1/VDE,TD1) * exp(TD4*pow(1/(*Temperature)[i],2))  * scaleFactor ;
-		(*TDDB_fit)[i]->sample((timeinterval/tddb));
+		(*TDDB_fit)[i]->sample((timeinterval/tddb), true);
 
 		double tc   = pow(tabs(1/((*Temperature)[i] - AMBT)),CMC) ;
-		(*TC_fit)[i]->sample((timeinterval/tc));
+		(*TC_fit)[i]->sample((timeinterval/tc), true);
 
 		double nbti = pow((log(NB1/(1+2*exp(NB2/(*Temperature)[i]))) - 
 					log(NB1/ (1+2*exp(NB2/(*Temperature)[i]))-NB5))* (*Temperature)[i] / 
 				exp(1/(*Temperature)[i])*NB3,NB4) * scaleFactor ;
-		(*NBTI_fit)[i]->sample((timeinterval/nbti));
+		(*NBTI_fit)[i]->sample((timeinterval/nbti), true);
 
 		//double energy = exp((*flp)[i]->devType.a)*exp((*flp)[i]->devType.b/(*Temperature)[i])*pow((*flp)[i]->devType.c,(*Temperature)[i]) * timeinterval;
 	}
@@ -171,19 +171,19 @@ void Metrics::updateFITs(double timeinterval, ThermTrace *trace){
 	if (trace->energyCntrValues_->size()> 0){
 		for(size_t i=0; i<trace->energyCntrValues_->at(0).size(); i++){
 			if (i == 6){
-				LSQPower -> sample(trace->energyCntrValues_->at(0)[i]);
+				LSQPower -> sample(trace->energyCntrValues_->at(0)[i], true);
 				//printf("LSQP:%e\t",(trace->energyCntrValues_->at(0)[i]));
 			}
 			if (i == 1){
-				DCPower -> sample(trace->energyCntrValues_->at(0)[i]);
+				DCPower -> sample(trace->energyCntrValues_->at(0)[i], true);
 				//printf("DCP:%e\n",(trace->energyCntrValues_->at(0)[i]));
 			}
 			power += trace->energyCntrValues_->at(0)[i];
 		}
 	}
 
-	ChipLeak->sample(leak);
-	ChipPower->sample(power);
+	ChipLeak->sample(leak, true);
+	ChipPower->sample(power, true);
 }
 
 
@@ -191,9 +191,9 @@ void Metrics::updateAllMetrics(const std::vector < MATRIX_DATA > * Temp, double 
   Temperature = const_cast <std::vector < MATRIX_DATA > *> (Temp);
 	updateTiming();
 	updateFITs(timeinterval,trace);
-	Throttling->sample(static_cast<double>(throttleTotal));
-	sescThermTime->sample(time);
-	simulatedTime->sample(simTime);
+	Throttling->sample(static_cast<double>(throttleTotal), true);
+	sescThermTime->sample(time, true);
+	simulatedTime->sample(simTime, true);
 }
 
 

@@ -56,6 +56,10 @@
 #include <iostream>
 #include "const.h"
 
+#include <boost/serialization/access.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+
 using namespace std;
 
 
@@ -66,6 +70,11 @@ class uca_org_t;
 
 class powerComponents
 {
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   public:
     double dynamic;
     double leakage;
@@ -94,6 +103,11 @@ class powerComponents
 
 class powerDef
 {
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   public:
     powerComponents readOp;
     powerComponents writeOp;
@@ -160,6 +174,11 @@ enum Wire_type
 
 class InputParameter
 {
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   public:
     void parse_cfg(const string & infile);
 
@@ -256,6 +275,11 @@ class InputParameter
 
 
 typedef struct{
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   int Ndwl;
   int Ndbl;
   double Nspd;
@@ -405,6 +429,11 @@ typedef struct{
 
 class uca_org_t
 {
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   public:
     mem_array * tag_array2;
     mem_array * data_array2;
@@ -534,6 +563,11 @@ uca_org_t cacti_interface(
 
 class mem_array
 {
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   public:
   int    Ndwl;
   int    Ndbl;

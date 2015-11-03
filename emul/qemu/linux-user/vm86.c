@@ -45,34 +45,40 @@ static inline int is_revectored(int nr, struct target_revectored_struct *bitmap)
     return (((uint8_t *)bitmap)[nr >> 3] >> (nr & 7)) & 1;
 }
 
-static inline void vm_putw(uint32_t segptr, unsigned int reg16, unsigned int val)
+static inline void vm_putw(CPUX86State *env, uint32_t segptr,
+                           unsigned int reg16, unsigned int val)
 {
-    stw(segptr + (reg16 & 0xffff), val);
+    cpu_stw_data(env, segptr + (reg16 & 0xffff), val);
 }
 
-static inline void vm_putl(uint32_t segptr, unsigned int reg16, unsigned int val)
+static inline void vm_putl(CPUX86State *env, uint32_t segptr,
+                           unsigned int reg16, unsigned int val)
 {
-    stl(segptr + (reg16 & 0xffff), val);
+    cpu_stl_data(env, segptr + (reg16 & 0xffff), val);
 }
 
-static inline unsigned int vm_getb(uint32_t segptr, unsigned int reg16)
+static inline unsigned int vm_getb(CPUX86State *env,
+                                   uint32_t segptr, unsigned int reg16)
 {
-    return ldub(segptr + (reg16 & 0xffff));
+    return cpu_ldub_data(env, segptr + (reg16 & 0xffff));
 }
 
-static inline unsigned int vm_getw(uint32_t segptr, unsigned int reg16)
+static inline unsigned int vm_getw(CPUX86State *env,
+                                   uint32_t segptr, unsigned int reg16)
 {
-    return lduw(segptr + (reg16 & 0xffff));
+    return cpu_lduw_data(env, segptr + (reg16 & 0xffff));
 }
 
-static inline unsigned int vm_getl(uint32_t segptr, unsigned int reg16)
+static inline unsigned int vm_getl(CPUX86State *env,
+                                   uint32_t segptr, unsigned int reg16)
 {
-    return ldl(segptr + (reg16 & 0xffff));
+    return cpu_ldl_data(env, segptr + (reg16 & 0xffff));
 }
 
 void save_v86_state(CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
     struct target_vm86plus_struct * target_v86;
 
     if (!lock_user_struct(VERIFY_WRITE, target_v86, ts->target_v86, 0))
@@ -131,7 +137,8 @@ static inline void return_to_32bit(CPUX86State *env, int retval)
 
 static inline int set_IF(CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
 
     ts->v86flags |= VIF_MASK;
     if (ts->v86flags & VIP_MASK) {
@@ -143,7 +150,8 @@ static inline int set_IF(CPUX86State *env)
 
 static inline void clear_IF(CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
 
     ts->v86flags &= ~VIF_MASK;
 }
@@ -160,7 +168,8 @@ static inline void clear_AC(CPUX86State *env)
 
 static inline int set_vflags_long(unsigned long eflags, CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
 
     set_flags(ts->v86flags, eflags, ts->v86mask);
     set_flags(env->eflags, eflags, SAFE_MASK);
@@ -173,7 +182,8 @@ static inline int set_vflags_long(unsigned long eflags, CPUX86State *env)
 
 static inline int set_vflags_short(unsigned short flags, CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
 
     set_flags(ts->v86flags, flags, ts->v86mask & 0xffff);
     set_flags(env->eflags, flags, SAFE_MASK);
@@ -186,7 +196,8 @@ static inline int set_vflags_short(unsigned short flags, CPUX86State *env)
 
 static inline unsigned int get_vflags(CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
     unsigned int flags;
 
     flags = env->eflags & RETURN_MASK;
@@ -202,7 +213,8 @@ static inline unsigned int get_vflags(CPUX86State *env)
    support TSS interrupt revectoring, so this code is always executed) */
 static void do_int(CPUX86State *env, int intno)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
     uint32_t int_addr, segoffs, ssp;
     unsigned int sp;
 
@@ -214,7 +226,7 @@ static void do_int(CPUX86State *env, int intno)
                                        &ts->vm86plus.int21_revectored))
         goto cannot_handle;
     int_addr = (intno << 2);
-    segoffs = ldl(int_addr);
+    segoffs = cpu_ldl_data(env, int_addr);
     if ((segoffs >> 16) == TARGET_BIOSSEG)
         goto cannot_handle;
     LOG_VM86("VM86: emulating int 0x%x. CS:IP=%04x:%04x\n",
@@ -222,9 +234,9 @@ static void do_int(CPUX86State *env, int intno)
     /* save old state */
     ssp = env->segs[R_SS].selector << 4;
     sp = env->regs[R_ESP] & 0xffff;
-    vm_putw(ssp, sp - 2, get_vflags(env));
-    vm_putw(ssp, sp - 4, env->segs[R_CS].selector);
-    vm_putw(ssp, sp - 6, env->eip);
+    vm_putw(env, ssp, sp - 2, get_vflags(env));
+    vm_putw(env, ssp, sp - 4, env->segs[R_CS].selector);
+    vm_putw(env, ssp, sp - 6, env->eip);
     ADD16(env->regs[R_ESP], -6);
     /* goto interrupt handler */
     env->eip = segoffs & 0xffff;
@@ -260,7 +272,8 @@ void handle_vm86_trap(CPUX86State *env, int trapno)
 
 void handle_vm86_fault(CPUX86State *env)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
     uint32_t csp, ssp;
     unsigned int ip, sp, newflags, newip, newcs, opcode, intno;
     int data32, pref_done;
@@ -277,7 +290,7 @@ void handle_vm86_fault(CPUX86State *env)
     data32 = 0;
     pref_done = 0;
     do {
-        opcode = vm_getb(csp, ip);
+        opcode = vm_getb(env, csp, ip);
         ADD16(ip, 1);
         switch (opcode) {
         case 0x66:      /* 32-bit data */     data32=1; break;
@@ -298,10 +311,10 @@ void handle_vm86_fault(CPUX86State *env)
     switch(opcode) {
     case 0x9c: /* pushf */
         if (data32) {
-            vm_putl(ssp, sp - 4, get_vflags(env));
+            vm_putl(env, ssp, sp - 4, get_vflags(env));
             ADD16(env->regs[R_ESP], -4);
         } else {
-            vm_putw(ssp, sp - 2, get_vflags(env));
+            vm_putw(env, ssp, sp - 2, get_vflags(env));
             ADD16(env->regs[R_ESP], -2);
         }
         env->eip = ip;
@@ -309,10 +322,10 @@ void handle_vm86_fault(CPUX86State *env)
 
     case 0x9d: /* popf */
         if (data32) {
-            newflags = vm_getl(ssp, sp);
+            newflags = vm_getl(env, ssp, sp);
             ADD16(env->regs[R_ESP], 4);
         } else {
-            newflags = vm_getw(ssp, sp);
+            newflags = vm_getw(env, ssp, sp);
             ADD16(env->regs[R_ESP], 2);
         }
         env->eip = ip;
@@ -327,7 +340,7 @@ void handle_vm86_fault(CPUX86State *env)
         VM86_FAULT_RETURN;
 
     case 0xcd: /* int */
-        intno = vm_getb(csp, ip);
+        intno = vm_getb(env, csp, ip);
         ADD16(ip, 1);
         env->eip = ip;
         if (ts->vm86plus.vm86plus.flags & TARGET_vm86dbg_active) {
@@ -342,14 +355,14 @@ void handle_vm86_fault(CPUX86State *env)
 
     case 0xcf: /* iret */
         if (data32) {
-            newip = vm_getl(ssp, sp) & 0xffff;
-            newcs = vm_getl(ssp, sp + 4) & 0xffff;
-            newflags = vm_getl(ssp, sp + 8);
+            newip = vm_getl(env, ssp, sp) & 0xffff;
+            newcs = vm_getl(env, ssp, sp + 4) & 0xffff;
+            newflags = vm_getl(env, ssp, sp + 8);
             ADD16(env->regs[R_ESP], 12);
         } else {
-            newip = vm_getw(ssp, sp);
-            newcs = vm_getw(ssp, sp + 2);
-            newflags = vm_getw(ssp, sp + 4);
+            newip = vm_getw(env, ssp, sp);
+            newcs = vm_getw(env, ssp, sp + 2);
+            newflags = vm_getw(env, ssp, sp + 4);
             ADD16(env->regs[R_ESP], 6);
         }
         env->eip = newip;
@@ -384,7 +397,8 @@ void handle_vm86_fault(CPUX86State *env)
 
 int do_vm86(CPUX86State *env, long subfunction, abi_ulong vm86_addr)
 {
-    TaskState *ts = env->opaque;
+    CPUState *cs = CPU(x86_env_get_cpu(env));
+    TaskState *ts = cs->opaque;
     struct target_vm86plus_struct * target_v86;
     int ret;
 

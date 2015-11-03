@@ -85,12 +85,12 @@ protected:
   double   meaCPI;
   double   meauCPI;
   bool     calcCPIJustCalled;
-  bool     keepStats;  // Do we keep the stats or ignore them (Detail vs. Timing)
 
   GStatsCntr *nSwitches;
   GStatsCntr *tusage[EmuMax];
   GStatsCntr *iusage[EmuMax];
   GStatsCntr *globalClock_Timing;
+  GStatsCntr *deadClock;
 
   GStats *nCommitted;
   GStatsAvg *ipc;
@@ -101,8 +101,7 @@ protected:
   pthread_mutex_t mode_lock;
 
   static std::vector<bool> done;
-  static uint64_t totalnSamples;
-  static bool justUpdatedtotalnSamples;
+  static bool terminated;
   static uint64_t *instPrev;
   static uint64_t *clockPrev;
   static uint64_t *fticksPrev;
@@ -115,14 +114,8 @@ protected:
   void setMode(EmuMode mod, FlowID fid);
   bool restartRabbit;
   uint32_t numFlow;
-  static int32_t inTiming[128]; // FIXME: Do not hard code like this
-  static uint64_t nSamples[128]; // local per flow
 
   static float turboRatio;
-#ifdef ENABLE_CUDA
-  static float turboRatioGPU;
-//  static uint32_t throtting;
-#endif
 public:
   uint64_t totalnInst; // total # instructions
   EmuMode getMode() const { return mode;}
@@ -164,10 +157,6 @@ public:
 
   static void setTurboRatio(float turbor) { turboRatio = turbor; };
   static float getTurboRatio() { return turboRatio; };
-#ifdef ENABLE_CUDA
-  static void setTurboRatioGPU(float turbor) { turboRatioGPU = turbor; };
-  static float getTurboRatioGPU() { return turboRatioGPU; };
-#endif
 
   uint64_t getTotalnInst() const { return totalnInst; }
 
@@ -192,7 +181,7 @@ public:
 
   virtual bool isActive(FlowID fid) = 0;
 
-  virtual void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op, uint64_t icount, void *env) = 0;
+  virtual uint64_t queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest, int dest2, void *dummy) = 0;
   virtual void getGPUCycles(FlowID fid, float ratio = 1.0) = 0;
   void syscall(uint32_t num, uint64_t usecs, FlowID fid);
 
@@ -200,6 +189,8 @@ public:
   virtual FlowID resumeThread(FlowID uid) = 0;
   virtual void pauseThread(FlowID fid) = 0;
   virtual void terminate() = 0;
+
+  virtual void start_roi() = 0;
 
   float getMeaCPI() {
     calcCPIJustCalled = false;
@@ -229,16 +220,7 @@ public:
     emul->drainFIFO();
   }
   virtual int64_t getThreads2Simulate(){ return 0; }
-  virtual int isSamplerDone() = 0;
-  void clearInTiming(FlowID fid);
-  void setInTiming(FlowID fid); 
-  void updatenSamples();
-  void setnoStats(FlowID fid) { if (nSamples[fid]) keepStats = false; }
-  void setyesStats(FlowID fid) { if (nSamples[fid]) keepStats = true; }
-  bool getStatsFlag() { return ( keepStats && (mode == EmuTiming) ); } // True is to keep stats}
-  //bool getStatsFlag() { return keepStats; } // True is to keep stats}
-  bool getKeepStatsFlag() { return keepStats; } // True is to keep stats}
-  virtual void syncnSamples(FlowID fid) = 0; 
+  bool getStatsFlag() const { return mode == EmuTiming; }
   virtual void dumpThreadProgressedTime(FlowID fid) {};
 };
 #endif

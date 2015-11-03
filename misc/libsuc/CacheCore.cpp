@@ -36,13 +36,14 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #define k_RANDOM     "RANDOM"
 #define k_LRU        "LRU"
+#define k_LRUp       "LRUp"
 #define k_SHIP       "SHIP"
 
 //
 // Class CacheGeneric, the combinational logic of Cache
 //
 template<class State, class Addr_t>
-CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(int32_t size, int32_t assoc, int32_t bsize, int32_t addrUnit, const char *pStr, bool skew, uint32_t shct_size)
+CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(int32_t size, int32_t assoc, int32_t bsize, int32_t addrUnit, const char *pStr, bool skew, bool xr, uint32_t shct_size)
 {
   CacheGeneric *cache;
 
@@ -63,11 +64,11 @@ CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(int32_t size, i
     cache = new CacheDMSkew<State, Addr_t>(size, bsize, addrUnit, pStr);
   }else if (assoc==1) {
     // Direct Map cache
-    cache = new CacheDM<State, Addr_t>(size, bsize, addrUnit, pStr);
+    cache = new CacheDM<State, Addr_t>(size, bsize, addrUnit, pStr, xr);
   }else if(size == (assoc * bsize)) {
     if (strcasecmp(pStr, k_SHIP) != 0){ 
       // TODO: Fully assoc can use STL container for speed
-      cache = new CacheAssoc<State, Addr_t>(size, assoc, bsize, addrUnit, pStr);
+      cache = new CacheAssoc<State, Addr_t>(size, assoc, bsize, addrUnit, pStr, xr);
     } else {
       //SHIP Cache
       cache = new CacheSHIP<State, Addr_t>(size, assoc, bsize, addrUnit, pStr, shct_size);
@@ -75,7 +76,7 @@ CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(int32_t size, i
   }else{
     if (strcasecmp(pStr, k_SHIP) != 0) {
       // Associative Cache
-      cache = new CacheAssoc<State, Addr_t>(size, assoc, bsize, addrUnit, pStr);
+      cache = new CacheAssoc<State, Addr_t>(size, assoc, bsize, addrUnit, pStr, xr);
     } else {
       //SHIP Cache
       cache = new CacheSHIP<State, Addr_t>(size, assoc, bsize, addrUnit, pStr, shct_size);
@@ -120,6 +121,10 @@ CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(const char *sec
   int32_t s = SescConf->getInt(section, size);
   int32_t a = SescConf->getInt(section, assoc);
   int32_t b = SescConf->getInt(section, bsize);
+  bool xr = false;
+  if (SescConf->checkBool(section,"xorIndex")) {
+    xr = SescConf->getBool(section, "xorIndex");
+  }
   //printf("Created %s cache, with size:%d, assoc %d, bsize %d\n",section,s,a,b);
   bool sk = false;
   if (SescConf->checkBool(section, skew))
@@ -150,12 +155,12 @@ CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(const char *sec
      SescConf->isPower2(section, size) && 
      SescConf->isPower2(section, bsize) &&
      SescConf->isPower2(section, assoc) &&
-     SescConf->isInList(section, repl, k_RANDOM, k_LRU, k_SHIP)) {
-    cache = create(s, a, b, u, pStr, sk, shct_size);
+     SescConf->isInList(section, repl, k_RANDOM, k_LRU, k_SHIP, k_LRUp)) {
+    cache = create(s, a, b, u, pStr, sk, xr, shct_size);
   } else {
     // this is just to keep the configuration going, 
     // sesc will abort before it begins
-    cache = new CacheAssoc<State, Addr_t>(2, 1, 1, 1, pStr);
+    cache = new CacheAssoc<State, Addr_t>(2, 1, 1, 1, pStr, xr);
   }
 
   I(cache);
@@ -178,8 +183,8 @@ CacheGeneric<State, Addr_t> *CacheGeneric<State, Addr_t>::create(const char *sec
  *********************************************************/
 
 template<class State, class Addr_t>
-CacheAssoc<State, Addr_t>::CacheAssoc(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr) 
-  : CacheGeneric<State, Addr_t>(size, assoc, blksize, addrUnit) 
+CacheAssoc<State, Addr_t>::CacheAssoc(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr) 
+  : CacheGeneric<State, Addr_t>(size, assoc, blksize, addrUnit, xr) 
 {
   I(numLines>0);
   
@@ -187,12 +192,15 @@ CacheAssoc<State, Addr_t>::CacheAssoc(int32_t size, int32_t assoc, int32_t blksi
     policy = RANDOM;
   else if (strcasecmp(pStr, k_LRU)    == 0) 
     policy = LRU;
+  else if (strcasecmp(pStr, k_LRUp)    == 0) 
+    policy = LRUp;
   else {
     MSG("Invalid cache policy [%s]",pStr);
     exit(0);
   }
 
   mem     = (Line *)malloc(sizeof(Line)*(numLines + 1));
+  ////read
   for(uint32_t i=0;i<numLines;i++) {
     new(&mem[i]) Line(blksize);
   }
@@ -299,8 +307,10 @@ typename CacheAssoc<State, Addr_t>::Line
     if (policy == RANDOM) {
       lineFree = &theSet[irand];
       irand = (irand + 1) & maskAssoc;
+      if (irand == 0)
+        irand = (irand + 1) & maskAssoc; // Not MRU
     }else{
-      I(policy == LRU);
+      I(policy == LRU || policy == LRUp);
       // Get the oldest line possible
       lineFree = setEnd-1;
     }
@@ -317,7 +327,17 @@ typename CacheAssoc<State, Addr_t>::Line
     tmp_pos = lineHit;
   }
 
-  {
+  if (policy == LRUp) {
+#if 0
+    Line **l = tmp_pos;
+    while(l > &theSet[13]) {
+      Line **prev = l - 1;
+      *l = *prev;;
+      l = prev;
+    }
+    theSet[13] = tmp;
+#endif
+  }else{
     Line **l = tmp_pos;
     while(l > theSet) {
       Line **prev = l - 1;
@@ -335,8 +355,8 @@ typename CacheAssoc<State, Addr_t>::Line
  *********************************************************/
 
 template<class State, class Addr_t>
-CacheDM<State, Addr_t>::CacheDM(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr) 
-  : CacheGeneric<State, Addr_t>(size, 1, blksize, addrUnit) 
+CacheDM<State, Addr_t>::CacheDM(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr) 
+  : CacheGeneric<State, Addr_t>(size, 1, blksize, addrUnit, xr) 
 {
   I(numLines>0);
   
@@ -385,7 +405,7 @@ typename CacheDM<State, Addr_t>::Line
 
 template<class State, class Addr_t>
 CacheDMSkew<State, Addr_t>::CacheDMSkew(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr) 
-  : CacheGeneric<State, Addr_t>(size, 1, blksize, addrUnit) 
+  : CacheGeneric<State, Addr_t>(size, 1, blksize, addrUnit, false) 
 {
   I(numLines>0);
 
@@ -541,7 +561,7 @@ typename CacheDMSkew<State, Addr_t>::Line
 
 template<class State, class Addr_t>
 CacheSHIP<State, Addr_t>::CacheSHIP(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, uint32_t shct_size) 
-  : CacheGeneric<State, Addr_t>(size, assoc, blksize, addrUnit) 
+  : CacheGeneric<State, Addr_t>(size, assoc, blksize, addrUnit, false) 
 {
   I(numLines>0);
   log2shct  = shct_size;

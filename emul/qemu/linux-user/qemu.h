@@ -5,32 +5,22 @@
 #include <string.h>
 
 #include "cpu.h"
+#include "exec/cpu_ldst.h"
 
 #undef DEBUG_REMAP
 #ifdef DEBUG_REMAP
 #include <stdlib.h>
 #endif /* DEBUG_REMAP */
 
-#include "qemu-types.h"
+#include "exec/user/abitypes.h"
 
-#include "thunk.h"
+#include "exec/user/thunk.h"
 #include "syscall_defs.h"
 #include "syscall.h"
-#include "target_signal.h"
-#include "gdbstub.h"
-#include "qemu-queue.h"
+#include "exec/gdbstub.h"
+#include "qemu/queue.h"
 
-#if defined(CONFIG_USE_NPTL)
 #define THREAD __thread
-#else
-#define THREAD
-#endif
-
-#define PTRSIZE uint32_t
-struct Arguments{
-  int count;
-  PTRSIZE args[15];
-}__attribute__((__packed__));
 
 /* This struct is used to hold certain information about the image.
  * Basically, it replicates in user space what would be certain
@@ -54,8 +44,10 @@ struct image_info {
         abi_ulong       code_offset;
         abi_ulong       data_offset;
         abi_ulong       saved_auxv;
+        abi_ulong       auxv_len;
         abi_ulong       arg_start;
         abi_ulong       arg_end;
+        uint32_t        elf_flags;
 	int		personality;
 #ifdef CONFIG_USE_FDPIC
         abi_ulong       loadmap_addr;
@@ -63,6 +55,10 @@ struct image_info {
         void           *loadsegs;
         abi_ulong       pt_dynamic_addr;
         struct image_info *other_info;
+#endif
+#ifdef TARGET_MIPS
+        unsigned int    fp_abi;
+        unsigned int    interp_fp_abi;
 #endif
 };
 
@@ -83,7 +79,7 @@ struct vm86_saved_state {
 };
 #endif
 
-#ifdef TARGET_ARM
+#if defined(TARGET_ARM) && defined(TARGET_ABI32)
 /* FPU emulator */
 #include "nwfpe/fpa11.h"
 #endif
@@ -107,8 +103,10 @@ struct emulated_sigtable {
 typedef struct TaskState {
     pid_t ts_tid;     /* tid (or pid) of this task */
 #ifdef TARGET_ARM
+# ifdef TARGET_ABI32
     /* FPA state */
     FPA11 fpa;
+# endif
     int swi_errno;
 #endif
 #ifdef TARGET_UNICORE32
@@ -121,19 +119,19 @@ typedef struct TaskState {
     uint32_t v86flags;
     uint32_t v86mask;
 #endif
-#ifdef CONFIG_USE_NPTL
     abi_ulong child_tidptr;
-#endif
 #ifdef TARGET_M68K
     int sim_syscalls;
+    abi_ulong tp_value;
 #endif
 #if defined(TARGET_ARM) || defined(TARGET_M68K) || defined(TARGET_UNICORE32)
     /* Extra fields for semihosted binaries.  */
-    uint32_t stack_base;
     uint32_t heap_base;
     uint32_t heap_limit;
 #endif
+    uint32_t stack_base;
     int used; /* non zero if used */
+    bool sigsegv_blocked; /* SIGSEGV blocked by guest */
     struct image_info *info;
     struct linux_binprm *bprm;
 
@@ -147,6 +145,7 @@ extern char *exec_path;
 void init_task_state(TaskState *ts);
 void task_settid(TaskState *);
 void stop_all_tasks(void);
+void resume_all_tasks(void);
 extern const char *qemu_uname_release;
 extern unsigned long mmap_min_addr;
 
@@ -176,20 +175,18 @@ struct linux_binprm {
         char **argv;
         char **envp;
         char * filename;        /* Name of binary */
-        int (*core_dump)(int, const CPUState *); /* coredump routine */
+        int (*core_dump)(int, const CPUArchState *); /* coredump routine */
 };
 
 void do_init_thread(struct target_pt_regs *regs, struct image_info *infop);
 abi_ulong loader_build_argptr(int envc, int argc, abi_ulong sp,
                               abi_ulong stringp, int push_ptr);
-int loader_exec(const char * filename, char ** argv, char ** envp,
+int loader_exec(int fdexec, const char *filename, char **argv, char **envp,
              struct target_pt_regs * regs, struct image_info *infop,
              struct linux_binprm *);
 
-int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * regs,
-                    struct image_info * info);
-int load_flt_binary(struct linux_binprm * bprm, struct target_pt_regs * regs,
-                    struct image_info * info);
+int load_elf_binary(struct linux_binprm *bprm, struct image_info *info);
+int load_flt_binary(struct linux_binprm *bprm, struct image_info *info);
 
 abi_long memcpy_to_target(abi_ulong dest, const void *src,
                           unsigned long len);
@@ -201,27 +198,31 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
                     abi_long arg5, abi_long arg6, abi_long arg7,
                     abi_long arg8);
 void gemu_log(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
-extern THREAD CPUState *thread_env;
-void cpu_loop(CPUState *env);
+extern THREAD CPUState *thread_cpu;
+void cpu_loop(CPUArchState *env);
 char *target_strerror(int err);
 int get_osversion(void);
+void init_qemu_uname_release(void);
 void fork_start(void);
 void fork_end(int child);
 
-#if defined (CONFIG_ESESC_system) || defined (CONFIG_ESESC_user)
-uint64_t qemuesesc_getReg(void * env, uint8_t reg);
-void qemuesesc_setReg(void * env, uint8_t reg, uint64_t data);
-void *qemuesesc_getCP15ptr(void * env);
-uint32_t  qemuesesc_getCP15tls2(void * env);
-#endif
-
-/* Return true if the proposed guest_base is suitable for the guest.
- * The guest code may leave a page mapped and populate it if the
- * address is suitable.
+/* Creates the initial guest address space in the host memory space using
+ * the given host start address hint and size.  The guest_start parameter
+ * specifies the start address of the guest space.  guest_base will be the
+ * difference between the host start address computed by this function and
+ * guest_start.  If fixed is specified, then the mapped address space must
+ * start at host_start.  The real start address of the mapped memory space is
+ * returned or -1 if there was an error.
  */
-bool guest_validate_base(unsigned long guest_base);
+unsigned long init_guest_space(unsigned long host_start,
+                               unsigned long host_size,
+                               unsigned long guest_start,
+                               bool fixed);
 
-#include "qemu-log.h"
+#include "qemu/log.h"
+
+/* syscall.c */
+int host_to_target_waitstatus(int status);
 
 /* strace.c */
 void print_syscall(int num,
@@ -231,16 +232,17 @@ void print_syscall_ret(int num, abi_long arg1);
 extern int do_strace;
 
 /* signal.c */
-void process_pending_signals(CPUState *cpu_env);
+void process_pending_signals(CPUArchState *cpu_env);
 void signal_init(void);
-int queue_signal(CPUState *env, int sig, target_siginfo_t *info);
+int queue_signal(CPUArchState *env, int sig, target_siginfo_t *info);
 void host_to_target_siginfo(target_siginfo_t *tinfo, const siginfo_t *info);
 void target_to_host_siginfo(siginfo_t *info, const target_siginfo_t *tinfo);
 int target_to_host_signal(int sig);
 int host_to_target_signal(int sig);
-long do_sigreturn(CPUState *env);
-long do_rt_sigreturn(CPUState *env);
+long do_sigreturn(CPUArchState *env);
+long do_rt_sigreturn(CPUArchState *env);
 abi_long do_sigaltstack(abi_ulong uss_addr, abi_ulong uoss_addr, abi_ulong sp);
+int do_sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 
 #ifdef TARGET_I386
 /* vm86.c */
@@ -263,15 +265,14 @@ abi_long target_mremap(abi_ulong old_addr, abi_ulong old_size,
                        abi_ulong new_addr);
 int target_msync(abi_ulong start, abi_ulong len, int flags);
 extern unsigned long last_brk;
+extern abi_ulong mmap_next_start;
 void mmap_lock(void);
 void mmap_unlock(void);
 abi_ulong mmap_find_vma(abi_ulong, abi_ulong);
 void cpu_list_lock(void);
 void cpu_list_unlock(void);
-#if defined(CONFIG_USE_NPTL)
 void mmap_fork_start(void);
 void mmap_fork_end(int child);
-#endif
 
 /* main.c */
 extern unsigned long guest_stack_size;
@@ -287,53 +288,39 @@ static inline int access_ok(int type, abi_ulong addr, abi_ulong size)
                             (type == VERIFY_READ) ? PAGE_READ : (PAGE_READ | PAGE_WRITE)) == 0;
 }
 
-/* NOTE __get_user and __put_user use host pointers and don't check access. */
-/* These are usually used to access struct data members once the
- * struct has been locked - usually with lock_user_struct().
- */
-#define __put_user(x, hptr)\
-({\
-    switch(sizeof(*hptr)) {\
-    case 1:\
-        *(uint8_t *)(hptr) = (uint8_t)(typeof(*hptr))(x);\
-        break;\
-    case 2:\
-        *(uint16_t *)(hptr) = tswap16((uint16_t)(typeof(*hptr))(x));\
-        break;\
-    case 4:\
-        *(uint32_t *)(hptr) = tswap32((uint32_t)(typeof(*hptr))(x));\
-        break;\
-    case 8:\
-        *(uint64_t *)(hptr) = tswap64((typeof(*hptr))(x));\
-        break;\
-    default:\
-        abort();\
-    }\
-    0;\
-})
+/* NOTE __get_user and __put_user use host pointers and don't check access.
+   These are usually used to access struct data members once the struct has
+   been locked - usually with lock_user_struct.  */
 
-#define __get_user(x, hptr) \
-({\
-    switch(sizeof(*hptr)) {\
-    case 1:\
-        x = (typeof(*hptr))*(uint8_t *)(hptr);\
-        break;\
-    case 2:\
-        x = (typeof(*hptr))tswap16(*(uint16_t *)(hptr));\
-        break;\
-    case 4:\
-        x = (typeof(*hptr))tswap32(*(uint32_t *)(hptr));\
-        break;\
-    case 8:\
-        x = (typeof(*hptr))tswap64(*(uint64_t *)(hptr));\
-        break;\
-    default:\
-        /* avoid warning */\
-        x = 0;\
-        abort();\
-    }\
-    0;\
-})
+/* Tricky points:
+   - Use __builtin_choose_expr to avoid type promotion from ?:,
+   - Invalid sizes result in a compile time error stemming from
+     the fact that abort has no parameters.
+   - It's easier to use the endian-specific unaligned load/store
+     functions than host-endian unaligned load/store plus tswapN.  */
+
+#define __put_user_e(x, hptr, e)                                        \
+  (__builtin_choose_expr(sizeof(*(hptr)) == 1, stb_p,                   \
+   __builtin_choose_expr(sizeof(*(hptr)) == 2, stw_##e##_p,             \
+   __builtin_choose_expr(sizeof(*(hptr)) == 4, stl_##e##_p,             \
+   __builtin_choose_expr(sizeof(*(hptr)) == 8, stq_##e##_p, abort))))   \
+     ((hptr), (x)), (void)0)
+
+#define __get_user_e(x, hptr, e)                                        \
+  ((x) = (typeof(*hptr))(                                               \
+   __builtin_choose_expr(sizeof(*(hptr)) == 1, ldub_p,                  \
+   __builtin_choose_expr(sizeof(*(hptr)) == 2, lduw_##e##_p,            \
+   __builtin_choose_expr(sizeof(*(hptr)) == 4, ldl_##e##_p,             \
+   __builtin_choose_expr(sizeof(*(hptr)) == 8, ldq_##e##_p, abort))))   \
+     (hptr)), (void)0)
+
+#ifdef TARGET_WORDS_BIGENDIAN
+# define __put_user(x, hptr)  __put_user_e(x, hptr, be)
+# define __get_user(x, hptr)  __get_user_e(x, hptr, be)
+#else
+# define __put_user(x, hptr)  __put_user_e(x, hptr, le)
+# define __get_user(x, hptr)  __get_user_e(x, hptr, le)
+#endif
 
 /* put_user()/get_user() take a guest address and check access */
 /* These are usually used to access an atomic data type, such as an int,
@@ -344,9 +331,9 @@ static inline int access_ok(int type, abi_ulong addr, abi_ulong size)
 ({									\
     abi_ulong __gaddr = (gaddr);					\
     target_type *__hptr;						\
-    abi_long __ret;							\
+    abi_long __ret = 0;							\
     if ((__hptr = lock_user(VERIFY_WRITE, __gaddr, sizeof(target_type), 0))) { \
-        __ret = __put_user((x), __hptr);				\
+        __put_user((x), __hptr);				\
         unlock_user(__hptr, __gaddr, sizeof(target_type));		\
     } else								\
         __ret = -TARGET_EFAULT;						\
@@ -357,9 +344,9 @@ static inline int access_ok(int type, abi_ulong addr, abi_ulong size)
 ({									\
     abi_ulong __gaddr = (gaddr);					\
     target_type *__hptr;						\
-    abi_long __ret;							\
+    abi_long __ret = 0;							\
     if ((__hptr = lock_user(VERIFY_READ, __gaddr, sizeof(target_type), 1))) { \
-        __ret = __get_user((x), __hptr);				\
+        __get_user((x), __hptr);				\
         unlock_user(__hptr, __gaddr, 0);				\
     } else {								\
         /* avoid warning */						\
@@ -399,9 +386,9 @@ abi_long copy_from_user(void *hptr, abi_ulong gaddr, size_t len);
 abi_long copy_to_user(abi_ulong gaddr, void *hptr, size_t len);
 
 /* Functions for accessing guest memory.  The tget and tput functions
-   read/write single values, byteswapping as necessary.  The lock_user
+   read/write single values, byteswapping as necessary.  The lock_user function
    gets a pointer to a contiguous area of guest memory, but does not perform
-   and byteswapping.  lock_user may return either a pointer to the guest
+   any byteswapping.  lock_user may return either a pointer to the guest
    memory, or a temporary buffer.  */
 
 /* Lock an area of guest memory into the host.  If copy is true then the
@@ -457,14 +444,20 @@ static inline void *lock_user_string(abi_ulong guest_addr)
     return lock_user(VERIFY_READ, guest_addr, (long)(len + 1), 1);
 }
 
-/* Helper macros for locking/ulocking a target struct.  */
+/* Helper macros for locking/unlocking a target struct.  */
 #define lock_user_struct(type, host_ptr, guest_addr, copy)	\
     (host_ptr = lock_user(type, guest_addr, sizeof(*host_ptr), copy))
 #define unlock_user_struct(host_ptr, guest_addr, copy)		\
     unlock_user(host_ptr, guest_addr, (copy) ? sizeof(*host_ptr) : 0)
 
-#if defined(CONFIG_USE_NPTL)
 #include <pthread.h>
-#endif
+
+/* Include target-specific struct and function definitions;
+ * they may need access to the target-independent structures
+ * above, so include them last.
+ */
+#include "target_cpu.h"
+#include "target_signal.h"
+#include "target_structs.h"
 
 #endif /* QEMU_H */

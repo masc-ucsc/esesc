@@ -37,6 +37,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <math.h>
+
 #include "SescConf.h"
 
 #include "OoOProcessor.h"
@@ -51,10 +53,11 @@
 OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   /* constructor {{{1 */
   :GOoOProcessor(gm, i)
-  ,NoMemoryReplay(SescConf->getBool("cpusimu", "NoMemoryReplay",i))
-  ,IFID(i, this, gm)
+  ,MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay",i))
+  ,RetireDelay(SescConf->getInt("cpusimu", "RetireDelay",i))
+  ,IFID(i, gm)
   ,pipeQ(i)
-  ,lsq(i)
+  ,lsq(i, SescConf->checkInt("cpusimu", "maxLSQ",i)?SescConf->getInt("cpusimu", "maxLSQ",i):32768) // 32K (unlimited or fix)
   ,retire_lock_checkCB(this)
   ,clusterManager(gm, this)
   ,avgFetchWidth("P(%d)_avgFetchWidth",i)
@@ -63,6 +66,10 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   bzero(serializeRAT,sizeof(DInst*)*LREG_MAX);
 
   spaceInInstQueue = InstQueueSize;
+
+  nTotalRegs = SescConf->getInt("cpusimu","nTotalRegs", gm->getCoreId());
+  if (nTotalRegs == 0)
+    nTotalRegs = 1024*1024*1024; // Unlimited :)
 
   busy             = false;
   flushing         = false;
@@ -81,8 +88,8 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   last_serialized = 0;
   last_serializedST = 0;
   forwardProg_threshold = 200;
-  if (SescConf->checkBool("cpusimu", "scooreMemory" , gm->getId()))
-    scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gm->getId());
+  if (SescConf->checkBool("cpusimu", "scooreMemory" , gm->getCoreId()))
+    scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gm->getCoreId());
   else
     scooreMemory = false;
 }
@@ -99,12 +106,7 @@ void OoOProcessor::fetch(FlowID fid)
   /* fetch {{{1 */
 {
   I(fid == cpu_id);
-
-  if(!active){
-  //  TaskHandler::removeFromRunning(cpu_id);
-    return;
-  }
-
+  I(active);
   I(eint);
 
   if( IFID.isBlocked(0)) {
@@ -115,7 +117,7 @@ void OoOProcessor::fetch(FlowID fid)
     if( bucket ) {
       IFID.fetch(bucket, eint, fid);
       if (!bucket->empty()) {
-        avgFetchWidth.sample(bucket->size());
+        avgFetchWidth.sample(bucket->size(), bucket->top()->getStatsFlag());
         busy = true;
       }
     }
@@ -123,7 +125,7 @@ void OoOProcessor::fetch(FlowID fid)
 }
 /* }}} */
 
-bool OoOProcessor::execute()
+bool OoOProcessor::advance_clock(FlowID fid)
   /* Full execution: fetch|rename|retire {{{1 */
 {
 
@@ -133,13 +135,10 @@ bool OoOProcessor::execute()
     return false;
   }
 
-  if (!busy) {
-    if (!active) {
-      // time to remove from the running queue
-      //TaskHandler::removeFromRunning(cpu_id);
-    }
+  fetch(fid);
+
+  if (!busy)
     return false;
-  }
 
   bool getStatsFlag = false;
   if( !ROB.empty() ) {
@@ -152,7 +151,7 @@ bool OoOProcessor::execute()
   if (unlikely(throttlingRatio>1)) { 
     throttling_cntr++;
 
-    uint32_t skip = ceil(throttlingRatio/getTurboRatio()); 
+    uint32_t skip = (uint32_t)ceil(throttlingRatio/getTurboRatio()); 
 
     if (throttling_cntr < skip) {
       return true;
@@ -170,7 +169,7 @@ bool OoOProcessor::execute()
       spaceInInstQueue -= bucket->size();
       pipeQ.instQueue.push(bucket);
 
-      //GMSG(getId()==1,"instqueue insert %p", bucket);
+      //GMSG(getID()==1,"instqueue insert %p", bucket);
     }else{
       noFetch2.inc(getStatsFlag);
     }
@@ -237,6 +236,11 @@ StallCause OoOProcessor::addInst(DInst *dinst)
   if( (ROB.size()+rROB.size()) >= MaxROBSize )
     return SmallROBStall;
 
+  const Instruction *inst = dinst->getInst();
+
+  if (nTotalRegs<=0) 
+    return SmallREGStall;
+
   Cluster *cluster = dinst->getCluster();
   if( !cluster ) {
     Resource *res = clusterManager.getResource(dinst);
@@ -251,8 +255,9 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
   // BEGIN INSERTION (note that cluster already inserted in the window)
   // dinst->dump("");
-
-  const Instruction *inst = dinst->getInst();
+  if (inst->hasDstRegister()) {
+    nTotalRegs--;
+  }
 
   //#if 1
   if(!scooreMemory){ //no dynamic serialization for tradcore
@@ -260,7 +265,8 @@ StallCause OoOProcessor::addInst(DInst *dinst)
       serialize_for--;
       if (inst->isMemory() && dinst->isSrc3Ready()) {
         if (last_serialized && !last_serialized->isExecuted()) {
-          last_serialized->addSrc3(dinst);
+          //last_serialized->addSrc3(dinst); FIXME
+          //MSG("addDep3 %8ld->%8lld %lld",last_serialized->getID(), dinst->getID(), globalClock);
         }
         last_serialized = dinst;
       } 
@@ -333,14 +339,20 @@ StallCause OoOProcessor::addInst(DInst *dinst)
   if( !dinst->isSrc2Ready() ) {
     // It already has a src2 dep. It means that it is solved at
     // retirement (Memory consistency. coherence issues)
-    if( RAT[inst->getSrc1()] )
+    if( RAT[inst->getSrc1()] ) {
       RAT[inst->getSrc1()]->addSrc1(dinst);
+      //MSG("addDep0 %8ld->%8lld %lld",RAT[inst->getSrc1()]->getID(), dinst->getID(), globalClock);
+    }
   }else{
-    if( RAT[inst->getSrc1()] )
+    if( RAT[inst->getSrc1()] ) {
       RAT[inst->getSrc1()]->addSrc1(dinst);
+      //MSG("addDep1 %8ld->%8lld %lld",RAT[inst->getSrc1()]->getID(), dinst->getID(), globalClock);
+    }
 
-    if( RAT[inst->getSrc2()] )
+    if( RAT[inst->getSrc2()] ) {
       RAT[inst->getSrc2()]->addSrc2(dinst);
+      //MSG("addDep2 %8ld->%8lld %lld",RAT[inst->getSrc2()]->getID(), dinst->getID(), globalClock);
+    }
   }
 
   dinst->setRAT1Entry(&RAT[inst->getDst1()]);
@@ -348,10 +360,14 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
   dinst->getCluster()->addInst(dinst);
 
+  I(!dinst->isExecuted()); // NO 0 lat instructions (conf may allow it)
+
   RAT[inst->getDst1()] = dinst;
   RAT[inst->getDst2()] = dinst;
 
   I(dinst->getCluster());
+
+  dinst->markRenamed();
 
   return NoStall;
 }
@@ -378,7 +394,7 @@ void OoOProcessor::retire_lock_check()
 
   if (last_state == state && active) {
     I(0);
-    MSG("Lock detected in P(%d), flushing pipeline", getId());
+    MSG("Lock detected in P(%d), flushing pipeline", getID());
     if (!rROB.empty()) {
 //      replay(rROB.top());
     }
@@ -423,8 +439,10 @@ void OoOProcessor::retire()
   for(uint16_t i=0 ; i<RetireWidth && !rROB.empty() ; i++) {
     DInst *dinst = rROB.top();
 
-    if (!dinst->isExecuted())
+    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock)
       break;
+
+    I(dinst->isExecuted());
     
     GI(!flushing, dinst->isExecuted());
     I(dinst->getCluster());
@@ -444,8 +462,40 @@ void OoOProcessor::retire()
       nCommitted.inc(dinst->getStatsFlag());
     }
 
-    //dinst->dump("destroy");
+#ifdef ESESC_TRACE
+    MSG("TR %8lld %8llx R%-2d,R%-2d=R%-2d op=%-2d R%-2d   %lld %lld %lld %lld"
+        ,dinst->getID()
+        ,dinst->getPC()
+        ,dinst->getInst()->getDst1()
+        ,dinst->getInst()->getDst2()
+        ,dinst->getInst()->getSrc1()
+        ,dinst->getInst()->getOpcode()
+        ,dinst->getInst()->getSrc2()
+        ,dinst->getFetchTime()
+        ,dinst->getWakeUpTime()
+        ,dinst->getExecutedTime()
+        ,globalClock);
+#endif
+
+#if 0
+    dinst->dump("RT ");
+    fprintf(stderr,"\n");
+#endif
+    if (dinst->getInst()->hasDstRegister())
+      nTotalRegs++;
+
+#if 1 
+    if (!dinst->getInst()->isStore()) // Stores can perform after retirement
+      I(dinst->isPerformed());
+
+   if (dinst->isPerformed()) // Stores can perform after retirement
+      dinst->destroy(eint);
+    else{
+      eint->reexecuteTail(fid);
+    }
+#else
     dinst->destroy(eint);
+#endif 
 
     if (last_serialized == dinst)
       last_serialized = 0;
@@ -467,7 +517,7 @@ void OoOProcessor::replay(DInst *target)
   // Same load can be marked by several stores in a OoO core : I(replayID != target->getID());
   I(target->getInst()->isLoad());
 
-  if( NoMemoryReplay ) {
+  if( !MemoryReplay ) {
     return;
   }
   target->markReplay();
@@ -494,7 +544,7 @@ void OoOProcessor::dumpROB()
   printf("ROB: (%d)\n",size);
 
   for(uint32_t i=0;i<size;i++) {
-    uint32_t pos = ROB.getIdFromTop(i);
+    uint32_t pos = ROB.getIDFromTop(i);
 
     DInst *dinst = ROB.getData(pos);
     dinst->dump("");
@@ -503,7 +553,7 @@ void OoOProcessor::dumpROB()
   size = rROB.size();
   printf("rROB: (%d)\n",size);
   for(uint32_t i=0;i<size;i++) {
-    uint32_t pos = rROB.getIdFromTop(i);
+    uint32_t pos = rROB.getIDFromTop(i);
 
     DInst *dinst = rROB.getData(pos);
     if (dinst->isReplay())

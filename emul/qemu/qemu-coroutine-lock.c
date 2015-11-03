@@ -23,34 +23,14 @@
  */
 
 #include "qemu-common.h"
-#include "qemu-coroutine.h"
-#include "qemu-coroutine-int.h"
-#include "qemu-queue.h"
-#include "main-loop.h"
+#include "block/coroutine.h"
+#include "block/coroutine_int.h"
+#include "qemu/queue.h"
 #include "trace.h"
-
-static QTAILQ_HEAD(, Coroutine) unlock_bh_queue =
-    QTAILQ_HEAD_INITIALIZER(unlock_bh_queue);
-static QEMUBH* unlock_bh;
-
-static void qemu_co_queue_next_bh(void *opaque)
-{
-    Coroutine *next;
-
-    trace_qemu_co_queue_next_bh();
-    while ((next = QTAILQ_FIRST(&unlock_bh_queue))) {
-        QTAILQ_REMOVE(&unlock_bh_queue, next, co_queue_next);
-        qemu_coroutine_enter(next, NULL);
-    }
-}
 
 void qemu_co_queue_init(CoQueue *queue)
 {
     QTAILQ_INIT(&queue->entries);
-
-    if (!unlock_bh) {
-        unlock_bh = qemu_bh_new(qemu_co_queue_next_bh, NULL);
-    }
 }
 
 void coroutine_fn qemu_co_queue_wait(CoQueue *queue)
@@ -61,39 +41,74 @@ void coroutine_fn qemu_co_queue_wait(CoQueue *queue)
     assert(qemu_in_coroutine());
 }
 
-void coroutine_fn qemu_co_queue_wait_insert_head(CoQueue *queue)
+/**
+ * qemu_co_queue_run_restart:
+ *
+ * Enter each coroutine that was previously marked for restart by
+ * qemu_co_queue_next() or qemu_co_queue_restart_all().  This function is
+ * invoked by the core coroutine code when the current coroutine yields or
+ * terminates.
+ */
+void qemu_co_queue_run_restart(Coroutine *co)
 {
-    Coroutine *self = qemu_coroutine_self();
-    QTAILQ_INSERT_HEAD(&queue->entries, self, co_queue_next);
-    qemu_coroutine_yield();
-    assert(qemu_in_coroutine());
+    Coroutine *next;
+
+    trace_qemu_co_queue_run_restart(co);
+    while ((next = QTAILQ_FIRST(&co->co_queue_wakeup))) {
+        QTAILQ_REMOVE(&co->co_queue_wakeup, next, co_queue_next);
+        qemu_coroutine_enter(next, NULL);
+    }
 }
 
-bool qemu_co_queue_next(CoQueue *queue)
+static bool qemu_co_queue_do_restart(CoQueue *queue, bool single)
+{
+    Coroutine *self = qemu_coroutine_self();
+    Coroutine *next;
+
+    if (QTAILQ_EMPTY(&queue->entries)) {
+        return false;
+    }
+
+    while ((next = QTAILQ_FIRST(&queue->entries)) != NULL) {
+        QTAILQ_REMOVE(&queue->entries, next, co_queue_next);
+        QTAILQ_INSERT_TAIL(&self->co_queue_wakeup, next, co_queue_next);
+        trace_qemu_co_queue_next(next);
+        if (single) {
+            break;
+        }
+    }
+    return true;
+}
+
+bool coroutine_fn qemu_co_queue_next(CoQueue *queue)
+{
+    assert(qemu_in_coroutine());
+    return qemu_co_queue_do_restart(queue, true);
+}
+
+void coroutine_fn qemu_co_queue_restart_all(CoQueue *queue)
+{
+    assert(qemu_in_coroutine());
+    qemu_co_queue_do_restart(queue, false);
+}
+
+bool qemu_co_enter_next(CoQueue *queue)
 {
     Coroutine *next;
 
     next = QTAILQ_FIRST(&queue->entries);
-    if (next) {
-        QTAILQ_REMOVE(&queue->entries, next, co_queue_next);
-        QTAILQ_INSERT_TAIL(&unlock_bh_queue, next, co_queue_next);
-        trace_qemu_co_queue_next(next);
-        qemu_bh_schedule(unlock_bh);
+    if (!next) {
+        return false;
     }
 
-    return (next != NULL);
-}
-
-void qemu_co_queue_restart_all(CoQueue *queue)
-{
-    while (qemu_co_queue_next(queue)) {
-        /* Do nothing */
-    }
+    QTAILQ_REMOVE(&queue->entries, next, co_queue_next);
+    qemu_coroutine_enter(next, NULL);
+    return true;
 }
 
 bool qemu_co_queue_empty(CoQueue *queue)
 {
-    return (QTAILQ_FIRST(&queue->entries) == NULL);
+    return QTAILQ_FIRST(&queue->entries) == NULL;
 }
 
 void qemu_co_mutex_init(CoMutex *mutex)

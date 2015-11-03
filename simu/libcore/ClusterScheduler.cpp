@@ -102,3 +102,25 @@ Resource *LRUClusterScheduler::getResource(DInst *dinst) {
   touse->setUsedTime(); 
   return touse;
 }
+
+UseClusterScheduler::UseClusterScheduler(const ResourcesPoolType ores)
+  : ClusterScheduler(ores) {
+  
+}
+
+UseClusterScheduler::~UseClusterScheduler() {
+  
+}
+
+Resource *UseClusterScheduler::getResource(DInst *dinst) {
+  const Instruction *inst=dinst->getInst();
+  InstOpcode type = inst->getOpcode();
+  Resource *touse = res[type][0];
+  
+  for(size_t i = 1; i<res[type].size(); i++) {
+    if (touse->getCluster()->getAvailSpace() > res[type][i]->getCluster()->getAvailSpace())
+      touse = res[type][i];
+  }
+  
+  return touse;
+}

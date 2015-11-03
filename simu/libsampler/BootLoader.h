@@ -47,6 +47,15 @@ class BootLoader {
   static PowerModel  *pwrmodel; 
   static bool doPower;
 
+  //live stuff
+  static int64_t checkpoint_id;
+  static bool is_live;
+  static int live_group;
+  static int live_group_cntr;
+  static bool schema_sent;
+  static uint64_t live_warmup_cnt;
+  static uint64_t live_ninst;
+
   static void check();
 
  protected:
@@ -56,11 +65,17 @@ class BootLoader {
   static void createSimuInterface(const char *section, FlowID i);
 
  public:
+  static int64_t live_warmup;
+  static int64_t sample_count;
+  static int64_t genwarm;
+
   static EmuSampler *getSampler(const char *section, const char *keyword, EmulInterface *eint, FlowID fid);
 
   static void plug(int argc, const char **argv);
+  static void plugSocket(int64_t cpid, int64_t fwu, int64_t gw, uint64_t lwcnt);
   static void boot();
   static void report(const char *str);
+  static void reportSample();
   static void unboot();
   static void unplug();
 

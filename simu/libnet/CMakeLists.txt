@@ -1,0 +1,16 @@
+project(net)
+INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
+
+INCLUDE_DIRECTORIES(${suc_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${crack_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${emulint_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${core_SOURCE_DIR})
+# circular dep INCLUDE_DIRECTORIES(${sampler_SOURCE_DIR}) 
+
+FILE(GLOB net_SOURCE *.cpp)
+FILE(GLOB net_HEADER *.h)
+
+SOURCE_GROUP("Source Files" FILES ${net_SOURCE})
+SOURCE_GROUP("Header Files" FILES ${net_HEADER})
+
+ADD_LIBRARY(net ${net_SOURCE} ${net_HEADER})

@@ -19,9 +19,9 @@
 
 #include "cpu.h"
 #include "trace.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
-//#define DEBUG_PCALL
+#define DEBUG_PCALL
 
 #ifdef DEBUG_PCALL
 static const char * const excp_names[0x80] = {
@@ -58,9 +58,16 @@ static const char * const excp_names[0x80] = {
 };
 #endif
 
-void do_interrupt(CPUState *env)
+void sparc_cpu_do_interrupt(CPUState *cs)
 {
-    int cwp, intno = env->exception_index;
+    SPARCCPU *cpu = SPARC_CPU(cs);
+    CPUSPARCState *env = &cpu->env;
+    int cwp, intno = cs->exception_index;
+
+    /* Compute PSR before exposing state.  */
+    if (env->cc_op != CC_OP_FLAGS) {
+        cpu_get_psr(env);
+    }
 
 #ifdef DEBUG_PCALL
     if (qemu_loglevel_mask(CPU_LOG_INT)) {
@@ -78,11 +85,8 @@ void do_interrupt(CPUState *env)
             }
         }
 
-        qemu_log("%6d: %s (v=%02x) pc=%08x npc=%08x SP=%08x\n",
-                count, name, intno,
-                env->pc,
-                env->npc, env->regwptr[6]);
-        log_cpu_state(env, 0);
+        qemu_log("%6d: %s (v=%02x)\n", count, name, intno);
+        log_cpu_state(cs, 0);
 #if 0
         {
             int i;
@@ -101,12 +105,12 @@ void do_interrupt(CPUState *env)
 #endif
 #if !defined(CONFIG_USER_ONLY)
     if (env->psret == 0) {
-        if (env->exception_index == 0x80 &&
+        if (cs->exception_index == 0x80 &&
             env->def->features & CPU_FEATURE_TA0_SHUTDOWN) {
             qemu_system_shutdown_request();
         } else {
-            cpu_abort(env, "Trap 0x%02x while interrupts disabled, Error state",
-                      env->exception_index);
+            cpu_abort(cs, "Trap 0x%02x while interrupts disabled, Error state",
+                      cs->exception_index);
         }
         return;
     }
@@ -121,7 +125,7 @@ void do_interrupt(CPUState *env)
     env->tbr = (env->tbr & TBR_BASE_MASK) | (intno << 4);
     env->pc = env->tbr;
     env->npc = env->pc + 4;
-    env->exception_index = -1;
+    cs->exception_index = -1;
 
 #if !defined(CONFIG_USER_ONLY)
     /* IRQ acknowledgment */
@@ -132,7 +136,7 @@ void do_interrupt(CPUState *env)
 }
 
 #if !defined(CONFIG_USER_ONLY)
-static void leon3_cache_control_int(CPUState *env)
+static void leon3_cache_control_int(CPUSPARCState *env)
 {
     uint32_t state = 0;
 
@@ -161,7 +165,7 @@ static void leon3_cache_control_int(CPUState *env)
     }
 }
 
-void leon3_irq_manager(CPUState *env, void *irq_manager, int intno)
+void leon3_irq_manager(CPUSPARCState *env, void *irq_manager, int intno)
 {
     leon3_irq_ack(irq_manager, intno);
     leon3_cache_control_int(env);

@@ -52,17 +52,17 @@ class IBucket;
 // A FetchEngine holds only one execution flow. An SMT processor
 // should instantiate several FetchEngines.
 
-class GProcessor;
-
 class FetchEngine {
 private:
 
   GMemorySystem *const gms;
-  GProcessor    *const gproc;
 
   BPredictor   *bpred;
+  BPredictor   *bpred2; // 2nd level predictor
 
   uint16_t      FetchWidth;
+  uint16_t      FetchWidthBits;
+	bool          AlignedFetch;
 
   uint16_t      BB4Cycle;
   uint16_t      bpredDelay;
@@ -73,12 +73,11 @@ private:
 
   // InstID of the address that generated a misprediction
  
-  uint32_t  numSP;
-  bool      *missInst; // branch missprediction. Stop fetching until solved
-  DInst     **lastd;
-  CallbackContainer *cbPending;
+  bool      missInst; // branch missprediction. Stop fetching until solved
+  DInst     *lastd;
+  CallbackContainer cbPending;
 
-  AddrType  missInstPC;
+  Time_t    lastMissTime; // FIXME: maybe we need an array
 
   bool      enableICache;
  
@@ -88,6 +87,8 @@ protected:
 
   // ******************* Statistics section
   GStatsAvg  avgBranchTime;
+  GStatsAvg  avgBranchTime2;
+  GStatsAvg  avgFetchTime;
   GStatsCntr nDelayInst1;
   GStatsCntr nDelayInst2;
   GStatsCntr nDelayInst3;
@@ -97,7 +98,6 @@ protected:
 
 public:
   FetchEngine(FlowID i
-              ,GProcessor *gproc
               ,GMemorySystem *gms
               ,FetchEngine *fe = 0);
 
@@ -106,8 +106,8 @@ public:
   void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
   typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface* , FlowID, &FetchEngine::fetch>  fetchCB;
 
-  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, DInst* oldinst, int32_t n2Fetched, uint16_t maxbb);
-  typedef CallbackMember6<FetchEngine, IBucket *, EmulInterface* , FlowID, DInst*, int32_t, uint16_t, &FetchEngine::realfetch>  realfetchCB;
+  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched, uint16_t maxbb);
+  typedef CallbackMember5<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, uint16_t, &FetchEngine::realfetch>  realfetchCB;
 
   void unBlockFetch(DInst* dinst, Time_t missFetchTime);
   typedef CallbackMember2<FetchEngine, DInst*, Time_t,  &FetchEngine::unBlockFetch> unBlockFetchCB;
@@ -127,29 +127,11 @@ public:
 
 
   bool isBlocked(DInst* inst) const {
-    for (uint32_t i = 0; i < numSP; i++){
-      if (missInst[i] == false)
-        return false;
-    }
-    return true;
+    return missInst;
   }
 
-  void clearMissInst(DInst * dinst);
+  void clearMissInst(DInst * dinst, Time_t missFetchTime);
   void setMissInst(DInst * dinst);
-    /*
-  void clearMissInst(DInst * dinst) {
-    MSG("UnLocking Dinst ID: %llu,DInst PE:%d, Dinst PC %x\n",dinst->getID(),dinst->getPE(),dinst->getPC());
-    missInst[dinst->getPE()] = false;
-  }
-
-  void setMissInst(DInst * dinst) {
-    MSG("CPU: %d\tLocking Dinst ID: %llu, DInst PE:%d, Dinst PC %x",(int) this->gproc->getId(), dinst->getID(),dinst->getPE(),dinst->getPC());
-    I(dinst->getPE()!=0);
-    I(!missInst[dinst->getPE()]);
-    missInst[dinst->getPE()] = true;
-    lastd = dinst;
-  }
-*/
 };
 
 #endif   // FETCHENGINE_H

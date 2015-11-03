@@ -1,7 +1,7 @@
 language: cpp
 compiler:
   - gcc
-  - clang
+  #- clang
 
 env:
   matrix:
@@ -9,10 +9,10 @@ env:
     - BUILD_TYPE=Debug
 
 before_install:
-  - sudo apt-get install libboost-dev                                                                                                                                                    
   - sudo apt-get install bison flex                                                                                                                                                      
   - sudo apt-get install libglib2.0-dev                                                                                                                                                  
   - sudo apt-get install libncurses5-dev  
+  - sudo apt-get install libboost-all-dev
 
 before_script:
   - cd ..
@@ -20,12 +20,16 @@ before_script:
   - cd build
   - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
 
-script: make
+script: 
+  - make
+    #- make check
 
 after_script:
   - mkdir run
   - cd run
   - cp ../../esesc/conf/* .
-  - cp ../../esesc/bins/* .
-  - ../main/esesc
+  - cp ../../esesc/bins/mips64/* .
+  - cp ../../esesc/bins/inputs/* .
+  - ../main/esesc < crafty.in
+  - ../../esesc/conf/scripts/report.pl -last
 

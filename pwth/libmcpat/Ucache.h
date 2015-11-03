@@ -55,8 +55,18 @@
 #include "nuca.h"
 
 
+#include <boost/serialization/access.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+
+
 class min_values_t
 {
+#if NEW_BOOST
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive & ar, const unsigned int version);
+#endif
   public:
     double min_delay;
     double min_dyn;

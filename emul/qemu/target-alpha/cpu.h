@@ -21,16 +21,16 @@
 #define __CPU_ALPHA_H__
 
 #include "config.h"
+#include "qemu-common.h"
 
 #define TARGET_LONG_BITS 64
+#define ALIGNED_ONLY
 
-#define CPUState struct CPUAlphaState
+#define CPUArchState struct CPUAlphaState
 
-#include "cpu-defs.h"
+#include "exec/cpu-defs.h"
 
-#include "softfloat.h"
-
-#define TARGET_HAS_ICE 1
+#include "fpu/softfloat.h"
 
 #define ELF_MACHINE     EM_ALPHA
 
@@ -39,9 +39,20 @@
 
 #define TARGET_PAGE_BITS 13
 
+#ifdef CONFIG_USER_ONLY
+/* ??? The kernel likes to give addresses in high memory.  If the host has
+   more virtual address space than the guest, this can lead to impossible
+   allocations.  Honor the long-standing assumption that only kernel addrs
+   are negative, but otherwise allow allocations anywhere.  This could lead
+   to tricky emulation problems for programs doing tagged addressing, but
+   that's far fewer than encounter the impossible allocation problem.  */
+#define TARGET_PHYS_ADDR_SPACE_BITS  63
+#define TARGET_VIRT_ADDR_SPACE_BITS  63
+#else
 /* ??? EV4 has 34 phys addr bits, EV5 has 40, EV6 has 44.  */
-#define TARGET_PHYS_ADDR_SPACE_BITS	44
-#define TARGET_VIRT_ADDR_SPACE_BITS	(30 + TARGET_PAGE_BITS)
+#define TARGET_PHYS_ADDR_SPACE_BITS  44
+#define TARGET_VIRT_ADDR_SPACE_BITS  (30 + TARGET_PAGE_BITS)
+#endif
 
 /* Alpha major type */
 enum {
@@ -139,54 +150,54 @@ enum {
     FP_ROUND_DYNAMIC = 0x3,
 };
 
-/* FPCR bits */
-#define FPCR_SUM		(1ULL << 63)
-#define FPCR_INED		(1ULL << 62)
-#define FPCR_UNFD		(1ULL << 61)
-#define FPCR_UNDZ		(1ULL << 60)
-#define FPCR_DYN_SHIFT		58
-#define FPCR_DYN_CHOPPED	(0ULL << FPCR_DYN_SHIFT)
-#define FPCR_DYN_MINUS		(1ULL << FPCR_DYN_SHIFT)
-#define FPCR_DYN_NORMAL		(2ULL << FPCR_DYN_SHIFT)
-#define FPCR_DYN_PLUS		(3ULL << FPCR_DYN_SHIFT)
-#define FPCR_DYN_MASK		(3ULL << FPCR_DYN_SHIFT)
-#define FPCR_IOV		(1ULL << 57)
-#define FPCR_INE		(1ULL << 56)
-#define FPCR_UNF		(1ULL << 55)
-#define FPCR_OVF		(1ULL << 54)
-#define FPCR_DZE		(1ULL << 53)
-#define FPCR_INV		(1ULL << 52)
-#define FPCR_OVFD		(1ULL << 51)
-#define FPCR_DZED		(1ULL << 50)
-#define FPCR_INVD		(1ULL << 49)
-#define FPCR_DNZ		(1ULL << 48)
-#define FPCR_DNOD		(1ULL << 47)
-#define FPCR_STATUS_MASK	(FPCR_IOV | FPCR_INE | FPCR_UNF \
-				 | FPCR_OVF | FPCR_DZE | FPCR_INV)
+/* FPCR bits -- right-shifted 32 so we can use a uint32_t.  */
+#define FPCR_SUM                (1U << (63 - 32))
+#define FPCR_INED               (1U << (62 - 32))
+#define FPCR_UNFD               (1U << (61 - 32))
+#define FPCR_UNDZ               (1U << (60 - 32))
+#define FPCR_DYN_SHIFT          (58 - 32)
+#define FPCR_DYN_CHOPPED        (0U << FPCR_DYN_SHIFT)
+#define FPCR_DYN_MINUS          (1U << FPCR_DYN_SHIFT)
+#define FPCR_DYN_NORMAL         (2U << FPCR_DYN_SHIFT)
+#define FPCR_DYN_PLUS           (3U << FPCR_DYN_SHIFT)
+#define FPCR_DYN_MASK           (3U << FPCR_DYN_SHIFT)
+#define FPCR_IOV                (1U << (57 - 32))
+#define FPCR_INE                (1U << (56 - 32))
+#define FPCR_UNF                (1U << (55 - 32))
+#define FPCR_OVF                (1U << (54 - 32))
+#define FPCR_DZE                (1U << (53 - 32))
+#define FPCR_INV                (1U << (52 - 32))
+#define FPCR_OVFD               (1U << (51 - 32))
+#define FPCR_DZED               (1U << (50 - 32))
+#define FPCR_INVD               (1U << (49 - 32))
+#define FPCR_DNZ                (1U << (48 - 32))
+#define FPCR_DNOD               (1U << (47 - 32))
+#define FPCR_STATUS_MASK        (FPCR_IOV | FPCR_INE | FPCR_UNF \
+                                 | FPCR_OVF | FPCR_DZE | FPCR_INV)
 
 /* The silly software trap enables implemented by the kernel emulation.
    These are more or less architecturally required, since the real hardware
    has read-as-zero bits in the FPCR when the features aren't implemented.
    For the purposes of QEMU, we pretend the FPCR can hold everything.  */
-#define SWCR_TRAP_ENABLE_INV	(1ULL << 1)
-#define SWCR_TRAP_ENABLE_DZE	(1ULL << 2)
-#define SWCR_TRAP_ENABLE_OVF	(1ULL << 3)
-#define SWCR_TRAP_ENABLE_UNF	(1ULL << 4)
-#define SWCR_TRAP_ENABLE_INE	(1ULL << 5)
-#define SWCR_TRAP_ENABLE_DNO	(1ULL << 6)
-#define SWCR_TRAP_ENABLE_MASK	((1ULL << 7) - (1ULL << 1))
+#define SWCR_TRAP_ENABLE_INV    (1U << 1)
+#define SWCR_TRAP_ENABLE_DZE    (1U << 2)
+#define SWCR_TRAP_ENABLE_OVF    (1U << 3)
+#define SWCR_TRAP_ENABLE_UNF    (1U << 4)
+#define SWCR_TRAP_ENABLE_INE    (1U << 5)
+#define SWCR_TRAP_ENABLE_DNO    (1U << 6)
+#define SWCR_TRAP_ENABLE_MASK   ((1U << 7) - (1U << 1))
 
-#define SWCR_MAP_DMZ		(1ULL << 12)
-#define SWCR_MAP_UMZ		(1ULL << 13)
-#define SWCR_MAP_MASK		(SWCR_MAP_DMZ | SWCR_MAP_UMZ)
+#define SWCR_MAP_DMZ            (1U << 12)
+#define SWCR_MAP_UMZ            (1U << 13)
+#define SWCR_MAP_MASK           (SWCR_MAP_DMZ | SWCR_MAP_UMZ)
 
-#define SWCR_STATUS_INV		(1ULL << 17)
-#define SWCR_STATUS_DZE		(1ULL << 18)
-#define SWCR_STATUS_OVF		(1ULL << 19)
-#define SWCR_STATUS_UNF		(1ULL << 20)
-#define SWCR_STATUS_INE		(1ULL << 21)
-#define SWCR_STATUS_DNO		(1ULL << 22)
-#define SWCR_STATUS_MASK	((1ULL << 23) - (1ULL << 17))
+#define SWCR_STATUS_INV         (1U << 17)
+#define SWCR_STATUS_DZE         (1U << 18)
+#define SWCR_STATUS_OVF         (1U << 19)
+#define SWCR_STATUS_UNF         (1U << 20)
+#define SWCR_STATUS_INE         (1U << 21)
+#define SWCR_STATUS_DNO         (1U << 22)
+#define SWCR_STATUS_MASK        ((1U << 23) - (1U << 17))
 
 #define SWCR_MASK  (SWCR_TRAP_ENABLE_MASK | SWCR_MAP_MASK | SWCR_STATUS_MASK)
 
@@ -227,15 +238,13 @@ struct CPUAlphaState {
     uint64_t lock_addr;
     uint64_t lock_st_addr;
     uint64_t lock_value;
+
+    /* The FPCR, and disassembled portions thereof.  */
+    uint32_t fpcr;
+    uint32_t fpcr_exc_enable;
     float_status fp_status;
-    /* The following fields make up the FPCR, but in FP_STATUS format.  */
-    uint8_t fpcr_exc_status;
-    uint8_t fpcr_exc_mask;
     uint8_t fpcr_dyn_round;
     uint8_t fpcr_flush_to_zero;
-    uint8_t fpcr_dnz;
-    uint8_t fpcr_dnod;
-    uint8_t fpcr_undz;
 
     /* The Internal Processor Registers.  Some of these we assume always
        exist for use in user-mode.  */
@@ -266,17 +275,9 @@ struct CPUAlphaState {
 #endif
 
     /* This alarm doesn't exist in real hardware; we wish it did.  */
-    struct QEMUTimer *alarm_timer;
     uint64_t alarm_expire;
 
-#if TARGET_LONG_BITS > HOST_LONG_BITS
-    /* temporary fixed-point registers
-     * used to emulate 64 bits target on 32 bits hosts
-     */
-    target_ulong t0, t1;
-#endif
-
-    /* Those resources are used only in Qemu core */
+    /* Those resources are used only in QEMU core */
     CPU_COMMON
 
     int error_code;
@@ -286,12 +287,13 @@ struct CPUAlphaState {
     int implver;
 };
 
-#define cpu_init cpu_alpha_init
+#define cpu_list alpha_cpu_list
 #define cpu_exec cpu_alpha_exec
 #define cpu_gen_code cpu_alpha_gen_code
 #define cpu_signal_handler cpu_alpha_signal_handler
 
-#include "cpu-all.h"
+#include "exec/cpu-all.h"
+#include "cpu-qom.h"
 
 enum {
     FEATURE_ASN    = 0x00000001,
@@ -374,7 +376,7 @@ enum {
     PS_USER_MODE = 8
 };
 
-static inline int cpu_mmu_index(CPUState *env)
+static inline int cpu_mmu_index(CPUAlphaState *env)
 {
     if (env->pal_mode) {
         return MMU_KERNEL_IDX;
@@ -422,25 +424,32 @@ enum {
     IR_ZERO = 31,
 };
 
-CPUAlphaState * cpu_alpha_init (const char *cpu_model);
-int cpu_alpha_exec(CPUAlphaState *s);
+void alpha_translate_init(void);
+
+AlphaCPU *cpu_alpha_init(const char *cpu_model);
+
+#define cpu_init(cpu_model) CPU(cpu_alpha_init(cpu_model))
+
+void alpha_cpu_list(FILE *f, fprintf_function cpu_fprintf);
+int cpu_alpha_exec(CPUState *cpu);
 /* you can call this signal handler from your SIGBUS and SIGSEGV
    signal handlers to inform the virtual CPU of exceptions. non zero
    is returned if the signal was handled by the virtual CPU.  */
 int cpu_alpha_signal_handler(int host_signum, void *pinfo,
                              void *puc);
-int cpu_alpha_handle_mmu_fault (CPUState *env, uint64_t address, int rw,
-                                int mmu_idx);
-#define cpu_handle_mmu_fault cpu_alpha_handle_mmu_fault
-void do_interrupt (CPUState *env);
+int alpha_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
+                               int mmu_idx);
+void do_restore_state(CPUAlphaState *, uintptr_t retaddr);
+void QEMU_NORETURN dynamic_excp(CPUAlphaState *, uintptr_t, int, int);
+void QEMU_NORETURN arith_excp(CPUAlphaState *, uintptr_t, int, uint64_t);
 
-uint64_t cpu_alpha_load_fpcr (CPUState *env);
-void cpu_alpha_store_fpcr (CPUState *env, uint64_t val);
+uint64_t cpu_alpha_load_fpcr (CPUAlphaState *env);
+void cpu_alpha_store_fpcr (CPUAlphaState *env, uint64_t val);
 #ifndef CONFIG_USER_ONLY
-void swap_shadow_regs(CPUState *env);
-QEMU_NORETURN void cpu_unassigned_access(CPUState *env1,
-                                         target_phys_addr_t addr, int is_write,
-                                         int is_exec, int unused, int size);
+void swap_shadow_regs(CPUAlphaState *env);
+QEMU_NORETURN void alpha_cpu_unassigned_access(CPUState *cpu, hwaddr addr,
+                                               bool is_write, bool is_exec,
+                                               int unused, unsigned size);
 #endif
 
 /* Bits in TB->FLAGS that control how translation is processed.  */
@@ -458,7 +467,7 @@ enum {
     TB_FLAGS_AMASK_PREFETCH = AMASK_PREFETCH << TB_FLAGS_AMASK_SHIFT,
 };
 
-static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
+static inline void cpu_get_tb_cpu_state(CPUAlphaState *env, target_ulong *pc,
                                         target_ulong *cs_base, int *pflags)
 {
     int flags = 0;
@@ -479,42 +488,6 @@ static inline void cpu_get_tb_cpu_state(CPUState *env, target_ulong *pc,
     *pflags = flags;
 }
 
-#if defined(CONFIG_USER_ONLY)
-static inline void cpu_clone_regs(CPUState *env, target_ulong newsp)
-{
-    if (newsp) {
-        env->ir[IR_SP] = newsp;
-    }
-    env->ir[IR_V0] = 0;
-    env->ir[IR_A3] = 0;
-}
-
-static inline void cpu_set_tls(CPUState *env, target_ulong newtls)
-{
-    env->unique = newtls;
-}
-#endif
-
-static inline bool cpu_has_work(CPUState *env)
-{
-    /* Here we are checking to see if the CPU should wake up from HALT.
-       We will have gotten into this state only for WTINT from PALmode.  */
-    /* ??? I'm not sure how the IPL state works with WTINT to keep a CPU
-       asleep even if (some) interrupts have been asserted.  For now,
-       assume that if a CPU really wants to stay asleep, it will mask
-       interrupts at the chipset level, which will prevent these bits
-       from being set in the first place.  */
-    return env->interrupt_request & (CPU_INTERRUPT_HARD
-                                     | CPU_INTERRUPT_TIMER
-                                     | CPU_INTERRUPT_SMP
-                                     | CPU_INTERRUPT_MCHK);
-}
-
-#include "exec-all.h"
-
-static inline void cpu_pc_from_tb(CPUState *env, TranslationBlock *tb)
-{
-    env->pc = tb->pc;
-}
+#include "exec/exec-all.h"
 
 #endif /* !defined (__CPU_ALPHA_H__) */

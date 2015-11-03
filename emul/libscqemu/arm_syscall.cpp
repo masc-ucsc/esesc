@@ -96,12 +96,6 @@ extern bool thread_done[];
 //typedef enum TranslationType { ARM = 0, THUMB, THUMB32, SPARC32};
 extern void scfork(uint64_t, void *, uint8_t, void *);
 #endif
-#ifdef CONFIG_ESESC_CUDA
-#ifdef TARGET_SPARC
-#include "cudasparc.h"
-#else
-#include "cudaarm.h"
-#endif
 #endif
 static bitmask_transtbl fcntl_flags_tbl[] = {
   {TARGET_O_ACCMODE,   TARGET_O_WRONLY,    O_ACCMODE,   O_WRONLY,    },

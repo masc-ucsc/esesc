@@ -47,6 +47,7 @@
  ***************************************************************************/
 
 
+#include <math.h>
 #include <stdio.h>
 #include "xmlParser.h"
 #include <string>
@@ -54,6 +55,8 @@
 #include "SescConf.h"
 //#include "arch_const.h"
 
+extern bool gpu_tcd_present;
+extern bool gpu_tci_present;
 
 
 void ParseXML::parse(char* filepath)
@@ -342,7 +345,7 @@ void ParseXML::parse(char* filepath)
             {//find system.core0.vpc_buffer
               itmp=xNode4.nChildNode("param");
               for(k=0; k<itmp; k++)
-              { 
+              {
                 if (strcmp(xNode4.getChildNode("param",k).getAttribute("name"),"dcache_config")==0)
                 {
                   strtmp.assign(xNode4.getChildNode("param",k).getAttribute("value"));
@@ -438,7 +441,7 @@ void ParseXML::parse(char* filepath)
                   chtmp1[0]='\0';
                 }
               }
-           
+
             }
             if (strcmp(xNode4.getAttribute("name"),"VPC")==0)
             {//find system.core0.vpc
@@ -579,7 +582,7 @@ void ParseXML::parse(char* filepath)
           exit(0);
         }
       }
-    }  
+    }
 
     //___________________________get all system.gpu0________________________________________________
     OrderofComponents_3layer++;
@@ -790,8 +793,8 @@ void ParseXML::parse(char* filepath)
                   sys.gpu.homoSM.scratchpad.number_entries=atoi(xNode4.getChildNode("param",k).getAttribute("value"));
                   continue;
                 }
-                //dfilter
-                if (strcmp(xNode4.getChildNode("param",k).getAttribute("name"),"dfilter_config")==0)
+                //tinycache_data
+                if (strcmp(xNode4.getChildNode("param",k).getAttribute("name"),"tinycache_data_config")==0)
                 {
                   strtmp.assign(xNode4.getChildNode("param",k).getAttribute("value"));
                   m=0;
@@ -803,12 +806,12 @@ void ParseXML::parse(char* filepath)
                       strcat(chtmp1,chtmp);
                     }
                     else{
-                      sys.gpu.homoSM.homolane.dfilter.dcache_config[m]=atoi(chtmp1);
+                      sys.gpu.homoSM.homolane.tinycache_data.dcache_config[m]=atoi(chtmp1);
                       m++;
                       chtmp1[0]='\0';
                     }
                   }
-                  sys.gpu.homoSM.homolane.dfilter.dcache_config[m]=atoi(chtmp1);
+                  sys.gpu.homoSM.homolane.tinycache_data.dcache_config[m]=atoi(chtmp1);
                   m++;
                   chtmp1[0]='\0';
                   continue;
@@ -1939,7 +1942,7 @@ int ParseXML::cntr_pos_value(string cntr_name){
   //find position of the cntr
   it1 = str2pos_map.find(cntr_name);
   if(it1 == str2pos_map.end()) {
-    cout << "Did not find counter "<< cntr_name << endl; 
+    cout << "Did not find counter "<< cntr_name << endl;
     exit(-1);
   }
 
@@ -1960,7 +1963,7 @@ bool ParseXML::check_cntr(string cntr_name){
 
 void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> mcpat_map)
 {
-  char  str [250]; 
+  char  str [250];
   //  sys->executionTime = double (timeinterval/1e9);
   for (uint32_t ii = 0; ii < sys.number_of_cores; ii++){
     uint32_t i = (*coreIndex)[ii];
@@ -1987,7 +1990,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     sprintf(str,"P(%u)_core_total_cycles",i);
     if ( check_cntr(str) ) sys.core[i].total_cycles= cntr_pos_value(str);
     sprintf(str,"P(%u)_core_ROB_reads",i);
-    //sys.core[i].ROB_reads = cntr_pos_value(str)/2; // double width, half the port size and access 
+    //sys.core[i].ROB_reads = cntr_pos_value(str)/2; // double width, half the port size and access
     if ( check_cntr(str) ) sys.core[i].ROB_reads = (sys.core[i].int_instructions + sys.core[i].fp_instructions + sys.core[i].branch_instructions)/2;
     sprintf(str,"P(%u)_core_ROB_writes",i);
     if ( check_cntr(str) ) sys.core[i].ROB_writes = cntr_pos_value(str)/2;
@@ -2047,7 +2050,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
     if ( check_cntr(str) ) sys.core[i].dcache.write_misses= cntr_pos_value(str);
     //=    }
 #if 1
-    int tmp;
+    int tmp = 0;
     sprintf(str,"PTLB(%u)_read_hits",i);
     if ( check_cntr(str) ) tmp = cntr_pos_value(str);
     sprintf(str,"PTLB(%u)_read_misses",i);
@@ -2122,20 +2125,37 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
         sprintf(str,"P(%u)_core_storq_write_accesses",i);
         if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].LSQ.write_accesses = cntr_pos_value(str)/nl;
 
-        //dfilter
+        //tinycache_data
         sprintf(str,"cache(%u)_read_accesses",ii*nl + j);
         if (check_cntr(str)) {
           sprintf(str,"cache(%u)_read_accesses",ii*nl + j);
-          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].dfilter.read_accesses=cntr_pos_value(str);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_data.read_accesses=cntr_pos_value(str);
           sprintf(str,"cache(%u)_read_misses",ii*nl + j);
-          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].dfilter.read_misses=cntr_pos_value(str);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_data.read_misses=cntr_pos_value(str);
           sprintf(str,"cache(%u)_write_accesses",ii*nl + j);
-          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].dfilter.write_accesses=cntr_pos_value(str);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_data.write_accesses=cntr_pos_value(str);
           sprintf(str,"cache(%u)_write_misses",ii*nl + j);
-          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].dfilter.write_misses=cntr_pos_value(str);
-        } else { // no dfilter cache 
-          sys.gpu.homoSM.homolane.dfilter.dcache_config[0] = 0;
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_data.write_misses=cntr_pos_value(str);
+        } else { // no tinycache_data cache
+          sys.gpu.homoSM.homolane.tinycache_data.dcache_config[0] = 0;
         }
+/*
+        //tinycache_inst
+        sprintf(str,"local_icache(%u)_read_accesses",ii*nl + j);
+        if (check_cntr(str)) {
+          sprintf(str,"local_icache(%u)_read_accesses",ii*nl + j);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_inst.read_accesses=cntr_pos_value(str);
+          sprintf(str,"local_icache(%u)_read_misses",ii*nl + j);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_inst.read_misses=cntr_pos_value(str);
+          sprintf(str,"local_icache(%u)_write_accesses",ii*nl + j);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_inst.write_accesses=cntr_pos_value(str);
+          sprintf(str,"local_icache(%u)_write_misses",ii*nl + j);
+          if ( check_cntr(str) ) sys.gpu.SMS[ii].lanes[j].tinycache_inst.write_misses=cntr_pos_value(str);
+        } else { // no tinycache_inst cache
+          sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[0] = 0;
+        }
+*/
+
       }
 
       //Instruction Cache counters
@@ -2160,11 +2180,11 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
       if ( check_cntr(str) ) sys.gpu.SMS[ii].dcache.write_misses= cntr_pos_value(str);
 
       //Data TLBs
-      sys.gpu.SMS[ii].dtlb.total_accesses=sys.gpu.SMS[ii].dcache.read_accesses + 
+      sys.gpu.SMS[ii].dtlb.total_accesses=sys.gpu.SMS[ii].dcache.read_accesses +
         sys.gpu.SMS[ii].dcache.write_accesses;
       sys.gpu.SMS[ii].dtlb.total_misses=0.05*(sys.gpu.SMS[ii].dcache.read_misses +
           sys.gpu.SMS[ii].dcache.write_misses);
-      
+
       //ScratchPad
       sprintf(str,"scratch(%u)_read_accesses",i);
       if ( check_cntr(str) ) sys.gpu.SMS[ii].scratchpad.read_accesses = cntr_pos_value(str);
@@ -2172,9 +2192,9 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
       if ( check_cntr(str) ) sys.gpu.SMS[ii].scratchpad.write_accesses = cntr_pos_value(str);
 
       //Coalescing units
-      
+
       //Register Files
-      
+
       //Instruction Decode
 
     }
@@ -2214,18 +2234,18 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
         sprintf(str,"FL2(%u)_read_misses",i);
         if ( check_cntr(str) ) sys.core[i].VPCfilter.read_misses= cntr_pos_value(str);
         sprintf(str,"FL2(%u)_write_misses",i);
-        if ( check_cntr(str) ) sys.core[i].VPCfilter.write_misses= cntr_pos_value(str);  
+        if ( check_cntr(str) ) sys.core[i].VPCfilter.write_misses= cntr_pos_value(str);
       }
     }
   }
 
 
   for (uint32_t  i = 0; i < sys.number_of_STLBs; i++){
-    int tmp;
+    int tmp = 0;
     sprintf(str,"STLB(%u)_read_hits",i);
     if ( check_cntr(str) ) tmp = cntr_pos_value(str);
     sprintf(str,"STLB(%u)_read_misses",i);
-    if ( check_cntr(str) ) 
+    if ( check_cntr(str) )
     {
       tmp += cntr_pos_value(str);
       sys.STLB[i].read_accesses=tmp;
@@ -2248,7 +2268,7 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
   }
 
   for (uint32_t  i = 0; i < sys.number_of_NoCs; i++){
-    uint32_t reads, writes;
+    uint32_t reads = 0, writes = 0;
     sprintf(str,"xbar(%u)_read_accesses",i);
     if ( check_cntr(str) ) reads=cntr_pos_value(str);
     sprintf(str,"xbar(%u)_write_accesses",i);
@@ -2260,8 +2280,8 @@ void ParseXML::updateCntrValues(vector<uint32_t> *stats_vector, map<string,int> 
   string str1 = "mc_write_accesses";
   string str2 = "mc_read_accesses";
 
-  if ( check_cntr(str1) ) sys.mc.memory_writes=cntr_pos_value(str1);       
-  if ( check_cntr(str2) ) sys.mc.memory_reads=cntr_pos_value(str2);        
+  if ( check_cntr(str1) ) sys.mc.memory_writes=cntr_pos_value(str1);
+  if ( check_cntr(str2) ) sys.mc.memory_reads=cntr_pos_value(str2);
 
   return;
 }
@@ -2284,34 +2304,41 @@ void ParseXML::getGeneralParams() {
   sys.scale_lkg             = SescConf->getDouble(section, "scaleLkgPow");
   const char *therm_section = SescConf->getCharPtr("","thermal");
   const char *model_section = SescConf->getCharPtr(therm_section,"model");
-  sys.temperature = floor((SescConf->getDouble(model_section,"ambientTemp")/10))*10; //CACTI accepts temperature in steps of 10  
+  sys.temperature = floor((SescConf->getDouble(model_section,"ambientTemp")/10))*10; //CACTI accepts temperature in steps of 10
+}
+
+void ParseXML::getmimdGPUParams() {
 }
 
 void ParseXML::getGPUParams() {
-  if (gpuIndex->size()>0) { 
+
+  if (gpuIndex->size()>0) {
+    const char *section = SescConf->getCharPtr("","cpusimu",(*gpuIndex)[0]);
+    const char *emu_section = SescConf->getCharPtr("","cpuemul",(*gpuIndex)[0]);
+
+    //--------------------- GPU CORE CONFIGURATION ----------------------//
     sys.number_of_GPU = 1; //maximum number of GPUs currently supported my esesc.
     sys.gpu.number_of_SMs                                  = gpuIndex->size();
     sys.gpu.homoSM.number_of_lanes                         = SescConf->getInt("", "SP_PER_SM");;
     sys.gpu.homoSM.homolane.clock_rate                     = 2000; //FIXME: Hardcoded, read from esesc.conf?
     sys.gpu.homoSM.homolane.machine_bits                   = 32;   //FIXME: Hardcoded, read from esesc.conf?
     sys.gpu.homoSM.homolane.virtual_address_width          = sys.virtual_address_width;
-    
-    /* address width determins the tag_width in Cache, LSQ and buffers in cache controller 
-       default value is machine_bits, if not set 
+
+    /* address width determins the tag_width in Cache, LSQ and buffers in cache controller
+       default value is machine_bits, if not set
        */
     sys.gpu.homoSM.homolane.physical_address_width         = sys.physical_address_width;
-   
-    sys.gpu.homoSM.homolane.instruction_length             = 32;   //FIXME: Hardcoded, read from esesc.conf? 
-    sys.gpu.homoSM.homolane.opcode_width                   = 11;   //FIXME: Hardcoded, read from esesc.conf?
-    sys.gpu.homoSM.homolane.internal_datapath_width        = 0;    // Does not exist in OOO.xml.
-    
-    /*number_of_hardware_threads defines how many blocks run on the same SM */
-    const char *section = SescConf->getCharPtr("","cpuemul",(*gpuIndex)[0]);
-    sys.gpu.homoSM.homolane.number_hardware_threads        = SescConf->getInt(section, "max_blocks_sm"); 
-    
-    sys.gpu.homoSM.homolane.number_instruction_fetch_ports = 2;   // After discussion with professor Renau
 
-    
+    sys.gpu.homoSM.homolane.instruction_length             = 32; //SescConf->getInt(section, "instWidth"); //FIXME
+    sys.gpu.homoSM.homolane.opcode_width                   = 11; //SescConf->getInt(section, "opcodeWidth"); //FIXME
+    sys.gpu.homoSM.homolane.internal_datapath_width        = 0;  // Does not exist in OOO.xml.
+
+    /*number_of_hardware_threads defines how many blocks run on the same SM */
+    sys.gpu.homoSM.homolane.number_hardware_threads        = SescConf->getInt(emu_section, "max_blocks_sm");
+
+    sys.gpu.homoSM.homolane.number_instruction_fetch_ports = 2; //SescConf->getInt(section, "fetchPorts"); // FIXME
+
+
     //sys.gpu.homoSM.homolane.pipelines_per_core       = 1,1;    // integer_pipeline and floating_pipelines, if the floating_pipelines is 0, then the pipeline is shared
     sys.gpu.homoSM.homolane.pipelines_per_core[0] = 1;
     sys.gpu.homoSM.homolane.pipelines_per_core[1] = 1;
@@ -2319,77 +2346,545 @@ void ParseXML::getGPUParams() {
     //sys.gpu.homoSM.homolane.pipeline_depth           = 13,13;  // pipeline depth of int and fp, if pipeline is shared, the second number is the average cycles of fp ops
     sys.gpu.homoSM.homolane.pipeline_depth[0] = 13;
     sys.gpu.homoSM.homolane.pipeline_depth[1] = 13;
-    
-    sys.gpu.homoSM.homolane.instruction_buffer_size  = 16; //<!-- buffer between IF and ID stage -->
+
+    sys.gpu.homoSM.homolane.instruction_buffer_size  = 16; //SescConf->getInt(section, "issueWidth") * 4;
+    sys.gpu.homoSM.homolane.archi_Regs_IRF_size      = 32; //SescConf->getInt(section, "nArchRegs");
+    sys.gpu.homoSM.homolane.phy_Regs_IRF_size        = 1024;
+    sys.gpu.homoSM.homolane.store_buffer_size        = 32; //SescConf->getInt(section, "maxStores");
+    sys.gpu.homoSM.homolane.memory_ports             = 2; //<!-- number of ports refer to sustainable concurrent memory accesses -->
+    sys.gpu.homoSM.homolane.LSQ_ports                = 0;
+
+
+    //--------------------- GPU ICACHE CONFIGURATION ----------------------//
+    if(SescConf->checkCharPtr("gpuCore", "SM_IL1")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","SM_IL1");
+      if (strcmp(tmpsection, "None") != 0 ) {
+
+        FlowID size = SescConf->getInt(tmpsection, "size");
+        FlowID bsize = SescConf->getInt(tmpsection, "bsize");
+        FlowID assoc = SescConf->getInt(tmpsection, "assoc");
+        FlowID delay = SescConf->getInt(tmpsection, "hitDelay");
+        FlowID nBanks = SescConf->getInt(tmpsection, "numBanks");
+
+        FlowID mshrSize = 0;
+        FlowID fillBuffSize = 0;
+        FlowID pfetchBuffSize = 0;
+        FlowID wbBuffSize = 0;
+
+        const char *mshr_sec;
+        if(SescConf->checkCharPtr(tmpsection, "MSHR")) {
+          mshr_sec = SescConf->getCharPtr(tmpsection, "MSHR");
+          mshrSize = SescConf->getInt(mshr_sec, "size");
+        }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+          pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+        }
+
+        sys.gpu.homoSM.icache.icache_config[0] = 32768; //size;    // Capacity
+        sys.gpu.homoSM.icache.icache_config[1] = 32;    //bsize;   // BlockWidth
+        sys.gpu.homoSM.icache.icache_config[2] = 2;     //assoc;   // associativity
+        sys.gpu.homoSM.icache.icache_config[3] = 1;     //nBanks;  // bank
+        sys.gpu.homoSM.icache.icache_config[4] = 2;     //2;       // throughput w.r.t core clock //CHECKME!!!
+        sys.gpu.homoSM.icache.icache_config[5] = 3;     //delay;   // latency w.r.t core clock
+
+        // icache does not support MSHR and fillBuffer
+        sys.gpu.homoSM.icache.buffer_sizes[0]  = 0;     //mshrSize; // miss buffer size (MSHR)
+        sys.gpu.homoSM.icache.buffer_sizes[1]  = 0;     //fillBuffSize;        // fill buffer size
+        sys.gpu.homoSM.icache.buffer_sizes[2]  = 16;    //pfetchBuffSize;    // prefetch buffer size, same as sys.gpu.homoSM.homolane.instruction_buffer_size?
+        sys.gpu.homoSM.icache.buffer_sizes[3]  = 0;     //wbBuffSize;        // wb_buffer size
+
+        sys.gpu.homoSM.itlb.number_entries     = 128;   //0;
+        if(SescConf->checkCharPtr(tmpsection, "SM_ITLBG")) {
+          const char *itlb_sec= SescConf->getCharPtr(tmpsection, "SM_ITLBG");
+          if (strcmp(itlb_sec, "None") != 0 ) {
+            FlowID itlb_size = SescConf->getInt(itlb_sec, "size");
+            FlowID itlb_bsize = SescConf->getInt(itlb_sec, "bsize");
+            sys.gpu.homoSM.itlb.number_entries     = 128; //itlb_size/itlb_bsize;
+          }
+        }
+
+
+
+      } else {
+        //There should be a SM_IL1 for the GPU.
+        I(0);
+        //error;
+        fprintf(stderr,"\n SM_IL1 for the GPU must point to a valid section, cannot be \"None\" \n");
+        exit(-1);
+      }
+    } else {
+      //There should be a SM_IL1 for the GPU.
+      I(0);
+      //error;
+      fprintf(stderr,"\n SM_IL1 for the GPU not defined \n");
+      exit(-1);
+    }
+
+    //--------------------- GPU DCACHE CONFIGURATION ----------------------//
+    if(SescConf->checkCharPtr("gpuCore", "SM_DL1")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","SM_DL1");
+      if (strcmp(tmpsection, "None") != 0 ) {
+
+        FlowID size = SescConf->getInt(tmpsection, "size");
+        FlowID bsize = SescConf->getInt(tmpsection, "bsize");
+        FlowID assoc = SescConf->getInt(tmpsection, "assoc");
+        FlowID delay = SescConf->getInt(tmpsection, "hitDelay");
+        FlowID nBanks = SescConf->getInt(tmpsection, "numBanks");
+
+        FlowID mshrSize = 0;
+        FlowID fillBuffSize = 0;
+        FlowID pfetchBuffSize = 0;
+        FlowID wbBuffSize = 0;
+
+        const char *mshr_sec;
+        if(SescConf->checkCharPtr(tmpsection, "MSHR")) {
+          mshr_sec = SescConf->getCharPtr(tmpsection, "MSHR");
+          mshrSize = SescConf->getInt(mshr_sec, "size");
+        }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+          pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+        }
+
+       if(SescConf->checkInt(tmpsection, "fillBuffSize")) {
+         fillBuffSize = SescConf->getInt(tmpsection, "fillBuffSize");
+       }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+         pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+       }
+       if(SescConf->checkInt(tmpsection, "wbBuffSize")) {
+         wbBuffSize = SescConf->getInt(tmpsection, "wbBuffSize");
+       }
+
+
+        sys.gpu.homoSM.dcache.dcache_config[0] = 16786; //size; // Capacity
+        sys.gpu.homoSM.dcache.dcache_config[1] = 32;    //bsize;    // BlockWidth
+        sys.gpu.homoSM.dcache.dcache_config[2] = 2;     //assoc;     // associativity
+        sys.gpu.homoSM.dcache.dcache_config[3] = 8;     //nBanks;     // bank
+        sys.gpu.homoSM.dcache.dcache_config[4] = 1;     //1; throughput w.r.t core clock
+        sys.gpu.homoSM.dcache.dcache_config[5] = 3;     //delay;     // latency w.r.t core clock
+
+        sys.gpu.homoSM.dcache.buffer_sizes[0]  = 16; //mshrSize;      // miss buffer size (MSHR)
+        sys.gpu.homoSM.dcache.buffer_sizes[1]  = 4;  //fillBuffSize;  // fill buffer size
+        sys.gpu.homoSM.dcache.buffer_sizes[2]  = 16; //pfetchBuffSize;// prefetch buffer size
+        sys.gpu.homoSM.dcache.buffer_sizes[3]  = 16; //wbBuffSize;    // wb_buffer size
+
+        sys.gpu.homoSM.dtlb.number_entries     = 0;
+        if(SescConf->checkCharPtr(tmpsection, "SM_DTLBG")) {
+          const char* dtlb_sec= SescConf->getCharPtr(tmpsection, "SM_DTLBG");
+          if (strcmp(dtlb_sec, "None") != 0 ) {
+            FlowID dtlb_size = SescConf->getInt(dtlb_sec, "size");
+            FlowID dtlb_bsize = SescConf->getInt(dtlb_sec, "bsize");
+            sys.gpu.homoSM.dtlb.number_entries     = dtlb_size/dtlb_bsize;
+          }
+        }
+
+
+      } else {
+        //There should be a SM_DL1 for the GPU.
+        I(0);
+        //error;
+        fprintf(stderr,"\n SM_DL1 for the GPU must point to a valid section, cannot be \"None\" \n");
+        exit(-1);
+      }
+    } else {
+      //There should be a SM_DL1 for the GPU.
+      I(0);
+      //error;
+      fprintf(stderr,"\n SM_DL1 for the GPU not defined \n");
+      exit(-1);
+    }
+
+    //--------------------- GPU SCRATCHPAD CONFIGURATION ----------------------//
+    if(SescConf->checkCharPtr("gpuCore", "scratchpad")){
+      const char *section = SescConf->getCharPtr("gpuCore","scratchpad");
+      if (strcmp(section, "None") != 0 ) {
+        sys.gpu.homoSM.scratchpad.number_entries = 24567; //HARDCODED
+      } else {
+        //There should be a scratchpad for the GPU.
+        I(0);
+        //error;
+        fprintf(stderr,"\n scratchpad for the GPU  must point to a valid section, cannot be \"None\" \n");
+        exit(-1);
+      }
+    } else {
+      //There should be a scratchpad for the GPU.
+      I(0);
+      //error;
+      fprintf(stderr,"\n scratchpad for the GPU not defined \n");
+      exit(-1);
+    }
+
+    //--------------------- GPU DATA_TINYCACHE CONFIGURATION ----------------------//
+    gpu_tcd_present = false;
+    if(SescConf->checkCharPtr("gpuCore", "dfilter")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","dfilter");
+      if (strcmp(tmpsection, "None") != 0 ) {
+        gpu_tcd_present = true;
+
+        FlowID size = SescConf->getInt(tmpsection, "size");
+        FlowID bsize = SescConf->getInt(tmpsection, "bsize");
+        FlowID assoc = SescConf->getInt(tmpsection, "assoc");
+        FlowID delay = SescConf->getInt(tmpsection, "hitDelay");
+        FlowID nBanks = SescConf->getInt(tmpsection, "numBanks");
+
+        /*
+        // tinycache_data does not have any buffers (MSHR, etc)
+        FlowID mshrSize = 0;
+        FlowID fillBuffSize = 0;
+        FlowID pfetchBuffSize = 0;
+        FlowID wbBuffSize = 0;
+
+        const char *mshr_sec;
+        if(SescConf->checkCharPtr(tmpsection, "MSHR")) {
+          mshr_sec = SescConf->getCharPtr(tmpsection, "MSHR");
+          mshrSize = SescConf->getInt(mshr_sec, "size");
+        }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+          pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+        }
+
+       if(SescConf->checkInt(tmpsection, "fillBuffSize")) {
+         fillBuffSize = SescConf->getInt(tmpsection, "fillBuffSize");
+       }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+         pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+       }
+       if(SescConf->checkInt(tmpsection, "wbBuffSize")) {
+         wbBuffSize = SescConf->getInt(tmpsection, "wbBuffSize");
+       }
+       */
+
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[0] = 512;  //size;   // Capacity
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[1] = 32;   //bsize;  // BlockWidth
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[2] = 1;    //assoc;  // associativity
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[3] = 1;    //nBanks; // bank
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[4] = 1;    //1;      //throughput w.r.t core clock
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[5] = 3;    //delay;  // latency w.r.t core clock
+      } else {
+        //There need not be a data tinycache for the GPU
+      }
+    } else {
+      //There need not be a data tinycache for the GPU
+    }
+
+    //--------------------- GPU INST_TINYCACHE CONFIGURATION ----------------------//
+    gpu_tci_present = false;
+    if(SescConf->checkCharPtr("gpuCore", "ifilter")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","ifilter");
+      if (strcmp(tmpsection, "None") != 0 ) {
+        gpu_tci_present = true;
+
+
+        FlowID size = SescConf->getInt(tmpsection, "size");
+        FlowID bsize = SescConf->getInt(tmpsection, "bsize");
+        FlowID assoc = SescConf->getInt(tmpsection, "assoc");
+        FlowID delay = SescConf->getInt(tmpsection, "hitDelay");
+        FlowID nBanks = SescConf->getInt(tmpsection, "numBanks");
+
+        /*
+        // tinycache_inst does not have any buffers (MSHR, etc)
+        FlowID mshrSize = 0;
+        FlowID fillBuffSize = 0;
+        FlowID pfetchBuffSize = 0;
+        FlowID wbBuffSize = 0;
+
+        const char *mshr_sec;
+        if(SescConf->checkCharPtr(tmpsection, "MSHR")) {
+          mshr_sec = SescConf->getCharPtr(tmpsection, "MSHR");
+          mshrSize = SescConf->getInt(mshr_sec, "size");
+        }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+          pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+        }
+
+       if(SescConf->checkInt(tmpsection, "fillBuffSize")) {
+         fillBuffSize = SescConf->getInt(tmpsection, "fillBuffSize");
+       }
+       if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+         pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+       }
+       if(SescConf->checkInt(tmpsection, "wbBuffSize")) {
+         wbBuffSize = SescConf->getInt(tmpsection, "wbBuffSize");
+       }
+       */
+
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[0] = 512;  //size;   // Capacity
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[1] = 32;   //bsize;    // BlockWidth
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[2] = 1;    //assoc;     // associativity
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[3] = 1;    //nBanks;     // bank
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[4] = 1;    //1;     // throughput w.r.t core clock
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[5] = 3;    //delay;     // latency w.r.t core clock
+      } else {
+        //There need not be a inst tinycache for the GPU
+      }
+    } else {
+      //There need not be a inst tinycache for the GPU
+    }
+
+
+    //--------------------- GPU L2 CONFIGURATION ----------------------//
+
+    if(SescConf->checkCharPtr("gpuCore", "GPU_L2")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","GPU_L2");
+
+      FlowID size = SescConf->getInt(tmpsection, "size");
+      FlowID bsize = SescConf->getInt(tmpsection, "bsize");
+      FlowID assoc = SescConf->getInt(tmpsection, "assoc");
+      FlowID delay = SescConf->getInt(tmpsection, "hitDelay");
+      FlowID nBanks = SescConf->getInt(tmpsection, "numBanks");
+
+      // tinycache_inst does not have any buffers (MSHR, etc)
+      FlowID mshrSize = 0;
+      FlowID fillBuffSize = 0;
+      FlowID pfetchBuffSize = 0;
+      FlowID wbBuffSize = 0;
+
+      const char *mshr_sec;
+      if(SescConf->checkCharPtr(tmpsection, "MSHR")) {
+        mshr_sec = SescConf->getCharPtr(tmpsection, "MSHR");
+        mshrSize = SescConf->getInt(mshr_sec, "size");
+      }
+      if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+        pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+      }
+
+      if(SescConf->checkInt(tmpsection, "fillBuffSize")) {
+        fillBuffSize = SescConf->getInt(tmpsection, "fillBuffSize");
+      }
+      if(SescConf->checkInt(tmpsection, "pfetchBuffSize")) {
+        pfetchBuffSize = SescConf->getInt(tmpsection, "pfetchBuffSize");
+      }
+      if(SescConf->checkInt(tmpsection, "wbBuffSize")) {
+        wbBuffSize = SescConf->getInt(tmpsection, "wbBuffSize");
+      }
+
+      sys.gpu.L2.L2_config[0]    = 262144;  //size;      // Capacity
+      sys.gpu.L2.L2_config[1]    = 64;      //bsize;     // BlockWidth
+      sys.gpu.L2.L2_config[2]    = 16;      //assoc;     // associativity
+      sys.gpu.L2.L2_config[3]    = 1;       //nBanks;    // bank
+      sys.gpu.L2.L2_config[4]    = 3;       //3;         // throughput w.r.t core clock
+      sys.gpu.L2.L2_config[5]    = 50;      //delay;     // latency w.r.t core clock
+
+      sys.gpu.L2.buffer_sizes[0] = 8; //mshrSize;      // miss buffer size (MSHR)
+      sys.gpu.L2.buffer_sizes[1] = 8; //fillBuffSize;  // fill buffer size
+      sys.gpu.L2.buffer_sizes[2] = 8; //pfetchBuffSize;// prefetch buffer size
+      sys.gpu.L2.buffer_sizes[3] = 8; //wbBuffSize;    // wb_buffer size
+
+      sys.gpu.L2.clockrate       = 2000;
+
+      sys.gpu.L2.ports[0]        = 1;      // # Read ports
+      sys.gpu.L2.ports[1]        = 1;      // # Write ports
+      sys.gpu.L2.ports[2]        = 1;      // # Read-Write ports
+
+      sys.gpu.L2.device_type     = 2;      // ???
+    }
+
+    /*
+       sys.gpu.L2.threeD_stack     = 0;      // ??? Not defined in the original OOO.xml, what was this flag?
+    */
+  }
+}
+#if 0
+void ParseXML::getGPUParams() {
+
+  if (gpuIndex->size()>0) {
+
+
+    //--------------------- GPU CORE CONFIGURATION ----------------------//
+    sys.number_of_GPU = 1; //maximum number of GPUs currently supported my esesc.
+    sys.gpu.number_of_SMs                                  = gpuIndex->size();
+    sys.gpu.homoSM.number_of_lanes                         = SescConf->getInt("", "SP_PER_SM");;
+    sys.gpu.homoSM.homolane.clock_rate                     = 2000; //FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.machine_bits                   = 32;   //FIXME: Hardcoded, read from esesc.conf?
+//    sys.gpu.homoSM.homolane.machine_bits                   = SescConf->getInt(section, "machineBits");
+    sys.gpu.homoSM.homolane.virtual_address_width          = sys.virtual_address_width;
+
+    /* address width determins the tag_width in Cache, LSQ and buffers in cache controller
+       default value is machine_bits, if not set
+       */
+    sys.gpu.homoSM.homolane.physical_address_width         = sys.physical_address_width;
+
+    sys.gpu.homoSM.homolane.instruction_length             = 32;   //FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.opcode_width                   = 11;   //FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.internal_datapath_width        = 0;    // Does not exist in OOO.xml.
+
+    /*number_of_hardware_threads defines how many blocks run on the same SM */
+    const char *section = SescConf->getCharPtr("","cpuemul",(*gpuIndex)[0]);
+    sys.gpu.homoSM.homolane.number_hardware_threads        = SescConf->getInt(section, "max_blocks_sm");
+
+    const char *gpucore_section = SescConf->getCharPtr("","cpusimu",(*gpuIndex)[0]);
+    //sys.gpu.homoSM.homolane.number_instruction_fetch_ports = 2;   // After discussion with professor Renau
+    sys.gpu.homoSM.homolane.number_instruction_fetch_ports = SescConf->getInt(gpucore_section, "fetchPorts");
+
+
+    //sys.gpu.homoSM.homolane.pipelines_per_core       = 1,1;    // integer_pipeline and floating_pipelines, if the floating_pipelines is 0, then the pipeline is shared
+    sys.gpu.homoSM.homolane.pipelines_per_core[0] = 1;
+    sys.gpu.homoSM.homolane.pipelines_per_core[1] = 1;
+
+    //sys.gpu.homoSM.homolane.pipeline_depth           = 13,13;  // pipeline depth of int and fp, if pipeline is shared, the second number is the average cycles of fp ops
+    sys.gpu.homoSM.homolane.pipeline_depth[0] = 13;
+    sys.gpu.homoSM.homolane.pipeline_depth[1] = 13;
+
+//    sys.gpu.homoSM.homolane.instruction_buffer_size  = 16; //<!-- buffer between IF and ID stage -->
+    sys.gpu.homoSM.homolane.instruction_buffer_size  = SescConf->getInt(gpucore_section, "issueWidth") * 4
     sys.gpu.homoSM.homolane.archi_Regs_IRF_size      = 32;
     sys.gpu.homoSM.homolane.phy_Regs_IRF_size        = 1024;
     sys.gpu.homoSM.homolane.store_buffer_size        = 32;
-    sys.gpu.homoSM.homolane.memory_ports             = 2; //<!-- number of ports refer to sustainable concurrent memory accesses --> 
+    sys.gpu.homoSM.homolane.memory_ports             = 2; //<!-- number of ports refer to sustainable concurrent memory accesses -->
     sys.gpu.homoSM.homolane.LSQ_ports                = 0;
 
     sys.gpu.homoSM.itlb.number_entries               = 128;
 
-    sys.gpu.homoSM.icache.icache_config[0] = 32768; // Capacity
-    sys.gpu.homoSM.icache.icache_config[1] = 32;    // BlockWidth
-    sys.gpu.homoSM.icache.icache_config[2] = 2;     // associativity
-    sys.gpu.homoSM.icache.icache_config[3] = 1;     // bank
-    sys.gpu.homoSM.icache.icache_config[4] = 2;     // throughput w.r.t core clock
-    sys.gpu.homoSM.icache.icache_config[5] = 3;     // latency w.r.t core clock
-   
-    // icache does not support MSHR and fillBuffer
-    sys.gpu.homoSM.icache.buffer_sizes[0]  = 0;     // miss buffer size (MSHR)
-    sys.gpu.homoSM.icache.buffer_sizes[1]  = 0;     // fill buffer size
-    sys.gpu.homoSM.icache.buffer_sizes[2]  = 16;    // prefetch buffer size
-    sys.gpu.homoSM.icache.buffer_sizes[3]  = 0;     // wb_buffer size
+    //--------------------- GPU ICACHE CONFIGURATION ----------------------//
+    if(SescConf->checkCharPtr("gpuCore", "SM_IL1")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","SM_IL1");
+      if (strcmp(tmpsection, "None") != 0 ) {
+        sys.gpu.homoSM.icache.icache_config[0] = 32768; // Capacity
+        sys.gpu.homoSM.icache.icache_config[1] = 32;    // BlockWidth
+        sys.gpu.homoSM.icache.icache_config[2] = 2;     // associativity
+        sys.gpu.homoSM.icache.icache_config[3] = 1;     // bank
+        sys.gpu.homoSM.icache.icache_config[4] = 2;     // throughput w.r.t core clock
+        sys.gpu.homoSM.icache.icache_config[5] = 3;     // latency w.r.t core clock
 
-    sys.gpu.homoSM.dtlb.number_entries               = 128;
-    sys.gpu.homoSM.dcache.dcache_config[0] = 16786; // Capacity
-    sys.gpu.homoSM.dcache.dcache_config[1] = 32;    // BlockWidth
-    sys.gpu.homoSM.dcache.dcache_config[2] = 2;     // associativity
-    sys.gpu.homoSM.dcache.dcache_config[3] = 8;     // bank
-    sys.gpu.homoSM.dcache.dcache_config[4] = 1;     // throughput w.r.t core clock
-    sys.gpu.homoSM.dcache.dcache_config[5] = 3;     // latency w.r.t core clock
+        // icache does not support MSHR and fillBuffer
+        sys.gpu.homoSM.icache.buffer_sizes[0]  = 0;     // miss buffer size (MSHR)
+        sys.gpu.homoSM.icache.buffer_sizes[1]  = 0;     // fill buffer size
+        sys.gpu.homoSM.icache.buffer_sizes[2]  = 16;    // prefetch buffer size, same as sys.gpu.homoSM.homolane.instruction_buffer_size?
+        sys.gpu.homoSM.icache.buffer_sizes[3]  = 0;     // wb_buffer size
+      } else {
+        //There should be a SM_IL1 for the GPU.
+        I(0);
+        //error;
+        fprintf(stderr,"\n SM_IL1 for the GPU must point to a valid section, cannot be \"None\" \n");
+        exit(-1);
+      }
+    } else {
+      //There should be a SM_IL1 for the GPU.
+      I(0);
+      //error;
+      fprintf(stderr,"\n SM_IL1 for the GPU not defined \n");
+      exit(-1);
+    }
 
-    sys.gpu.homoSM.dcache.buffer_sizes[0]  = 16;    // miss buffer size (MSHR)
-    sys.gpu.homoSM.dcache.buffer_sizes[1]  = 4;     // fill buffer size
-    sys.gpu.homoSM.dcache.buffer_sizes[2]  = 16;    // prefetch buffer size
-    sys.gpu.homoSM.dcache.buffer_sizes[3]  = 16;    // wb_buffer size
+    //--------------------- GPU DCACHE CONFIGURATION ----------------------//
+    if(SescConf->checkCharPtr("gpuCore", "SM_DL1")){
+      const char *tmpsection = SescConf->getCharPtr("gpuCore","SM_IL1");
+      if (strcmp(tmpsection, "None") != 0 ) {
+        sys.gpu.homoSM.dtlb.number_entries               = 128;
+        sys.gpu.homoSM.dcache.dcache_config[0] = 16786; // Capacity
+        sys.gpu.homoSM.dcache.dcache_config[1] = 32;    // BlockWidth
+        sys.gpu.homoSM.dcache.dcache_config[2] = 2;     // associativity
+        sys.gpu.homoSM.dcache.dcache_config[3] = 8;     // bank
+        sys.gpu.homoSM.dcache.dcache_config[4] = 1;     // throughput w.r.t core clock
+        sys.gpu.homoSM.dcache.dcache_config[5] = 3;     // latency w.r.t core clock
 
-    sys.gpu.homoSM.scratchpad.number_entries = 24567;
+        sys.gpu.homoSM.dcache.buffer_sizes[0]  = 16;    // miss buffer size (MSHR)
+        sys.gpu.homoSM.dcache.buffer_sizes[1]  = 4;     // fill buffer size
+        sys.gpu.homoSM.dcache.buffer_sizes[2]  = 16;    // prefetch buffer size
+        sys.gpu.homoSM.dcache.buffer_sizes[3]  = 16;    // wb_buffer size
+      } else {
+        //There should be a SM_DL1 for the GPU.
+        I(0);
+        //error;
+        fprintf(stderr,"\n SM_DL1 for the GPU must point to a valid section, cannot be \"None\" \n");
+        exit(-1);
+      }
+    } else {
+      //There should be a SM_DL1 for the GPU.
+      I(0);
+      //error;
+      fprintf(stderr,"\n SM_DL1 for the GPU not defined \n");
+      exit(-1);
+    }
 
-    sys.gpu.homoSM.homolane.dfilter.dcache_config[0] = 512;   // Capacity
-    sys.gpu.homoSM.homolane.dfilter.dcache_config[1] = 32;    // BlockWidth
-    sys.gpu.homoSM.homolane.dfilter.dcache_config[2] = 1;     // associativity
-    sys.gpu.homoSM.homolane.dfilter.dcache_config[3] = 1;     // bank
-    sys.gpu.homoSM.homolane.dfilter.dcache_config[4] = 1;     // throughput w.r.t core clock
-    sys.gpu.homoSM.homolane.dfilter.dcache_config[5] = 3;     // latency w.r.t core clock
-    // dfilter does not have any buffers (MSHR, etc)
-   
-    sys.gpu.L2.L2_config[0] = 262144;     // Capacity
-    sys.gpu.L2.L2_config[1] = 64;         // BlockWidth
-    sys.gpu.L2.L2_config[2] = 16;         // associativity
-    sys.gpu.L2.L2_config[3] = 1;          // bank
-    sys.gpu.L2.L2_config[4] = 3;          // throughput w.r.t core clock
-    sys.gpu.L2.L2_config[5] = 50;         // latency w.r.t core clock
-    
-    sys.gpu.L2.buffer_sizes[0]  = 8;      // miss buffer size (MSHR)
-    sys.gpu.L2.buffer_sizes[1]  = 8;      // fill buffer size
-    sys.gpu.L2.buffer_sizes[2]  = 8;      // prefetch buffer size
-    sys.gpu.L2.buffer_sizes[3]  = 8;      // wb_buffer size
-    
-    sys.gpu.L2.clockrate        = 2000;
-    
-    sys.gpu.L2.ports[0]         = 1;      // # Read ports
-    sys.gpu.L2.ports[1]         = 1;      // # Write ports
-    sys.gpu.L2.ports[2]         = 1;      // # Read-Write ports
-    
-    sys.gpu.L2.device_type      = 2;      // ???
-   
+    //--------------------- GPU SCRATCHPAD CONFIGURATION ----------------------//
+    if(SescConf->checkCharPtr("gpuCore", "scratchpad")){
+      const char *section = SescConf->getCharPtr("gpuCore","scratchpad");
+      if (strcmp(section, "None") != 0 ) {
+        sys.gpu.homoSM.scratchpad.number_entries = 24567;
+      } else {
+        //There should be a scratchpad for the GPU.
+        I(0);
+        //error;
+        fprintf(stderr,"\n scratchpad for the GPU  must point to a valid section, cannot be \"None\" \n");
+        exit(-1);
+      }
+    } else {
+      //There should be a scratchpad for the GPU.
+      I(0);
+      //error;
+      fprintf(stderr,"\n scratchpad for the GPU not defined \n");
+      exit(-1);
+    }
+
+    //--------------------- GPU DATA_TINYCACHE CONFIGURATION ----------------------//
+    gpu_tcd_present = false;
+    if(SescConf->checkCharPtr("gpuCore", "dfilter")){
+      const char *section = SescConf->getCharPtr("gpuCore","dfilter");
+      if (strcmp(section, "None") != 0 ) {
+        gpu_tcd_present = true;
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[0] = 512;   // Capacity
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[1] = 32;    // BlockWidth
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[2] = 1;     // associativity
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[3] = 1;     // bank
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[4] = 1;     // throughput w.r.t core clock
+        sys.gpu.homoSM.homolane.tinycache_data.dcache_config[5] = 3;     // latency w.r.t core clock
+        // tinycache_data does not have any buffers (MSHR, etc)
+      } else {
+        //There need not be a data tinycache for the GPU
+      }
+    } else {
+      //There need not be a data tinycache for the GPU
+    }
+
+    //--------------------- GPU INST_TINYCACHE CONFIGURATION ----------------------//
+    gpu_tci_present = false;
+    if(SescConf->checkCharPtr("gpuCore", "ifilter")){
+      const char *section = SescConf->getCharPtr("gpuCore","ifilter");
+      if (strcmp(section, "None") != 0 ) {
+        gpu_tci_present = true;
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[0] = 512;   // Capacity
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[1] = 32;    // BlockWidth
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[2] = 1;     // associativity
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[3] = 1;     // bank
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[4] = 1;     // throughput w.r.t core clock
+        sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[5] = 3;     // latency w.r.t core clock
+        // tinycache_data does not have any buffers (MSHR, etc)
+      } else {
+        //There need not be a inst tinycache for the GPU
+      }
+    } else {
+      //There need not be a inst tinycache for the GPU
+    }
+
+
+    //--------------------- GPU L2 CONFIGURATION ----------------------//
+    sys.gpu.L2.L2_config[0]    = 262144; // Capacity
+    sys.gpu.L2.L2_config[1]    = 64;     // BlockWidth
+    sys.gpu.L2.L2_config[2]    = 16;     // associativity
+    sys.gpu.L2.L2_config[3]    = 1;      // bank
+    sys.gpu.L2.L2_config[4]    = 3;      // throughput w.r.t core clock
+    sys.gpu.L2.L2_config[5]    = 50;     // latency w.r.t core clock
+
+    sys.gpu.L2.buffer_sizes[0] = 8;      // miss buffer size (MSHR)
+    sys.gpu.L2.buffer_sizes[1] = 8;      // fill buffer size
+    sys.gpu.L2.buffer_sizes[2] = 8;      // prefetch buffer size
+    sys.gpu.L2.buffer_sizes[3] = 8;      // wb_buffer size
+
+    sys.gpu.L2.clockrate       = 2000;
+
+    sys.gpu.L2.ports[0]        = 1;      // # Read ports
+    sys.gpu.L2.ports[1]        = 1;      // # Write ports
+    sys.gpu.L2.ports[2]        = 1;      // # Read-Write ports
+
+    sys.gpu.L2.device_type     = 2;      // ???
+
     /*
-    sys.gpu.L2.threeD_stack     = 0;      // ??? Not defined in the original OOO.xml, what was this flag?
+       sys.gpu.L2.threeD_stack     = 0;      // ??? Not defined in the original OOO.xml, what was this flag?
     */
   }
 }
+#endif
 
 void ParseXML::getCoreParams() {
 
@@ -2426,7 +2921,7 @@ void ParseXML::getCoreParams() {
     sys.core[i].pipeline_depth[0]              = 12;
     sys.core[i].pipeline_depth[1]              = 12;
 
-    FlowID nClusters                           = SescConf->getRecordSize(section,"cluster");  
+    FlowID nClusters                           = SescConf->getRecordSize(section,"cluster");
     FlowID nfpu   = 0;
     FlowID nIRegs = 0;
     FlowID nFRegs = 0;
@@ -2488,17 +2983,16 @@ void ParseXML::getCoreParams() {
     sys.core[i].prediction_width     =  sys.core[i].predictor.prediction_width;
     sys.core[i].predictor.local_predictor_size = SescConf->getInt(sec, "tbits");
     sys.core[i].predictor.local_predictor_entries  = SescConf->getInt(sec, "tsize");
-    sys.core[i].predictor.global_predictor_entries = SescConf->getInt(sec, "tsize"); 
-    sys.core[i].predictor.global_predictor_bits    = SescConf->getInt(sec, "tbits"); 
-    sys.core[i].predictor.chooser_predictor_entries= SescConf->getInt(sec, "tsize"); 
-    sys.core[i].predictor.chooser_predictor_bits   = SescConf->getInt(sec, "tbits"); 
-    sys.core[i].BTB.BTB_config[0]   = SescConf->getInt(sec, "btbSize"); 
-    sys.core[i].BTB.BTB_config[1]   = sys.physical_address_width; 
-    sys.core[i].BTB.BTB_config[2]   = SescConf->getInt(sec, "btbAssoc"); 
-    sys.core[i].BTB.BTB_config[3]   = SescConf->getInt(sec, "nBanks"); 
-    sys.core[i].BTB.BTB_config[4]   = 1; 
-    sys.core[i].BTB.BTB_config[5]   = SescConf->getInt(section, "bpredDelay"); 
-
+    sys.core[i].predictor.global_predictor_entries = SescConf->getInt(sec, "tsize");
+    sys.core[i].predictor.global_predictor_bits    = SescConf->getInt(sec, "tbits");
+    sys.core[i].predictor.chooser_predictor_entries= SescConf->getInt(sec, "tsize");
+    sys.core[i].predictor.chooser_predictor_bits   = SescConf->getInt(sec, "tbits");
+    sys.core[i].BTB.BTB_config[0]   = SescConf->getInt(sec, "btbSize");
+    sys.core[i].BTB.BTB_config[1]   = sys.physical_address_width;
+    sys.core[i].BTB.BTB_config[2]   = SescConf->getInt(sec, "btbAssoc");
+    sys.core[i].BTB.BTB_config[3]   = SescConf->getInt(sec, "numBanks");
+    sys.core[i].BTB.BTB_config[4]   = 1;
+    sys.core[i].BTB.BTB_config[5]   = SescConf->getInt(section, "bpredDelay");
   }
 }
 
@@ -2509,7 +3003,7 @@ void ParseXML::getMemParams () {
     const char *def_block = SescConf->getCharPtr("","cpusimu",i);
 
     if (strcmp(def_block, "gpuCORE") != 0 ){
-      //fprintf(stderr, "\n Initializing CPU Memory objects");
+      fprintf(stderr, "\n Initializing CPU Memory objects");
       getMemoryObj(def_block, "IL1", i);
       if(SescConf->checkCharPtr("cpusimu", "VPC", i)) {
         getMemoryObj(def_block, "VPC", i);
@@ -2518,7 +3012,7 @@ void ParseXML::getMemParams () {
         getMemoryObj(def_block, "DL1", i);
       }
     } else {
-      //fprintf(stderr, "\n  Skipping initializing GPU Memory objects");
+      //fprintf(stderr, "\n  Skipping initializing GPU Memory objects, they will be initiated separately by the gpuCore");
     }
 
   }
@@ -2566,8 +3060,8 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
   if(strcmp(nvPars[0], "voidDevice")){
     //fprintf(stderr,"\n....*****..... %s",nvPars[0]);
     getConfMemObj(nvPars, Id);
-  } 
-  
+  }
+
   //fprintf(stderr,"\n....*****..... Configuring %s",vPars[0]);
   //fprintf(stderr,"\n");
 
@@ -2588,13 +3082,13 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
     FlowID bsize = SescConf->getInt(device_descr_section, "bsize");
     FlowID assoc = SescConf->getInt(device_descr_section, "assoc");
     FlowID delay = SescConf->getInt(device_descr_section, "hitDelay");
-    FlowID nBanks = SescConf->getInt(device_descr_section, "nBanks");
+    FlowID nBanks = SescConf->getInt(device_descr_section, "numBanks");
     //FlowID rport = SescConf->getInt(device_descr_section, "maxReads");
     //FlowID wport = SescConf->getInt(device_descr_section, "maxWrites");
 
     //FlowID throttle = SescConf->getInt(device_descr_section, "throttle");
-    //FIXME: We need a throttling ratio for the cache structures. 
-    FlowID throttle = 1; 
+    //FIXME: We need a throttling ratio for the cache structures.
+    FlowID throttle = 1;
     if (SescConf->checkBool(device_descr_section, "coreCoupledFreq")) {
       if (SescConf->getBool(device_descr_section, "coreCoupledFreq") == false){
         throttle = 2;
@@ -2630,6 +3124,29 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
     //else
     //  ports = rport;
 
+    double  force_lkg_w   = 0.0;
+    double  force_rddyn_w = 0.0;
+    double  force_wrdyn_w = 0.0;
+    bool    force_lkg     = false;
+    bool    force_rddyn   = false;
+    bool    force_wrdyn   = false;
+
+
+    if(SescConf->checkDouble(device_descr_section, "forceLkg")) {
+      force_lkg_w = SescConf->getDouble(device_descr_section, "forceLkg");
+      force_lkg = true;
+    }
+    
+    if(SescConf->checkDouble(device_descr_section, "forceRdDyn")) {
+      force_rddyn_w = SescConf->getDouble(device_descr_section, "forceRdDyn");
+      force_rddyn = true;
+    }
+
+    if(SescConf->checkDouble(device_descr_section, "forceWrDyn")) {
+      force_wrdyn_w = SescConf->getDouble(device_descr_section, "forceWrDyn");
+      force_wrdyn = true;
+    }
+
 
     if (strstr(device_type, "tlb") != NULL) {
       if (strstr(blockName, "STLB") != NULL) {
@@ -2652,6 +3169,12 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
         sys.STLB[nId].STLB_config[3] = nBanks;
         sys.STLB[nId].STLB_config[4] = delay;
         sys.STLB[nId].STLB_config[5] = delay;
+//        sys.core[Id].STLB[nId].force_lkg_w       = force_lkg_w;
+//        sys.core[Id].STLB[nId].force_rddyn_w     = force_rddyn_w;
+//        sys.core[Id].STLB[nId].force_wrdyn_w     = force_wrdyn_w;
+//        sys.core[Id].STLB[nId].force_lkg         = force_lkg;
+//        sys.core[Id].STLB[nId].force_rddyn       = force_rddyn;
+//        sys.core[Id].STLB[nId].force_wrdyn       = force_wrdyn;
 
       } else {
         sys.core[Id].itlb.number_entries = sys.core[Id].dtlb.number_entries = entries;
@@ -2664,8 +3187,15 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       sys.core[Id].icache.icache_config[3] = nBanks;
       sys.core[Id].icache.icache_config[4] = 1.0;
       sys.core[Id].icache.icache_config[5] = delay;
-      sys.core[Id].icache.buffer_sizes[0] = mshrSize;
-      sys.core[Id].icache.buffer_sizes[2] = pfetchBuffSize;
+      sys.core[Id].icache.buffer_sizes[0]  = mshrSize;
+      sys.core[Id].icache.buffer_sizes[2]  = pfetchBuffSize;
+      sys.core[Id].icache.force_lkg_w      = force_lkg_w;
+      sys.core[Id].icache.force_rddyn_w    = force_rddyn_w;
+      sys.core[Id].icache.force_wrdyn_w    = force_wrdyn_w;
+      sys.core[Id].icache.force_lkg        = force_lkg;
+      sys.core[Id].icache.force_rddyn      = force_rddyn;
+      sys.core[Id].icache.force_wrdyn      = force_wrdyn;
+
     } else if (strstr(device_type, "VPC") != NULL) { 
       sys.core[Id].dcache.dcache_config[0] = size;
       sys.core[Id].dcache.dcache_config[1] = bsize;
@@ -2673,10 +3203,17 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       sys.core[Id].dcache.dcache_config[3] = nBanks;
       sys.core[Id].dcache.dcache_config[4] = 1.0;
       sys.core[Id].dcache.dcache_config[5] = delay;
-      sys.core[Id].dcache.buffer_sizes[0] = mshrSize;
-      sys.core[Id].dcache.buffer_sizes[1] = fillBuffSize;
-      sys.core[Id].dcache.buffer_sizes[2] = pfetchBuffSize;
-      sys.core[Id].dcache.buffer_sizes[3] = wbBuffSize;
+      sys.core[Id].dcache.buffer_sizes[0]  = mshrSize;
+      sys.core[Id].dcache.buffer_sizes[1]  = fillBuffSize;
+      sys.core[Id].dcache.buffer_sizes[2]  = pfetchBuffSize;
+      sys.core[Id].dcache.buffer_sizes[3]  = wbBuffSize;
+      sys.core[Id].dcache.force_lkg_w      = force_lkg_w;
+      sys.core[Id].dcache.force_rddyn_w    = force_rddyn_w;
+      sys.core[Id].dcache.force_wrdyn_w    = force_wrdyn_w;
+      sys.core[Id].dcache.force_lkg        = force_lkg;
+      sys.core[Id].dcache.force_rddyn      = force_rddyn;
+      sys.core[Id].dcache.force_wrdyn      = force_wrdyn;
+
     } else if (strstr(device_type, "cache")  != NULL) {
       if(strstr(blockName, "dcache") != NULL) {
         sys.core[Id].dcache.dcache_config[0] = size;
@@ -2685,67 +3222,94 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
         sys.core[Id].dcache.dcache_config[3] = nBanks;
         sys.core[Id].dcache.dcache_config[4] = 1.0;
         sys.core[Id].dcache.dcache_config[5] = delay;
-        sys.core[Id].dcache.buffer_sizes[0] = mshrSize;
-        sys.core[Id].dcache.buffer_sizes[1] = fillBuffSize;
-        sys.core[Id].dcache.buffer_sizes[2] = pfetchBuffSize;
-        sys.core[Id].dcache.buffer_sizes[3] = wbBuffSize;
+        sys.core[Id].dcache.buffer_sizes[0]  = mshrSize;
+        sys.core[Id].dcache.buffer_sizes[1]  = fillBuffSize;
+        sys.core[Id].dcache.buffer_sizes[2]  = pfetchBuffSize;
+        sys.core[Id].dcache.buffer_sizes[3]  = wbBuffSize;
+        sys.core[Id].dcache.force_lkg_w      = force_lkg_w;
+        sys.core[Id].dcache.force_rddyn_w    = force_rddyn_w;
+        sys.core[Id].dcache.force_wrdyn_w    = force_wrdyn_w;
+        sys.core[Id].dcache.force_lkg        = force_lkg;
+        sys.core[Id].dcache.force_rddyn      = force_rddyn;
+        sys.core[Id].dcache.force_wrdyn      = force_wrdyn;
+
       } else if (strstr(blockName, "FL2") != NULL) {
-        I(sys.core[Id].scoore ==2); 
+        I(sys.core[Id].scoore ==2);
         sys.core[Id].VPCfilter.dcache_config[0] = size;
         sys.core[Id].VPCfilter.dcache_config[1] = bsize;
         sys.core[Id].VPCfilter.dcache_config[2] = assoc;
         sys.core[Id].VPCfilter.dcache_config[3] = nBanks;
-        sys.core[Id].VPCfilter.dcache_config[4] =  1.0;
-        sys.core[Id].VPCfilter.dcache_config[5] =  delay;
-        sys.core[Id].VPCfilter.buffer_sizes[0] = mshrSize;
-        sys.core[Id].VPCfilter.buffer_sizes[1] = fillBuffSize;
-        sys.core[Id].VPCfilter.buffer_sizes[2] = pfetchBuffSize;
-        sys.core[Id].VPCfilter.buffer_sizes[3] = wbBuffSize;
+        sys.core[Id].VPCfilter.dcache_config[4] = 1.0;
+        sys.core[Id].VPCfilter.dcache_config[5] = delay;
+        sys.core[Id].VPCfilter.buffer_sizes[0]  = mshrSize;
+        sys.core[Id].VPCfilter.buffer_sizes[1]  = fillBuffSize;
+        sys.core[Id].VPCfilter.buffer_sizes[2]  = pfetchBuffSize;
+        sys.core[Id].VPCfilter.buffer_sizes[3]  = wbBuffSize;
+        sys.core[Id].VPCfilter.force_lkg_w      = force_lkg_w;
+        sys.core[Id].VPCfilter.force_rddyn_w    = force_rddyn_w;
+        sys.core[Id].VPCfilter.force_wrdyn_w    = force_wrdyn_w;
+        sys.core[Id].VPCfilter.force_lkg        = force_lkg;
+        sys.core[Id].VPCfilter.force_rddyn      = force_rddyn;
+        sys.core[Id].VPCfilter.force_wrdyn      = force_wrdyn;
+
       } else if (strstr(blockName, "L2") != NULL) {
         if (sys.number_of_cores >= sharedBy)
-          sys.number_of_L2s = ceil(sys.number_of_cores/sharedBy); 
+          sys.number_of_L2s = ceil(sys.number_of_cores/sharedBy);
         else
-          sys.number_of_L2s = sys.number_of_cores; 
-        sys.L2[nId].clockrate = clockRate;
-        sys.L2[nId].device_type = 2;
-        sys.L2[nId].L2_config[0] = size;
-        sys.L2[nId].L2_config[1] = bsize;
-        sys.L2[nId].L2_config[2] = assoc;
-        sys.L2[nId].L2_config[3] = nBanks;
-        sys.L2[nId].L2_config[4] = delay;
-        sys.L2[nId].L2_config[5] = delay;
+          sys.number_of_L2s           = sys.number_of_cores;
+        sys.L2[nId].clockrate       = clockRate/4;
+        sys.L2[nId].device_type     = 2;
+        sys.L2[nId].L2_config[0]    = size;
+        sys.L2[nId].L2_config[1]    = bsize;
+        sys.L2[nId].L2_config[2]    = assoc;
+        sys.L2[nId].L2_config[3]    = nBanks;
+        sys.L2[nId].L2_config[4]    = delay;
+        sys.L2[nId].L2_config[5]    = delay;
         sys.L2[nId].buffer_sizes[0] = mshrSize;
         sys.L2[nId].buffer_sizes[1] = fillBuffSize;
         sys.L2[nId].buffer_sizes[2] = pfetchBuffSize;
         sys.L2[nId].buffer_sizes[3] = wbBuffSize;
+        sys.L2[nId].force_lkg_w     = force_lkg_w;
+        sys.L2[nId].force_rddyn_w   = force_rddyn_w;
+        sys.L2[nId].force_wrdyn_w   = force_wrdyn_w;
+        sys.L2[nId].force_lkg       = force_lkg;
+        sys.L2[nId].force_rddyn     = force_rddyn;
+        sys.L2[nId].force_wrdyn     = force_wrdyn;
+
       } else if (strstr(blockName, "L3") != NULL) {
         if (sys.number_of_cores >= sharedBy)
-          sys.number_of_L3s = ceil(sys.number_of_cores/sharedBy); 
+          sys.number_of_L3s = ceil(sys.number_of_cores/sharedBy);
         else
           sys.number_of_L3s = sys.number_of_cores; 
-        sys.L3[nId].clockrate = clockRate;
-        sys.L3[nId].device_type = 2;
-        sys.L3[nId].L3_config[0] = size;
-        sys.L3[nId].L3_config[1] = bsize;
-        sys.L3[nId].L3_config[2] = assoc;
-        sys.L3[nId].L3_config[3] = nBanks;
-        sys.L3[nId].L3_config[4] =  delay;
-        sys.L3[nId].L3_config[5] =  delay;
+        sys.L3[nId].clockrate       = clockRate/4;
+        sys.L3[nId].device_type     = 2;
+        sys.L3[nId].L3_config[0]    = size;
+        sys.L3[nId].L3_config[1]    = bsize;
+        sys.L3[nId].L3_config[2]    = assoc;
+        sys.L3[nId].L3_config[3]    = nBanks;
+        sys.L3[nId].L3_config[4]    = delay;
+        sys.L3[nId].L3_config[5]    = delay;
         sys.L3[nId].buffer_sizes[0] = mshrSize;
         sys.L3[nId].buffer_sizes[1] = fillBuffSize;
         sys.L3[nId].buffer_sizes[2] = pfetchBuffSize;
         sys.L3[nId].buffer_sizes[3] = wbBuffSize;
-        sys.mc.llc_line_length = bsize;
+        sys.mc.llc_line_length      = bsize;
+        sys.L3[nId].force_lkg_w     = force_lkg_w;
+        sys.L3[nId].force_rddyn_w   = force_rddyn_w;
+        sys.L3[nId].force_wrdyn_w   = force_wrdyn_w;
+        sys.L3[nId].force_lkg       = force_lkg;
+        sys.L3[nId].force_rddyn     = force_rddyn;
+        sys.L3[nId].force_wrdyn     = force_wrdyn;
       }
     }
-  } else if (strcmp(device_type, "memcontroller") == 0 || 
+  } else if (strcmp(device_type, "memcontroller") == 0 ||
       strcmp(device_type, "bus") == 0) {
     FlowID busWidth = SescConf->getInt(device_descr_section, "busWidth");
     FlowID numPorts = SescConf->getInt(device_descr_section, "numPorts");
     FlowID portOccp = SescConf->getInt(device_descr_section, "portOccp");
     FlowID dramPageSize = SescConf->getInt(device_descr_section, "dramPageSize");
     //FlowID throttle = SescConf->getInt(device_descr_section, "throttle");
-    FlowID throttle = 1; 
+    FlowID throttle = 1;
     if (SescConf->checkBool(device_descr_section, "coreCoupledFreq")) {
       if (SescConf->getBool(device_descr_section, "coreCoupledFreq") == false){
         throttle = 2;
@@ -2754,7 +3318,7 @@ void ParseXML::getConfMemObj(std::vector<char *> vPars, FlowID Id) {
       SescConf->notCorrect();
     }
 
-    sys.mc.mc_clock                    = sys.target_core_clockrate/throttle;
+    sys.mc.mc_clock                    = sys.target_core_clockrate/throttle/4;
     sys.mc.memory_channels_per_mc      = numPorts;
     sys.mc.databus_width               = busWidth;
     sys.mc.addressbus_width            = sys.physical_address_width;

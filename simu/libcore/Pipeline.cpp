@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -50,7 +50,7 @@ void IBucket::markFetched() {
 
   if (!empty()) {
 //    if (top()->getFlowId())
-//      MSG("markFetched %p",this);
+//      MSG("@%lld: markFetched Bucket[%p]",(long long int)globalClock, this);
   }
 
   pipeLine->readyItem(this);
@@ -73,7 +73,7 @@ Pipeline::Pipeline(size_t s, size_t fetch, int32_t maxReqs)
 
   bucketPool.reserve(bucketPoolMaxSize);
   I(bucketPool.empty());
-  
+
   for(size_t i=0;i<bucketPoolMaxSize;i++) {
     IBucket *ib = new IBucket(fetch+1, this); // +1 instructions
     bucketPool.push_back(ib);
@@ -117,7 +117,7 @@ void Pipeline::readyItem(IBucket *b) {
   // receive structure (remember that a cache can respond
   // out-of-order the memory requests)
   minItemCntr++;
-  
+
   if( b->empty() )
     doneItem(b);
   else
@@ -128,16 +128,16 @@ void Pipeline::readyItem(IBucket *b) {
 
 void Pipeline::clearItems() {
   while( !received.empty() ) {
-      IBucket *b = received.top(); 
+      IBucket *b = received.top();
 
     if(b->getPipelineId() != minItemCntr){
       break;
     }
-     
+
     received.pop();
 
     minItemCntr++;
-    
+
     if( b->empty() )
       doneItem(b);
     else
@@ -148,10 +148,10 @@ void Pipeline::clearItems() {
 void Pipeline::doneItem(IBucket *b) {
   I(b->getPipelineId() < minItemCntr);
   I(b->empty());
-    
+
   bucketPool.push_back(b);
 }
-  
+
 
 
 IBucket *Pipeline::nextItem() {
@@ -165,11 +165,31 @@ IBucket *Pipeline::nextItem() {
       return 0;
     }
 
-    if( ((buffer.top())->getClock() + PipeLength) > globalClock )
+    if( ((buffer.top())->getClock() + PipeLength) > globalClock ) {
+#if 0
+      fprintf(stderr,"@%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
+          ,(long long int) globalClock
+          ,buffer.top()
+          ,(int) ((buffer.top())->top())->getID()
+          ,(long long int)((buffer.top())->getClock())
+          ,PipeLength
+          );
+#endif
       return 0;
-
+    } else {
+#if 0
+      fprintf(stderr,"@%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
+          ,(long long int) globalClock
+          ,buffer.top()
+          ,(int) ((buffer.top())->top())->getID()
+          ,(long long int)((buffer.top())->getClock())
+          ,PipeLength
+          );
+#endif
+    }
     IBucket *b = buffer.top();
     buffer.pop();
+    //fprintf(stderr,"@%lld: Popping Bucket[%p]\n",(long long int)globalClock ,b);
     I(!b->empty());
     if (!b->cleanItem) {
       I(!b->empty());
@@ -206,7 +226,7 @@ PipeQueue::PipeQueue(CPU_t i)
 
   SescConf->isInt("cpusimu", "maxIRequests",i);
   SescConf->isBetween("cpusimu", "maxIRequests", 0, 32000,i);
-    
+
   SescConf->isInt("cpusimu", "instQueueSize",i);
   SescConf->isBetween("cpusimu", "instQueueSize"
                       ,SescConf->getInt("cpusimu","fetchWidth",i)
@@ -221,6 +241,7 @@ PipeQueue::~PipeQueue()
 
 
 IBucket *Pipeline::newItem() {
+
   if(nIRequests == 0 || bucketPool.empty())
     return 0;
 
@@ -240,5 +261,18 @@ IBucket *Pipeline::newItem() {
 
 bool Pipeline::hasOutstandingItems() const {
     // bucketPool.size() has lineal time O(n)
+#if 0
+  if (!buffer.empty()){
+    MSG("Pipeline !buffer.empty()");
+  }
+
+  if (!received.empty()){
+    MSG("Pipeline !received.empty()");
+  }
+
+  if (nIRequests < MaxIRequests){
+    MSG("Pipeline nIRequests(%d) < MaxIRequests(%d)",nIRequests, MaxIRequests);
+  }
+#endif
   return !buffer.empty() || !received.empty() || nIRequests < MaxIRequests;
-} 
+}

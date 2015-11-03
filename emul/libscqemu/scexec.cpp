@@ -39,7 +39,7 @@
 extern volatile int done;
 extern bool thread_done[];
 
-// #define DEBUG2
+#define DEBUG2
 
 Scexec::Scexec(FlowID _fid, void *syscall_mem, TranslationType ttype, ProgramBase *_prog, FILE *_fp, FILE *syscallTrace_fp)
 :core(_fid, _prog)

@@ -48,6 +48,10 @@
 
 #include <time.h>
 #include <math.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 
 
 #include "area.h"
@@ -60,11 +64,17 @@
 #include "Ucache.h"
 #include "subarray.h"
 #include "uca.h"
+#include "SescConf.h"
+#include "md5.h"
 
 #include <pthread.h>
 #include <iostream>
 #include <algorithm>
 #include <list>
+
+#include <fstream>
+#include <sstream>
+#include <string>
 
 using namespace std;
 
@@ -116,7 +126,19 @@ void min_values_t::update_min_values(const mem_array * res)
   min_cyc     = (min_cyc > res->cycle_time) ? res->cycle_time : min_cyc;
 }
 
-
+#if NEW_BOOST
+template<class Archive>
+void min_values_t::serialize(Archive & ar, unsigned int version) {
+  //////////////////////// FIXME //////////////////////
+  //ar & min_delay;
+  //ar & min_dyn;
+  //ar & min_leakage;
+  //ar & min_area;
+  //ar & min_cyc;
+}
+template void min_values_t::serialize<boost::archive::text_oarchive>(boost::archive::text_oarchive &, unsigned int);
+template void min_values_t::serialize<boost::archive::text_iarchive>(boost::archive::text_iarchive &, unsigned int);
+#endif
 
 void * calc_time_mt_wrapper(void * void_obj)
 {
@@ -687,6 +709,33 @@ void filter_data_arr(list<mem_array *> & curr_list)
  */
 void solve(uca_org_t *fin_res)
 {
+#if NEW_BOOST
+  char pwhash[129];
+  char fadr[140];
+  bool is_live = SescConf->getBool("","live");
+
+  if (1 == 1 || is_live) {
+    //Create hash from input data
+    //char *raw = (char *)g_ip;
+    stringstream sgip;
+    boost::archive::text_oarchive oass(sgip);
+    oass << g_ip;
+    strncpy(pwhash, md5(sgip.str()).c_str(), 129);
+    pwhash[128] = 0;
+    sprintf(fadr, "pwdump/%s", pwhash);
+    if(access(fadr, F_OK) != -1) {
+      printf("\npwhit\n");
+      std::ifstream ifs(fadr);
+      boost::archive::text_iarchive ia(ifs);
+      ia >> fin_res;
+      ifs.close();
+      printf("%lf\n", fin_res->area);
+      return;
+    } else {
+      printf("\npwmiss\n");
+    }
+  }
+#endif
  // bool   is_dram  = false;
   int    pure_ram = g_ip->pure_ram;
   bool   pure_cam = g_ip->pure_cam;
@@ -754,7 +803,6 @@ void solve(uca_org_t *fin_res)
     }
   }
 
-
   // calculate the area, delay and power for all data array partitions (for cache or plain RAM).
 //  if (!g_ip->fully_assoc)
 // {//in the new cacti, cam, fully_associative cache are processed as single array in the data portion
@@ -808,7 +856,6 @@ void solve(uca_org_t *fin_res)
     filter_tag_arr(t_min, tag_arr);
   }
   //cout << data_arr.size() << "\t" << tag_arr.size() <<" after\n";
-
 
   if (pure_ram||pure_cam||g_ip->fully_assoc)
   {
@@ -881,5 +928,13 @@ void solve(uca_org_t *fin_res)
   delete cache_min;
   delete d_min;
   delete t_min;
-}
 
+#if NEW_BOOST
+  if(1 == 1 || is_live) {
+    std::ofstream ofs(fadr);
+    boost::archive::text_oarchive oa(ofs);
+    oa << fin_res;
+    ofs.close();
+  }
+#endif
+}

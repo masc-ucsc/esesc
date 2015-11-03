@@ -8,8 +8,10 @@
  */
 
 #include <stdarg.h>
-#include "qemu_socket.h" /* for EINPROGRESS on Windows */
-#include "block_int.h"
+#include "qemu/sockets.h" /* for EINPROGRESS on Windows */
+#include "block/block_int.h"
+#include "qapi/qmp/qdict.h"
+#include "qapi/qmp/qstring.h"
 
 typedef struct {
     BlockDriverState *test_file;
@@ -17,7 +19,7 @@ typedef struct {
 
 typedef struct BlkverifyAIOCB BlkverifyAIOCB;
 struct BlkverifyAIOCB {
-    BlockDriverAIOCB common;
+    BlockAIOCB common;
     QEMUBH *bh;
 
     /* Request metadata */
@@ -27,7 +29,6 @@ struct BlkverifyAIOCB {
 
     int ret;                    /* first completed request's result */
     unsigned int done;          /* completion counter */
-    bool *finished;             /* completion signal for cancel */
 
     QEMUIOVector *qiov;         /* user I/O vector */
     QEMUIOVector raw_qiov;      /* cloned I/O vector for raw file */
@@ -36,21 +37,8 @@ struct BlkverifyAIOCB {
     void (*verify)(BlkverifyAIOCB *acb);
 };
 
-static void blkverify_aio_cancel(BlockDriverAIOCB *blockacb)
-{
-    BlkverifyAIOCB *acb = (BlkverifyAIOCB *)blockacb;
-    bool finished = false;
-
-    /* Wait until request completes, invokes its callback, and frees itself */
-    acb->finished = &finished;
-    while (!finished) {
-        qemu_aio_wait();
-    }
-}
-
-static AIOPool blkverify_aio_pool = {
+static const AIOCBInfo blkverify_aiocb_info = {
     .aiocb_size         = sizeof(BlkverifyAIOCB),
-    .cancel             = blkverify_aio_cancel,
 };
 
 static void GCC_FMT_ATTR(2, 3) blkverify_err(BlkverifyAIOCB *acb,
@@ -69,50 +57,101 @@ static void GCC_FMT_ATTR(2, 3) blkverify_err(BlkverifyAIOCB *acb,
 }
 
 /* Valid blkverify filenames look like blkverify:path/to/raw_image:path/to/image */
-static int blkverify_open(BlockDriverState *bs, const char *filename, int flags)
+static void blkverify_parse_filename(const char *filename, QDict *options,
+                                     Error **errp)
 {
-    BDRVBlkverifyState *s = bs->opaque;
-    int ret;
-    char *raw, *c;
+    const char *c;
+    QString *raw_path;
+
 
     /* Parse the blkverify: prefix */
-    if (strncmp(filename, "blkverify:", strlen("blkverify:"))) {
-        return -EINVAL;
+    if (!strstart(filename, "blkverify:", &filename)) {
+        /* There was no prefix; therefore, all options have to be already
+           present in the QDict (except for the filename) */
+        qdict_put(options, "x-image", qstring_from_str(filename));
+        return;
     }
-    filename += strlen("blkverify:");
 
     /* Parse the raw image filename */
     c = strchr(filename, ':');
     if (c == NULL) {
-        return -EINVAL;
+        error_setg(errp, "blkverify requires raw copy and original image path");
+        return;
     }
 
-    raw = strdup(filename);
-    raw[c - filename] = '\0';
-    ret = bdrv_file_open(&bs->file, raw, flags);
-    free(raw);
-    if (ret < 0) {
-        return ret;
-    }
+    /* TODO Implement option pass-through and set raw.filename here */
+    raw_path = qstring_from_substr(filename, 0, c - filename - 1);
+    qdict_put(options, "x-raw", raw_path);
+
+    /* TODO Allow multi-level nesting and set file.filename here */
     filename = c + 1;
+    qdict_put(options, "x-image", qstring_from_str(filename));
+}
+
+static QemuOptsList runtime_opts = {
+    .name = "blkverify",
+    .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
+    .desc = {
+        {
+            .name = "x-raw",
+            .type = QEMU_OPT_STRING,
+            .help = "[internal use only, will be removed]",
+        },
+        {
+            .name = "x-image",
+            .type = QEMU_OPT_STRING,
+            .help = "[internal use only, will be removed]",
+        },
+        { /* end of list */ }
+    },
+};
+
+static int blkverify_open(BlockDriverState *bs, QDict *options, int flags,
+                          Error **errp)
+{
+    BDRVBlkverifyState *s = bs->opaque;
+    QemuOpts *opts;
+    Error *local_err = NULL;
+    int ret;
+
+    opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
+    qemu_opts_absorb_qdict(opts, options, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        ret = -EINVAL;
+        goto fail;
+    }
+
+    /* Open the raw file */
+    assert(bs->file == NULL);
+    ret = bdrv_open_image(&bs->file, qemu_opt_get(opts, "x-raw"), options,
+                          "raw", bs, &child_file, false, &local_err);
+    if (ret < 0) {
+        error_propagate(errp, local_err);
+        goto fail;
+    }
 
     /* Open the test file */
-    s->test_file = bdrv_new("");
-    ret = bdrv_open(s->test_file, filename, flags, NULL);
+    assert(s->test_file == NULL);
+    ret = bdrv_open_image(&s->test_file, qemu_opt_get(opts, "x-image"), options,
+                          "test", bs, &child_format, false, &local_err);
     if (ret < 0) {
-        bdrv_delete(s->test_file);
+        error_propagate(errp, local_err);
         s->test_file = NULL;
-        return ret;
+        goto fail;
     }
 
-    return 0;
+    ret = 0;
+fail:
+    qemu_opts_del(opts);
+    return ret;
 }
 
 static void blkverify_close(BlockDriverState *bs)
 {
     BDRVBlkverifyState *s = bs->opaque;
 
-    bdrv_delete(s->test_file);
+    bdrv_unref(s->test_file);
     s->test_file = NULL;
 }
 
@@ -123,117 +162,13 @@ static int64_t blkverify_getlength(BlockDriverState *bs)
     return bdrv_getlength(s->test_file);
 }
 
-/**
- * Check that I/O vector contents are identical
- *
- * @a:          I/O vector
- * @b:          I/O vector
- * @ret:        Offset to first mismatching byte or -1 if match
- */
-static ssize_t blkverify_iovec_compare(QEMUIOVector *a, QEMUIOVector *b)
-{
-    int i;
-    ssize_t offset = 0;
-
-    assert(a->niov == b->niov);
-    for (i = 0; i < a->niov; i++) {
-        size_t len = 0;
-        uint8_t *p = (uint8_t *)a->iov[i].iov_base;
-        uint8_t *q = (uint8_t *)b->iov[i].iov_base;
-
-        assert(a->iov[i].iov_len == b->iov[i].iov_len);
-        while (len < a->iov[i].iov_len && *p++ == *q++) {
-            len++;
-        }
-
-        offset += len;
-
-        if (len != a->iov[i].iov_len) {
-            return offset;
-        }
-    }
-    return -1;
-}
-
-typedef struct {
-    int src_index;
-    struct iovec *src_iov;
-    void *dest_base;
-} IOVectorSortElem;
-
-static int sortelem_cmp_src_base(const void *a, const void *b)
-{
-    const IOVectorSortElem *elem_a = a;
-    const IOVectorSortElem *elem_b = b;
-
-    /* Don't overflow */
-    if (elem_a->src_iov->iov_base < elem_b->src_iov->iov_base) {
-        return -1;
-    } else if (elem_a->src_iov->iov_base > elem_b->src_iov->iov_base) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-static int sortelem_cmp_src_index(const void *a, const void *b)
-{
-    const IOVectorSortElem *elem_a = a;
-    const IOVectorSortElem *elem_b = b;
-
-    return elem_a->src_index - elem_b->src_index;
-}
-
-/**
- * Copy contents of I/O vector
- *
- * The relative relationships of overlapping iovecs are preserved.  This is
- * necessary to ensure identical semantics in the cloned I/O vector.
- */
-static void blkverify_iovec_clone(QEMUIOVector *dest, const QEMUIOVector *src,
-                                  void *buf)
-{
-    IOVectorSortElem sortelems[src->niov];
-    void *last_end;
-    int i;
-
-    /* Sort by source iovecs by base address */
-    for (i = 0; i < src->niov; i++) {
-        sortelems[i].src_index = i;
-        sortelems[i].src_iov = &src->iov[i];
-    }
-    qsort(sortelems, src->niov, sizeof(sortelems[0]), sortelem_cmp_src_base);
-
-    /* Allocate buffer space taking into account overlapping iovecs */
-    last_end = NULL;
-    for (i = 0; i < src->niov; i++) {
-        struct iovec *cur = sortelems[i].src_iov;
-        ptrdiff_t rewind = 0;
-
-        /* Detect overlap */
-        if (last_end && last_end > cur->iov_base) {
-            rewind = last_end - cur->iov_base;
-        }
-
-        sortelems[i].dest_base = buf - rewind;
-        buf += cur->iov_len - MIN(rewind, cur->iov_len);
-        last_end = MAX(cur->iov_base + cur->iov_len, last_end);
-    }
-
-    /* Sort by source iovec index and build destination iovec */
-    qsort(sortelems, src->niov, sizeof(sortelems[0]), sortelem_cmp_src_index);
-    for (i = 0; i < src->niov; i++) {
-        qemu_iovec_add(dest, sortelems[i].dest_base, src->iov[i].iov_len);
-    }
-}
-
 static BlkverifyAIOCB *blkverify_aio_get(BlockDriverState *bs, bool is_write,
                                          int64_t sector_num, QEMUIOVector *qiov,
                                          int nb_sectors,
-                                         BlockDriverCompletionFunc *cb,
+                                         BlockCompletionFunc *cb,
                                          void *opaque)
 {
-    BlkverifyAIOCB *acb = qemu_aio_get(&blkverify_aio_pool, bs, cb, opaque);
+    BlkverifyAIOCB *acb = qemu_aio_get(&blkverify_aiocb_info, bs, cb, opaque);
 
     acb->bh = NULL;
     acb->is_write = is_write;
@@ -244,7 +179,6 @@ static BlkverifyAIOCB *blkverify_aio_get(BlockDriverState *bs, bool is_write,
     acb->qiov = qiov;
     acb->buf = NULL;
     acb->verify = NULL;
-    acb->finished = NULL;
     return acb;
 }
 
@@ -258,10 +192,7 @@ static void blkverify_aio_bh(void *opaque)
         qemu_vfree(acb->buf);
     }
     acb->common.cb(acb->common.opaque, acb->ret);
-    if (acb->finished) {
-        *acb->finished = true;
-    }
-    qemu_aio_release(acb);
+    qemu_aio_unref(acb);
 }
 
 static void blkverify_aio_cb(void *opaque, int ret)
@@ -282,7 +213,8 @@ static void blkverify_aio_cb(void *opaque, int ret)
             acb->verify(acb);
         }
 
-        acb->bh = qemu_bh_new(blkverify_aio_bh, acb);
+        acb->bh = aio_bh_new(bdrv_get_aio_context(acb->common.bs),
+                             blkverify_aio_bh, acb);
         qemu_bh_schedule(acb->bh);
         break;
     }
@@ -290,16 +222,16 @@ static void blkverify_aio_cb(void *opaque, int ret)
 
 static void blkverify_verify_readv(BlkverifyAIOCB *acb)
 {
-    ssize_t offset = blkverify_iovec_compare(acb->qiov, &acb->raw_qiov);
+    ssize_t offset = qemu_iovec_compare(acb->qiov, &acb->raw_qiov);
     if (offset != -1) {
         blkverify_err(acb, "contents mismatch in sector %" PRId64,
                       acb->sector_num + (int64_t)(offset / BDRV_SECTOR_SIZE));
     }
 }
 
-static BlockDriverAIOCB *blkverify_aio_readv(BlockDriverState *bs,
+static BlockAIOCB *blkverify_aio_readv(BlockDriverState *bs,
         int64_t sector_num, QEMUIOVector *qiov, int nb_sectors,
-        BlockDriverCompletionFunc *cb, void *opaque)
+        BlockCompletionFunc *cb, void *opaque)
 {
     BDRVBlkverifyState *s = bs->opaque;
     BlkverifyAIOCB *acb = blkverify_aio_get(bs, false, sector_num, qiov,
@@ -308,7 +240,7 @@ static BlockDriverAIOCB *blkverify_aio_readv(BlockDriverState *bs,
     acb->verify = blkverify_verify_readv;
     acb->buf = qemu_blockalign(bs->file, qiov->size);
     qemu_iovec_init(&acb->raw_qiov, acb->qiov->niov);
-    blkverify_iovec_clone(&acb->raw_qiov, qiov, acb->buf);
+    qemu_iovec_clone(&acb->raw_qiov, qiov, acb->buf);
 
     bdrv_aio_readv(s->test_file, sector_num, qiov, nb_sectors,
                    blkverify_aio_cb, acb);
@@ -317,9 +249,9 @@ static BlockDriverAIOCB *blkverify_aio_readv(BlockDriverState *bs,
     return &acb->common;
 }
 
-static BlockDriverAIOCB *blkverify_aio_writev(BlockDriverState *bs,
+static BlockAIOCB *blkverify_aio_writev(BlockDriverState *bs,
         int64_t sector_num, QEMUIOVector *qiov, int nb_sectors,
-        BlockDriverCompletionFunc *cb, void *opaque)
+        BlockCompletionFunc *cb, void *opaque)
 {
     BDRVBlkverifyState *s = bs->opaque;
     BlkverifyAIOCB *acb = blkverify_aio_get(bs, true, sector_num, qiov,
@@ -332,9 +264,9 @@ static BlockDriverAIOCB *blkverify_aio_writev(BlockDriverState *bs,
     return &acb->common;
 }
 
-static BlockDriverAIOCB *blkverify_aio_flush(BlockDriverState *bs,
-                                             BlockDriverCompletionFunc *cb,
-                                             void *opaque)
+static BlockAIOCB *blkverify_aio_flush(BlockDriverState *bs,
+                                       BlockCompletionFunc *cb,
+                                       void *opaque)
 {
     BDRVBlkverifyState *s = bs->opaque;
 
@@ -342,20 +274,82 @@ static BlockDriverAIOCB *blkverify_aio_flush(BlockDriverState *bs,
     return bdrv_aio_flush(s->test_file, cb, opaque);
 }
 
+static bool blkverify_recurse_is_first_non_filter(BlockDriverState *bs,
+                                                  BlockDriverState *candidate)
+{
+    BDRVBlkverifyState *s = bs->opaque;
+
+    bool perm = bdrv_recurse_is_first_non_filter(bs->file, candidate);
+
+    if (perm) {
+        return true;
+    }
+
+    return bdrv_recurse_is_first_non_filter(s->test_file, candidate);
+}
+
+/* Propagate AioContext changes to ->test_file */
+static void blkverify_detach_aio_context(BlockDriverState *bs)
+{
+    BDRVBlkverifyState *s = bs->opaque;
+
+    bdrv_detach_aio_context(s->test_file);
+}
+
+static void blkverify_attach_aio_context(BlockDriverState *bs,
+                                         AioContext *new_context)
+{
+    BDRVBlkverifyState *s = bs->opaque;
+
+    bdrv_attach_aio_context(s->test_file, new_context);
+}
+
+static void blkverify_refresh_filename(BlockDriverState *bs)
+{
+    BDRVBlkverifyState *s = bs->opaque;
+
+    /* bs->file has already been refreshed */
+    bdrv_refresh_filename(s->test_file);
+
+    if (bs->file->full_open_options && s->test_file->full_open_options) {
+        QDict *opts = qdict_new();
+        qdict_put_obj(opts, "driver", QOBJECT(qstring_from_str("blkverify")));
+
+        QINCREF(bs->file->full_open_options);
+        qdict_put_obj(opts, "raw", QOBJECT(bs->file->full_open_options));
+        QINCREF(s->test_file->full_open_options);
+        qdict_put_obj(opts, "test", QOBJECT(s->test_file->full_open_options));
+
+        bs->full_open_options = opts;
+    }
+
+    if (bs->file->exact_filename[0] && s->test_file->exact_filename[0]) {
+        snprintf(bs->exact_filename, sizeof(bs->exact_filename),
+                 "blkverify:%s:%s",
+                 bs->file->exact_filename, s->test_file->exact_filename);
+    }
+}
+
 static BlockDriver bdrv_blkverify = {
-    .format_name        = "blkverify",
-    .protocol_name      = "blkverify",
+    .format_name                      = "blkverify",
+    .protocol_name                    = "blkverify",
+    .instance_size                    = sizeof(BDRVBlkverifyState),
 
-    .instance_size      = sizeof(BDRVBlkverifyState),
+    .bdrv_parse_filename              = blkverify_parse_filename,
+    .bdrv_file_open                   = blkverify_open,
+    .bdrv_close                       = blkverify_close,
+    .bdrv_getlength                   = blkverify_getlength,
+    .bdrv_refresh_filename            = blkverify_refresh_filename,
 
-    .bdrv_getlength     = blkverify_getlength,
+    .bdrv_aio_readv                   = blkverify_aio_readv,
+    .bdrv_aio_writev                  = blkverify_aio_writev,
+    .bdrv_aio_flush                   = blkverify_aio_flush,
 
-    .bdrv_file_open     = blkverify_open,
-    .bdrv_close         = blkverify_close,
+    .bdrv_attach_aio_context          = blkverify_attach_aio_context,
+    .bdrv_detach_aio_context          = blkverify_detach_aio_context,
 
-    .bdrv_aio_readv     = blkverify_aio_readv,
-    .bdrv_aio_writev    = blkverify_aio_writev,
-    .bdrv_aio_flush     = blkverify_aio_flush,
+    .is_filter                        = true,
+    .bdrv_recurse_is_first_non_filter = blkverify_recurse_is_first_non_filter,
 };
 
 static void bdrv_blkverify_init(void)

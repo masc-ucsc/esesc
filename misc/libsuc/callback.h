@@ -54,6 +54,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 //
 /////////////////////////////////////////////////////////////////////////////
 
+
 class EventScheduler 
   : public TQueue<EventScheduler *, Time_t>::User 
 {
@@ -95,7 +96,9 @@ public:
   static void scheduleAbs(Time_t tim, EventScheduler *cb) {
     I(tim > globalClock); // Only for performance reasons
 #ifdef DEBUG
-    GI(globalClock>10000000, tim<(2*globalClock)); // may be fine, but be suspicious if it repeats!!
+    static bool once = true;
+    GI(globalClock>10000000 && !once, tim<(2*globalClock)); // may be fine, but be suspicious if it repeats!!
+    once = false;
     cb->fileName = __FILE__;
     cb->lineno   = __LINE__;
 #endif
@@ -105,10 +108,24 @@ public:
   static void advanceClock() {
     EventScheduler *cb;
 
+#ifdef DEBUG
     while ((cb = cbQ.nextJob(globalClock)) ) {
+      I(0); // There should be no job in current cycle (executed before, and not possible to schedule events with 0 delay
       cb->call();
     }
+#endif
     globalClock++;
+
+    uint32_t cb_per_clock = 0;
+    while ((cb = cbQ.nextJob(globalClock)) ) {
+      cb->call();
+      cb_per_clock++;
+    }
+
+    if (cb_per_clock == 0) {
+      deadClock++;
+      //MSG("@%lld is a deadClock count is now @%lld",(long long int) globalClock, (long long int) deadClock);
+    }
   }
 
   static bool empty() {

@@ -65,11 +65,9 @@ extern "C" uint32_t QEMUReader_setnoStats()
   return 0;
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t data, uint32_t fid, uint32_t op, uint64_t icount, void *env) 
+extern "C" void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, int fid, int op, int src1, int src2, int dest, void *env) 
 {
-  if ((pc > 0xeb90 && pc < 0xeb9f) || addr == 0x407fdb1c ) {
-    printf("%d pc=0x%x insn=0x%x op=%d icount=%d addr=0x%lx data=0x%lx\n",fid,pc,insn, op,(uint32_t)icount, addr, data);
-  }
+  //printf("%d pc=0x%llx addr=0x%llx op=%d src1=%d src2=%d dest=%d\n",fid,(long long)pc,(long long)addr, op, src1, src2, dest);
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)

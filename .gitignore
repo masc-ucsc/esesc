@@ -1,6 +1,7 @@
 pp
 tags
 cscope*
+*NBSD*
 *.swp
 *.swo
 *.swn

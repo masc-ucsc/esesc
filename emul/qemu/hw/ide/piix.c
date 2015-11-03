@@ -22,17 +22,18 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include <hw/hw.h>
-#include <hw/pc.h>
-#include <hw/pci.h>
-#include <hw/isa.h>
-#include "block.h"
-#include "sysemu.h"
-#include "dma.h"
+#include <hw/i386/pc.h>
+#include <hw/pci/pci.h>
+#include <hw/isa/isa.h>
+#include "sysemu/block-backend.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/dma.h"
 
 #include <hw/ide/pci.h>
 
-static uint64_t bmdma_read(void *opaque, target_phys_addr_t addr, unsigned size)
+static uint64_t bmdma_read(void *opaque, hwaddr addr, unsigned size)
 {
     BMDMAState *bm = opaque;
     uint32_t val;
@@ -53,12 +54,12 @@ static uint64_t bmdma_read(void *opaque, target_phys_addr_t addr, unsigned size)
         break;
     }
 #ifdef DEBUG_IDE
-    printf("bmdma: readb 0x%02x : 0x%02x\n", addr, val);
+    printf("bmdma: readb 0x%02x : 0x%02x\n", (uint8_t)addr, val);
 #endif
     return val;
 }
 
-static void bmdma_write(void *opaque, target_phys_addr_t addr,
+static void bmdma_write(void *opaque, hwaddr addr,
                         uint64_t val, unsigned size)
 {
     BMDMAState *bm = opaque;
@@ -68,18 +69,19 @@ static void bmdma_write(void *opaque, target_phys_addr_t addr,
     }
 
 #ifdef DEBUG_IDE
-    printf("bmdma: writeb 0x%02x : 0x%02x\n", addr, val);
+    printf("bmdma: writeb 0x%02x : 0x%02x\n", (uint8_t)addr, (uint8_t)val);
 #endif
     switch(addr & 3) {
     case 0:
-        return bmdma_cmd_writeb(bm, val);
+        bmdma_cmd_writeb(bm, val);
+        break;
     case 2:
         bm->status = (val & 0x60) | (bm->status & 1) | (bm->status & ~val & 0x06);
         break;
     }
 }
 
-static MemoryRegionOps piix_bmdma_ops = {
+static const MemoryRegionOps piix_bmdma_ops = {
     .read = bmdma_read,
     .write = bmdma_write,
 };
@@ -88,15 +90,15 @@ static void bmdma_setup_bar(PCIIDEState *d)
 {
     int i;
 
-    memory_region_init(&d->bmdma_bar, "piix-bmdma-container", 16);
+    memory_region_init(&d->bmdma_bar, OBJECT(d), "piix-bmdma-container", 16);
     for(i = 0;i < 2; i++) {
         BMDMAState *bm = &d->bmdma[i];
 
-        memory_region_init_io(&bm->extra_io, &piix_bmdma_ops, bm,
+        memory_region_init_io(&bm->extra_io, OBJECT(d), &piix_bmdma_ops, bm,
                               "piix-bmdma", 4);
         memory_region_add_subregion(&d->bmdma_bar, i * 8, &bm->extra_io);
-        memory_region_init_io(&bm->addr_ioport, &bmdma_addr_ioport_ops, bm,
-                              "bmdma", 4);
+        memory_region_init_io(&bm->addr_ioport, OBJECT(d),
+                              &bmdma_addr_ioport_ops, bm, "bmdma", 4);
         memory_region_add_subregion(&d->bmdma_bar, i * 8 + 4, &bm->addr_ioport);
     }
 }
@@ -104,7 +106,8 @@ static void bmdma_setup_bar(PCIIDEState *d)
 static void piix3_reset(void *opaque)
 {
     PCIIDEState *d = opaque;
-    uint8_t *pci_conf = d->dev.config;
+    PCIDevice *pd = PCI_DEVICE(d);
+    uint8_t *pci_conf = pd->config;
     int i;
 
     for (i = 0; i < 2; i++) {
@@ -133,60 +136,62 @@ static void pci_piix_init_ports(PCIIDEState *d) {
     int i;
 
     for (i = 0; i < 2; i++) {
-        ide_bus_new(&d->bus[i], &d->dev.qdev, i);
+        ide_bus_new(&d->bus[i], sizeof(d->bus[i]), DEVICE(d), i, 2);
         ide_init_ioport(&d->bus[i], NULL, port_info[i].iobase,
                         port_info[i].iobase2);
         ide_init2(&d->bus[i], isa_get_irq(NULL, port_info[i].isairq));
 
         bmdma_init(&d->bus[i], &d->bmdma[i], d);
         d->bmdma[i].bus = &d->bus[i];
-        qemu_add_vm_change_state_handler(d->bus[i].dma->ops->restart_cb,
-                                         &d->bmdma[i].dma);
+        ide_register_restart_cb(&d->bus[i]);
     }
 }
 
-static int pci_piix_ide_initfn(PCIDevice *dev)
+static void pci_piix_ide_realize(PCIDevice *dev, Error **errp)
 {
-    PCIIDEState *d = DO_UPCAST(PCIIDEState, dev, dev);
-    uint8_t *pci_conf = d->dev.config;
+    PCIIDEState *d = PCI_IDE(dev);
+    uint8_t *pci_conf = dev->config;
 
     pci_conf[PCI_CLASS_PROG] = 0x80; // legacy ATA mode
 
     qemu_register_reset(piix3_reset, d);
 
     bmdma_setup_bar(d);
-    pci_register_bar(&d->dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &d->bmdma_bar);
+    pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_IO, &d->bmdma_bar);
 
-    vmstate_register(&d->dev.qdev, 0, &vmstate_ide_pci, d);
+    vmstate_register(DEVICE(dev), 0, &vmstate_ide_pci, d);
 
     pci_piix_init_ports(d);
-
-    return 0;
 }
 
-static int pci_piix3_xen_ide_unplug(DeviceState *dev)
+int pci_piix3_xen_ide_unplug(DeviceState *dev)
 {
-    PCIDevice *pci_dev;
     PCIIDEState *pci_ide;
     DriveInfo *di;
-    int i = 0;
+    int i;
+    IDEDevice *idedev;
 
-    pci_dev = DO_UPCAST(PCIDevice, qdev, dev);
-    pci_ide = DO_UPCAST(PCIIDEState, dev, pci_dev);
+    pci_ide = PCI_IDE(dev);
 
-    for (; i < 3; i++) {
+    for (i = 0; i < 4; i++) {
         di = drive_get_by_index(IF_IDE, i);
         if (di != NULL && !di->media_cd) {
-            DeviceState *ds = bdrv_get_attached_dev(di->bdrv);
+            BlockBackend *blk = blk_by_legacy_dinfo(di);
+            DeviceState *ds = blk_get_attached_dev(blk);
             if (ds) {
-                bdrv_detach_dev(di->bdrv, ds);
+                blk_detach_dev(blk, ds);
             }
-            bdrv_close(di->bdrv);
-            pci_ide->bus[di->bus].ifs[di->unit].bs = NULL;
-            drive_put_ref(di);
+            pci_ide->bus[di->bus].ifs[di->unit].blk = NULL;
+            if (!(i % 2)) {
+                idedev = pci_ide->bus[di->bus].master;
+            } else {
+                idedev = pci_ide->bus[di->bus].slave;
+            }
+            idedev->conf.blk = NULL;
+            blk_unref(blk);
         }
     }
-    qdev_reset_all(&(pci_ide->dev.qdev));
+    qdev_reset_all(DEVICE(dev));
     return 0;
 }
 
@@ -195,25 +200,19 @@ PCIDevice *pci_piix3_xen_ide_init(PCIBus *bus, DriveInfo **hd_table, int devfn)
     PCIDevice *dev;
 
     dev = pci_create_simple(bus, devfn, "piix3-ide-xen");
-    dev->qdev.info->unplug = pci_piix3_xen_ide_unplug;
     pci_ide_create_devs(dev, hd_table);
     return dev;
 }
 
-static int pci_piix_ide_exitfn(PCIDevice *dev)
+static void pci_piix_ide_exitfn(PCIDevice *dev)
 {
-    PCIIDEState *d = DO_UPCAST(PCIIDEState, dev, dev);
+    PCIIDEState *d = PCI_IDE(dev);
     unsigned i;
 
     for (i = 0; i < 2; ++i) {
         memory_region_del_subregion(&d->bmdma_bar, &d->bmdma[i].extra_io);
-        memory_region_destroy(&d->bmdma[i].extra_io);
         memory_region_del_subregion(&d->bmdma_bar, &d->bmdma[i].addr_ioport);
-        memory_region_destroy(&d->bmdma[i].addr_ioport);
     }
-    memory_region_destroy(&d->bmdma_bar);
-
-    return 0;
 }
 
 /* hd_table must contain 4 block drivers */
@@ -238,42 +237,69 @@ PCIDevice *pci_piix4_ide_init(PCIBus *bus, DriveInfo **hd_table, int devfn)
     return dev;
 }
 
-static PCIDeviceInfo piix_ide_info[] = {
-    {
-        .qdev.name    = "piix3-ide",
-        .qdev.size    = sizeof(PCIIDEState),
-        .qdev.no_user = 1,
-        .no_hotplug   = 1,
-        .init         = pci_piix_ide_initfn,
-        .exit         = pci_piix_ide_exitfn,
-        .vendor_id    = PCI_VENDOR_ID_INTEL,
-        .device_id    = PCI_DEVICE_ID_INTEL_82371SB_1,
-        .class_id     = PCI_CLASS_STORAGE_IDE,
-    },{
-        .qdev.name    = "piix3-ide-xen",
-        .qdev.size    = sizeof(PCIIDEState),
-        .qdev.no_user = 1,
-        .init         = pci_piix_ide_initfn,
-        .vendor_id    = PCI_VENDOR_ID_INTEL,
-        .device_id    = PCI_DEVICE_ID_INTEL_82371SB_1,
-        .class_id     = PCI_CLASS_STORAGE_IDE,
-    },{
-        .qdev.name    = "piix4-ide",
-        .qdev.size    = sizeof(PCIIDEState),
-        .qdev.no_user = 1,
-        .no_hotplug   = 1,
-        .init         = pci_piix_ide_initfn,
-        .exit         = pci_piix_ide_exitfn,
-        .vendor_id    = PCI_VENDOR_ID_INTEL,
-        .device_id    = PCI_DEVICE_ID_INTEL_82371AB,
-        .class_id     = PCI_CLASS_STORAGE_IDE,
-    },{
-        /* end of list */
-    }
+static void piix3_ide_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    k->realize = pci_piix_ide_realize;
+    k->exit = pci_piix_ide_exitfn;
+    k->vendor_id = PCI_VENDOR_ID_INTEL;
+    k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
+    k->class_id = PCI_CLASS_STORAGE_IDE;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+    dc->hotpluggable = false;
+}
+
+static const TypeInfo piix3_ide_info = {
+    .name          = "piix3-ide",
+    .parent        = TYPE_PCI_IDE,
+    .class_init    = piix3_ide_class_init,
 };
 
-static void piix_ide_register(void)
+static void piix3_ide_xen_class_init(ObjectClass *klass, void *data)
 {
-    pci_qdev_register_many(piix_ide_info);
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    k->realize = pci_piix_ide_realize;
+    k->vendor_id = PCI_VENDOR_ID_INTEL;
+    k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
+    k->class_id = PCI_CLASS_STORAGE_IDE;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
-device_init(piix_ide_register);
+
+static const TypeInfo piix3_ide_xen_info = {
+    .name          = "piix3-ide-xen",
+    .parent        = TYPE_PCI_IDE,
+    .class_init    = piix3_ide_xen_class_init,
+};
+
+static void piix4_ide_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    k->realize = pci_piix_ide_realize;
+    k->exit = pci_piix_ide_exitfn;
+    k->vendor_id = PCI_VENDOR_ID_INTEL;
+    k->device_id = PCI_DEVICE_ID_INTEL_82371AB;
+    k->class_id = PCI_CLASS_STORAGE_IDE;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
+    dc->hotpluggable = false;
+}
+
+static const TypeInfo piix4_ide_info = {
+    .name          = "piix4-ide",
+    .parent        = TYPE_PCI_IDE,
+    .class_init    = piix4_ide_class_init,
+};
+
+static void piix_ide_register_types(void)
+{
+    type_register_static(&piix3_ide_info);
+    type_register_static(&piix3_ide_xen_info);
+    type_register_static(&piix4_ide_info);
+}
+
+type_init(piix_ide_register_types)

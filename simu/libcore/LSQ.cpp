@@ -25,9 +25,9 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "SescConf.h"
 /* }}} */
 
-LSQFull::LSQFull(const int32_t id)
+LSQFull::LSQFull(const int32_t id, int32_t size)
   /* constructor {{{1 */
-  :LSQ()
+  :LSQ(size)
   ,stldForwarding("P(%d):stldForwarding", id)
 {
 }
@@ -47,23 +47,30 @@ DInst *LSQFull::executing(DInst *dinst)
   I(dinst->getAddr());
 
   AddrType tag = calcWord(dinst);
+
+  const Instruction *inst = dinst->getInst();
+  DInst *faulty = 0;
+
+#if 0
   AddrDInstQMap::const_iterator instIt = instMap.begin();
   I(instIt != instMap.end());
 
   I(!dinst->isExecuted());
 
-  const Instruction *inst = dinst->getInst();
-
-  DInst *faulty = 0;
   while(instIt != instMap.end()) {
     if (instIt->first != tag){
       instIt++;
       continue; 
     }
+#endif
+  std::pair<AddrDInstQMap::iterator, AddrDInstQMap::iterator> ret;
+  ret = instMap.equal_range(tag);
+  for (AddrDInstQMap::iterator instIt=ret.first; instIt!=ret.second; ++instIt) {
+    I(instIt->first == tag);
+
     //inst->dump("Executed");
     DInst *qdinst = instIt->second;
     if(qdinst == dinst) {
-      instIt++;
       continue;
     }
 
@@ -88,10 +95,7 @@ DInst *LSQFull::executing(DInst *dinst)
         stldForwarding.inc(dinst->getStatsFlag());
       }
     }
-
-    instIt++;
   }
-
 
   I(!dinst->isExecuted()); // first clear, then mark executed
   return faulty;
@@ -120,9 +124,9 @@ void LSQFull::remove(DInst *dinst)
 }
 /* }}} */
 
-LSQNone::LSQNone(const int32_t id)
+LSQNone::LSQNone(const int32_t id, int32_t size)
   /* constructor {{{1 */
-  :LSQ() {
+  :LSQ(size) {
 }
 /* }}} */
 
@@ -145,9 +149,9 @@ void LSQNone::remove(DInst *dinst)
 }
 /* }}} */
 
-LSQVPC::LSQVPC()
+LSQVPC::LSQVPC(int32_t size)
   /* constructor {{{1 */
-  :LSQ() 
+  :LSQ(size) 
   ,LSQVPC_replays("LSQVPC_replays")  
 {
 }
@@ -213,5 +217,7 @@ void LSQVPC::remove(DInst *dinst)
       return;
     }
     instIt++;
+    if (instIt == instMap.end())
+      return;
   }
 }

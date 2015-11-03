@@ -102,7 +102,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
   if (firstassign >= fidFreePool.size())
     firstassign = 0;
 
-  MSG("QEMUEmulInterface.cpp : nFlows = %d",nFlows);
+  //MSG("QEMUEmulInterface.cpp : nFlows = %d",nFlows);
   reader = new QEMUReader(qargs, section, this);
 }
 
@@ -211,24 +211,24 @@ FlowID QEMUEmulInterface::getNumEmuls(void) const
 
 void QEMUEmulInterface::startRabbit(FlowID fid) 
 {
-  esesc_set_rabbit(fid);
+  //esesc_set_rabbit(fid);
 }
 
 void QEMUEmulInterface::startWarmup(FlowID fid)
 {
-  esesc_set_warmup(fid);
+  //esesc_set_warmup(fid);
 }
 
 void QEMUEmulInterface::startDetail(FlowID fid)
 {
   //reader->drainFIFO(fid);
-  esesc_set_timing(fid); // No Detail model in qemu Detail == Timing
+  //esesc_set_timing(fid); // No Detail model in qemu Detail == Timing
 }
 
 void QEMUEmulInterface::startTiming(FlowID fid)
 {
   //reader->drainFIFO(fid);
-  esesc_set_timing(fid);
+  //esesc_set_timing(fid);
 }
 
 FlowID QEMUEmulInterface::getFirstFlow() const {return 0;} 

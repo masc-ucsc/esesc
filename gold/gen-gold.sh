@@ -9,5 +9,5 @@ buildDir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 #Run bash script to set up directories and benchmark scripts
 sh $esescDir/gold/setup.sh $esescDir
 
-sh $esescDir/gold/exe/maketable.sh SLOW gold $buildDir $esescDir
-sh $esescDir/gold/exe/maketable.sh FAST gold $buildDir $esescDir
+sh $esescDir/gold/exe/report_to_table.sh SLOW gold $buildDir $esescDir
+sh $esescDir/gold/exe/report_to_table.sh FAST gold $buildDir $esescDir

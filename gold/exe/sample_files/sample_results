@@ -1,0 +1,21 @@
+Input table 1: 
+FAST, Exetime, IPC, uIPC, rawInst,
+crafty, 2.411, 1.00, 2.37, 5457485
+
+Input table 2: 
+FAST, Exetime, IPC, uIPC, rawInst,
+crafty, 2.623, 1.22, 2.37, 5457481
+
+Differences: 
+Exe, IPC, uIPC, rawInst
+-0.212, -0.22, 0.0, 4.0
+
+Errors: 
+Exe, IPC, uIPC, rawInst
+OK, OK, OK, OK
+
+Parameters: 
+Exe, IPC, uIPC, rawInst
+Epsilon, 0.1, 0.0, 0.0, 6.0
+Expected, lt, lt, eq, eq
+

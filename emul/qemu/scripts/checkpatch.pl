@@ -97,6 +97,9 @@ my $dbg_values = 0;
 my $dbg_possible = 0;
 my $dbg_type = 0;
 my $dbg_attr = 0;
+my $dbg_adv_dcs = 0;
+my $dbg_adv_checking = 0;
+my $dbg_adv_apw = 0;
 for my $key (keys %debug) {
 	## no critic
 	eval "\${dbg_$key} = '$debug{$key}';";
@@ -203,9 +206,13 @@ our $UTF8	= qr {
 	|  \xF4[\x80-\x8F][\x80-\xBF]{2}     # plane 16
 }x;
 
+# There are still some false positives, but this catches most
+# common cases.
 our $typeTypedefs = qr{(?x:
-	(?:__)?(?:u|s|be|le)(?:8|16|32|64)|
-	atomic_t
+        [A-Z][A-Z\d_]*[a-z][A-Za-z\d_]*     # camelcase
+        | [A-Z][A-Z\d_]*AIOCB               # all uppercase
+        | [A-Z][A-Z\d_]*CPU                 # all uppercase
+        | QEMUBH                            # all uppercase
 )};
 
 our $logFunctions = qr{(?x:
@@ -1360,7 +1367,7 @@ sub process {
 # Check for incorrect file permissions
 		if ($line =~ /^new (file )?mode.*[7531]\d{0,2}$/) {
 			my $permhere = $here . "FILE: $realfile\n";
-			if ($realfile =~ /(Makefile|Kconfig|\.c|\.h|\.S|\.tmpl)$/) {
+			if ($realfile =~ /(Makefile|Kconfig|\.c|\.cpp|\.h|\.S|\.tmpl)$/) {
 				ERROR("do not set execute permissions for source files\n" . $permhere);
 			}
 		}
@@ -1457,7 +1464,7 @@ sub process {
 		}
 
 # check we are in a valid source file if not then ignore this hunk
-		next if ($realfile !~ /\.(h|c|s|S|pl|sh)$/);
+		next if ($realfile !~ /\.(h|c|cpp|s|S|pl|sh)$/);
 
 #80 column limit
 		if ($line =~ /^\+/ && $prevrawline !~ /\/\*\*/ &&
@@ -1492,7 +1499,7 @@ sub process {
 		}
 
 # check we are in a valid source file C or perl if not then ignore this hunk
-		next if ($realfile !~ /\.(h|c|pl)$/);
+		next if ($realfile !~ /\.(h|c|cpp|pl)$/);
 
 # in QEMU, no tabs are allowed
 		if ($rawline =~ /^\+.*\t/) {
@@ -1502,7 +1509,7 @@ sub process {
 		}
 
 # check we are in a valid C source file if not then ignore this hunk
-		next if ($realfile !~ /\.(h|c)$/);
+		next if ($realfile !~ /\.(h|c|cpp)$/);
 
 # check for RCS/CVS revision markers
 		if ($rawline =~ /^\+.*\$(Revision|Log|Id)(?:\$|)/) {
@@ -1632,7 +1639,13 @@ sub process {
 			#print "realcnt<$realcnt> ctx_cnt<$ctx_cnt>\n";
 			#print "pre<$pre_ctx>\nline<$line>\nctx<$ctx>\nnext<$lines[$ctx_ln - 1]>\n";
 
-			if ($ctx !~ /{\s*/ && defined($lines[$ctx_ln -1]) && $lines[$ctx_ln - 1] =~ /^\+\s*{/) {
+			# The length of the "previous line" is checked against 80 because it
+			# includes the + at the beginning of the line (if the actual line has
+			# 79 or 80 characters, it is no longer possible to add a space and an
+			# opening brace there)
+			if ($#ctx == 0 && $ctx !~ /{\s*/ &&
+			    defined($lines[$ctx_ln - 1]) && $lines[$ctx_ln - 1] =~ /^\+\s*{/ &&
+			    defined($lines[$ctx_ln - 2]) && length($lines[$ctx_ln - 2]) < 80) {
 				ERROR("that open brace { should be on the previous line\n" .
 					"$here\n$ctx\n$rawlines[$ctx_ln - 1]\n");
 			}
@@ -1966,6 +1979,9 @@ sub process {
 				asm|__asm__)$/x)
 			{
 
+			# Ignore 'catch (...)' in C++
+			} elsif ($name =~ /^catch$/ && $realfile =~ /(\.cpp|\.h)$/) {
+
 			# cpp #define statements have non-optional spaces, ie
 			# if there is a space between the name and the open
 			# parenthesis it is simply not a parameter group.
@@ -1989,7 +2005,7 @@ sub process {
 				\+=|-=|\*=|\/=|%=|\^=|\|=|&=|
 				=>|->|<<|>>|<|>|=|!|~|
 				&&|\|\||,|\^|\+\+|--|&|\||\+|-|\*|\/|%|
-				\?|:
+				\?|::|:
 			}x;
 			my @elements = split(/($ops|;)/, $opline);
 			my $off = 0;
@@ -2059,6 +2075,10 @@ sub process {
 				# // is a comment
 				} elsif ($op eq '//') {
 
+				# Ignore : used in class declaration in C++
+				} elsif ($opv eq ':B' && $ctx =~ /Wx[WE]/ &&
+						 $line =~ /class/ && $realfile =~ /(\.cpp|\.h)$/) {
+
 				# No spaces for:
 				#   ->
 				#   :   when part of a bitfield
@@ -2085,7 +2105,10 @@ sub process {
 				} elsif ($op eq '!' || $op eq '~' ||
 					 $opv eq '*U' || $opv eq '-U' ||
 					 $opv eq '&U' || $opv eq '&&U') {
-					if ($ctx !~ /[WEBC]x./ && $ca !~ /(?:\)|!|~|\*|-|\&|\||\+\+|\-\-|\{)$/) {
+					if ($op eq '~' && $ca =~ /::$/ && $realfile =~ /(\.cpp|\.h)$/) {
+						# '~' used as a name of Destructor
+
+					} elsif ($ctx !~ /[WEBC]x./ && $ca !~ /(?:\)|!|~|\*|-|\&|\||\+\+|\-\-|\{)$/) {
 						ERROR("space required before that '$op' $at\n" . $hereptr);
 					}
 					if ($op eq '*' && $cc =~/\s*$Modifier\b/) {
@@ -2131,6 +2154,18 @@ sub process {
 				# All the others need spaces both sides.
 				} elsif ($ctx !~ /[EWC]x[CWE]/) {
 					my $ok = 0;
+
+					if ($realfile =~ /\.cpp|\.h$/) {
+						# Ignore template arguments <...> in C++
+						if (($op eq '<' || $op eq '>') && $line =~ /<.*>/) {
+							$ok = 1;
+						}
+
+						# Ignore :: in C++
+						if ($op eq '::') {
+							$ok = 1;
+						}
+					}
 
 					# Ignore email addresses <foo@bar>
 					if (($op eq '<' &&
@@ -2486,8 +2521,11 @@ sub process {
 		if ($line =~ /(^.*)\bif\b/ && $line !~ /\#\s*if/) {
 			my ($level, $endln, @chunks) =
 				ctx_statement_full($linenr, $realcnt, 1);
-			#print "chunks<$#chunks> linenr<$linenr> endln<$endln> level<$level>\n";
-			#print "APW: <<$chunks[1][0]>><<$chunks[1][1]>>\n";
+                        if ($dbg_adv_apw) {
+                            print "APW: chunks<$#chunks> linenr<$linenr> endln<$endln> level<$level>\n";
+                            print "APW: <<$chunks[1][0]>><<$chunks[1][1]>>\n"
+                                if $#chunks >= 1;
+                        }
 			if ($#chunks >= 0 && $level == 0) {
 				my $allowed = 0;
 				my $seen = 0;
@@ -2510,20 +2548,27 @@ sub process {
 
 					substr($block, 0, length($cond), '');
 
-					$seen++ if ($block =~ /^\s*{/);
+					my $spaced_block = $block;
+					$spaced_block =~ s/\n\+/ /g;
 
-					#print "cond<$cond> block<$block> allowed<$allowed>\n";
+					$seen++ if ($spaced_block =~ /^\s*{/);
+
+                                        print "APW: cond<$cond> block<$block> allowed<$allowed>\n"
+                                            if $dbg_adv_apw;
 					if (statement_lines($cond) > 1) {
-						#print "APW: ALLOWED: cond<$cond>\n";
-						$allowed = 1;
+                                            print "APW: ALLOWED: cond<$cond>\n"
+                                                if $dbg_adv_apw;
+                                            $allowed = 1;
 					}
 					if ($block =~/\b(?:if|for|while)\b/) {
-						#print "APW: ALLOWED: block<$block>\n";
-						$allowed = 1;
+                                            print "APW: ALLOWED: block<$block>\n"
+                                                if $dbg_adv_apw;
+                                            $allowed = 1;
 					}
 					if (statement_block_size($block) > 1) {
-						#print "APW: ALLOWED: lines block<$block>\n";
-						$allowed = 1;
+                                            print "APW: ALLOWED: lines block<$block>\n"
+                                                if $dbg_adv_apw;
+                                            $allowed = 1;
 					}
 				}
 				if ($seen != ($#chunks + 1)) {
@@ -2537,32 +2582,41 @@ sub process {
 					$line !~ /\#\s*else/) {
 			my $allowed = 0;
 
-			# Check the pre-context.
-			if (substr($line, 0, $-[0]) =~ /(\}\s*)$/) {
-				#print "APW: ALLOWED: pre<$1>\n";
-				$allowed = 1;
-			}
+                        # Check the pre-context.
+                        if (substr($line, 0, $-[0]) =~ /(\}\s*)$/) {
+                            my $pre = $1;
+
+                            if ($line !~ /else/) {
+                                print "APW: ALLOWED: pre<$pre> line<$line>\n"
+                                    if $dbg_adv_apw;
+                                $allowed = 1;
+                            }
+                        }
 
 			my ($level, $endln, @chunks) =
 				ctx_statement_full($linenr, $realcnt, $-[0]);
 
 			# Check the condition.
 			my ($cond, $block) = @{$chunks[0]};
-			#print "CHECKING<$linenr> cond<$cond> block<$block>\n";
+                        print "CHECKING<$linenr> cond<$cond> block<$block>\n"
+                            if $dbg_adv_checking;
 			if (defined $cond) {
 				substr($block, 0, length($cond), '');
 			}
 			if (statement_lines($cond) > 1) {
-				#print "APW: ALLOWED: cond<$cond>\n";
-				$allowed = 1;
+                            print "APW: ALLOWED: cond<$cond>\n"
+                                if $dbg_adv_apw;
+                            $allowed = 1;
 			}
 			if ($block =~/\b(?:if|for|while)\b/) {
-				#print "APW: ALLOWED: block<$block>\n";
-				$allowed = 1;
+                            print "APW: ALLOWED: block<$block>\n"
+                                if $dbg_adv_apw;
+                            $allowed = 1;
 			}
 			if (statement_block_size($block) > 1) {
-				#print "APW: ALLOWED: lines block<$block>\n";
-				$allowed = 1;
+                            print "APW: ALLOWED: lines block<$block>\n"
+                                if $dbg_adv_apw;
+                            $allowed = 1;
 			}
 			# Check the post-context.
 			if (defined $chunks[1]) {
@@ -2571,10 +2625,13 @@ sub process {
 					substr($block, 0, length($cond), '');
 				}
 				if ($block =~ /^\s*\{/) {
-					#print "APW: ALLOWED: chunk-1 block<$block>\n";
-					$allowed = 1;
+                                    print "APW: ALLOWED: chunk-1 block<$block>\n"
+                                        if $dbg_adv_apw;
+                                    $allowed = 1;
 				}
 			}
+                        print "DCS: level=$level block<$block> allowed=$allowed\n"
+                            if $dbg_adv_dcs;
 			if ($level == 0 && $block !~ /^\s*\{/ && !$allowed) {
 				my $herectx = $here . "\n";;
 				my $cnt = statement_rawlines($block);
@@ -2848,6 +2905,22 @@ sub process {
 			    $realfile !~ m@^drivers/base/core@) {
 				ERROR("lockdep_no_validate class is reserved for device->mutex.\n" . $herecurr);
 			}
+		}
+
+# QEMU specific tests
+		if ($rawline =~ /\b(?:Qemu|QEmu)\b/) {
+			WARN("use QEMU instead of Qemu or QEmu\n" . $herecurr);
+		}
+
+# check for non-portable ffs() calls that have portable alternatives in QEMU
+		if ($line =~ /\bffs\(/) {
+			ERROR("use ctz32() instead of ffs()\n" . $herecurr);
+		}
+		if ($line =~ /\bffsl\(/) {
+			ERROR("use ctz32() or ctz64() instead of ffsl()\n" . $herecurr);
+		}
+		if ($line =~ /\bffsll\(/) {
+			ERROR("use ctz64() instead of ffsll()\n" . $herecurr);
 		}
 	}
 

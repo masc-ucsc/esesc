@@ -161,8 +161,8 @@ public:
 class InterconnectionHashFunc {
 public: 
   size_t operator()(const InterConnection *ip) const {
-	 HASH<uint32_t> H;
-	 return H((uint32_t) ip);
+	 HASH<uint64_t> H;
+	 return H((uint64_t) ip);
   }
 };
 

@@ -1,13 +1,24 @@
 /*
  * QEMU float support macros
  *
- * Derived from SoftFloat.
+ * The code in this source file is derived from release 2a of the SoftFloat
+ * IEC/IEEE Floating-point Arithmetic Package. Those parts of the code (and
+ * some later contributions) are provided under that license, as detailed below.
+ * It has subsequently been modified by contributors to the QEMU Project,
+ * so some portions are provided under:
+ *  the SoftFloat-2a license
+ *  the BSD license
+ *  GPL-v2-or-later
+ *
+ * Any future contributions to this file after December 1st 2014 will be
+ * taken to be licensed under the Softfloat-2a license unless specifically
+ * indicated otherwise.
  */
 
-/*============================================================================
-
+/*
+===============================================================================
 This C source fragment is part of the SoftFloat IEC/IEEE Floating-point
-Arithmetic Package, Release 2b.
+Arithmetic Package, Release 2a.
 
 Written by John R. Hauser.  This work was made possible in part by the
 International Computer Science Institute, located at Suite 600, 1947 Center
@@ -16,24 +27,57 @@ National Science Foundation under grant MIP-9311980.  The original version
 of this code was written as part of a project to build a fixed-point vector
 processor in collaboration with the University of California at Berkeley,
 overseen by Profs. Nelson Morgan and John Wawrzynek.  More information
-is available through the Web page `http://www.cs.berkeley.edu/~jhauser/
+is available through the Web page `http://HTTP.CS.Berkeley.EDU/~jhauser/
 arithmetic/SoftFloat.html'.
 
-THIS SOFTWARE IS DISTRIBUTED AS IS, FOR FREE.  Although reasonable effort has
-been made to avoid it, THIS SOFTWARE MAY CONTAIN FAULTS THAT WILL AT TIMES
-RESULT IN INCORRECT BEHAVIOR.  USE OF THIS SOFTWARE IS RESTRICTED TO PERSONS
-AND ORGANIZATIONS WHO CAN AND WILL TAKE FULL RESPONSIBILITY FOR ALL LOSSES,
-COSTS, OR OTHER PROBLEMS THEY INCUR DUE TO THE SOFTWARE, AND WHO FURTHERMORE
-EFFECTIVELY INDEMNIFY JOHN HAUSER AND THE INTERNATIONAL COMPUTER SCIENCE
-INSTITUTE (possibly via similar legal notice) AGAINST ALL LOSSES, COSTS, OR
-OTHER PROBLEMS INCURRED BY THEIR CUSTOMERS AND CLIENTS DUE TO THE SOFTWARE.
+THIS SOFTWARE IS DISTRIBUTED AS IS, FOR FREE.  Although reasonable effort
+has been made to avoid it, THIS SOFTWARE MAY CONTAIN FAULTS THAT WILL AT
+TIMES RESULT IN INCORRECT BEHAVIOR.  USE OF THIS SOFTWARE IS RESTRICTED TO
+PERSONS AND ORGANIZATIONS WHO CAN AND WILL TAKE FULL RESPONSIBILITY FOR ANY
+AND ALL LOSSES, COSTS, OR OTHER PROBLEMS ARISING FROM ITS USE.
 
 Derivative works are acceptable, even for commercial purposes, so long as
-(1) the source code for the derivative work includes prominent notice that
-the work is derivative, and (2) the source code includes prominent notice with
-these four paragraphs for those parts of this code that are retained.
+(1) they include prominent notice that the work is derivative, and (2) they
+include prominent notice akin to these four paragraphs for those parts of
+this code that are retained.
 
-=============================================================================*/
+===============================================================================
+*/
+
+/* BSD licensing:
+ * Copyright (c) 2006, Fabrice Bellard
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ * may be used to endorse or promote products derived from this software without
+ * specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/* Portions of this work are licensed under the terms of the GNU GPL,
+ * version 2 or later. See the COPYING file in the top-level directory.
+ */
 
 /*----------------------------------------------------------------------------
 | This macro tests for minimum version of the GNU C compiler.
@@ -55,7 +99,7 @@ these four paragraphs for those parts of this code that are retained.
 | The result is stored in the location pointed to by `zPtr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void shift32RightJamming( uint32_t a, int16 count, uint32_t *zPtr )
+static inline void shift32RightJamming(uint32_t a, int_fast16_t count, uint32_t *zPtr)
 {
     uint32_t z;
 
@@ -81,7 +125,7 @@ INLINE void shift32RightJamming( uint32_t a, int16 count, uint32_t *zPtr )
 | The result is stored in the location pointed to by `zPtr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void shift64RightJamming( uint64_t a, int16 count, uint64_t *zPtr )
+static inline void shift64RightJamming(uint64_t a, int_fast16_t count, uint64_t *zPtr)
 {
     uint64_t z;
 
@@ -107,17 +151,17 @@ INLINE void shift64RightJamming( uint64_t a, int16 count, uint64_t *zPtr )
 | 63 bits of the extra result are all zero if and only if _all_but_the_last_
 | bits shifted off were all zero.  This extra result is stored in the location
 | pointed to by `z1Ptr'.  The value of `count' can be arbitrarily large.
-|     (This routine makes more sense if `a0' and `a1' are considered to form
-| a fixed-point value with binary point between `a0' and `a1'.  This fixed-
-| point value is shifted right by the number of bits given in `count', and
-| the integer part of the result is returned at the location pointed to by
+|     (This routine makes more sense if `a0' and `a1' are considered to form a
+| fixed-point value with binary point between `a0' and `a1'.  This fixed-point
+| value is shifted right by the number of bits given in `count', and the
+| integer part of the result is returned at the location pointed to by
 | `z0Ptr'.  The fractional part of the result may be slightly corrupted as
 | described above, and is returned at the location pointed to by `z1Ptr'.)
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  shift64ExtraRightJamming(
-     uint64_t a0, uint64_t a1, int16 count, uint64_t *z0Ptr, uint64_t *z1Ptr )
+     uint64_t a0, uint64_t a1, int_fast16_t count, uint64_t *z0Ptr, uint64_t *z1Ptr)
 {
     uint64_t z0, z1;
     int8 negCount = ( - count ) & 63;
@@ -152,9 +196,9 @@ INLINE void
 | which are stored at the locations pointed to by `z0Ptr' and `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  shift128Right(
-     uint64_t a0, uint64_t a1, int16 count, uint64_t *z0Ptr, uint64_t *z1Ptr )
+     uint64_t a0, uint64_t a1, int_fast16_t count, uint64_t *z0Ptr, uint64_t *z1Ptr)
 {
     uint64_t z0, z1;
     int8 negCount = ( - count ) & 63;
@@ -168,7 +212,7 @@ INLINE void
         z0 = a0>>count;
     }
     else {
-        z1 = ( count < 64 ) ? ( a0>>( count & 63 ) ) : 0;
+        z1 = (count < 128) ? (a0 >> (count & 63)) : 0;
         z0 = 0;
     }
     *z1Ptr = z1;
@@ -187,9 +231,9 @@ INLINE void
 | the locations pointed to by `z0Ptr' and `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  shift128RightJamming(
-     uint64_t a0, uint64_t a1, int16 count, uint64_t *z0Ptr, uint64_t *z1Ptr )
+     uint64_t a0, uint64_t a1, int_fast16_t count, uint64_t *z0Ptr, uint64_t *z1Ptr)
 {
     uint64_t z0, z1;
     int8 negCount = ( - count ) & 63;
@@ -238,12 +282,12 @@ INLINE void
 | `z2Ptr'.)
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  shift128ExtraRightJamming(
      uint64_t a0,
      uint64_t a1,
      uint64_t a2,
-     int16 count,
+     int_fast16_t count,
      uint64_t *z0Ptr,
      uint64_t *z1Ptr,
      uint64_t *z2Ptr
@@ -296,9 +340,9 @@ INLINE void
 | pieces which are stored at the locations pointed to by `z0Ptr' and `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  shortShift128Left(
-     uint64_t a0, uint64_t a1, int16 count, uint64_t *z0Ptr, uint64_t *z1Ptr )
+     uint64_t a0, uint64_t a1, int_fast16_t count, uint64_t *z0Ptr, uint64_t *z1Ptr)
 {
 
     *z1Ptr = a1<<count;
@@ -315,12 +359,12 @@ INLINE void
 | `z1Ptr', and `z2Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  shortShift192Left(
      uint64_t a0,
      uint64_t a1,
      uint64_t a2,
-     int16 count,
+     int_fast16_t count,
      uint64_t *z0Ptr,
      uint64_t *z1Ptr,
      uint64_t *z2Ptr
@@ -350,7 +394,7 @@ INLINE void
 | are stored at the locations pointed to by `z0Ptr' and `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  add128(
      uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1, uint64_t *z0Ptr, uint64_t *z1Ptr )
 {
@@ -370,7 +414,7 @@ INLINE void
 | `z1Ptr', and `z2Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  add192(
      uint64_t a0,
      uint64_t a1,
@@ -408,7 +452,7 @@ INLINE void
 | `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  sub128(
      uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1, uint64_t *z0Ptr, uint64_t *z1Ptr )
 {
@@ -426,7 +470,7 @@ INLINE void
 | pointed to by `z0Ptr', `z1Ptr', and `z2Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  sub192(
      uint64_t a0,
      uint64_t a1,
@@ -462,7 +506,7 @@ INLINE void
 | `z0Ptr' and `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void mul64To128( uint64_t a, uint64_t b, uint64_t *z0Ptr, uint64_t *z1Ptr )
+static inline void mul64To128( uint64_t a, uint64_t b, uint64_t *z0Ptr, uint64_t *z1Ptr )
 {
     uint32_t aHigh, aLow, bHigh, bLow;
     uint64_t z0, zMiddleA, zMiddleB, z1;
@@ -492,7 +536,7 @@ INLINE void mul64To128( uint64_t a, uint64_t b, uint64_t *z0Ptr, uint64_t *z1Ptr
 | `z2Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  mul128By64To192(
      uint64_t a0,
      uint64_t a1,
@@ -520,7 +564,7 @@ INLINE void
 | the locations pointed to by `z0Ptr', `z1Ptr', `z2Ptr', and `z3Ptr'.
 *----------------------------------------------------------------------------*/
 
-INLINE void
+static inline void
  mul128To256(
      uint64_t a0,
      uint64_t a1,
@@ -591,7 +635,7 @@ static uint64_t estimateDiv128To64( uint64_t a0, uint64_t a1, uint64_t b )
 | value.
 *----------------------------------------------------------------------------*/
 
-static uint32_t estimateSqrt32( int16 aExp, uint32_t a )
+static uint32_t estimateSqrt32(int_fast16_t aExp, uint32_t a)
 {
     static const uint16_t sqrtOddAdjustments[] = {
         0x0004, 0x0022, 0x005D, 0x00B1, 0x011D, 0x019F, 0x0236, 0x02E0,
@@ -702,7 +746,7 @@ static int8 countLeadingZeros64( uint64_t a )
 | Otherwise, returns 0.
 *----------------------------------------------------------------------------*/
 
-INLINE flag eq128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
+static inline flag eq128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 {
 
     return ( a0 == b0 ) && ( a1 == b1 );
@@ -715,7 +759,7 @@ INLINE flag eq128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 | Otherwise, returns 0.
 *----------------------------------------------------------------------------*/
 
-INLINE flag le128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
+static inline flag le128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 {
 
     return ( a0 < b0 ) || ( ( a0 == b0 ) && ( a1 <= b1 ) );
@@ -728,7 +772,7 @@ INLINE flag le128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 | returns 0.
 *----------------------------------------------------------------------------*/
 
-INLINE flag lt128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
+static inline flag lt128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 {
 
     return ( a0 < b0 ) || ( ( a0 == b0 ) && ( a1 < b1 ) );
@@ -741,7 +785,7 @@ INLINE flag lt128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 | Otherwise, returns 0.
 *----------------------------------------------------------------------------*/
 
-INLINE flag ne128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
+static inline flag ne128( uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1 )
 {
 
     return ( a0 != b0 ) || ( a1 != b1 );

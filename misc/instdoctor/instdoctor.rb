@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # A script that will pretend to resize a number of images
 currentdir = Dir.pwd
-Dir.chdir("/mada/users/alamelu/2012/projs/esesc/misc/instdoctor")
+Dir.chdir("/mada/users/alamelu/projs/esesc/misc/instdoctor")
 %w{optparse globalfunctions globaldefinitions kernel instruction basicblock}.each{ |x| require x }
 
 # This hash will hold all of the options

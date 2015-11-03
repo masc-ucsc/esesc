@@ -11,10 +11,11 @@
  *
  */
 
-#include "qapi-dealloc-visitor.h"
-#include "qemu-queue.h"
+#include "qapi/dealloc-visitor.h"
+#include "qemu/queue.h"
 #include "qemu-common.h"
-#include "qemu-objects.h"
+#include "qapi/qmp/types.h"
+#include "qapi/visitor-impl.h"
 
 typedef struct StackEntry
 {
@@ -67,6 +68,24 @@ static void qapi_dealloc_start_struct(Visitor *v, void **obj, const char *kind,
 }
 
 static void qapi_dealloc_end_struct(Visitor *v, Error **errp)
+{
+    QapiDeallocVisitor *qov = to_qov(v);
+    void **obj = qapi_dealloc_pop(qov);
+    if (obj) {
+        g_free(*obj);
+    }
+}
+
+static void qapi_dealloc_start_implicit_struct(Visitor *v,
+                                               void **obj,
+                                               size_t size,
+                                               Error **errp)
+{
+    QapiDeallocVisitor *qov = to_qov(v);
+    qapi_dealloc_push(qov, obj);
+}
+
+static void qapi_dealloc_end_implicit_struct(Visitor *v, Error **errp)
 {
     QapiDeallocVisitor *qov = to_qov(v);
     void **obj = qapi_dealloc_pop(qov);
@@ -132,10 +151,41 @@ static void qapi_dealloc_type_number(Visitor *v, double *obj, const char *name,
 {
 }
 
-static void qapi_dealloc_type_enum(Visitor *v, int *obj, const char *strings[],
+static void qapi_dealloc_type_size(Visitor *v, uint64_t *obj, const char *name,
+                                   Error **errp)
+{
+}
+
+static void qapi_dealloc_type_enum(Visitor *v, int *obj,
+                                   const char * const strings[],
                                    const char *kind, const char *name,
                                    Error **errp)
 {
+}
+
+/* If there's no data present, the dealloc visitor has nothing to free.
+ * Thus, indicate to visitor code that the subsequent union fields can
+ * be skipped. This is not an error condition, since the cleanup of the
+ * rest of an object can continue unhindered, so leave errp unset in
+ * these cases.
+ *
+ * NOTE: In cases where we're attempting to deallocate an object that
+ * may have missing fields, the field indicating the union type may
+ * be missing. In such a case, it's possible we don't have enough
+ * information to differentiate data_present == false from a case where
+ * data *is* present but happens to be a scalar with a value of 0.
+ * This is okay, since in the case of the dealloc visitor there's no
+ * work that needs to done in either situation.
+ *
+ * The current inability in QAPI code to more thoroughly verify a union
+ * type in such cases will likely need to be addressed if we wish to
+ * implement this interface for other types of visitors in the future,
+ * however.
+ */
+static bool qapi_dealloc_start_union(Visitor *v, bool data_present,
+                                     Error **errp)
+{
+    return data_present;
 }
 
 Visitor *qapi_dealloc_get_visitor(QapiDeallocVisitor *v)
@@ -156,6 +206,8 @@ QapiDeallocVisitor *qapi_dealloc_visitor_new(void)
 
     v->visitor.start_struct = qapi_dealloc_start_struct;
     v->visitor.end_struct = qapi_dealloc_end_struct;
+    v->visitor.start_implicit_struct = qapi_dealloc_start_implicit_struct;
+    v->visitor.end_implicit_struct = qapi_dealloc_end_implicit_struct;
     v->visitor.start_list = qapi_dealloc_start_list;
     v->visitor.next_list = qapi_dealloc_next_list;
     v->visitor.end_list = qapi_dealloc_end_list;
@@ -164,6 +216,8 @@ QapiDeallocVisitor *qapi_dealloc_visitor_new(void)
     v->visitor.type_bool = qapi_dealloc_type_bool;
     v->visitor.type_str = qapi_dealloc_type_str;
     v->visitor.type_number = qapi_dealloc_type_number;
+    v->visitor.type_size = qapi_dealloc_type_size;
+    v->visitor.start_union = qapi_dealloc_start_union;
 
     QTAILQ_INIT(&v->stack);
 

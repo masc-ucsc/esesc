@@ -56,175 +56,277 @@
 #include "interconnect.h"
 #include "basic_components.h"
 #include "sharedcache.h"
+#include "SescConf.h"
 
+
+extern bool gpu_tcd_present;
+extern bool gpu_tci_present;
 
 class InstFetchUG :public Component {
-  public:
+  public:/*{{{*/
 
-	ParseXML *XML;
-	int  ithSM;
-	int  ithLane;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	ArrayST * IB;
+    ParseXML *XML;
+    int  ithSM;
+    int  ithLane;
+    InputParameter interface_ip;
+    CoreDynParam  coredynp;
+    double clockRate,executionTime;
+    double scktRatio, chip_PR_overhead, macro_PR_overhead;
 
-	InstFetchUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-	void computeEnergy(bool is_tdp=true);
-	~InstFetchUG();
+    ArrayST * IB;
+
+    InstFetchUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    void computeEnergy(bool is_tdp=true);
+    ~InstFetchUG();/*}}}*/
 };
 
-
-
 class LoadStoreUG :public Component {
-  public:
+  public:/*{{{*/
 
-	ParseXML *XML;
-	int  ithSM;
-	int  ithLane;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	NoCParam  nocdynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double lsq_height;
-	ArrayST * LSQ;//it is actually the store queue but for inorder processors it serves as both loadQ and StoreQ
+    ParseXML*       XML;
+    int             ithSM;
+    int             ithLane;
+    InputParameter  interface_ip;
+    CoreDynParam    coredynp;
+    NoCParam        nocdynp;
+    double          clockRate,executionTime;
+    double          scktRatio, chip_PR_overhead, macro_PR_overhead;
+    double          lsq_height;
 
-	LoadStoreUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-	void computeEnergy(bool is_tdp=true);
-	~LoadStoreUG();
+    ArrayST*        LSQ;//it is actually the store queue but for inorder processors it serves as both loadQ and StoreQ
+
+    LoadStoreUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    void computeEnergy(bool is_tdp=true);
+    ~LoadStoreUG();/*}}}*/
 };
 
 class RegFUG :public Component {
-  public:
+  public:/*{{{*/
 
-	ParseXML *XML;
-	int  ithSM;
-	int  ithLane;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double int_regfile_height, fp_regfile_height;
-	ArrayST * IRF;
+    ParseXML*       XML;
+    int             ithSM;
+    int             ithLane;
+    InputParameter  interface_ip;
+    CoreDynParam    coredynp;
+    double          clockRate,executionTime;
+    double          scktRatio, chip_PR_overhead, macro_PR_overhead;
+    double          int_regfile_height, fp_regfile_height;
 
-	RegFUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-	void computeEnergy(bool is_tdp=true);
-	~RegFUG();
+    ArrayST*        IRF;
+
+    RegFUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    void computeEnergy(bool is_tdp=true);
+    ~RegFUG();/*}}}*/
 };
 
 class EXECUG :public Component {
-  public:
+  public:/*{{{*/
 
-	ParseXML *XML;
-	int  ithSM;
-	int  ithLane;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double lsq_height;
-	CoreDynParam  coredynp;
-	RegFUG          * rfu;
-	FunctionalUnit * fpu;
-	FunctionalUnit * exeu;
-	interconnect * int_bypass;
-	interconnect * intTagBypass;
+    ParseXML*       XML;
+    int             ithSM;
+    int             ithLane;
+    InputParameter  interface_ip;
+    double          clockRate,executionTime;
+    double          scktRatio, chip_PR_overhead, macro_PR_overhead;
+    double          lsq_height;
+    CoreDynParam    coredynp;
+    RegFUG*         rfu;
+    FunctionalUnit* fpu;
+    FunctionalUnit* exeu;
+    interconnect*   int_bypass;
+    interconnect *  intTagBypass;
 
-	Component  bypass;
+    Component       bypass;
 
-	EXECUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_, double lsq_height_,const CoreDynParam & dyn_p_);
-	void computeEnergy(bool is_tdp=true);
-	~EXECUG();
+    EXECUG(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_, double lsq_height_,const CoreDynParam & dyn_p_);
+    void computeEnergy(bool is_tdp=true);
+    ~EXECUG();/*}}}*/
+};
+
+class TCD:public Component {
+  public:/*{{{*/
+
+    ParseXML*       XML;
+    int             ithSM;
+    int             ithLane;
+    InputParameter  interface_ip;
+    CoreDynParam    coredynp;
+    double          clockRate,executionTime;
+
+    ArrayST*        tc_data;
+
+    TCD(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    void computeEnergy(bool is_tdp=true);
+    ~TCD();/*}}}*/
+};
+
+class TCI:public Component {
+  public:/*{{{*/
+
+    ParseXML*       XML;
+    int             ithSM;
+    int             ithLane;
+    InputParameter  interface_ip;
+    CoreDynParam    coredynp;
+    double          clockRate,executionTime;
+
+    ArrayST*        tc_inst;
+
+    TCI(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    void computeEnergy(bool is_tdp=true);
+    ~TCI();/*}}}*/
 };
 
 
 class Lane :public Component {
+  public:/*{{{*/
+
+    ParseXML*       XML;
+    int             ithSM;
+    int             ithLane;
+    InputParameter  interface_ip;
+    double          clockRate,executionTime;
+    double          scktRatio, chip_PR_overhead, macro_PR_overhead;
+    InstFetchUG*    ifu;
+    LoadStoreUG*    lsu;
+    EXECUG*         exu;
+
+    TCD*            tcdata;
+    TCI*            tcinst;
+
+    PipelinePower*  corepipe;
+    CoreDynParam    coredynp;
+
+    Lane(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_, const CoreDynParam & dyn_p_);
+
+    void update_rtparam(ParseXML *XML_interface, int ithSM_, int ithLane_)
+    {/*{{{*/
+      ithSM = ithSM_;
+      ithLane = ithLane_;
+
+      //ifu->ithSM      = ithSM_;
+      //lsu->ithSM      = ithSM_;
+      exu->ithSM      = ithSM_;
+      exu->rfu->ithSM = ithSM_;
+
+      //ifu->ithLane = ithLane_;
+      //lsu->ithLane = ithLane_;
+      exu->ithLane = ithLane_;
+      exu->rfu->ithLane = ithLane_;
+    }/*}}}*/
+
+    void set_Lane_param();
+    void computeEnergy(bool is_tdp=true);
+    ~Lane();/*}}}*/
+};
+
+class MemManUG_I :public Component {
+  public:/*{{{*/
+
+    ParseXML*       XML;
+    int             ithSM;
+    InputParameter  interface_ip;
+    CoreDynParam    coredynp;
+    double          clockRate,executionTime;
+    ArrayST*        itlb;
+
+
+    MemManUG_I(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    ~MemManUG_I();
+    void computeEnergy(bool is_tdp=true);
+    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
+    void update_rtparam(ParseXML *XML_interface, int ithSM_) { ithSM = ithSM_; };/*}}}*/
+};
+
+class MemManUG_D :public Component {
+  /*{{{*/
+  public:
+    ParseXML*         XML;
+    int               ithSM;
+    InputParameter    interface_ip;
+    CoreDynParam      coredynp;
+    double            clockRate,executionTime;
+    ArrayST*          dtlb;
+
+
+    MemManUG_D(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    ~MemManUG_D();
+    void computeEnergy(bool is_tdp=true);
+    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
+    void update_rtparam(ParseXML *XML_interface, int ithSM_) { ithSM = ithSM_; };/*}}}*/
+};
+
+class SMSharedCache :public Component {
+  public:/*{{{*/
+    ParseXML*       XML;
+    int             ithSM;
+    InputParameter  interface_ip;
+    CoreDynParam    coredynp;
+    double          clockRate,executionTime;
+
+    ArrayST*        scratchcache;
+
+    SMSharedCache(ParseXML *XML_interface, int ithSM_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
+    ~SMSharedCache();
+    void computeEnergy(bool is_tdp=true);
+    void update_rtparam(ParseXML *XML_interface, int ithSM_) { ithSM = ithSM_; };/*}}}*/
+};
+
+
+class SM :public Component
+{/*{{{*/
   public:
 
-	ParseXML *XML;
-	int  ithSM;
-	int  ithLane;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	InstFetchUG * ifu;
-	LoadStoreUG * lsu;
-	EXECUG      * exu;
-	SMDataCache dfilter;
-	PipelinePower   * corepipe;
-	CoreDynParam  coredynp;
-	Lane(ParseXML *XML_interface, int ithSM, int ithLane_, InputParameter* interface_ip_, const CoreDynParam & dyn_p_);
-  void update_rtparam(ParseXML *XML_interface, int ithSM_, int ithLane_);
-	void set_Lane_param();
-	void computeEnergy(bool is_tdp=true);
-	~Lane();
-};
+    ParseXML*       XML;
+    int             ithSM;
+    InputParameter  interface_ip;
+    double          clockRate,executionTime;
+    double          scktRatio, chip_PR_overhead, macro_PR_overhead;
+    CoreDynParam    coredynp;
 
-class MemManUG :public Component {
+
+    vector<Lane *>  lanes;
+
+
+    SMSharedCache*  scratchpad;
+    SMDataCache     dcache;
+    SMInstCache     icache;
+    MemManUG_D*     mmu_d;
+    MemManUG_I*     mmu_i;
+
+    Component       lane;
+
+    SM(ParseXML *XML_interface, int ithSM_, InputParameter* interface_ip_, const CoreDynParam  &dyn_p_);
+    ~SM();
+    void update_rtparam(ParseXML *XML_interface, int ithSM_){ ithSM = ithSM_;  };
+    void computeEnergy(bool is_tdp=true);
+    void set_SM_param();
+};/*}}}*/
+
+class GPUU: public Component
+{/*{{{*/
   public:
 
-	ParseXML *XML;
-	int  ithSM;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	ArrayST * itlb;
-	ArrayST * dtlb;
+    ParseXML*         XML;
+    InputParameter    interface_ip;
+    double            clockRate,executionTime;
+    double            scktRatio, chip_PR_overhead, macro_PR_overhead;
+    CoreDynParam      coredynp;
 
-  MemManUG(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-  void computeEnergy(bool is_tdp=true);
-  void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-  void update_rtparam(ParseXML *XML_interface, int ithSM_) { ithSM = ithSM_; };
-  ~MemManUG();
-};
+    vector<SM *> sms;
+    SharedCache *l2array;
 
-class SM :public Component {
-  public:
-
-	ParseXML *XML;
-	int  ithSM;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	CoreDynParam  coredynp;
-
-
-	vector<Lane *>  lanes;
-	SMDataCache     dcache;
-	ArrayST     *   scratchpad;
-	SMInstCache       icache;
-  MemManUG    *   mmu;
-
-  Component lane;
-
-
-	SM(ParseXML *XML_interface, int ithSM_, InputParameter* interface_ip_, const CoreDynParam  &dyn_p_);
-  void update_rtparam(ParseXML *XML_interface, int ithSM_);
-	void set_SM_param();
-	void computeEnergy(bool is_tdp=true);
-	~SM();
-};
-
-class GPUU: public Component {
-	public:
-
-	ParseXML *XML;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	CoreDynParam  coredynp;
-
-	vector<SM *> sms;
-	SharedCache *l2array;
-
-	GPUU(ParseXML *XML_interface, InputParameter* interface_ip_);
-	void set_GPU_param();
-  void update_rtparam(ParseXML *XML_interface,
-    InputParameter* interface_ip_); 
-	void computeEnergy(bool is_tdp=true);
-	~GPUU();
-};
+    GPUU(ParseXML *XML_interface, InputParameter* interface_ip_);
+    ~GPUU();
+    void set_GPU_param();
+    void computeEnergy(bool is_tdp=true);
+    //eka, to update runtime parameters
+    void update_rtparam(ParseXML *XML_interface, InputParameter* interface_ip_)
+    {
+      XML          = XML_interface;
+      // ithCore     = ithCore_;
+      // interface_ip = interface_ip_
+    };
+};/*}}}*/
 
 #endif /* GPU_H_ */

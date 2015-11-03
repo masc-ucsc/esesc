@@ -5,19 +5,15 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include "qemu-common.h"
+#include "glib-compat.h"
+
+#include <string.h>
+#include <stdbool.h>
 
 #include "cac.h"
 #include "vcard.h"
 #include "vcard_emul.h"
 #include "card_7816.h"
-
-#define CAC_GET_PROPERTIES  0x56
-#define CAC_GET_ACR         0x4c
-#define CAC_READ_BUFFER     0x52
-#define CAC_UPDATE_BUFFER   0x58
-#define CAC_SIGN_DECRYPT    0x42
-#define CAC_GET_CERTIFICATE 0x36
 
 /* private data for PKI applets */
 typedef struct CACPKIAppletDataStruct {
@@ -47,41 +43,51 @@ static VCardStatus
 cac_common_process_apdu(VCard *card, VCardAPDU *apdu, VCardResponse **response)
 {
     int ef;
+    VCardStatus ret = VCARD_FAIL;
 
     switch (apdu->a_ins) {
     case VCARD7816_INS_SELECT_FILE:
         if (apdu->a_p1 != 0x02) {
             /* let the 7816 code handle applet switches */
-            return VCARD_NEXT;
+            ret = VCARD_NEXT;
+            break;
         }
         /* handle file id setting */
         if (apdu->a_Lc != 2) {
             *response = vcard_make_response(
                 VCARD7816_STATUS_ERROR_DATA_INVALID);
-            return VCARD_DONE;
+            ret = VCARD_DONE;
+            break;
         }
         /* CAC 1.0 only supports ef = 0 */
         ef = apdu->a_body[0] | (apdu->a_body[1] << 8);
         if (ef != 0) {
             *response = vcard_make_response(
                 VCARD7816_STATUS_ERROR_FILE_NOT_FOUND);
-            return VCARD_DONE;
+            ret = VCARD_DONE;
+            break;
         }
         *response = vcard_make_response(VCARD7816_STATUS_SUCCESS);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
     case VCARD7816_INS_GET_RESPONSE:
     case VCARD7816_INS_VERIFY:
         /* let the 7816 code handle these */
-        return VCARD_NEXT;
+        ret = VCARD_NEXT;
+        break;
     case CAC_GET_PROPERTIES:
     case CAC_GET_ACR:
         /* skip these for now, this will probably be needed */
         *response = vcard_make_response(VCARD7816_STATUS_ERROR_P1_P2_INCORRECT);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
+    default:
+        *response = vcard_make_response(
+            VCARD7816_STATUS_ERROR_COMMAND_NOT_SUPPORTED);
+        ret = VCARD_DONE;
+        break;
     }
-    *response = vcard_make_response(
-        VCARD7816_STATUS_ERROR_COMMAND_NOT_SUPPORTED);
-    return VCARD_DONE;
+    return ret;
 }
 
 /*
@@ -90,17 +96,15 @@ cac_common_process_apdu(VCard *card, VCardAPDU *apdu, VCardResponse **response)
 static VCardStatus
 cac_applet_pki_reset(VCard *card, int channel)
 {
-    VCardAppletPrivate *applet_private = NULL;
-    CACPKIAppletData *pki_applet = NULL;
+    VCardAppletPrivate *applet_private;
+    CACPKIAppletData *pki_applet;
     applet_private = vcard_get_current_applet_private(card, channel);
     assert(applet_private);
     pki_applet = &(applet_private->u.pki_data);
 
     pki_applet->cert_buffer = NULL;
-    if (pki_applet->sign_buffer) {
-        g_free(pki_applet->sign_buffer);
-        pki_applet->sign_buffer = NULL;
-    }
+    g_free(pki_applet->sign_buffer);
+    pki_applet->sign_buffer = NULL;
     pki_applet->cert_buffer_len = 0;
     pki_applet->sign_buffer_len = 0;
     return VCARD_DONE;
@@ -110,11 +114,13 @@ static VCardStatus
 cac_applet_pki_process_apdu(VCard *card, VCardAPDU *apdu,
                             VCardResponse **response)
 {
-    CACPKIAppletData *pki_applet = NULL;
-    VCardAppletPrivate *applet_private = NULL;
+    CACPKIAppletData *pki_applet;
+    VCardAppletPrivate *applet_private;
     int size, next;
     unsigned char *sign_buffer;
+    bool retain_sign_buffer = FALSE;
     vcard_7816_status_t status;
+    VCardStatus ret = VCARD_FAIL;
 
     applet_private = vcard_get_current_applet_private(card, apdu->a_channel);
     assert(applet_private);
@@ -124,7 +130,8 @@ cac_applet_pki_process_apdu(VCard *card, VCardAPDU *apdu,
     case CAC_UPDATE_BUFFER:
         *response = vcard_make_response(
             VCARD7816_STATUS_ERROR_CONDITION_NOT_SATISFIED);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
     case CAC_GET_CERTIFICATE:
         if ((apdu->a_p2 != 0) || (apdu->a_p1 != 0)) {
             *response = vcard_make_response(
@@ -154,7 +161,8 @@ cac_applet_pki_process_apdu(VCard *card, VCardAPDU *apdu,
             *response = vcard_make_response(
                             VCARD7816_STATUS_EXC_ERROR_MEMORY_FAILURE);
         }
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
     case CAC_SIGN_DECRYPT:
         if (apdu->a_p2 != 0) {
             *response = vcard_make_response(
@@ -163,16 +171,8 @@ cac_applet_pki_process_apdu(VCard *card, VCardAPDU *apdu,
         }
         size = apdu->a_Lc;
 
-        sign_buffer = realloc(pki_applet->sign_buffer,
-                      pki_applet->sign_buffer_len+size);
-        if (sign_buffer == NULL) {
-            g_free(pki_applet->sign_buffer);
-            pki_applet->sign_buffer = NULL;
-            pki_applet->sign_buffer_len = 0;
-            *response = vcard_make_response(
-                            VCARD7816_STATUS_EXC_ERROR_MEMORY_FAILURE);
-            return VCARD_DONE;
-        }
+        sign_buffer = g_realloc(pki_applet->sign_buffer,
+                                pki_applet->sign_buffer_len + size);
         memcpy(sign_buffer+pki_applet->sign_buffer_len, apdu->a_body, size);
         size += pki_applet->sign_buffer_len;
         switch (apdu->a_p1) {
@@ -182,7 +182,8 @@ cac_applet_pki_process_apdu(VCard *card, VCardAPDU *apdu,
             pki_applet->sign_buffer = sign_buffer;
             pki_applet->sign_buffer_len = size;
             *response = vcard_make_response(VCARD7816_STATUS_SUCCESS);
-            return VCARD_DONE;
+            retain_sign_buffer = TRUE;
+            break;
         case 0x00:
             /* we now have the whole buffer, do the operation, result will be
              * in the sign_buffer */
@@ -204,18 +205,25 @@ cac_applet_pki_process_apdu(VCard *card, VCardAPDU *apdu,
                                 VCARD7816_STATUS_ERROR_P1_P2_INCORRECT);
             break;
         }
-        g_free(sign_buffer);
-        pki_applet->sign_buffer = NULL;
-        pki_applet->sign_buffer_len = 0;
-        return VCARD_DONE;
+        if (!retain_sign_buffer) {
+            g_free(sign_buffer);
+            pki_applet->sign_buffer = NULL;
+            pki_applet->sign_buffer_len = 0;
+        }
+        ret = VCARD_DONE;
+        break;
     case CAC_READ_BUFFER:
         /* new CAC call, go ahead and use the old version for now */
         /* TODO: implement */
         *response = vcard_make_response(
                                 VCARD7816_STATUS_ERROR_COMMAND_NOT_SUPPORTED);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
+    default:
+        ret = cac_common_process_apdu(card, apdu, response);
+        break;
     }
-    return cac_common_process_apdu(card, apdu, response);
+    return ret;
 }
 
 
@@ -223,19 +231,26 @@ static VCardStatus
 cac_applet_id_process_apdu(VCard *card, VCardAPDU *apdu,
                            VCardResponse **response)
 {
+    VCardStatus ret = VCARD_FAIL;
+
     switch (apdu->a_ins) {
     case CAC_UPDATE_BUFFER:
         *response = vcard_make_response(
                         VCARD7816_STATUS_ERROR_CONDITION_NOT_SATISFIED);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
     case CAC_READ_BUFFER:
         /* new CAC call, go ahead and use the old version for now */
         /* TODO: implement */
         *response = vcard_make_response(
                         VCARD7816_STATUS_ERROR_COMMAND_NOT_SUPPORTED);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
+    default:
+        ret = cac_common_process_apdu(card, apdu, response);
+        break;
     }
-    return cac_common_process_apdu(card, apdu, response);
+    return ret;
 }
 
 
@@ -247,16 +262,20 @@ static VCardStatus
 cac_applet_container_process_apdu(VCard *card, VCardAPDU *apdu,
                                   VCardResponse **response)
 {
+    VCardStatus ret = VCARD_FAIL;
+
     switch (apdu->a_ins) {
     case CAC_READ_BUFFER:
     case CAC_UPDATE_BUFFER:
         *response = vcard_make_response(
                         VCARD7816_STATUS_ERROR_COMMAND_NOT_SUPPORTED);
-        return VCARD_DONE;
+        ret = VCARD_DONE;
+        break;
     default:
+        ret = cac_common_process_apdu(card, apdu, response);
         break;
     }
-    return cac_common_process_apdu(card, apdu, response);
+    return ret;
 }
 
 /*
@@ -265,18 +284,14 @@ cac_applet_container_process_apdu(VCard *card, VCardAPDU *apdu,
 static void
 cac_delete_pki_applet_private(VCardAppletPrivate *applet_private)
 {
-    CACPKIAppletData *pki_applet_data = NULL;
+    CACPKIAppletData *pki_applet_data;
 
     if (applet_private == NULL) {
         return;
     }
     pki_applet_data = &(applet_private->u.pki_data);
-    if (pki_applet_data->cert != NULL) {
-        g_free(pki_applet_data->cert);
-    }
-    if (pki_applet_data->sign_buffer != NULL) {
-        g_free(pki_applet_data->sign_buffer);
-    }
+    g_free(pki_applet_data->cert);
+    g_free(pki_applet_data->sign_buffer);
     if (pki_applet_data->key != NULL) {
         vcard_emul_delete_key(pki_applet_data->key);
     }
@@ -287,16 +302,11 @@ static VCardAppletPrivate *
 cac_new_pki_applet_private(const unsigned char *cert,
                            int cert_len, VCardKey *key)
 {
-    CACPKIAppletData *pki_applet_data = NULL;
-    VCardAppletPrivate *applet_private = NULL;
-    applet_private = (VCardAppletPrivate *)g_malloc(sizeof(VCardAppletPrivate));
+    CACPKIAppletData *pki_applet_data;
+    VCardAppletPrivate *applet_private;
 
+    applet_private = g_new0(VCardAppletPrivate, 1);
     pki_applet_data = &(applet_private->u.pki_data);
-    pki_applet_data->cert_buffer = NULL;
-    pki_applet_data->cert_buffer_len = 0;
-    pki_applet_data->sign_buffer = NULL;
-    pki_applet_data->sign_buffer_len = 0;
-    pki_applet_data->key = NULL;
     pki_applet_data->cert = (unsigned char *)g_malloc(cert_len+1);
     /*
      * if we want to support compression, then we simply change the 0 to a 1
@@ -318,8 +328,8 @@ static VCardApplet *
 cac_new_pki_applet(int i, const unsigned char *cert,
                    int cert_len, VCardKey *key)
 {
-    VCardAppletPrivate *applet_private = NULL;
-    VCardApplet *applet = NULL;
+    VCardAppletPrivate *applet_private;
+    VCardApplet *applet;
     unsigned char pki_aid[] = { 0xa0, 0x00, 0x00, 0x00, 0x79, 0x01, 0x00 };
     int pki_aid_len = sizeof(pki_aid);
 

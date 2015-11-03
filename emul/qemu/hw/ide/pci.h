@@ -3,6 +3,13 @@
 
 #include <hw/ide/internal.h>
 
+#define BM_STATUS_DMAING 0x01
+#define BM_STATUS_ERROR  0x02
+#define BM_STATUS_INT    0x04
+
+#define BM_CMD_START     0x01
+#define BM_CMD_READ      0x08
+
 typedef struct BMDMAState {
     IDEDMA dma;
     uint8_t cmd;
@@ -15,18 +22,18 @@ typedef struct BMDMAState {
     uint32_t cur_prd_last;
     uint32_t cur_prd_addr;
     uint32_t cur_prd_len;
-    uint8_t unit;
-    BlockDriverCompletionFunc *dma_cb;
-    int64_t sector_num;
-    uint32_t nsector;
+    BlockCompletionFunc *dma_cb;
     MemoryRegion addr_ioport;
     MemoryRegion extra_io;
-    QEMUBH *bh;
     qemu_irq irq;
 
     /* Bit 0-2 and 7:   BM status register
      * Bit 3-6:         bus->error_status */
     uint8_t migration_compat_status;
+    uint8_t migration_retry_unit;
+    int64_t migration_retry_sector_num;
+    uint32_t migration_retry_nsector;
+
     struct PCIIDEState *pci_dev;
 } BMDMAState;
 
@@ -37,8 +44,14 @@ typedef struct CMD646BAR {
     struct PCIIDEState *pci_dev;
 } CMD646BAR;
 
+#define TYPE_PCI_IDE "pci-ide"
+#define PCI_IDE(obj) OBJECT_CHECK(PCIIDEState, (obj), TYPE_PCI_IDE)
+
 typedef struct PCIIDEState {
-    PCIDevice dev;
+    /*< private >*/
+    PCIDevice parent_obj;
+    /*< public >*/
+
     IDEBus bus[2];
     BMDMAState bmdma[2];
     uint32_t secondary; /* used only for cmd646 */
@@ -49,8 +62,8 @@ typedef struct PCIIDEState {
 
 static inline IDEState *bmdma_active_if(BMDMAState *bmdma)
 {
-    assert(bmdma->unit != (uint8_t)-1);
-    return bmdma->bus->ifs + bmdma->unit;
+    assert(bmdma->bus->retry_unit != (uint8_t)-1);
+    return bmdma->bus->ifs + bmdma->bus->retry_unit;
 }
 
 

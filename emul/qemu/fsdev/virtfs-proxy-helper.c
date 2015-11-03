@@ -8,32 +8,21 @@
  * This work is licensed under the terms of the GNU GPL, version 2. See
  * the COPYING file in the top-level directory.
  */
-#include <stdio.h>
-#include <sys/socket.h>
-#include <string.h>
-#include <sys/un.h>
-#include <limits.h>
-#include <signal.h>
-#include <errno.h>
-#include <stdlib.h>
+
 #include <sys/resource.h>
-#include <sys/stat.h>
 #include <getopt.h>
-#include <unistd.h>
 #include <syslog.h>
 #include <sys/capability.h>
 #include <sys/fsuid.h>
-#include <stdarg.h>
-#include <stdbool.h>
 #include <sys/vfs.h>
-#include <sys/stat.h>
-#include <attr/xattr.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 #ifdef CONFIG_LINUX_MAGIC_H
 #include <linux/magic.h>
 #endif
 #include "qemu-common.h"
+#include "qemu/sockets.h"
+#include "qemu/xattr.h"
 #include "virtio-9p-marshal.h"
 #include "hw/9pfs/virtio-9p-proxy.h"
 #include "fsdev/virtio-9p-marshal.h"
@@ -60,12 +49,13 @@ static struct option helper_opts[] = {
     {"socket", required_argument, NULL, 's'},
     {"uid", required_argument, NULL, 'u'},
     {"gid", required_argument, NULL, 'g'},
+    {},
 };
 
 static bool is_daemon;
 static bool get_version; /* IOC getversion IOCTL supported */
 
-static void do_log(int loglevel, const char *format, ...)
+static void GCC_FMT_ATTR(2, 3) do_log(int loglevel, const char *format, ...)
 {
     va_list ap;
 
@@ -128,7 +118,7 @@ error:
 
 static int init_capabilities(void)
 {
-    /* helper needs following capbabilities only */
+    /* helper needs following capabilities only */
     cap_value_t cap_list[] = {
         CAP_CHOWN,
         CAP_DAC_OVERRIDE,
@@ -259,7 +249,7 @@ static int send_fd(int sockfd, int fd)
 static int send_status(int sockfd, struct iovec *iovec, int status)
 {
     ProxyHeader header;
-    int retval, msg_size;;
+    int retval, msg_size;
 
     if (status < 0) {
         header.type = T_ERROR;
@@ -273,6 +263,9 @@ static int send_status(int sockfd, struct iovec *iovec, int status)
      */
     msg_size = proxy_marshal(iovec, 0, "ddd", header.type,
                              header.size, status);
+    if (msg_size < 0) {
+        return msg_size;
+    }
     retval = socket_write(sockfd, iovec->iov_base, msg_size);
     if (retval < 0) {
         return retval;
@@ -283,31 +276,76 @@ static int send_status(int sockfd, struct iovec *iovec, int status)
 /*
  * from man 7 capabilities, section
  * Effect of User ID Changes on Capabilities:
- * 4. If the file system user ID is changed from 0 to nonzero (see setfsuid(2))
- * then the following capabilities are cleared from the effective set:
- * CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH,  CAP_FOWNER, CAP_FSETID,
- * CAP_LINUX_IMMUTABLE  (since  Linux 2.2.30), CAP_MAC_OVERRIDE, and CAP_MKNOD
- * (since Linux 2.2.30). If the file system UID is changed from nonzero to 0,
- * then any of these capabilities that are enabled in the permitted set
- * are enabled in the effective set.
+ * If the effective user ID is changed from nonzero to 0, then the permitted
+ * set is copied to the effective set.  If the effective user ID is changed
+ * from 0 to nonzero, then all capabilities are are cleared from the effective
+ * set.
+ *
+ * The setfsuid/setfsgid man pages warn that changing the effective user ID may
+ * expose the program to unwanted signals, but this is not true anymore: for an
+ * unprivileged (without CAP_KILL) program to send a signal, the real or
+ * effective user ID of the sending process must equal the real or saved user
+ * ID of the target process.  Even when dropping privileges, it is enough to
+ * keep the saved UID to a "privileged" value and virtfs-proxy-helper won't
+ * be exposed to signals.  So just use setresuid/setresgid.
  */
-static int setfsugid(int uid, int gid)
+static int setugid(int uid, int gid, int *suid, int *sgid)
 {
+    int retval;
+
     /*
-     * We still need DAC_OVERRIDE because  we don't change
+     * We still need DAC_OVERRIDE because we don't change
      * supplementary group ids, and hence may be subjected DAC rules
      */
     cap_value_t cap_list[] = {
         CAP_DAC_OVERRIDE,
     };
 
-    setfsgid(gid);
-    setfsuid(uid);
+    *suid = geteuid();
+    *sgid = getegid();
+
+    if (setresgid(-1, gid, *sgid) == -1) {
+        retval = -errno;
+        goto err_out;
+    }
+
+    if (setresuid(-1, uid, *suid) == -1) {
+        retval = -errno;
+        goto err_sgid;
+    }
 
     if (uid != 0 || gid != 0) {
-        return do_cap_set(cap_list, ARRAY_SIZE(cap_list), 0);
+        if (do_cap_set(cap_list, ARRAY_SIZE(cap_list), 0) < 0) {
+            retval = -errno;
+            goto err_suid;
+        }
     }
     return 0;
+
+err_suid:
+    if (setresuid(-1, *suid, *suid) == -1) {
+        abort();
+    }
+err_sgid:
+    if (setresgid(-1, *sgid, *sgid) == -1) {
+        abort();
+    }
+err_out:
+    return retval;
+}
+
+/*
+ * This is used to reset the ugid back with the saved values
+ * There is nothing much we can do checking error values here.
+ */
+static void resetugid(int suid, int sgid)
+{
+    if (setresgid(-1, sgid, sgid) == -1) {
+        abort();
+    }
+    if (setresuid(-1, suid, suid) == -1) {
+        abort();
+    }
 }
 
 /*
@@ -347,7 +385,7 @@ static int send_response(int sock, struct iovec *iovec, int size)
     proxy_marshal(iovec, 0, "dd", header.type, header.size);
     retval = socket_write(sock, iovec->iov_base, header.size + PROXY_HDR_SZ);
     if (retval < 0) {
-        return retval;;
+        return retval;
     }
     return 0;
 }
@@ -561,7 +599,7 @@ static int do_readlink(struct iovec *iovec, struct iovec *out_iovec)
     }
     buffer = g_malloc(size);
     v9fs_string_init(&target);
-    retval = readlink(path.data, buffer, size);
+    retval = readlink(path.data, buffer, size - 1);
     if (retval > 0) {
         buffer[retval] = '\0';
         v9fs_string_sprintf(&target, "%s", buffer);
@@ -589,18 +627,15 @@ static int do_create_others(int type, struct iovec *iovec)
 
     v9fs_string_init(&path);
     v9fs_string_init(&oldpath);
-    cur_uid = geteuid();
-    cur_gid = getegid();
 
     retval = proxy_unmarshal(iovec, offset, "dd", &uid, &gid);
     if (retval < 0) {
         return retval;
     }
     offset += retval;
-    retval = setfsugid(uid, gid);
+    retval = setugid(uid, gid, &cur_uid, &cur_gid);
     if (retval < 0) {
-        retval = -errno;
-        goto err_out;
+        goto unmarshal_err_out;
     }
     switch (type) {
     case T_MKNOD:
@@ -630,9 +665,10 @@ static int do_create_others(int type, struct iovec *iovec)
     }
 
 err_out:
+    resetugid(cur_uid, cur_gid);
+unmarshal_err_out:
     v9fs_string_free(&path);
     v9fs_string_free(&oldpath);
-    setfsugid(cur_uid, cur_gid);
     return retval;
 }
 
@@ -652,24 +688,16 @@ static int do_create(struct iovec *iovec)
     if (ret < 0) {
         goto unmarshal_err_out;
     }
-    cur_uid = geteuid();
-    cur_gid = getegid();
-    ret = setfsugid(uid, gid);
+    ret = setugid(uid, gid, &cur_uid, &cur_gid);
     if (ret < 0) {
-        /*
-         * On failure reset back to the
-         * old uid/gid
-         */
-        ret = -errno;
-        goto err_out;
+        goto unmarshal_err_out;
     }
     ret = open(path.data, flags, mode);
     if (ret < 0) {
         ret = -errno;
     }
 
-err_out:
-    setfsugid(cur_uid, cur_gid);
+    resetugid(cur_uid, cur_gid);
 unmarshal_err_out:
     v9fs_string_free(&path);
     return ret;
@@ -711,6 +739,12 @@ static int proxy_socket(const char *path, uid_t uid, gid_t gid)
         return -1;
     }
 
+    if (strlen(path) >= sizeof(proxy.sun_path)) {
+        do_log(LOG_CRIT, "UNIX domain socket path exceeds %zu characters\n",
+               sizeof(proxy.sun_path));
+        return -1;
+    }
+
     sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock < 0) {
         do_perror("socket");
@@ -725,23 +759,29 @@ static int proxy_socket(const char *path, uid_t uid, gid_t gid)
     if (bind(sock, (struct sockaddr *)&proxy,
             sizeof(struct sockaddr_un)) < 0) {
         do_perror("bind");
-        return -1;
+        goto error;
     }
     if (chown(proxy.sun_path, uid, gid) < 0) {
         do_perror("chown");
-        return -1;
+        goto error;
     }
     if (listen(sock, 1) < 0) {
         do_perror("listen");
-        return -1;
+        goto error;
     }
 
+    size = sizeof(qemu);
     client = accept(sock, (struct sockaddr *)&qemu, &size);
     if (client < 0) {
         do_perror("accept");
-        return -1;
+        goto error;
     }
+    close(sock);
     return client;
+
+error:
+    close(sock);
+    return -1;
 }
 
 static void usage(char *prog)
@@ -1015,7 +1055,7 @@ int main(int argc, char **argv)
         }
         switch (c) {
         case 'p':
-            rpath = strdup(optarg);
+            rpath = g_strdup(optarg);
             break;
         case 'n':
             is_daemon = false;
@@ -1024,7 +1064,7 @@ int main(int argc, char **argv)
             sock = atoi(optarg);
             break;
         case 's':
-            sock_name = strdup(optarg);
+            sock_name = g_strdup(optarg);
             break;
         case 'u':
             own_u = atoi(optarg);
@@ -1047,7 +1087,13 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    if (*sock_name && (own_u == -1 || own_g == -1)) {
+    if (sock_name && sock != -1) {
+        fprintf(stderr, "both named socket and socket descriptor specified\n");
+        usage(argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    if (sock_name && (own_u == -1 || own_g == -1)) {
         fprintf(stderr, "owner uid:gid not specified, ");
         fprintf(stderr,
                 "owner uid:gid specifies who can access the socket file\n");
@@ -1075,7 +1121,7 @@ int main(int argc, char **argv)
     }
 
     do_log(LOG_INFO, "Started\n");
-    if (*sock_name) {
+    if (sock_name) {
         sock = proxy_socket(sock_name, own_u, own_g);
         if (sock < 0) {
             goto error;

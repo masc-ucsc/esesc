@@ -15,12 +15,6 @@ typedef char *caddr_t;
 # include <sys/timeb.h>
 # include <iphlpapi.h>
 
-# define EWOULDBLOCK WSAEWOULDBLOCK
-# define EINPROGRESS WSAEINPROGRESS
-# define ENOTCONN WSAENOTCONN
-# define EHOSTUNREACH WSAEHOSTUNREACH
-# define ENETUNREACH WSAENETUNREACH
-# define ECONNREFUSED WSAECONNREFUSED
 #else
 # define ioctlsocket ioctl
 # define closesocket(s) close(s)
@@ -88,10 +82,6 @@ void *malloc(size_t arg);
 void free(void *ptr);
 #endif
 
-#ifndef HAVE_INET_ATON
-int inet_aton(const char *cp, struct in_addr *ia);
-#endif
-
 #include <fcntl.h>
 #ifndef NO_UNIX_SOCKETS
 #include <sys/un.h>
@@ -143,7 +133,8 @@ int inet_aton(const char *cp, struct in_addr *ia);
 
 #include "debug.h"
 
-#include "qemu-queue.h"
+#include "qemu/queue.h"
+#include "qemu/sockets.h"
 
 #include "libslirp.h"
 #include "ip.h"
@@ -166,9 +157,6 @@ int inet_aton(const char *cp, struct in_addr *ia);
 
 #include "bootp.h"
 #include "tftp.h"
-
-/* osdep.c */
-int qemu_socket(int domain, int type, int protocol);
 
 #define ETH_ALEN 6
 #define ETH_HLEN 14
@@ -215,6 +203,9 @@ bool arp_table_search(Slirp *slirp, uint32_t ip_addr,
 
 struct Slirp {
     QTAILQ_ENTRY(Slirp) entry;
+    u_int time_fasttimo;
+    u_int last_slowtimo;
+    bool do_slowtimo;
 
     /* virtual network configuration */
     struct in_addr vnetwork_addr;
@@ -227,7 +218,6 @@ struct Slirp {
     char client_hostname[33];
 
     int restricted;
-    struct timeval tt;
     struct ex_list *exec_list;
 
     /* mbuf states */
@@ -235,10 +225,10 @@ struct Slirp {
     int mbuf_alloced;
 
     /* if states */
-    int if_queued;          /* number of packets queued so far */
     struct mbuf if_fastq;   /* fast queue (for interactive data) */
     struct mbuf if_batchq;  /* queue for non-interactive data */
     struct mbuf *next_m;    /* pointer to next mbuf to output */
+    bool if_start_busy;     /* avoid if_start recursion */
 
     /* ip states */
     struct ipq ipq;         /* ip reass. queue */
@@ -247,6 +237,8 @@ struct Slirp {
     /* bootp/dhcp states */
     BOOTPClient bootp_clients[NB_BOOTP_CLIENTS];
     char *bootp_filename;
+    size_t vdnssearch_len;
+    uint8_t *vdnssearch;
 
     /* tcp states */
     struct socket tcb;
@@ -295,8 +287,6 @@ void if_start(struct ttys *);
  long gethostid(void);
 #endif
 
-void lprint(const char *, ...) GCC_FMT_ATTR(1, 2);
-
 #ifndef _WIN32
 #include <netdb.h>
 #endif
@@ -305,6 +295,9 @@ void lprint(const char *, ...) GCC_FMT_ATTR(1, 2);
 
 #define SO_OPTIONS DO_KEEPALIVE
 #define TCP_MAXIDLE (TCPTV_KEEPCNT * TCPTV_KEEPINTVL)
+
+/* dnssearch.c */
+int translate_dnssearch(Slirp *s, const char ** names);
 
 /* cksum.c */
 int cksum(struct mbuf *m, int len);
@@ -315,6 +308,7 @@ void if_output(struct socket *, struct mbuf *);
 
 /* ip_input.c */
 void ip_init(Slirp *);
+void ip_cleanup(Slirp *);
 void ip_input(struct mbuf *);
 void ip_slowtimo(Slirp *);
 void ip_stripoptions(register struct mbuf *, struct mbuf *);
@@ -332,6 +326,7 @@ void tcp_setpersist(register struct tcpcb *);
 
 /* tcp_subr.c */
 void tcp_init(Slirp *);
+void tcp_cleanup(Slirp *);
 void tcp_template(struct tcpcb *);
 void tcp_respond(struct tcpcb *, register struct tcpiphdr *, register struct mbuf *, tcp_seq, tcp_seq, int);
 struct tcpcb * tcp_newtcpcb(struct socket *);

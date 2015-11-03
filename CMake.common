@@ -1,206 +1,72 @@
-IF(CMAKE_HOST_ARCH MATCHES "i386")
-SET(CMAKE_HOST_MARCH "i686 -m32")
-ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-IF(CMAKE_HOST_ARCH MATCHES "armel")
+
 SET(CMAKE_HOST_MARCH "native")
-ELSE(CMAKE_HOST_ARCH MATCHES "armel")
-SET(CMAKE_HOST_MARCH "opteron-sse3")
-SET(CMAKE_HOST_ARCH "native")
-ENDIF(CMAKE_HOST_ARCH MATCHES "armel")
-ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
-# Use this file ONLY for global CFLAG options
-IF(CC MATCHES "clang")
-SET (CMAKE_C_COMPILER                  "clang")
-SET (CMAKE_C_FLAGS                     "-Wall -std=c99")
-SET (CMAKE_C_FLAGS_DEBUG               "-g")
-SET (CMAKE_C_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
-SET (CMAKE_C_FLAGS_RELEASE             "-O4 -DNDEBUG")
-SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -g")
 
-SET (CMAKE_CXX_COMPILER                  "clang++")
-SET (CMAKE_CXX_FLAGS                     "-Wall")
-SET (CMAKE_CXX_FLAGS_DEBUG               "-g")
-SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
-SET (CMAKE_CXX_FLAGS_RELEASE             "-flto -O4 -DNDEBUG")
-SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -g")
-ELSE(CC MATCHES "clang")
-IF(CMAKE_HOST_ARCH MATCHES "i386") 
-SET(CMAKE_CXX_FLAGS "-g -m32 -march=i686 -ftree-vectorize -msse3 -Wno-deprecated -Wall")
-SET(CMAKE_C_FLAGS   "-g -m32 -march=i686 -ftree-vectorize -msse3 -Wall")
-ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-SET(CMAKE_CXX_FLAGS "-g -pipe -Wno-deprecated -Wall")
-SET(CMAKE_C_FLAGS   "-g -pipe -Wall")
-ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
+IF(CMAKE_C_COMPILER MATCHES "emcc")
+  SET (CMAKE_C_FLAGS                     "-Wno-warn-absolute-paths -Wall -std=c99")
+  SET (CMAKE_C_FLAGS_MINSIZEREL          "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_C_FLAGS_RELEASE             "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -s ASM_JS=1 -g")
 
-# Uncomment this two lines to activate line coverage
-#SET(CMAKE_CXX_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
-#SET(CMAKE_C_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
+  SET (CMAKE_CXX_FLAGS                     "-Wno-warn-absolute-paths -Wall")
+  SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_CXX_FLAGS_RELEASE             "-O2 -s ASM_JS=1 -DNDEBUG")
+  SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -s ASM_JS=1 -g")
 
-SET(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
-SET(CMAKE_C_FLAGS_RELEASE   "-O2 -DNDEBUG")
+  SET(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG=1")
+  SET(CMAKE_C_FLAGS_DEBUG   "-g -O0 -DDEBUG=1")
+ELSE(CMAKE_C_COMPILER MATCHES "emcc")
+  IF(CMAKE_C_COMPILER MATCHES "clang")
+    SET (CMAKE_C_FLAGS                     "-Wall -std=c99")
+    SET (CMAKE_C_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
+    SET (CMAKE_C_FLAGS_RELEASE             "-O3 -DNDEBUG")
+    SET (CMAKE_C_FLAGS_RELWITHDEBINFO      "-O2 -g")
 
-SET(CMAKE_CXX_FLAGS_DEBUG "-O0 -DDEBUG=1")
-SET(CMAKE_C_FLAGS_DEBUG   "-O0 -DDEBUG=1")
-ENDIF(CC MATCHES "clang")
+    SET (CMAKE_CXX_FLAGS                     "-Wall")
+    SET (CMAKE_CXX_FLAGS_MINSIZEREL          "-Os -DNDEBUG")
+    SET (CMAKE_CXX_FLAGS_RELEASE             "-flto -O3 -DNDEBUG")
+    SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO      "-O2 -g")
+
+    SET(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG=1")
+    SET(CMAKE_C_FLAGS_DEBUG   "-g -O0 -DDEBUG=1")
+  ELSE(CMAKE_C_COMPILER MATCHES "clang")
+    # Uncomment this two lines to activate line coverage
+    #SET(CMAKE_CXX_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
+    #SET(CMAKE_C_FLAGS_RELEASE "-g -ftest-coverage -fprofile-arcs")
+
+    SET(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
+    SET(CMAKE_C_FLAGS_RELEASE   "-O2 -DNDEBUG")
+
+    SET(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG=1")
+    SET(CMAKE_C_FLAGS_DEBUG   "-g -O0 -DDEBUG=1")
+  ENDIF(CMAKE_C_COMPILER MATCHES "clang")
+ENDIF(CMAKE_C_COMPILER MATCHES "emcc")
+
+IF(NOT USING_NOTIFIED)
+  MESSAGE(STATUS "Using ${CMAKE_C_COMPILER}")
+  SET(USING_NOTIFIED 1)
+ENDIF(NOT USING_NOTIFIED)
 
 IF(CMAKE_BUILD_TYPE MATCHES "Debug") 
-SET(CMAKE_BUILD_TYPE "Debug")
+  SET(CMAKE_BUILD_TYPE "Debug")
 ELSE(CMAKE_BUILD_TYPE MATCHES "Debug")
-SET(CMAKE_BUILD_TYPE "Release")
+  SET(CMAKE_BUILD_TYPE "Release")
 ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 
+SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fPIC")
+SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fPIC")
+SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -fPIC")
+SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC")
 
-##############
-# Full-system/user-mode
-IF(ENABLE_QEMU_USER AND ENABLE_QEMU_SYSTEM)
-  MESSAGE(ERROR "QEMU user-mode and full-system can not be compiled at the same time")
-ENDIF(ENABLE_QEMU_USER AND ENABLE_QEMU_SYSTEM)
+###################################
+IF(ENABLE_NBSD)
+  MESSAGE("Enabling NON BSD copyrighted files")
+  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_NBSD")
+  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_NBSD")
+  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_NBSD")
+  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_NBSD")
+ENDIF(ENABLE_NBSD)
 
-  IF(ENABLE_QEMU_USER)
-  SET(ENABLE_QEMU_USER 1)
-  SET(ENABLE_QEMU_SYSTEM 0)
-  ELSE(ENABLE_QEMU_USER)
-  IF(ENABLE_QEMU_SYSTEM)
-  SET(ENABLE_QEMU_USER 0)
-  SET(ENABLE_QEMU_SYSTEM 1)
-ELSE(ENABLE_QEMU_SYSTEM)
-# Default use user-mode
-  IF(ENABLE_NOEMU)
-  SET(ENABLE_QEMU_USER 0)
-  SET(ENABLE_QEMU_SYSTEM 0)
-  ELSE(ENABLE_NOEMU)
-  SET(ENABLE_QEMU_USER 1)
-  SET(ENABLE_QEMU_SYSTEM 0)
-  ENDIF(ENABLE_NOEMU)
-  ENDIF(ENABLE_QEMU_SYSTEM)
-ENDIF(ENABLE_QEMU_USER)
-
-IF(ENABLE_QEMU_SYSTEM)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_QEMU_SYSTEM")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_QEMU_SYSTEM")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_QEMU_SYSTEM")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_QEMU_SYSTEM")
-  ENDIF(ENABLE_QEMU_SYSTEM)
-IF(ENABLE_QEMU_USER)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_QEMU_USER")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_QEMU_USER")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_QEMU_USER")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_QEMU_USER")
-  ENDIF(ENABLE_QEMU_USER)
-IF(ENABLE_NOEMU)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_NOEMU")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_NOEMU")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_NOEMU")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_NOEMU")
-ENDIF(ENABLE_NOEMU)
-
-
-  SET(qemu_BUILD "${CMAKE_CURRENT_BINARY_DIR}/../qemu")
-  SET(qemu_SOURCE "${esesc_SOURCE_DIR}/emul/qemu")
-
-IF(NOT ENABLE_NOEMU)
-#############
-# ISA
-  IF(ESESC_QEMU_ISA MATCHES "sparc32")
-# If the ISA is SPARC, we assume only the 64 bit option. 
-  SET(ESESC_QEMU_ISA_ARMEL 0)
-SET(ESESC_QEMU_ISA_SPARC32 1)
-
-  IF(ENABLE_QEMU_SYSTEM)
-SET(CMAKE_QEMU_LIBS -Wl,--whole-archive ${qemu_BUILD}/sparc-linux-user/libqemu_esesc.a -Wl,--no-whole-archive)
-ELSE(ENABLE_QEMU_SYSTEM)
-  SET(CMAKE_QEMU_LIBS 
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/x86_64.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
-ENDIF(ENABLE_QEMU_SYSTEM)
-
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DESESC_QEMU_ISA_SPARC32=1")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DESESC_QEMU_ISA_SPARC32=1")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DESESC_QEMU_ISA_SPARC32=1")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DESESC_QEMU_ISA_SPARC32=1")
-  ELSE(ESESC_QEMU_ISA MATCHES "sparc32")
-# If the ISA is ARM, we have to check if it is a 32 bit or 64 bit system. 
-  SET(ESESC_QEMU_ISA_ARMEL 1)
-SET(ESESC_QEMU_ISA_SPARC32 0)
-
-  IF(ENABLE_QEMU_SYSTEM)
-SET(CMAKE_QEMU_LIBS -Wl,--whole-archive ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a -Wl,--no-whole-archive)
-ELSE(ENABLE_QEMU_SYSTEM)
-  IF(CMAKE_HOST_ARCH MATCHES "i386") 
-SET(ENABLE_I386 1)
-# 32bit CUDA when the emulated architecture is a 32bit ISA
-SET(ESESC_QEMU_ISA_ARM_32bit 1)
-  SET(CMAKE_QEMU_LIBS -g -m32 -march=i686
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/i386.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a /lib32/libdl.so.2 /lib32/libpcre.so.3 -Wl,-rpath,/usr/lib32 )
-  ELSE(CMAKE_HOST_ARCH MATCHES "i386")
-# this could be ARM or X86 or native 32bit for 32bit Linux distros. CUDA emulation does not work with 64bit
-SET(ESESC_QEMU_ISA_ARM_64bit 1)
-  IF(CMAKE_HOST_ARCH MATCHES "armel") 
-  SET(CMAKE_QEMU_LIBS 
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/arm.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
-  ELSE(CMAKE_HOST_ARCH MATCHES "armel") 
-  SET(CMAKE_QEMU_LIBS 
-      -Wl,-T,${qemu_BUILD}/config-host.ld
-      -Wl,-T,${qemu_SOURCE}/x86_64.ld
-      ${qemu_BUILD}/arm-linux-user/libqemu_esesc.a)
-  ENDIF(CMAKE_HOST_ARCH MATCHES "armel") 
-  ENDIF(CMAKE_HOST_ARCH MATCHES "i386")
-
-ENDIF(ENABLE_QEMU_SYSTEM)
-
-# Check if the enable CUDA flag is set
-IF(ENABLE_CUDA)
-  SET(ENABLE_I386 1) #redundant
-SET(ENABLE_CUDA 1)
-# SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CUDA_LIBRARIES} qemuint gpuint)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} /usr/local/cuda/lib/libcudart.so qemuint gpuint)
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_CUDA=1")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CUDA=1")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_CUDA=1")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_CUDA=1")
-  ELSE(ENABLE_CUDA)
-  SET(ENABLE_CUDA 0)
-ENDIF(ENABLE_CUDA)
-
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DESESC_QEMU_ISA_ARMEL=1")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DESESC_QEMU_ISA_ARMEL=1")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DESESC_QEMU_ISA_ARMEL=1")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DESESC_QEMU_ISA_ARMEL=1")
-
-IF(ENABLE_SCQEMU)
-
-  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DSCOORE=1 -DENABLE_SCQEMU -I${CMAKE_BINARY_DIR}")
-
-IF(ENABLE_CRACK_CACHE)
-#    SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_CRACK_CACHE=1")
-#    SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_CRACK_CACHE=1")
-#    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DENABLE_CRACK_CACHE=1")
-#    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_CRACK_CACHE=1")
-ENDIF(ENABLE_CRACK_CACHE)
-
-ENDIF(ENABLE_SCQEMU)
-
-  ENDIF(ESESC_QEMU_ISA MATCHES "sparc32")
-ENDIF(NOT ENABLE_NOEMU)
-
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CMAKE_THREAD_LIBS_INIT})
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${ZLIB_LIBRARIES})
-  IF(ENABLE_I386)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lncurses)
-ELSE(ENABLE_I386)
-#SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CURSES_LIBRARIES})
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lncurses)
-  ENDIF(ENABLE_I386)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${GNUTLS_LIBRARIES})
-
+###################################
 #IF(ENABLE_PEQ)
 #  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DENABLE_PEQ=1")
 #  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DENABLE_PEQ=1")
@@ -208,18 +74,62 @@ SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${GNUTLS_LIBRARIES})
 # SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DENABLE_PEQ=1")
 #ENDIF(ENABLE_PEQ)
 
-  IF(CMAKE_HOST_ARCH MATCHES "i386") 
-# We do not have the 32bit SM library (which is not needed anyway)
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS}  -lX11 -lXext)
-  ELSE(CMAKE_HOST_ARCH MATCHES "i386") 
-SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${X11_LIBRARIES})
-  ENDIF(CMAKE_HOST_ARCH MATCHES "i386") 
+###################################
+IF(ENABLE_LIVE)
+  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DESESC_LIVE=1")
+  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DESESC_LIVE=1")
+  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DESESC_LIVE=1")
+  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DESESC_LIVE=1")
+ENDIF(ENABLE_LIVE)
 
+###################################
+IF(NEW_BOOST)
+  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DNEW_BOOST")
+  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DNEW_BOOST")
+  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNEW_BOOST")
+  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNEW_BOOST")
+ENDIF(NEW_BOOST)
+
+###################################
+SET(qemu_BUILD "${CMAKE_CURRENT_BINARY_DIR}/../qemu")
+SET(qemu_SOURCE "${esesc_SOURCE_DIR}/emul/qemu")
+
+IF(ESESC_SYSTEM)
+SET(CMAKE_QEMU_OBJS -Wl,--warn-common -Wl,-z,relro -Wl,-z,now -pie 
+ ${qemu_BUILD}/mips64el-softmmu/exec.o ${qemu_BUILD}/mips64el-softmmu/translate-all.o ${qemu_BUILD}/mips64el-softmmu/cpu-exec.o ${qemu_BUILD}/mips64el-softmmu/tcg/tcg.o ${qemu_BUILD}/mips64el-softmmu/tcg/tcg-op.o ${qemu_BUILD}/mips64el-softmmu/tcg/optimize.o ${qemu_BUILD}/mips64el-softmmu/fpu/softfloat.o ${qemu_BUILD}/mips64el-softmmu/disas.o ${qemu_BUILD}/mips64el-softmmu/kvm-stub.o ${qemu_BUILD}/mips64el-softmmu/arch_init.o ${qemu_BUILD}/mips64el-softmmu/cpus.o ${qemu_BUILD}/mips64el-softmmu/monitor.o ${qemu_BUILD}/mips64el-softmmu/gdbstub.o ${qemu_BUILD}/mips64el-softmmu/balloon.o ${qemu_BUILD}/mips64el-softmmu/ioport.o ${qemu_BUILD}/mips64el-softmmu/numa.o ${qemu_BUILD}/mips64el-softmmu/qtest.o ${qemu_BUILD}/mips64el-softmmu/bootdevice.o ${qemu_BUILD}/mips64el-softmmu/memory.o ${qemu_BUILD}/mips64el-softmmu/cputlb.o ${qemu_BUILD}/mips64el-softmmu/memory_mapping.o ${qemu_BUILD}/mips64el-softmmu/dump.o ${qemu_BUILD}/mips64el-softmmu/migration/ram.o ${qemu_BUILD}/mips64el-softmmu/migration/savevm.o ${qemu_BUILD}/mips64el-softmmu/xen-common-stub.o ${qemu_BUILD}/mips64el-softmmu/xen-hvm-stub.o ${qemu_BUILD}/mips64el-softmmu/hw/9pfs/virtio-9p-device.o ${qemu_BUILD}/mips64el-softmmu/hw/block/virtio-blk.o ${qemu_BUILD}/mips64el-softmmu/hw/block/dataplane/virtio-blk.o ${qemu_BUILD}/mips64el-softmmu/hw/char/virtio-serial-bus.o ${qemu_BUILD}/mips64el-softmmu/hw/display/vga.o ${qemu_BUILD}/mips64el-softmmu/hw/display/virtio-gpu.o ${qemu_BUILD}/mips64el-softmmu/hw/display/virtio-gpu-pci.o ${qemu_BUILD}/mips64el-softmmu/hw/misc/edu.o ${qemu_BUILD}/mips64el-softmmu/hw/net/virtio-net.o ${qemu_BUILD}/mips64el-softmmu/hw/net/vhost_net.o ${qemu_BUILD}/mips64el-softmmu/hw/scsi/virtio-scsi.o ${qemu_BUILD}/mips64el-softmmu/hw/scsi/virtio-scsi-dataplane.o ${qemu_BUILD}/mips64el-softmmu/hw/scsi/vhost-scsi.o ${qemu_BUILD}/mips64el-softmmu/hw/timer/mc146818rtc.o ${qemu_BUILD}/mips64el-softmmu/hw/vfio/common.o ${qemu_BUILD}/mips64el-softmmu/hw/vfio/pci.o ${qemu_BUILD}/mips64el-softmmu/hw/vfio/platform.o ${qemu_BUILD}/mips64el-softmmu/hw/vfio/calxeda-xgmac.o ${qemu_BUILD}/mips64el-softmmu/hw/virtio/virtio.o ${qemu_BUILD}/mips64el-softmmu/hw/virtio/virtio-balloon.o ${qemu_BUILD}/mips64el-softmmu/hw/virtio/vhost.o ${qemu_BUILD}/mips64el-softmmu/hw/virtio/vhost-backend.o ${qemu_BUILD}/mips64el-softmmu/hw/virtio/vhost-user.o ${qemu_BUILD}/mips64el-softmmu/hw/virtio/dataplane/vring.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_r4k.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_malta.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_mipssim.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/addr.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/cputimer.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_int.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_gic.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_jazz.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/mips_fulong2e.o ${qemu_BUILD}/mips64el-softmmu/hw/mips/gt64xxx_pci.o ${qemu_BUILD}/mips64el-softmmu/target-mips/translate.o ${qemu_BUILD}/mips64el-softmmu/target-mips/dsp_helper.o ${qemu_BUILD}/mips64el-softmmu/target-mips/op_helper.o ${qemu_BUILD}/mips64el-softmmu/target-mips/lmi_helper.o ${qemu_BUILD}/mips64el-softmmu/target-mips/helper.o ${qemu_BUILD}/mips64el-softmmu/target-mips/cpu.o ${qemu_BUILD}/mips64el-softmmu/target-mips/gdbstub.o ${qemu_BUILD}/mips64el-softmmu/target-mips/msa_helper.o ${qemu_BUILD}/mips64el-softmmu/target-mips/mips-semi.o ${qemu_BUILD}/mips64el-softmmu/target-mips/machine.o ${qemu_BUILD}/mips64el-softmmu/../blockdev.o ${qemu_BUILD}/mips64el-softmmu/../blockdev-nbd.o ${qemu_BUILD}/mips64el-softmmu/../iothread.o ${qemu_BUILD}/mips64el-softmmu/../qdev-monitor.o ${qemu_BUILD}/mips64el-softmmu/../device-hotplug.o ${qemu_BUILD}/mips64el-softmmu/../os-posix.o ${qemu_BUILD}/mips64el-softmmu/../qemu-char.o ${qemu_BUILD}/mips64el-softmmu/../page_cache.o ${qemu_BUILD}/mips64el-softmmu/../qjson.o ${qemu_BUILD}/mips64el-softmmu/../accel.o ${qemu_BUILD}/mips64el-softmmu/../bt-host.o ${qemu_BUILD}/mips64el-softmmu/../bt-vhci.o ${qemu_BUILD}/mips64el-softmmu/../dma-helpers.o ${qemu_BUILD}/mips64el-softmmu/../vl.o ${qemu_BUILD}/mips64el-softmmu/../tpm.o ${qemu_BUILD}/mips64el-softmmu/../qemu-seccomp.o ${qemu_BUILD}/mips64el-softmmu/../qmp-marshal.o ${qemu_BUILD}/mips64el-softmmu/../qmp.o ${qemu_BUILD}/mips64el-softmmu/../hmp.o ${qemu_BUILD}/mips64el-softmmu/../qemu-log.o ${qemu_BUILD}/mips64el-softmmu/../tcg-runtime.o ${qemu_BUILD}/mips64el-softmmu/../audio/audio.o ${qemu_BUILD}/mips64el-softmmu/../audio/noaudio.o ${qemu_BUILD}/mips64el-softmmu/../audio/wavaudio.o ${qemu_BUILD}/mips64el-softmmu/../audio/mixeng.o ${qemu_BUILD}/mips64el-softmmu/../audio/sdlaudio.o ${qemu_BUILD}/mips64el-softmmu/../audio/ossaudio.o ${qemu_BUILD}/mips64el-softmmu/../audio/wavcapture.o ${qemu_BUILD}/mips64el-softmmu/../backends/rng.o ${qemu_BUILD}/mips64el-softmmu/../backends/rng-egd.o ${qemu_BUILD}/mips64el-softmmu/../backends/rng-random.o ${qemu_BUILD}/mips64el-softmmu/../backends/msmouse.o ${qemu_BUILD}/mips64el-softmmu/../backends/testdev.o ${qemu_BUILD}/mips64el-softmmu/../backends/tpm.o ${qemu_BUILD}/mips64el-softmmu/../backends/hostmem.o ${qemu_BUILD}/mips64el-softmmu/../backends/hostmem-ram.o ${qemu_BUILD}/mips64el-softmmu/../backends/hostmem-file.o ${qemu_BUILD}/mips64el-softmmu/../block/stream.o ${qemu_BUILD}/mips64el-softmmu/../block/commit.o ${qemu_BUILD}/mips64el-softmmu/../block/backup.o ${qemu_BUILD}/mips64el-softmmu/../disas/i386.o ${qemu_BUILD}/mips64el-softmmu/../disas/mips.o ${qemu_BUILD}/mips64el-softmmu/../fsdev/qemu-fsdev.o ${qemu_BUILD}/mips64el-softmmu/../fsdev/virtio-9p-marshal.o ${qemu_BUILD}/mips64el-softmmu/../fsdev/qemu-fsdev-opts.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-local.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-xattr.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-xattr-user.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-posix-acl.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-coth.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/cofs.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/codir.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/cofile.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/coxattr.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-synth.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-handle.o ${qemu_BUILD}/mips64el-softmmu/../hw/9pfs/virtio-9p-proxy.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/core.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/piix4.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/pcihp.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/cpu_hotplug.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/memory_hotplug.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/acpi_interface.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/bios-linker-loader.o ${qemu_BUILD}/mips64el-softmmu/../hw/acpi/aml-build.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/sb16.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/es1370.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/ac97.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/fmopl.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/adlib.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/gus.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/gusemu_hal.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/gusemu_mixer.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/cs4231a.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/intel-hda.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/hda-codec.o ${qemu_BUILD}/mips64el-softmmu/../hw/audio/pcspk.o ${qemu_BUILD}/mips64el-softmmu/../hw/block/block.o ${qemu_BUILD}/mips64el-softmmu/../hw/block/cdrom.o ${qemu_BUILD}/mips64el-softmmu/../hw/block/hd-geometry.o ${qemu_BUILD}/mips64el-softmmu/../hw/block/fdc.o ${qemu_BUILD}/mips64el-softmmu/../hw/block/pflash_cfi01.o ${qemu_BUILD}/mips64el-softmmu/../hw/block/nvme.o ${qemu_BUILD}/mips64el-softmmu/../hw/bt/core.o ${qemu_BUILD}/mips64el-softmmu/../hw/bt/l2cap.o ${qemu_BUILD}/mips64el-softmmu/../hw/bt/sdp.o ${qemu_BUILD}/mips64el-softmmu/../hw/bt/hci.o ${qemu_BUILD}/mips64el-softmmu/../hw/bt/hid.o ${qemu_BUILD}/mips64el-softmmu/../hw/bt/hci-csr.o ${qemu_BUILD}/mips64el-softmmu/../hw/char/ipoctal232.o ${qemu_BUILD}/mips64el-softmmu/../hw/char/parallel.o ${qemu_BUILD}/mips64el-softmmu/../hw/char/serial.o ${qemu_BUILD}/mips64el-softmmu/../hw/char/serial-isa.o ${qemu_BUILD}/mips64el-softmmu/../hw/char/serial-pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/char/virtio-console.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/qdev.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/qdev-properties.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/fw-path-provider.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/irq.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/hotplug.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/nmi.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/empty_slot.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/sysbus.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/machine.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/null-machine.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/loader.o ${qemu_BUILD}/mips64el-softmmu/../hw/core/qdev-properties-system.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/cirrus_vga.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/g364fb.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/jazz_led.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/vga-pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/vga-isa.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/vga-isa-mm.o ${qemu_BUILD}/mips64el-softmmu/../hw/display/vmware_vga.o ${qemu_BUILD}/mips64el-softmmu/../hw/dma/rc4030.o ${qemu_BUILD}/mips64el-softmmu/../hw/dma/i8257.o ${qemu_BUILD}/mips64el-softmmu/../hw/i2c/core.o ${qemu_BUILD}/mips64el-softmmu/../hw/i2c/smbus.o ${qemu_BUILD}/mips64el-softmmu/../hw/i2c/smbus_eeprom.o ${qemu_BUILD}/mips64el-softmmu/../hw/i2c/smbus_ich9.o ${qemu_BUILD}/mips64el-softmmu/../hw/i2c/pm_smbus.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/core.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/atapi.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/qdev.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/isa.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/piix.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/via.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/ahci.o ${qemu_BUILD}/mips64el-softmmu/../hw/ide/ich.o ${qemu_BUILD}/mips64el-softmmu/../hw/input/hid.o ${qemu_BUILD}/mips64el-softmmu/../hw/input/pckbd.o ${qemu_BUILD}/mips64el-softmmu/../hw/input/ps2.o ${qemu_BUILD}/mips64el-softmmu/../hw/input/virtio-input.o ${qemu_BUILD}/mips64el-softmmu/../hw/input/virtio-input-hid.o ${qemu_BUILD}/mips64el-softmmu/../hw/input/virtio-input-host.o ${qemu_BUILD}/mips64el-softmmu/../hw/intc/i8259_common.o ${qemu_BUILD}/mips64el-softmmu/../hw/intc/i8259.o ${qemu_BUILD}/mips64el-softmmu/../hw/ipack/ipack.o ${qemu_BUILD}/mips64el-softmmu/../hw/ipack/tpci200.o ${qemu_BUILD}/mips64el-softmmu/../hw/isa/isa-bus.o ${qemu_BUILD}/mips64el-softmmu/../hw/isa/apm.o ${qemu_BUILD}/mips64el-softmmu/../hw/isa/piix4.o ${qemu_BUILD}/mips64el-softmmu/../hw/isa/vt82c686.o ${qemu_BUILD}/mips64el-softmmu/../hw/misc/pc-testdev.o ${qemu_BUILD}/mips64el-softmmu/../hw/misc/pci-testdev.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/dp8393x.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/ne2000.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/eepro100.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/pcnet-pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/pcnet.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/e1000.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/rtl8139.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/vmxnet_tx_pkt.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/vmxnet_rx_pkt.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/vmxnet3.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/ne2000-isa.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/mipsnet.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/rocker/rocker.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/rocker/rocker_fp.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/rocker/rocker_desc.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/rocker/rocker_world.o ${qemu_BUILD}/mips64el-softmmu/../hw/net/rocker/rocker_of_dpa.o ${qemu_BUILD}/mips64el-softmmu/../hw/nvram/ds1225y.o ${qemu_BUILD}/mips64el-softmmu/../hw/nvram/eeprom93xx.o ${qemu_BUILD}/mips64el-softmmu/../hw/nvram/fw_cfg.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci-bridge/pci_bridge_dev.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci-bridge/pci_expander_bridge.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci-host/pam.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci-host/bonito.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pci_bridge.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/msix.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/msi.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/shpc.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/slotid_cap.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pci_host.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pcie_host.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pcie.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pcie_aer.o ${qemu_BUILD}/mips64el-softmmu/../hw/pci/pcie_port.o ${qemu_BUILD}/mips64el-softmmu/../hw/pcmcia/pcmcia.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/scsi-disk.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/scsi-generic.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/scsi-bus.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/lsi53c895a.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/megasas.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/vmw_pvscsi.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/esp.o ${qemu_BUILD}/mips64el-softmmu/../hw/scsi/esp-pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/sd/sd.o ${qemu_BUILD}/mips64el-softmmu/../hw/sd/sdhci.o ${qemu_BUILD}/mips64el-softmmu/../hw/timer/i8254_common.o ${qemu_BUILD}/mips64el-softmmu/../hw/timer/i8254.o ${qemu_BUILD}/mips64el-softmmu/../hw/tpm/tpm_passthrough.o ${qemu_BUILD}/mips64el-softmmu/../hw/tpm/tpm_util.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/core.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/combined-packet.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/bus.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/libhw.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/desc.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/desc-msos.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/hcd-uhci.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/hcd-ohci.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/hcd-ehci.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/hcd-ehci-pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/hcd-xhci.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-hub.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-hid.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-wacom.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-storage.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-uas.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-audio.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-serial.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-network.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-bluetooth.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-smartcard-reader.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/ccid-card-passthru.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/dev-mtp.o ${qemu_BUILD}/mips64el-softmmu/../hw/usb/host-stub.o ${qemu_BUILD}/mips64el-softmmu/../hw/virtio/virtio-rng.o ${qemu_BUILD}/mips64el-softmmu/../hw/virtio/virtio-pci.o ${qemu_BUILD}/mips64el-softmmu/../hw/virtio/virtio-bus.o ${qemu_BUILD}/mips64el-softmmu/../hw/virtio/virtio-mmio.o ${qemu_BUILD}/mips64el-softmmu/../hw/watchdog/watchdog.o ${qemu_BUILD}/mips64el-softmmu/../hw/watchdog/wdt_i6300esb.o ${qemu_BUILD}/mips64el-softmmu/../migration/migration.o ${qemu_BUILD}/mips64el-softmmu/../migration/tcp.o ${qemu_BUILD}/mips64el-softmmu/../migration/vmstate.o ${qemu_BUILD}/mips64el-softmmu/../migration/qemu-file.o ${qemu_BUILD}/mips64el-softmmu/../migration/qemu-file-buf.o ${qemu_BUILD}/mips64el-softmmu/../migration/qemu-file-unix.o ${qemu_BUILD}/mips64el-softmmu/../migration/qemu-file-stdio.o ${qemu_BUILD}/mips64el-softmmu/../migration/xbzrle.o ${qemu_BUILD}/mips64el-softmmu/../migration/exec.o ${qemu_BUILD}/mips64el-softmmu/../migration/unix.o ${qemu_BUILD}/mips64el-softmmu/../migration/fd.o ${qemu_BUILD}/mips64el-softmmu/../migration/block.o ${qemu_BUILD}/mips64el-softmmu/../net/net.o ${qemu_BUILD}/mips64el-softmmu/../net/queue.o ${qemu_BUILD}/mips64el-softmmu/../net/checksum.o ${qemu_BUILD}/mips64el-softmmu/../net/util.o ${qemu_BUILD}/mips64el-softmmu/../net/hub.o ${qemu_BUILD}/mips64el-softmmu/../net/socket.o ${qemu_BUILD}/mips64el-softmmu/../net/dump.o ${qemu_BUILD}/mips64el-softmmu/../net/eth.o ${qemu_BUILD}/mips64el-softmmu/../net/l2tpv3.o ${qemu_BUILD}/mips64el-softmmu/../net/tap.o ${qemu_BUILD}/mips64el-softmmu/../net/vhost-user.o ${qemu_BUILD}/mips64el-softmmu/../net/tap-linux.o ${qemu_BUILD}/mips64el-softmmu/../net/slirp.o ${qemu_BUILD}/mips64el-softmmu/../qom/object.o ${qemu_BUILD}/mips64el-softmmu/../qom/container.o ${qemu_BUILD}/mips64el-softmmu/../qom/qom-qobject.o ${qemu_BUILD}/mips64el-softmmu/../qom/cpu.o ${qemu_BUILD}/mips64el-softmmu/../qom/object_interfaces.o ${qemu_BUILD}/mips64el-softmmu/../slirp/cksum.o ${qemu_BUILD}/mips64el-softmmu/../slirp/if.o ${qemu_BUILD}/mips64el-softmmu/../slirp/ip_icmp.o ${qemu_BUILD}/mips64el-softmmu/../slirp/ip_input.o ${qemu_BUILD}/mips64el-softmmu/../slirp/ip_output.o ${qemu_BUILD}/mips64el-softmmu/../slirp/dnssearch.o ${qemu_BUILD}/mips64el-softmmu/../slirp/slirp.o ${qemu_BUILD}/mips64el-softmmu/../slirp/mbuf.o ${qemu_BUILD}/mips64el-softmmu/../slirp/misc.o ${qemu_BUILD}/mips64el-softmmu/../slirp/sbuf.o ${qemu_BUILD}/mips64el-softmmu/../slirp/socket.o ${qemu_BUILD}/mips64el-softmmu/../slirp/tcp_input.o ${qemu_BUILD}/mips64el-softmmu/../slirp/tcp_output.o ${qemu_BUILD}/mips64el-softmmu/../slirp/tcp_subr.o ${qemu_BUILD}/mips64el-softmmu/../slirp/tcp_timer.o ${qemu_BUILD}/mips64el-softmmu/../slirp/udp.o ${qemu_BUILD}/mips64el-softmmu/../slirp/bootp.o ${qemu_BUILD}/mips64el-softmmu/../slirp/tftp.o ${qemu_BUILD}/mips64el-softmmu/../slirp/arp_table.o ${qemu_BUILD}/mips64el-softmmu/../ui/keymaps.o ${qemu_BUILD}/mips64el-softmmu/../ui/console.o ${qemu_BUILD}/mips64el-softmmu/../ui/cursor.o ${qemu_BUILD}/mips64el-softmmu/../ui/qemu-pixman.o ${qemu_BUILD}/mips64el-softmmu/../ui/input.o ${qemu_BUILD}/mips64el-softmmu/../ui/input-keymap.o ${qemu_BUILD}/mips64el-softmmu/../ui/input-legacy.o ${qemu_BUILD}/mips64el-softmmu/../ui/sdl.o ${qemu_BUILD}/mips64el-softmmu/../ui/sdl_zoom.o ${qemu_BUILD}/mips64el-softmmu/../ui/x_keymap.o ${qemu_BUILD}/mips64el-softmmu/../ui/curses.o ${qemu_BUILD}/mips64el-softmmu/../ui/shader.o ${qemu_BUILD}/mips64el-softmmu/../ui/console-gl.o ${qemu_BUILD}/mips64el-softmmu/../ui/egl-helpers.o ${qemu_BUILD}/mips64el-softmmu/trace/generated-helpers.o ${qemu_BUILD}/mips64el-softmmu/../async.o ${qemu_BUILD}/mips64el-softmmu/../thread-pool.o ${qemu_BUILD}/mips64el-softmmu/../nbd.o ${qemu_BUILD}/mips64el-softmmu/../block.o ${qemu_BUILD}/mips64el-softmmu/../blockjob.o ${qemu_BUILD}/mips64el-softmmu/../main-loop.o ${qemu_BUILD}/mips64el-softmmu/../iohandler.o ${qemu_BUILD}/mips64el-softmmu/../qemu-timer.o ${qemu_BUILD}/mips64el-softmmu/../aio-posix.o ${qemu_BUILD}/mips64el-softmmu/../qemu-io-cmds.o ${qemu_BUILD}/mips64el-softmmu/../qemu-coroutine.o ${qemu_BUILD}/mips64el-softmmu/../qemu-coroutine-lock.o ${qemu_BUILD}/mips64el-softmmu/../qemu-coroutine-io.o ${qemu_BUILD}/mips64el-softmmu/../qemu-coroutine-sleep.o ${qemu_BUILD}/mips64el-softmmu/../coroutine-ucontext.o ${qemu_BUILD}/mips64el-softmmu/../block/raw_bsd.o ${qemu_BUILD}/mips64el-softmmu/../block/qcow.o ${qemu_BUILD}/mips64el-softmmu/../block/vdi.o ${qemu_BUILD}/mips64el-softmmu/../block/vmdk.o ${qemu_BUILD}/mips64el-softmmu/../block/cloop.o ${qemu_BUILD}/mips64el-softmmu/../block/bochs.o ${qemu_BUILD}/mips64el-softmmu/../block/vpc.o ${qemu_BUILD}/mips64el-softmmu/../block/vvfat.o ${qemu_BUILD}/mips64el-softmmu/../block/qcow2.o ${qemu_BUILD}/mips64el-softmmu/../block/qcow2-refcount.o ${qemu_BUILD}/mips64el-softmmu/../block/qcow2-cluster.o ${qemu_BUILD}/mips64el-softmmu/../block/qcow2-snapshot.o ${qemu_BUILD}/mips64el-softmmu/../block/qcow2-cache.o ${qemu_BUILD}/mips64el-softmmu/../block/qed.o ${qemu_BUILD}/mips64el-softmmu/../block/qed-gencb.o ${qemu_BUILD}/mips64el-softmmu/../block/qed-l2-cache.o ${qemu_BUILD}/mips64el-softmmu/../block/qed-table.o ${qemu_BUILD}/mips64el-softmmu/../block/qed-cluster.o ${qemu_BUILD}/mips64el-softmmu/../block/qed-check.o ${qemu_BUILD}/mips64el-softmmu/../block/vhdx.o ${qemu_BUILD}/mips64el-softmmu/../block/vhdx-endian.o ${qemu_BUILD}/mips64el-softmmu/../block/vhdx-log.o ${qemu_BUILD}/mips64el-softmmu/../block/quorum.o ${qemu_BUILD}/mips64el-softmmu/../block/parallels.o ${qemu_BUILD}/mips64el-softmmu/../block/blkdebug.o ${qemu_BUILD}/mips64el-softmmu/../block/blkverify.o ${qemu_BUILD}/mips64el-softmmu/../block/block-backend.o ${qemu_BUILD}/mips64el-softmmu/../block/snapshot.o ${qemu_BUILD}/mips64el-softmmu/../block/qapi.o ${qemu_BUILD}/mips64el-softmmu/../block/raw-posix.o ${qemu_BUILD}/mips64el-softmmu/../block/linux-aio.o ${qemu_BUILD}/mips64el-softmmu/../block/null.o ${qemu_BUILD}/mips64el-softmmu/../block/mirror.o ${qemu_BUILD}/mips64el-softmmu/../block/io.o ${qemu_BUILD}/mips64el-softmmu/../block/throttle-groups.o ${qemu_BUILD}/mips64el-softmmu/../block/nbd.o ${qemu_BUILD}/mips64el-softmmu/../block/nbd-client.o ${qemu_BUILD}/mips64el-softmmu/../block/sheepdog.o ${qemu_BUILD}/mips64el-softmmu/../block/accounting.o ${qemu_BUILD}/mips64el-softmmu/../block/write-threshold.o ${qemu_BUILD}/mips64el-softmmu/../block/curl.o ${qemu_BUILD}/mips64el-softmmu/../block/ssh.o ${qemu_BUILD}/mips64el-softmmu/../block/dmg.o
+  ${qemu_BUILD}/libqemuutil.a
+  ${qemu_BUILD}/libqemustub.a)
+ELSE(ESESC_SYSTEM)
+SET(CMAKE_QEMU_OBJS -Wl,--warn-common -Wl,-z,relro -Wl,-z,now -pie 
+    ${qemu_BUILD}/mips64el-linux-user/exec.o ${qemu_BUILD}/mips64el-linux-user/translate-all.o ${qemu_BUILD}/mips64el-linux-user/cpu-exec.o ${qemu_BUILD}/mips64el-linux-user/tcg/tcg.o ${qemu_BUILD}/mips64el-linux-user/tcg/tcg-op.o ${qemu_BUILD}/mips64el-linux-user/fpu/softfloat.o ${qemu_BUILD}/mips64el-linux-user/disas.o ${qemu_BUILD}/mips64el-linux-user/kvm-stub.o ${qemu_BUILD}/mips64el-linux-user/gdbstub.o ${qemu_BUILD}/mips64el-linux-user/thunk.o ${qemu_BUILD}/mips64el-linux-user/user-exec.o ${qemu_BUILD}/mips64el-linux-user/linux-user/main.o ${qemu_BUILD}/mips64el-linux-user/linux-user/syscall.o ${qemu_BUILD}/mips64el-linux-user/linux-user/strace.o ${qemu_BUILD}/mips64el-linux-user/linux-user/mmap.o ${qemu_BUILD}/mips64el-linux-user/linux-user/signal.o ${qemu_BUILD}/mips64el-linux-user/linux-user/elfload.o ${qemu_BUILD}/mips64el-linux-user/linux-user/linuxload.o ${qemu_BUILD}/mips64el-linux-user/linux-user/uaccess.o ${qemu_BUILD}/mips64el-linux-user/linux-user/uname.o ${qemu_BUILD}/mips64el-linux-user/target-mips/translate.o ${qemu_BUILD}/mips64el-linux-user/target-mips/mips-semi.o ${qemu_BUILD}/mips64el-linux-user/tcg/optimize.o ${qemu_BUILD}/mips64el-linux-user/target-mips/dsp_helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/op_helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/lmi_helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/helper.o ${qemu_BUILD}/mips64el-linux-user/target-mips/cpu.o ${qemu_BUILD}/mips64el-linux-user/target-mips/gdbstub.o ${qemu_BUILD}/mips64el-linux-user/target-mips/msa_helper.o ${qemu_BUILD}/mips64el-linux-user/../qemu-log.o ${qemu_BUILD}/mips64el-linux-user/../tcg-runtime.o ${qemu_BUILD}/mips64el-linux-user/../disas/i386.o ${qemu_BUILD}/mips64el-linux-user/../disas/mips.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/qdev.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/qdev-properties.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/fw-path-provider.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/irq.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/hotplug.o ${qemu_BUILD}/mips64el-linux-user/../hw/core/nmi.o ${qemu_BUILD}/mips64el-linux-user/../qom/object.o ${qemu_BUILD}/mips64el-linux-user/../qom/container.o ${qemu_BUILD}/mips64el-linux-user/../qom/qom-qobject.o ${qemu_BUILD}/mips64el-linux-user/../qom/cpu.o ${qemu_BUILD}/mips64el-linux-user/../qom/object_interfaces.o ${qemu_BUILD}/mips64el-linux-user/trace/generated-helpers.o
+  ${qemu_BUILD}/libqemuutil.a
+  ${qemu_BUILD}/libqemustub.a)
+ENDIF(ESESC_SYSTEM)
+
+
+
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CMAKE_THREAD_LIBS_INIT})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${ZLIB_LIBRARIES})
+#SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CURSES_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lncurses)
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${GNUTLS_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${X11_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${CURL_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${SDL_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${UUID_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${PIXMAN_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${PANGO_1_0_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${MLIB_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${RT_LIBRARIES})
-# Just in case that you want the SDL (maybe for full-system??)
-#SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${SDL_LIBRARIES})
+SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lz -laio -lcurl -lssh2 -Wl,-O1,--sort-common,--as-needed,-z,relro -lbz2 -lpixman-1 -lutil -lnuma -lncursesw  -luuid -lSDL -lpthread -lX11 -lvte -lgtk-x11-2.0 -lgdk-x11-2.0 -lpangocairo-1.0 -latk-1.0 -lgdk_pixbuf-2.0 -lpangoft2-1.0 -lpango-1.0 -lfontconfig -lfreetype -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lcairo -lX11 -lXext  -lseccomp  -lm -lgthread-2.0  -lz -lrt)
+
+ #-lssl3 -lsmime3 -lnss3 -lnssutil3 -lplds4 -lplc4 -lnspr4 -lgthread-2.0 -pthread -lglib-2.0 -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lGL -lGLESv2 -lepoxy -lEGL -lX11 -lz -laio -lcurl -lssh2 -Wl,-O1,--sort-common,--as-needed,-z,relro -lbz2 -lpixman-1 -lutil -lnuma -lncursesw  -luuid -lpng16 -ljpeg -lsasl2 -lgnutls -lSDL -lpthread -lX11 -lvte -lgtk-x11-2.0 -lgdk-x11-2.0 -lpangocairo-1.0 -latk-1.0 -lgdk_pixbuf-2.0 -lpangoft2-1.0 -lpango-1.0 -lfontconfig -lfreetype -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lcairo -lX11 -lXext -lnettle -lgnutls -lgtk-x11-2.0 -lgdk-x11-2.0 -lpangocairo-1.0 -latk-1.0 -lcairo -lgdk_pixbuf-2.0 -lgio-2.0 -lpangoft2-1.0 -lpango-1.0 -lgobject-2.0 -lglib-2.0 -lfontconfig -lfreetype -lX11  -llzo2 -lsnappy -lseccomp  -lusb-1.0 -lm -lgthread-2.0 -pthread -lglib-2.0  -lz -lrt
+
+
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} ${UTIL_LIBRARIES})
 SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lglib-2.0)
+
+IF(ENABLE_LIVE)
+  SET(CMAKE_QEMU_LIBS ${CMAKE_QEMU_LIBS} -lcryptopp)
+ENDIF(ENABLE_LIVE)
 

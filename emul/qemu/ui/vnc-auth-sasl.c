@@ -31,7 +31,9 @@
 void vnc_sasl_client_cleanup(VncState *vs)
 {
     if (vs->sasl.conn) {
-        vs->sasl.runSSF = vs->sasl.waitWriteSSF = vs->sasl.wantSSF = 0;
+        vs->sasl.runSSF = false;
+        vs->sasl.wantSSF = false;
+        vs->sasl.waitWriteSSF = 0;
         vs->sasl.encodedLength = vs->sasl.encodedOffset = 0;
         vs->sasl.encoded = NULL;
         g_free(vs->sasl.username);
@@ -84,7 +86,7 @@ long vnc_client_write_sasl(VncState *vs)
      * SASL encoded output
      */
     if (vs->output.offset == 0) {
-        qemu_set_fd_handler2(vs->csock, NULL, vnc_client_read, NULL, vs);
+        qemu_set_fd_handler(vs->csock, vnc_client_read, NULL, vs);
     }
 
     return ret;
@@ -430,9 +432,7 @@ static int protocol_client_auth_sasl_start_len(VncState *vs, uint8_t *data, size
 
 static int protocol_client_auth_sasl_mechname(VncState *vs, uint8_t *data, size_t len)
 {
-    char *mechname = g_malloc(len + 1);
-    strncpy(mechname, (char*)data, len);
-    mechname[len] = '\0';
+    char *mechname = g_strndup((const char *) data, len);
     VNC_DEBUG("Got client mechname '%s' check against '%s'\n",
               mechname, vs->sasl.mechlist);
 
@@ -555,7 +555,7 @@ void start_auth_sasl(VncState *vs)
 
     memset (&secprops, 0, sizeof secprops);
     /* Inform SASL that we've got an external SSF layer from TLS */
-    if (strncmp(vs->vd->display, "unix:", 5) == 0
+    if (vs->vd->is_unix
 #ifdef CONFIG_VNC_TLS
         /* Disable SSF, if using TLS+x509+SASL only. TLS without x509
            is not sufficiently strong */
@@ -617,7 +617,6 @@ void start_auth_sasl(VncState *vs)
 
  authabort:
     vnc_client_error(vs);
-    return;
 }
 
 

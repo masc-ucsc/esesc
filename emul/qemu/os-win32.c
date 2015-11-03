@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 #include <windows.h>
+#include <mmsystem.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -30,7 +31,7 @@
 #include <errno.h>
 #include <sys/time.h>
 #include "config-host.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "qemu-options.h"
 
 /***********************************************************/
@@ -57,54 +58,35 @@ int setenv(const char *name, const char *value, int overwrite)
 
 static BOOL WINAPI qemu_ctrl_handler(DWORD type)
 {
-    exit(STATUS_CONTROL_C_EXIT);
+    qemu_system_shutdown_request();
+    /* Windows 7 kills application when the function returns.
+       Sleep here to give QEMU a try for closing.
+       Sleep period is 10000ms because Windows kills the program
+       after 10 seconds anyway. */
+    Sleep(10000);
+
     return TRUE;
+}
+
+static TIMECAPS mm_tc;
+
+static void os_undo_timer_resolution(void)
+{
+    timeEndPeriod(mm_tc.wPeriodMin);
 }
 
 void os_setup_early_signal_handling(void)
 {
-    /* Note: cpu_interrupt() is currently not SMP safe, so we force
-       QEMU to run on a single CPU */
-    HANDLE h;
-    DWORD_PTR mask, smask;
-    int i;
-
     SetConsoleCtrlHandler(qemu_ctrl_handler, TRUE);
-
-    h = GetCurrentProcess();
-    if (GetProcessAffinityMask(h, &mask, &smask)) {
-        for(i = 0; i < 32; i++) {
-            if (mask & (1 << i))
-                break;
-        }
-        if (i != 32) {
-            mask = 1 << i;
-            SetProcessAffinityMask(h, mask);
-        }
-    }
+    timeGetDevCaps(&mm_tc, sizeof(mm_tc));
+    timeBeginPeriod(mm_tc.wPeriodMin);
+    atexit(os_undo_timer_resolution);
 }
 
 /* Look for support files in the same directory as the executable.  */
-char *os_find_datadir(const char *argv0)
+char *os_find_datadir(void)
 {
-    char *p;
-    char buf[MAX_PATH];
-    DWORD len;
-
-    len = GetModuleFileName(NULL, buf, sizeof(buf) - 1);
-    if (len == 0) {
-        return NULL;
-    }
-
-    buf[len] = 0;
-    p = buf + len - 1;
-    while (p != buf && *p != '\\')
-        p--;
-    *p = 0;
-    if (access(buf, R_OK) == 0) {
-        return g_strdup(buf);
-    }
-    return NULL;
+    return qemu_get_exec_dir();
 }
 
 void os_set_line_buffering(void)
@@ -120,11 +102,6 @@ void os_set_line_buffering(void)
 void os_parse_cmd_args(int index, const char *optarg)
 {
     return;
-}
-
-void os_pidfile_error(void)
-{
-    fprintf(stderr, "Could not acquire pid file: %s\n", strerror(errno));
 }
 
 int qemu_create_pidfile(const char *filename)

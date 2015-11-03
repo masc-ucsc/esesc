@@ -2,7 +2,18 @@
 Jose Renau <renau@ucsc.edu>
   Design most of the structures in SESC/ESESC and coordinate patches
 
-
 Ismail Akturk <aktur002@umn.edu>
   Provide a patch in the in-order power computation
+
+Islam Atta <islam.atta@gmail.com>
+  Detect problem with ooo::addInst for long latency ops that had no dependence.
+
+Judith Samson and Ehsan Hemmati
+  Patching libnet to get it ready for ESESC
+
+Luke Buschmann
+  Patching Memory Controller
+
+Jonathan Bruce
+  Preliminary work with the prefetchers
 

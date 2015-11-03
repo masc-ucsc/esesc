@@ -41,28 +41,33 @@
 #include "estl.h"
 #include "CacheCore.h"
 #include "GStats.h"
-#include "Port.h"
 #include "MemObj.h"
 #include "MemorySystem.h"
+#include "GProcessor.h"
+#include "TaskHandler.h"
 #include "MSHR.h"
 #include "Snippets.h"
 
+class PortManager;
 class MemRequest;
 /* }}} */
 
 class CCache: public MemObj {
 protected:
-  class CState : public StateGeneric<AddrType> {
+  class CState : public StateGeneric<AddrType> 
+  {/*{{{*/
   private:
     enum StateType {
       M,
       E,
-			O,
       S,
       I
-    } state;
-		int16_t nSharers;
-		int16_t share[8]; // Max number of shares to remember. If nshares >=8, then broadcast
+    };
+    StateType state;
+    StateType shareState;
+
+    int16_t nSharers;
+    int16_t share[8]; // Max number of shares to remember. If nshares >=8, then broadcast
   public:
     CState(int32_t lineSize) {
       state  = I;
@@ -77,10 +82,6 @@ protected:
     void setExclusive() {
       state = E;
     }
-    bool isOwner() const { return state == O; }
-    void setOwner() {
-      state = O;
-    }
     bool isShared() const    { return state == S; }
     void setShared() {
       state = S;
@@ -88,15 +89,17 @@ protected:
     bool isValid()   const   { return state != I; }
     bool isInvalid() const   { return state == I; }
 
-    bool needsDisp() const { return state == M || state == O; }
+    // If SNOOPS displaces E too 
+    //bool needsDisp() const { return state == M || state == E; }
+    bool needsDisp() const { return state == M; }
 
-		bool shouldNotifyLowerLevels(MsgAction ma) const;
+		bool shouldNotifyLowerLevels(MsgAction ma, bool incoherent) const;
 		bool shouldNotifyHigherLevels(MemRequest *mreq, int16_t port) const;
 		StateType getState() const { return state; };
 		StateType calcAdjustState(MemRequest *mreq) const;
-		void adjustState(MemRequest *mreq, int16_t port, bool redundant = false);
+		void adjustState(MemRequest *mreq, int16_t port);
 
-    MsgAction othersNeed(MsgAction ma) const {
+    static MsgAction othersNeed(MsgAction ma) {
 			switch(ma) {
 				case ma_setValid:     return ma_setShared;
 				case ma_setInvalid:   return ma_setInvalid;
@@ -109,10 +112,9 @@ protected:
 			return ma_setDirty;
     }
     MsgAction reqAckNeeds() const {
-			switch(state) {
+			switch(shareState) {
 				case M:   return ma_setDirty;
-				case O:   return ma_setShared;
-				case E:   return ma_setShared;
+				case E:   return ma_setExclusive;
 				case S:   return ma_setShared;
 				case I:   return ma_setInvalid;
 			}
@@ -120,12 +122,13 @@ protected:
 			return ma_setDirty;
     }
 
-		bool canRead()  const { return state != I; }
-		bool canWrite() const { return state == E || state == M; }
+		//bool canRead()  const { return state != I; }
+		//bool canWrite() const { return state == E || state == M; }
 
     void invalidate() {
       state  = I;
 			nSharers = 0;
+      shareState = I;
       clearTag();
     }
 
@@ -134,13 +137,8 @@ protected:
 		int16_t getSharingCount() const {
 			return nSharers; // Directory
 		}
-		void addSharing(int16_t id) {
-      I(id != -1);
-			if (nSharers>=8)
-				return;
-			share[nSharers] = id;
-			nSharers++;
-		}
+    void removeSharing(int16_t id);
+		void addSharing(int16_t id);
 		int16_t getFirstSharingPos() const {
 			return share[0];
 		}
@@ -148,39 +146,46 @@ protected:
       I(pos<nSharers);
       return share[pos];
     }
-  };
+    void clearSharing() {
+      nSharers = 0;
+    }
+  };/*}}}*/
 
   typedef CacheGeneric<CState,AddrType> CacheType;
   typedef CacheGeneric<CState,AddrType>::CacheLine Line;
 
-  const TimeDelta_t hitDelay;
-  const TimeDelta_t missDelay;
-
-  TimeDelta_t dyn_hitDelay; // DVFS adjusted
-  TimeDelta_t dyn_missDelay;
-
-  // CCache has 4 ports, read, write, bank, and lower level request (bus/Ln+1)
-  PortGeneric **bkPort;
-  PortGeneric *ackPort;
+  PortManager *port;
   CacheType   *cacheBank;
   MSHR        *mshr;
 
-	uint32_t    numBanks;
+  Time_t      lastUpMsg; // can not bypass up messages (races)
+  Time_t inOrderUpMessageAbs(Time_t when) {
+    if (lastUpMsg>when)
+      when = lastUpMsg;
+    else
+      lastUpMsg = when;
 
-  int32_t     maxRequests;
-  int32_t     curRequests;
+    return when;
+  }
+  Time_t inOrderUpMessage(TimeDelta_t lat) {
+    if (lastUpMsg>globalClock)
+      return lastUpMsg-globalClock+lat;
+
+    return lat;
+  }
 
   int32_t     lineSize;
   int32_t     lineSizeBits;
-  int32_t     numBanksMask;
 
   bool        coreCoupledFreq;
   bool        inclusive;
   bool        directory;
   bool        needsCoherence;
+  bool        incoherent;
 
   // BEGIN Statistics
-  GStatsCntr  displaced;
+  GStatsCntr  displacedSend;
+  GStatsCntr  displacedRecv;
 
   GStatsCntr  invAll;
   GStatsCntr  invOne;
@@ -192,6 +197,7 @@ protected:
 
   GStatsAvg   avgMissLat;
   GStatsAvg   avgMemLat;
+  GStatsAvg   avgSnoopLat;
 
 	GStatsCntr  capInvalidateHit;
 	GStatsCntr  capInvalidateMiss;
@@ -199,7 +205,8 @@ protected:
   GStatsCntr  invalidateMiss;
 
 	GStatsCntr  *s_reqHit[ma_MAX];
-	GStatsCntr  *s_reqMiss[ma_MAX];
+	GStatsCntr  *s_reqMissLine[ma_MAX];
+	GStatsCntr  *s_reqMissState[ma_MAX];
 	GStatsCntr  *s_reqHalfMiss[ma_MAX];
 	GStatsCntr  *s_reqAck[ma_MAX];
 	GStatsCntr  *s_reqSetState[ma_MAX];
@@ -209,21 +216,9 @@ protected:
   GStatsCntr  writeExclusive;
 
   // END Statistics
-
-  int32_t getLineSize() const          { return lineSize;   }
-
-  Time_t nextBankSlot(AddrType addr, bool en) { 
-    if (numBanksMask == 0)
-      return bkPort[0]->nextSlot(en); 
-
-    int32_t bank = (addr>>lineSizeBits) & numBanksMask;
-
-    return bkPort[bank]->nextSlot(en); 
-  }
-
 	void displaceLine(AddrType addr, MemRequest *mreq, Line *l);
   Line *allocateLine(AddrType addr, MemRequest *mreq);
-  void mustForwardReqDown(MemRequest *mreq);
+  void mustForwardReqDown(MemRequest *mreq, bool miss);
 
   bool notifyLowerLevels(Line *l, MemRequest *mreq);
   bool notifyHigherLevels(Line *l, MemRequest *mreq);
@@ -232,8 +227,11 @@ public:
   CCache(MemorySystem *gms, const char *descr_section, const char *name = NULL);
   virtual ~CCache();
 
+  int32_t getLineSize() const          { return lineSize;   }
+
 	// Entry points to schedule that may schedule a do?? if needed
 	void req(MemRequest *req);
+	void blockFill(MemRequest *req);
 	void reqAck(MemRequest *req);
 	void setState(MemRequest *req);
 	void setStateAck(MemRequest *req);
@@ -256,6 +254,42 @@ public:
 
 	void setNeedsCoherence();
 	void clearNeedsCoherence();
+
+ 	bool Modified(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if (cl !=0)
+      return cl->isModified();
+
+    return false;
+	}
+
+	bool Exclusive(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if(cl!=0)
+      return cl->isExclusive();
+
+    return false;
+	}
+
+	bool Shared(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if(cl!=0)
+      return cl->isShared();
+    return false;
+	}
+
+	bool Invalid(AddrType addr) const {
+		Line *cl = cacheBank->readLine(addr);
+    if (cl==0)
+      return true;
+    return cl->isInvalid();
+  }
+
+#ifdef DEBUG
+  void trackAddress(MemRequest *mreq);
+#else
+  void trackAddress(MemRequest *mreq) { }
+#endif
 };
 
 #endif

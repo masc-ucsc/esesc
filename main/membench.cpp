@@ -88,7 +88,11 @@ static void doread(MemObj *cache, AddrType addr)
 
   rdDoneCB *cb = rdDoneCB::create(ldClone);
   printf("rd %x @%lld\n", (unsigned int)addr,(long long)globalClock);
-  MemRequest::sendReqRead(cache, ldClone, addr, cb);
+
+
+  ExtraParameters param;
+  param.configure(ldClone);
+  MemRequest::sendReqRead(cache, ldClone->getStatsFlag(), addr, cb, &param);
   rd_pending++;
 }
 
@@ -103,7 +107,11 @@ static void dowrite(MemObj *cache, AddrType addr)
 
   wrDoneCB *cb = wrDoneCB::create(stClone);
   printf("wr %x @%lld\n", (unsigned int)addr,(long long)globalClock);
-	MemRequest::sendReqWrite(cache, stClone, addr, cb);
+
+  ExtraParameters param;
+  param.configure(stClone);
+
+	MemRequest::sendReqWrite(cache, stClone->getStatsFlag(), addr, cb, &param);
 	wr_pending++;
 }
 
@@ -118,32 +126,45 @@ void single() {
 
   printf("trivial test\n");
 
-  doread(cache1, 1203);
 
+  doread(cache1, 0x101);
   waitAllMemOpsDone();
+  printf("************** Finished request 1 ****************** \n");
 
-  doread(cache1, 1203);
-
+  printf("************** Start request 2 ****************** \n");
+  doread(cache1, 0x102);
   waitAllMemOpsDone();
+  printf("************** Finished request 2 ****************** \n");
 
-  doread(cache1, 1400);
-
+  printf("************** Start request 3 ****************** \n");
+  doread(cache1, 0x103);
   waitAllMemOpsDone();
+  printf("************** Finished request 3 ****************** \n");
 
-  doread(cache1, 1407);
-
+  printf("************** Start request 4 ****************** \n");
+  doread(cache1, 0x104);
   waitAllMemOpsDone();
-
-  doread(cache1, 1408);
-
-  waitAllMemOpsDone();
-
-  dowrite(cache1, 0x200);
-
-  waitAllMemOpsDone();
-
-  printf("done2\n");
+  printf("************** Finished request 4 ****************** \n");
 }
+
+void isca_demo() {
+	GProcessor *gproc = TaskHandler::getSimu(0); 
+	I(gproc);
+
+	MemObj *cache1 = gproc->getMemorySystem()->getDL1();
+	I(cache1);
+
+  printf("access even address 0x102\n");
+  doread(cache1, 0x102);
+  waitAllMemOpsDone();
+  
+  printf("access odd address 0x201\n");
+  doread(cache1, 0x201);
+  waitAllMemOpsDone();
+}
+
+
+
 
 void multi()
 {
@@ -659,13 +680,15 @@ int main(int argc, const char **argv) {
   crackInstARM.expand(&rinst);
   st = DInst::create(rinst.getInstRef(0), &rinst, rinst.getPC(), 0);
 
-  printf("SINGLE CORE TEST\n");
+  isca_demo();
+
+  //printf("SINGLE CORE TEST\n");
   //single();
  	
-  multi();
-  memcpy();
+  //multi();
+  //memcpy();
   
-  printf("test Done!/n");
+  printf("test Done!\n");
   //TaskHandler::terminate(); // put CPUs to sleep while running fast-forward
 
   BootLoader::report("done");

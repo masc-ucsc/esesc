@@ -26,7 +26,7 @@
 
 #include "qemu-x509.h"
 #include "vnc.h"
-#include "qemu_socket.h"
+#include "qemu/sockets.h"
 
 #if defined(_VNC_DEBUG) && _VNC_DEBUG >= 2
 /* Very verbose, so only enabled for _VNC_DEBUG >= 2 */
@@ -49,7 +49,7 @@ static int vnc_tls_initialize(void)
     if (gnutls_global_init () < 0)
         return 0;
 
-    /* XXX ought to re-generate diffie-hellmen params periodically */
+    /* XXX ought to re-generate diffie-hellman params periodically */
     if (gnutls_dh_params_init (&dh_params) < 0)
         return 0;
     if (gnutls_dh_params_generate2 (dh_params, DH_BITS) < 0)
@@ -68,7 +68,7 @@ static int vnc_tls_initialize(void)
 static ssize_t vnc_tls_push(gnutls_transport_ptr_t transport,
                             const void *data,
                             size_t len) {
-    struct VncState *vs = (struct VncState *)transport;
+    VncState *vs = (VncState *)transport;
     int ret;
 
  retry:
@@ -85,7 +85,7 @@ static ssize_t vnc_tls_push(gnutls_transport_ptr_t transport,
 static ssize_t vnc_tls_pull(gnutls_transport_ptr_t transport,
                             void *data,
                             size_t len) {
-    struct VncState *vs = (struct VncState *)transport;
+    VncState *vs = (VncState *)transport;
     int ret;
 
  retry:
@@ -99,9 +99,9 @@ static ssize_t vnc_tls_pull(gnutls_transport_ptr_t transport,
 }
 
 
-static gnutls_anon_server_credentials vnc_tls_initialize_anon_cred(void)
+static gnutls_anon_server_credentials_t vnc_tls_initialize_anon_cred(void)
 {
-    gnutls_anon_server_credentials anon_cred;
+    gnutls_anon_server_credentials_t anon_cred;
     int ret;
 
     if ((ret = gnutls_anon_allocate_server_credentials(&anon_cred)) < 0) {
@@ -170,7 +170,7 @@ static gnutls_certificate_credentials_t vnc_tls_initialize_x509_cred(VncDisplay 
 }
 
 
-int vnc_tls_validate_certificate(struct VncState *vs)
+int vnc_tls_validate_certificate(VncState *vs)
 {
     int ret;
     unsigned int status;
@@ -332,9 +332,8 @@ static int vnc_set_gnutls_priority(gnutls_session_t s, int x509)
 
 #endif
 
-int vnc_tls_client_setup(struct VncState *vs,
+int vnc_tls_client_setup(VncState *vs,
                          int needX509Creds) {
-
     VNC_DEBUG("Do TLS setup\n");
     if (vnc_tls_initialize() < 0) {
         VNC_DEBUG("Failed to init TLS\n");
@@ -362,14 +361,16 @@ int vnc_tls_client_setup(struct VncState *vs,
         }
 
         if (needX509Creds) {
-            gnutls_certificate_server_credentials x509_cred = vnc_tls_initialize_x509_cred(vs->vd);
+            gnutls_certificate_server_credentials x509_cred =
+                vnc_tls_initialize_x509_cred(vs->vd);
             if (!x509_cred) {
                 gnutls_deinit(vs->tls.session);
                 vs->tls.session = NULL;
                 vnc_client_error(vs);
                 return -1;
             }
-            if (gnutls_credentials_set(vs->tls.session, GNUTLS_CRD_CERTIFICATE, x509_cred) < 0) {
+            if (gnutls_credentials_set(vs->tls.session,
+                                       GNUTLS_CRD_CERTIFICATE, x509_cred) < 0) {
                 gnutls_deinit(vs->tls.session);
                 vs->tls.session = NULL;
                 gnutls_certificate_free_credentials(x509_cred);
@@ -378,18 +379,21 @@ int vnc_tls_client_setup(struct VncState *vs,
             }
             if (vs->vd->tls.x509verify) {
                 VNC_DEBUG("Requesting a client certificate\n");
-                gnutls_certificate_server_set_request (vs->tls.session, GNUTLS_CERT_REQUEST);
+                gnutls_certificate_server_set_request(vs->tls.session,
+                                                      GNUTLS_CERT_REQUEST);
             }
 
         } else {
-            gnutls_anon_server_credentials anon_cred = vnc_tls_initialize_anon_cred();
+            gnutls_anon_server_credentials_t anon_cred =
+                vnc_tls_initialize_anon_cred();
             if (!anon_cred) {
                 gnutls_deinit(vs->tls.session);
                 vs->tls.session = NULL;
                 vnc_client_error(vs);
                 return -1;
             }
-            if (gnutls_credentials_set(vs->tls.session, GNUTLS_CRD_ANON, anon_cred) < 0) {
+            if (gnutls_credentials_set(vs->tls.session,
+                                       GNUTLS_CRD_ANON, anon_cred) < 0) {
                 gnutls_deinit(vs->tls.session);
                 vs->tls.session = NULL;
                 gnutls_anon_free_server_credentials(anon_cred);
@@ -406,13 +410,12 @@ int vnc_tls_client_setup(struct VncState *vs,
 }
 
 
-void vnc_tls_client_cleanup(struct VncState *vs)
+void vnc_tls_client_cleanup(VncState *vs)
 {
     if (vs->tls.session) {
         gnutls_deinit(vs->tls.session);
         vs->tls.session = NULL;
     }
-    vs->tls.wiremode = VNC_WIREMODE_CLEAR;
     g_free(vs->tls.dname);
 }
 
@@ -426,11 +429,7 @@ static int vnc_set_x509_credential(VncDisplay *vd,
 {
     struct stat sb;
 
-    if (*cred) {
-        g_free(*cred);
-        *cred = NULL;
-    }
-
+    g_free(*cred);
     *cred = g_malloc(strlen(certdir) + strlen(filename) + 2);
 
     strcpy(*cred, certdir);

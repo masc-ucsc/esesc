@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -43,6 +43,9 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   /* dummy constructor {{{1 */
   : MemObj(section, sName)
   ,hitDelay  (SescConf->getInt(section,"hitDelay"))
+  ,bsize     (SescConf->getInt(section,"bsize"))
+  ,bsizeLog2       (log2i(SescConf->getInt(section,"bsize")))
+  ,coldWarmup      (SescConf->getBool(section,"coldWarmup"))
   ,readHit         ("%s:readHit",         sName)
   ,pushDownHit     ("%s:pushDownHit",     sName)
   ,writeHit        ("%s:writeHit",        sName)
@@ -55,20 +58,49 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
 {
 
 	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
+  
 
+  warmupStepStart = 256 / 4;
+  warmupStep      = warmupStepStart;
+  warmupNext      = 16;
+  warmupSlowEvery = 16;
 }
 /* }}} */
 
-void NICECache::doReq(MemRequest *mreq)    
+void NICECache::doReq(MemRequest *mreq)
   /* read (down) {{{1 */
-{ 
+{
+  TimeDelta_t hdelay = hitDelay;
+
+  if (mreq->isWarmup())
+    hdelay = 1;
+
   readHit.inc(mreq->getStatsFlag());
 
 	if (mreq->isHomeNode()) {
-		mreq->ack(hitDelay);
+    if(coldWarmup && warmup.find(mreq->getAddr()>>bsizeLog2) == warmup.end()) {
+
+      TimeDelta_t lat;
+      warmupNext--;
+      if (warmupNext <= 0) {
+        warmupNext = warmupSlowEvery;
+        warmupStep--;
+        if (warmupStep <= 0) {
+          warmupSlowEvery = warmupSlowEvery>>1;
+          if (warmupSlowEvery <=0 )
+            coldWarmup = false;
+          warmupStepStart = warmupStepStart<<1;
+          warmupStep      = warmupStepStart;
+        }
+      }else{
+        hdelay = 1;
+      }
+      warmup.insert(mreq->getAddr()>>bsizeLog2);
+    }
+    mreq->ack(hdelay);
 		return;
 	}
-	if (mreq->getAction() == ma_setValid) {
+	if (mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive) {
 		mreq->convert2ReqAck(ma_setExclusive);
 		//MSG("rdnice %x",mreq->getAddr());
 	}else {
@@ -76,54 +108,73 @@ void NICECache::doReq(MemRequest *mreq)
 		//MSG("wrnice %x",mreq->getAddr());
 	}
 
-  router->scheduleReqAck(mreq, hitDelay);
+  if(coldWarmup && warmup.find(mreq->getAddr()>>bsizeLog2) == warmup.end()) {
+    warmup.insert(mreq->getAddr()>>bsizeLog2);
+    TimeDelta_t lat;
+    warmupNext--;
+    if (warmupNext <= 0) {
+      warmupNext = warmupSlowEvery;
+      warmupStep--;
+      if (warmupStep <= 0) {
+        warmupSlowEvery = warmupSlowEvery>>1;
+        if (warmupSlowEvery <=0 )
+          coldWarmup = false;
+        warmupStepStart = warmupStepStart<<1;
+        warmupStep      = warmupStepStart;
+      }
+    }else{
+      hdelay = 1;
+    }
+  }
+  router->scheduleReqAck(mreq, hdelay);
 }
 /* }}} */
 
-void NICECache::doReqAck(MemRequest *req)    
+void NICECache::doReqAck(MemRequest *req)
   /* req ack {{{1 */
-{ 
+{
   I(0);
 }
+// 1}}}
 
-void NICECache::doSetState(MemRequest *req)    
+void NICECache::doSetState(MemRequest *req)
   /* change state request  (up) {{{1 */
-{ 
+{
 	I(0);
 }
 /* }}} */
 
-void NICECache::doSetStateAck(MemRequest *req)    
-  /* push (down) {{{1 */
-{ 
+void NICECache::doSetStateAck(MemRequest *req)
+ /* push (down) {{{1 */
+{
 	I(0);
 }
 /* }}} */
 
-void NICECache::doDisp(MemRequest *req)    
+void NICECache::doDisp(MemRequest *req)
   /* push (up) {{{1 */
-{ 
-  req->ack();
+{
+  req->ack(hitDelay);
 }
 /* }}} */
 
 bool NICECache::isBusy(AddrType addr) const
   /* can accept reads? {{{1 */
-{ 
-  return false;  
+{
+  return false;
 }
 /* }}} */
 
 TimeDelta_t NICECache::ffread(AddrType addr)
   /* warmup fast forward read {{{1 */
-{ 
+{
   return 1;
 }
 /* }}} */
 
 TimeDelta_t NICECache::ffwrite(AddrType addr)
   /* warmup fast forward writed {{{1 */
-{ 
+{
   return 1;
 }
 /* }}} */

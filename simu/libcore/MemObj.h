@@ -54,8 +54,13 @@ protected:
   MRouter *router;
   const char *section;
   const char *name;
+  const char *deviceType;
+
   const uint16_t id;
   static uint16_t id_counter;
+  int16_t coreid;
+  bool firstLevelIL1;
+  bool firstLevelDL1;
 
   void addLowerLevel(MemObj *obj);
 	void addUpperLevel(MemObj *obj);
@@ -67,7 +72,14 @@ public:
 
   const char *getSection() const { return section; }
   const char *getName() const    { return name;    }
+  const char *getDeviceType() const { return deviceType;    }
   uint16_t getID() const         { return id;      }
+  int16_t getCoreID() const      { return coreid;  }
+  void setCoreDL1(int16_t cid)    { coreid = cid;  firstLevelDL1 = true; }
+  void setCoreIL1(int16_t cid)    { coreid = cid;  firstLevelIL1 = true; }
+	bool isFirstLevel() const { return coreid != -1; };
+	bool isFirstLevelDL1() const { return firstLevelDL1; };
+	bool isFirstLevelIL1() const { return firstLevelIL1; };
 
   MRouter *getRouter()           { return router;  }
   
@@ -85,6 +97,7 @@ public:
   virtual void doDisp(MemRequest *req) = 0;
 
   // UP
+  virtual void blockFill(MemRequest *req);
   virtual void reqAck(MemRequest *req) = 0;
   virtual void setState(MemRequest *req) = 0;
 
@@ -106,6 +119,7 @@ public:
 
 	virtual void setNeedsCoherence();
 	virtual void clearNeedsCoherence();
+
 };
 
 class DummyMemObj : public MemObj {

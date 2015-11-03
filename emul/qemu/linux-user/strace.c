@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <errno.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/sem.h>
@@ -144,7 +143,7 @@ print_signal(abi_ulong arg, int last)
     case TARGET_SIGTTOU: signal_name = "SIGTTOU"; break;
     }
     if (signal_name == NULL) {
-        print_raw_param("%ld", arg, 1);
+        print_raw_param("%ld", arg, last);
         return;
     }
     gemu_log("%s%s", signal_name, get_comma(last));
@@ -284,8 +283,13 @@ print_ipc(const struct syscallname *name,
 static void
 print_syscall_ret_addr(const struct syscallname *name, abi_long ret)
 {
-if( ret == -1 ) {
-        gemu_log(" = -1 errno=%d (%s)\n", errno, target_strerror(errno));
+    char *errstr = NULL;
+
+    if (ret < 0) {
+        errstr = target_strerror(-ret);
+    }
+    if (errstr) {
+        gemu_log(" = -1 errno=%d (%s)\n", (int)-ret, errstr);
     } else {
         gemu_log(" = 0x" TARGET_ABI_FMT_lx "\n", ret);
     }
@@ -367,10 +371,20 @@ UNUSED static struct flags open_flags[] = {
     FLAG_TARGET(O_NOCTTY),
     FLAG_TARGET(O_NOFOLLOW),
     FLAG_TARGET(O_NONBLOCK),      /* also O_NDELAY */
-    FLAG_TARGET(O_SYNC),
+    FLAG_TARGET(O_DSYNC),
+    FLAG_TARGET(__O_SYNC),
     FLAG_TARGET(O_TRUNC),
 #ifdef O_DIRECT
     FLAG_TARGET(O_DIRECT),
+#endif
+#ifdef O_NOATIME
+    FLAG_TARGET(O_NOATIME),
+#endif
+#ifdef O_CLOEXEC
+    FLAG_TARGET(O_CLOEXEC),
+#endif
+#ifdef O_PATH
+    FLAG_TARGET(O_PATH),
 #endif
     FLAG_END,
 };
@@ -445,18 +459,6 @@ UNUSED static struct flags mmap_flags[] = {
 #ifdef TARGET_MAP_UNINITIALIZED
     FLAG_TARGET(MAP_UNINITIALIZED),
 #endif
-    FLAG_END,
-};
-
-UNUSED static struct flags fcntl_flags[] = {
-    FLAG_TARGET(F_DUPFD),
-    FLAG_TARGET(F_GETFD),
-    FLAG_TARGET(F_SETFD),
-    FLAG_TARGET(F_GETFL),
-    FLAG_TARGET(F_SETFL),
-    FLAG_TARGET(F_GETLK),
-    FLAG_TARGET(F_SETLK),
-    FLAG_TARGET(F_SETLKW),
     FLAG_END,
 };
 
@@ -668,7 +670,7 @@ print_timeval(abi_ulong tv_addr, int last)
         if (!tv)
             return;
         gemu_log("{" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "}%s",
-            tv->tv_sec, tv->tv_usec, get_comma(last));
+            tswapal(tv->tv_sec), tswapal(tv->tv_usec), get_comma(last));
         unlock_user(tv, tv_addr, 0);
     } else
         gemu_log("NULL%s", get_comma(last));
@@ -853,12 +855,85 @@ print_fcntl(const struct syscallname *name,
 {
     print_syscall_prologue(name);
     print_raw_param("%d", arg0, 0);
-    print_flags(fcntl_flags, arg1, 0);
-    /*
-     * TODO: check flags and print following argument only
-     *       when needed.
-     */
-    print_pointer(arg2, 1);
+    switch(arg1) {
+    case TARGET_F_DUPFD:
+        gemu_log("F_DUPFD,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
+        break;
+    case TARGET_F_GETFD:
+        gemu_log("F_GETFD");
+        break;
+    case TARGET_F_SETFD:
+        gemu_log("F_SETFD,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
+        break;
+    case TARGET_F_GETFL:
+        gemu_log("F_GETFL");
+        break;
+    case TARGET_F_SETFL:
+        gemu_log("F_SETFL,");
+        print_open_flags(arg2, 1);
+        break;
+    case TARGET_F_GETLK:
+        gemu_log("F_GETLK,");
+        print_pointer(arg2, 1);
+        break;
+    case TARGET_F_SETLK:
+        gemu_log("F_SETLK,");
+        print_pointer(arg2, 1);
+        break;
+    case TARGET_F_SETLKW:
+        gemu_log("F_SETLKW,");
+        print_pointer(arg2, 1);
+        break;
+    case TARGET_F_GETOWN:
+        gemu_log("F_GETOWN");
+        break;
+    case TARGET_F_SETOWN:
+        gemu_log("F_SETOWN,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
+        break;
+    case TARGET_F_GETSIG:
+        gemu_log("F_GETSIG");
+        break;
+    case TARGET_F_SETSIG:
+        gemu_log("F_SETSIG,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
+        break;
+#if TARGET_ABI_BITS == 32
+    case TARGET_F_GETLK64:
+        gemu_log("F_GETLK64,");
+        print_pointer(arg2, 1);
+        break;
+    case TARGET_F_SETLK64:
+        gemu_log("F_SETLK64,");
+        print_pointer(arg2, 1);
+        break;
+    case TARGET_F_SETLKW64:
+        gemu_log("F_SETLKW64,");
+        print_pointer(arg2, 1);
+        break;
+#endif
+    case TARGET_F_SETLEASE:
+        gemu_log("F_SETLEASE,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
+        break;
+    case TARGET_F_GETLEASE:
+        gemu_log("F_GETLEASE");
+        break;
+    case TARGET_F_DUPFD_CLOEXEC:
+        gemu_log("F_DUPFD_CLOEXEC,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
+        break;
+    case TARGET_F_NOTIFY:
+        gemu_log("F_NOTIFY,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
+        break;
+    default:
+        print_raw_param(TARGET_ABI_FMT_ld, arg1, 0);
+        print_pointer(arg2, 1);
+        break;
+    }
     print_syscall_epilogue(name);
 }
 #define print_fcntl64   print_fcntl
@@ -1423,6 +1498,12 @@ if( cmd == val ) { \
         cmd &= ~FUTEX_PRIVATE_FLAG;
     }
 #endif
+#ifdef FUTEX_CLOCK_REALTIME
+    if (cmd & FUTEX_CLOCK_REALTIME) {
+        gemu_log("FUTEX_CLOCK_REALTIME|");
+        cmd &= ~FUTEX_CLOCK_REALTIME;
+    }
+#endif
     print_op(FUTEX_WAIT)
     print_op(FUTEX_WAKE)
     print_op(FUTEX_FD)
@@ -1515,14 +1596,19 @@ void
 print_syscall_ret(int num, abi_long ret)
 {
     int i;
+    char *errstr = NULL;
 
     for(i=0;i<nsyscalls;i++)
         if( scnames[i].nr == num ) {
             if( scnames[i].result != NULL ) {
                 scnames[i].result(&scnames[i],ret);
             } else {
-                if( ret < 0 ) {
-                    gemu_log(" = -1 errno=" TARGET_ABI_FMT_ld " (%s)\n", -ret, target_strerror(-ret));
+                if (ret < 0) {
+                    errstr = target_strerror(-ret);
+                }
+                if (errstr) {
+                    gemu_log(" = -1 errno=" TARGET_ABI_FMT_ld " (%s)\n",
+                             -ret, errstr);
                 } else {
                     gemu_log(" = " TARGET_ABI_FMT_ld "\n", ret);
                 }

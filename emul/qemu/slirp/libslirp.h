@@ -12,19 +12,17 @@ Slirp *slirp_init(int restricted, struct in_addr vnetwork,
                   struct in_addr vnetmask, struct in_addr vhost,
                   const char *vhostname, const char *tftp_path,
                   const char *bootfile, struct in_addr vdhcp_start,
-                  struct in_addr vnameserver, void *opaque);
+                  struct in_addr vnameserver, const char **vdnssearch,
+                  void *opaque);
 void slirp_cleanup(Slirp *slirp);
 
-void slirp_select_fill(int *pnfds,
-                       fd_set *readfds, fd_set *writefds, fd_set *xfds);
+void slirp_pollfds_fill(GArray *pollfds, uint32_t *timeout);
 
-void slirp_select_poll(fd_set *readfds, fd_set *writefds, fd_set *xfds,
-                       int select_error);
+void slirp_pollfds_poll(GArray *pollfds, int select_error);
 
 void slirp_input(Slirp *slirp, const uint8_t *pkt, int pkt_len);
 
 /* you must provide the following functions: */
-int slirp_can_output(void *opaque);
 void slirp_output(void *opaque, const uint8_t *pkt, int pkt_len);
 
 int slirp_add_hostfwd(Slirp *slirp, int is_udp,

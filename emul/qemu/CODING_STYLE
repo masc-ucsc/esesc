@@ -1,4 +1,4 @@
-Qemu Coding Style
+QEMU Coding Style
 =================
 
 Please use the script checkpatch.pl in the scripts directory to check
@@ -44,7 +44,8 @@ Rationale:
 3. Naming
 
 Variables are lower_case_with_underscores; easy to type and read.  Structured
-type names are in CamelCase; harder to type but standing out.  Scalar type
+type names are in CamelCase; harder to type but standing out.  Enum type
+names and function type names should also be in CamelCase.  Scalar type
 names are lower_case_with_underscores_ending_with_a_t, like the POSIX
 uint64_t and family.  Note that this last convention contradicts POSIX
 and is therefore likely to be changed.
@@ -83,3 +84,24 @@ and clarity it comes on a line by itself:
 Rationale: a consistent (except for functions...) bracing style reduces
 ambiguity and avoids needless churn when lines are added or removed.
 Furthermore, it is the QEMU coding style.
+
+5. Declarations
+
+Mixed declarations (interleaving statements and declarations within blocks)
+are not allowed; declarations should be at the beginning of blocks.  In other
+words, the code should not generate warnings if using GCC's
+-Wdeclaration-after-statement option.
+
+6. Conditional statements
+
+When comparing a variable for (in)equality with a constant, list the
+constant on the right, as in:
+
+if (a == 1) {
+    /* Reads like: "If a equals 1" */
+    do_something();
+}
+
+Rationale: Yoda conditions (as in 'if (1 == a)') are awkward to read.
+Besides, good compilers already warn users when '==' is mis-typed as '=',
+even when the constant is on the right.
