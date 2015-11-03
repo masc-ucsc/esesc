@@ -13,6 +13,7 @@ before_install:
   - sudo apt-get install libglib2.0-dev                                                                                                                                                  
   - sudo apt-get install libncurses5-dev  
   - sudo apt-get install libboost-all-dev
+  - sudo apt-get install libpixman-1-dev libpixman-1.0
 
 before_script:
   - cd ..
