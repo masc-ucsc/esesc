@@ -162,7 +162,7 @@ ENDIF(ESESC_SYSTEM)
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-docs --enable-esesc --python=python2 --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard-nss --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
+  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-docs --enable-esesc --python=python2 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard-nss --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0
@@ -172,6 +172,17 @@ ExternalProject_Add(qemu
   DOWNLOAD_COMMAND ""
   )
 set_target_properties(qemu PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+ExternalProject_Add(criu
+  GIT_REPOSITORY https://github.com/xemul/criu.git
+  GIT_TAG v1.7.2
+  CONFIGURE_COMMAND ""
+  INSTALL_COMMAND ""
+  BUILD_COMMAND ${MAKE}
+  BUILD_IN_SOURCE 1
+  )
+set_target_properties(criu PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
 
 #################################
 #ADD_SUBDIRECTORY(misc/libmigdb)

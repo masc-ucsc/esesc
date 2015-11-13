@@ -45,7 +45,7 @@
 GStatsCntr *GProcessor::wallClock=0;
 Time_t GProcessor::lastWallClock=0;
 
-  GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
+GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
   :cpu_id(i)
    ,MaxFlows(numFlows)
    ,FetchWidth(SescConf->getInt("cpusimu", "fetchWidth",i))
@@ -57,7 +57,7 @@ Time_t GProcessor::lastWallClock=0;
   ,memorySystem(gm)
 ,storeset(i)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
-,ROB(MaxROBSize)
+  ,ROB(MaxROBSize)
   ,rrobUsed("P(%d)_rrobUsed", i) // avg
   ,robUsed("P(%d)_robUsed", i) // avg
   ,nReplayInst("P(%d)_nReplayInst", i)
@@ -67,7 +67,10 @@ Time_t GProcessor::lastWallClock=0;
   ,nFreeze("P(%d):nFreeze",i)
   ,clockTicks("P(%d):clockTicks",i)
 {
-  active = true;
+  if (i ==0)
+    active = true;
+  else
+    active = false;
 
   lastReplay = 0;
   if (wallClock ==0)

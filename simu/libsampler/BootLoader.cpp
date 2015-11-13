@@ -46,6 +46,7 @@
 
 #include "GProcessor.h"
 #include "OoOProcessor.h"
+#include "AccProcessor.h"
 #include "InOrderProcessor.h"
 #include "GPUSMProcessor.h"
 #include "GMemorySystem.h"
@@ -254,6 +255,8 @@ void BootLoader::plugEmulInterfaces() {
       TaskHandler::FlowIDEmulMapping.push_back(0); // Interface 0 is QEMU
 
       createEmulInterface(QEMUCPUSection, i); // each CPU has it's own Emul/Sampler
+    }else if(strcasecmp(type,"accel") == 0 ) {
+      MSG("cpuemul[%d] specifies a different section %s",i,section);
     }else{
       MSG("ERROR: Unknown type %s of section %s, cpuemul [%d]",type,section,i);
       SescConf->notCorrect();
@@ -338,10 +341,27 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   CPU_t cpuid = static_cast<CPU_t>(i);
 
   GProcessor  *gproc = 0;
-  if(SescConf->getBool("cpusimu","inorder",cpuid)) {
+  if(!SescConf->checkCharPtr("cpusimu","type",cpuid)) {
+     MSG("error: we expect a type for the cpu type : ooo or inorder or accel or ???");
+     SescConf->notCorrect();
+     return;
+  }
+
+  const char *type = SescConf->getCharPtr("cpusimu","type",cpuid);
+
+  if(strcasecmp(type,"inorder")==0) {
+    MSG("Creating inorder processor %d", cpuid);
     gproc =new InOrderProcessor(gms, cpuid);
-  } else {
+  }else if(strcasecmp(type,"accel")==0) {
+    MSG("Creating accelerator core %d", cpuid);
+    gproc =new AccProcessor(gms, cpuid);
+  }else if(strcasecmp(type,"ooo")==0) {
+    MSG("Creating ooorder processor %d", cpuid);
     gproc =new OoOProcessor(gms, cpuid);
+  }else{
+    MSG("error: we expect a type for the cpu type : ooo or inorder or accel or ???");
+    SescConf->notCorrect();
+    return;
   }
 
   I(gproc);

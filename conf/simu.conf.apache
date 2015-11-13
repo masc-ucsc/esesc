@@ -9,12 +9,12 @@ memBW             = 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GBytes/s (
 
 # MIPS64R6 apache-like configuration
 [tradCORE]
+type              = "ooo"
 areaFactor        = 2
 fetchWidth        = 4
 alignedFetch      = true
 fetchPorts        = 1
 instQueueSize     = 24
-inorder           = false
 throttlingRatio   = 1.0
 issueWidth        = 2
 retireWidth       = 2

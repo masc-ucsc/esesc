@@ -1874,7 +1874,7 @@ sub tradCPUStats {
 
     $nInst = 1 if( $nInst < 1 );
 
-    my $idealInst = $issue*$clockTicks;
+    my $idealInst = $issue*$clockTicks+1;
     $temp = 100*$nInst/($idealInst);
 
     printf " %04.1f ",$temp;

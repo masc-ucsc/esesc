@@ -1,4 +1,6 @@
 // Contributed by Jose Renau
+//                Basilio Fraguela
+//                Milos Prvulovic
 //
 // The ESESC/BSD License
 //
@@ -32,62 +34,48 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef INORDERPROCESSOR_H_
-#define INORDERPROCESSOR_H_
+#ifndef _ACCPROCESSOR_H_
+#define _ACCPROCESSOR_H_
 
 #include "nanassert.h"
 
-#include "GProcessor.h"
+#include "callback.h"
+#include "GOoOProcessor.h"
 #include "Pipeline.h"
 #include "FetchEngine.h"
-#include "LSQ.h"
+#include "FastQueue.h"
 
-class InOrderProcessor : public GProcessor {
+#define MAX_REMEMBERED_VALUES 16384
+
+#define RCMEM 1
+
+class AccProcessor : public GProcessor {
 private:
-  FetchEngine IFID;
-  PipeQueue   pipeQ;
-  int32_t     spaceInInstQueue;
 
-  LSQNone     lsq;
-  bool        busy;
+  bool busy;
 
-  //DInst *RAT[LREG_MAX];
-  DInst **RAT;
+  void performed(uint32_t id);
+  typedef CallbackMember1<AccProcessor, uint32_t, &AccProcessor::performed> performedCB;
 
-  FastQueue<DInst *> rROB; // ready/retiring/executed ROB
-
-  void fetch(FlowID fid);
 protected:
-  ClusterManager clusterManager;
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
-
   bool advance_clock(FlowID fid);
-  void retire();
 
+  // Not needed for Acc
   StallCause addInst(DInst *dinst);
+  void retire();
+  void fetch(FlowID fid);
+  LSQ *getLSQ();
+  bool isFlushing();
+  bool isReplayRecovering();
+  Time_t getReplayID();
+
+    virtual void replay(DInst *target) { };// = 0;
+
   // END VIRTUAL FUNCTIONS of GProcessor
-
 public:
-  InOrderProcessor(GMemorySystem *gm, CPU_t i);
-  virtual ~InOrderProcessor();
-
-  LSQ *getLSQ() { return &lsq; }
-  void replay(DInst *dinst);
-  bool isFlushing() {
-    I(0);
-    return false;
-  }
-  bool isReplayRecovering() {
-    I(0);
-    return false;
-  }
-    Time_t getReplayID()
-  {
-    I(0);
-    return false;
-  }
-
+  AccProcessor(GMemorySystem *gm, CPU_t i);
+  virtual ~AccProcessor();
 };
 
-
-#endif /* INORDERPROCESSOR_H_ */
+#endif

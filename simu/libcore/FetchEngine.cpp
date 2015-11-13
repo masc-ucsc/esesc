@@ -221,7 +221,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       break;
     }
 
-#ifdef USE_FUSE
+#ifdef ENABLE_FAST_WARMUP
     if (/*!dinst->getStatsFlag() && */dinst->getPC() == 0) {
       if (dinst->getInst()->isLoad()) {
         MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());

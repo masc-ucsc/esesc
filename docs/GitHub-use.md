@@ -88,12 +88,17 @@ is in our private repo.
 
 After updating the config file execute the following commands to fetch data from the new branches
 
+    #Save the current git config
+    cp .git/config ~/tmp/config
+
     git fetch
     git fetch github
     git checkout github
     git fetch
     git checkout github_master
     git fetch
+    WARNING: Now, the git/config may be different, copy the saved version back
+    cp ~/tmp/config .git/config
 
 At this point the repo is configured.  There are two main tasks that you might
 want to perform.  One is pushing changes to the remote repo.  The other is
@@ -113,6 +118,7 @@ to push to the public GitHub repo execute the following commands:
 If you have any merge conflicts after the merge you should check and fix them
 first.  Then to push the merged changes to the public GitHub repo run:
 
+    #NOTE: if git push fails, do "git pull" to get head of branch
     git push github
     Username for 'https://github.com': <your_username>
     Password for 'https://<your_username>@github.com': 
@@ -123,7 +129,8 @@ to use SSH keys if you want instead of https.
 Also push the changes to the `github_master` branch back to the private repo by
 executing:
 
-    git push origin github_master
+    #OPTIONAL: just copy github_master to the mada repo (in case that github goes bankrupt ??)
+    #git push origin github_master
 
 
 ### Pulling changes from GitHub
@@ -143,5 +150,6 @@ has diverged from the public branch then you may need to apply a patch instead.
 
     git checkout master
     git merge github
+    git push
 
 [masc]: http://masc.soe.ucsc.edu/

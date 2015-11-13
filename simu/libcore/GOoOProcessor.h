@@ -52,13 +52,6 @@ protected:
   //  virtual StallCause addInst(DInst *dinst);
   //  virtual void retire();
 
-#ifdef SCOORE_CORE  
-  virtual void set_StoreValueTable(AddrType addr, DataType value){ };
-  virtual void set_StoreAddrTable(AddrType addr){ };
-  virtual DataType get_StoreValueTable(AddrType addr){I(0); return 0; };
-  virtual AddrType get_StoreAddrTable(AddrType addr){I(0); return 0; };
-#endif
-  
   // END VIRTUAL FUNCTIONS of GProcessor
 public:
   GOoOProcessor(GMemorySystem *gm, CPU_t i);

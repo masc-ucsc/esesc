@@ -36,8 +36,6 @@
 #ifndef GPROCESSOR_H
 #define GPROCESSOR_H
 
-#define SCOORE_CORE 1//0
-
 #include "estl.h"
 
 #include <stdint.h>
@@ -152,8 +150,6 @@ class GProcessor {
     virtual bool isReplayRecovering() = 0;
     virtual Time_t getReplayID() = 0;
 
-    // Notify the fetch that an exception/replay happen. Stall the rename until
-    // the rob replay is retired.
     virtual void replay(DInst *target) { };// = 0;
 
     bool isROBEmpty() const { return ROB.empty() && rROB.empty(); }
@@ -182,6 +178,7 @@ class GProcessor {
     void clearActive() {
       active = false;
     }
+    bool isActive() const { return active; }
 
     void setWallClock(bool en=true) {
 
