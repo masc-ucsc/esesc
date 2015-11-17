@@ -1,7 +1,9 @@
+sudo: required
+
 language: cpp
-compiler:
-  - gcc
-  #- clang
+
+services:
+  - docker
 
 env:
   matrix:
@@ -9,50 +11,9 @@ env:
     - BUILD_TYPE=Debug
 
 before_install:
-	- sudo apt-get install --no-install-recommends -y \
-		bison \
-		build-essential \
-		cmake \
-		flex \
-		g++ \
-		libaio-dev \
-		libboost-dev \
-		libbz2-dev \
-		libcrypto++-dev \
-		libcurl4-openssl-dev \
-		libepoxy-dev  \
-		libgles2-mesa-dev \
-		libncurses5-dev \
-		libncursesw5-dev \
-		libnuma-dev \
-		libpixman-1-dev \
-		libprotobuf-c0-dev \
-		libsdl1.2-dev \
-		libssh2-1-dev \
-		libvte-dev \
-		libseccomp-dev \
-		protobuf-compiler \
-		protobuf-c-compiler \
-		python \
-		uuid-dev \
-		zlib1g-dev \
-
-before_script:
-  - cd ..
-  - mkdir build
-  - cd build
-  - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+  - docker pull mascucsc/esescbase
 
 script: 
-  - make
-    #- make check
+  - conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE 0
 
-after_script:
-  - mkdir run
-  - cd run
-  - cp ../../esesc/conf/* .
-  - cp ../../esesc/bins/mips64/* .
-  - cp ../../esesc/bins/inputs/* .
-  - ../main/esesc < crafty.in
-  - ../../esesc/conf/scripts/report.pl -last
 
