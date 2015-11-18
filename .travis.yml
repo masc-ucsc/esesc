@@ -19,14 +19,13 @@ addons:
        name: "masc-ucsc/esesc"
      description: "ESESC: A Fast Multicore Simulator"
      notification_email: southerngs@gmail.com
-     build_command_prepend: "mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .."
+     build_command_prepend: "mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_LIVE=1 .."
      build_command: "make"
      branch_pattern: coverity_scan
 
 before_install:
   - sudo apt-get update
-  - sudo apt-get install -y --no-install-recommends libboost-dev libsdl1.2-dev 
-
+  - sudo apt-get install -y --no-install-recommends libboost-dev libsdl1.2-dev libaio-dev libboost-dev libbz2-dev libcrypto++-dev libcurl4-openssl-dev libepoxy-dev  libgles2-mesa-dev libncurses5-dev libncursesw5-dev libnuma-dev libpixman-1-dev libprotobuf-c0-dev libsdl1.2-dev libssh2-1-dev libvte-dev libseccomp-dev uuid-dev zlib1g-dev  
 
 script: 
   - if [[ "${COVERITY_SCAN_BRANCH}" != 1 ]]; then docker pull mascucsc/esescbase && conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE 0; fi
