@@ -38,6 +38,10 @@
 #include "MemorySystem.h"
 #include "Bus.h"
 /* }}} */
+#ifdef ENABLE_NBSD
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *mreq); 
+void meminterface_req_done(void *req, int mesi);
+#endif
 
 Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   /* constructor {{{1 */
@@ -64,12 +68,18 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   lower_level = current->declareMemoryObj(section, "lowerLevel");   
   if (lower_level)
     addLowerLevel(lower_level);
+
+#ifdef ENABLE_NBSD
+	dcache = name[0]=='I'?false:true;
+	I(name[0] == 'I' || name[0] == 'D');
+#endif
 }
 /* }}} */
 
 void Bus::doReq(MemRequest *mreq)
   /* forward bus read {{{1 */
 {
+  //MSG("@%lld bus %s 0x%lx %d",globalClock, mreq->getCurrMem()->getName(), mreq->getAddr(), mreq->getAction());
   TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
 	router->scheduleReq(mreq, when);
 }
@@ -87,6 +97,36 @@ void Bus::doReqAck(MemRequest *mreq)
   /* data is coming back {{{1 */
 {
   TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+
+  if (mreq->isHomeNode()) {
+#if ENABLE_NBSD
+    enum MESI {Invalid=0,Shared,SharedDirty,Exclusive,Modified};
+    int mesi;
+    if (mreq->getAction() == ma_setInvalid)
+      mesi = Invalid;
+    else if (mreq->getAction() == ma_setShared)
+      mesi = Shared;
+    else if (mreq->getAction() == ma_setExclusive)
+      mesi = Exclusive;
+    else if (mreq->getAction() == ma_setDirty)
+      mesi = Modified;
+    else{
+      I(0);
+    }
+
+    if (!dcache) {
+      if (mesi == Exclusive)
+        mesi = Shared;
+      else if (mesi != Shared)
+        I(0);
+    }
+
+    meminterface_req_done(mreq->param, mesi);
+#endif
+    mreq->ack(when);
+    return;
+  }
+
   router->scheduleReqAck(mreq, when);
 }
 /* }}} */
@@ -94,13 +134,26 @@ void Bus::doReqAck(MemRequest *mreq)
 void Bus::doSetState(MemRequest *mreq)
   /* forward set state to all the upper nodes {{{1 */
 {
+  if (router->isTopLevel()) {
+#if ENABLE_NBSD
+    meminterface_start_snoop_req(mreq->getAddr(), mreq->getAction() == ma_setInvalid, getCoreID(), dcache, mreq);
+#else
+    mreq->convert2SetStateAck(ma_setInvalid,false); // same as a miss (not sharing here)
+    router->scheduleSetStateAck(mreq,1);
+#endif
+    return;
+  }
   router->sendSetStateAll(mreq, mreq->getAction(), delay);
 }
 /* }}} */
 
 void Bus::doSetStateAck(MemRequest *mreq)
-  /* forward set state to all the upper nodes {{{1 */
+  /* forward set state to all the lower nodes {{{1 */
 {
+  if(mreq->isHomeNode()) {
+    mreq->ack();
+    return;
+  }
   router->scheduleSetStateAck(mreq, delay);
 }
 /* }}} */

@@ -10,13 +10,13 @@
 #include <stdio.h>
 
 #include "cpu.h"
-#include "exec-all.h"
-#include "helper.h"
+#include "exec/exec-all.h"
+#include "exec/helper-proto.h"
 
 #define SIGNBIT (uint32_t)0x80000000
 #define SIGNBIT64 ((uint64_t)1 << 63)
 
-#define SET_QC() env->vfp.xregs[ARM_VFP_FPSCR] = CPSR_Q
+#define SET_QC() env->vfp.xregs[ARM_VFP_FPSCR] |= CPSR_Q
 
 #define NEON_TYPE1(name, type) \
 typedef struct \
@@ -114,7 +114,7 @@ uint32_t HELPER(glue(neon_,name))(uint32_t arg1, uint32_t arg2) \
 NEON_VOP_BODY(vtype, n)
 
 #define NEON_VOP_ENV(name, vtype, n) \
-uint32_t HELPER(glue(neon_,name))(CPUState *env, uint32_t arg1, uint32_t arg2) \
+uint32_t HELPER(glue(neon_,name))(CPUARMState *env, uint32_t arg1, uint32_t arg2) \
 NEON_VOP_BODY(vtype, n)
 
 /* Pairwise operations.  */
@@ -172,7 +172,7 @@ NEON_VOP_ENV(qadd_u16, neon_u16, 2)
 #undef NEON_FN
 #undef NEON_USAT
 
-uint32_t HELPER(neon_qadd_u32)(CPUState *env, uint32_t a, uint32_t b)
+uint32_t HELPER(neon_qadd_u32)(CPUARMState *env, uint32_t a, uint32_t b)
 {
     uint32_t res = a + b;
     if (res < a) {
@@ -182,7 +182,7 @@ uint32_t HELPER(neon_qadd_u32)(CPUState *env, uint32_t a, uint32_t b)
     return res;
 }
 
-uint64_t HELPER(neon_qadd_u64)(CPUState *env, uint64_t src1, uint64_t src2)
+uint64_t HELPER(neon_qadd_u64)(CPUARMState *env, uint64_t src1, uint64_t src2)
 {
     uint64_t res;
 
@@ -214,7 +214,7 @@ NEON_VOP_ENV(qadd_s16, neon_s16, 2)
 #undef NEON_FN
 #undef NEON_SSAT
 
-uint32_t HELPER(neon_qadd_s32)(CPUState *env, uint32_t a, uint32_t b)
+uint32_t HELPER(neon_qadd_s32)(CPUARMState *env, uint32_t a, uint32_t b)
 {
     uint32_t res = a + b;
     if (((res ^ a) & SIGNBIT) && !((a ^ b) & SIGNBIT)) {
@@ -224,7 +224,7 @@ uint32_t HELPER(neon_qadd_s32)(CPUState *env, uint32_t a, uint32_t b)
     return res;
 }
 
-uint64_t HELPER(neon_qadd_s64)(CPUState *env, uint64_t src1, uint64_t src2)
+uint64_t HELPER(neon_qadd_s64)(CPUARMState *env, uint64_t src1, uint64_t src2)
 {
     uint64_t res;
 
@@ -235,6 +235,171 @@ uint64_t HELPER(neon_qadd_s64)(CPUState *env, uint64_t src1, uint64_t src2)
     }
     return res;
 }
+
+/* Unsigned saturating accumulate of signed value
+ *
+ * Op1/Rn is treated as signed
+ * Op2/Rd is treated as unsigned
+ *
+ * Explicit casting is used to ensure the correct sign extension of
+ * inputs. The result is treated as a unsigned value and saturated as such.
+ *
+ * We use a macro for the 8/16 bit cases which expects signed integers of va,
+ * vb, and vr for interim calculation and an unsigned 32 bit result value r.
+ */
+
+#define USATACC(bits, shift) \
+    do { \
+        va = sextract32(a, shift, bits);                                \
+        vb = extract32(b, shift, bits);                                 \
+        vr = va + vb;                                                   \
+        if (vr > UINT##bits##_MAX) {                                    \
+            SET_QC();                                                   \
+            vr = UINT##bits##_MAX;                                      \
+        } else if (vr < 0) {                                            \
+            SET_QC();                                                   \
+            vr = 0;                                                     \
+        }                                                               \
+        r = deposit32(r, shift, bits, vr);                              \
+   } while (0)
+
+uint32_t HELPER(neon_uqadd_s8)(CPUARMState *env, uint32_t a, uint32_t b)
+{
+    int16_t va, vb, vr;
+    uint32_t r = 0;
+
+    USATACC(8, 0);
+    USATACC(8, 8);
+    USATACC(8, 16);
+    USATACC(8, 24);
+    return r;
+}
+
+uint32_t HELPER(neon_uqadd_s16)(CPUARMState *env, uint32_t a, uint32_t b)
+{
+    int32_t va, vb, vr;
+    uint64_t r = 0;
+
+    USATACC(16, 0);
+    USATACC(16, 16);
+    return r;
+}
+
+#undef USATACC
+
+uint32_t HELPER(neon_uqadd_s32)(CPUARMState *env, uint32_t a, uint32_t b)
+{
+    int64_t va = (int32_t)a;
+    int64_t vb = (uint32_t)b;
+    int64_t vr = va + vb;
+    if (vr > UINT32_MAX) {
+        SET_QC();
+        vr = UINT32_MAX;
+    } else if (vr < 0) {
+        SET_QC();
+        vr = 0;
+    }
+    return vr;
+}
+
+uint64_t HELPER(neon_uqadd_s64)(CPUARMState *env, uint64_t a, uint64_t b)
+{
+    uint64_t res;
+    res = a + b;
+    /* We only need to look at the pattern of SIGN bits to detect
+     * +ve/-ve saturation
+     */
+    if (~a & b & ~res & SIGNBIT64) {
+        SET_QC();
+        res = UINT64_MAX;
+    } else if (a & ~b & res & SIGNBIT64) {
+        SET_QC();
+        res = 0;
+    }
+    return res;
+}
+
+/* Signed saturating accumulate of unsigned value
+ *
+ * Op1/Rn is treated as unsigned
+ * Op2/Rd is treated as signed
+ *
+ * The result is treated as a signed value and saturated as such
+ *
+ * We use a macro for the 8/16 bit cases which expects signed integers of va,
+ * vb, and vr for interim calculation and an unsigned 32 bit result value r.
+ */
+
+#define SSATACC(bits, shift) \
+    do { \
+        va = extract32(a, shift, bits);                                 \
+        vb = sextract32(b, shift, bits);                                \
+        vr = va + vb;                                                   \
+        if (vr > INT##bits##_MAX) {                                     \
+            SET_QC();                                                   \
+            vr = INT##bits##_MAX;                                       \
+        } else if (vr < INT##bits##_MIN) {                              \
+            SET_QC();                                                   \
+            vr = INT##bits##_MIN;                                       \
+        }                                                               \
+        r = deposit32(r, shift, bits, vr);                              \
+    } while (0)
+
+uint32_t HELPER(neon_sqadd_u8)(CPUARMState *env, uint32_t a, uint32_t b)
+{
+    int16_t va, vb, vr;
+    uint32_t r = 0;
+
+    SSATACC(8, 0);
+    SSATACC(8, 8);
+    SSATACC(8, 16);
+    SSATACC(8, 24);
+    return r;
+}
+
+uint32_t HELPER(neon_sqadd_u16)(CPUARMState *env, uint32_t a, uint32_t b)
+{
+    int32_t va, vb, vr;
+    uint32_t r = 0;
+
+    SSATACC(16, 0);
+    SSATACC(16, 16);
+
+    return r;
+}
+
+#undef SSATACC
+
+uint32_t HELPER(neon_sqadd_u32)(CPUARMState *env, uint32_t a, uint32_t b)
+{
+    int64_t res;
+    int64_t op1 = (uint32_t)a;
+    int64_t op2 = (int32_t)b;
+    res = op1 + op2;
+    if (res > INT32_MAX) {
+        SET_QC();
+        res = INT32_MAX;
+    } else if (res < INT32_MIN) {
+        SET_QC();
+        res = INT32_MIN;
+    }
+    return res;
+}
+
+uint64_t HELPER(neon_sqadd_u64)(CPUARMState *env, uint64_t a, uint64_t b)
+{
+    uint64_t res;
+    res = a + b;
+    /* We only need to look at the pattern of SIGN bits to detect an overflow */
+    if (((a & res)
+         | (~b & res)
+         | (a & ~b)) & SIGNBIT64) {
+        SET_QC();
+        res = INT64_MAX;
+    }
+    return res;
+}
+
 
 #define NEON_USAT(dest, src1, src2, type) do { \
     uint32_t tmp = (uint32_t)src1 - (uint32_t)src2; \
@@ -252,7 +417,7 @@ NEON_VOP_ENV(qsub_u16, neon_u16, 2)
 #undef NEON_FN
 #undef NEON_USAT
 
-uint32_t HELPER(neon_qsub_u32)(CPUState *env, uint32_t a, uint32_t b)
+uint32_t HELPER(neon_qsub_u32)(CPUARMState *env, uint32_t a, uint32_t b)
 {
     uint32_t res = a - b;
     if (res > a) {
@@ -262,7 +427,7 @@ uint32_t HELPER(neon_qsub_u32)(CPUState *env, uint32_t a, uint32_t b)
     return res;
 }
 
-uint64_t HELPER(neon_qsub_u64)(CPUState *env, uint64_t src1, uint64_t src2)
+uint64_t HELPER(neon_qsub_u64)(CPUARMState *env, uint64_t src1, uint64_t src2)
 {
     uint64_t res;
 
@@ -295,7 +460,7 @@ NEON_VOP_ENV(qsub_s16, neon_s16, 2)
 #undef NEON_FN
 #undef NEON_SSAT
 
-uint32_t HELPER(neon_qsub_s32)(CPUState *env, uint32_t a, uint32_t b)
+uint32_t HELPER(neon_qsub_s32)(CPUARMState *env, uint32_t a, uint32_t b)
 {
     uint32_t res = a - b;
     if (((res ^ a) & SIGNBIT) && ((a ^ b) & SIGNBIT)) {
@@ -305,7 +470,7 @@ uint32_t HELPER(neon_qsub_s32)(CPUState *env, uint32_t a, uint32_t b)
     return res;
 }
 
-uint64_t HELPER(neon_qsub_s64)(CPUState *env, uint64_t src1, uint64_t src2)
+uint64_t HELPER(neon_qsub_s64)(CPUARMState *env, uint64_t src1, uint64_t src2)
 {
     uint64_t res;
 
@@ -530,7 +695,7 @@ NEON_VOP(rshl_s16, neon_s16, 2)
 #undef NEON_FN
 
 /* The addition of the rounding constant may overflow, so we use an
- * intermediate 64 bits accumulator.  */
+ * intermediate 64 bit accumulator.  */
 uint32_t HELPER(neon_rshl_s32)(uint32_t valop, uint32_t shiftop)
 {
     int32_t dest;
@@ -547,8 +712,8 @@ uint32_t HELPER(neon_rshl_s32)(uint32_t valop, uint32_t shiftop)
     return dest;
 }
 
-/* Handling addition overflow with 64 bits inputs values is more
- * tricky than with 32 bits values.  */
+/* Handling addition overflow with 64 bit input values is more
+ * tricky than with 32 bit values.  */
 uint64_t HELPER(neon_rshl_s64)(uint64_t valop, uint64_t shiftop)
 {
     int8_t shift = (int8_t)shiftop;
@@ -590,7 +755,7 @@ NEON_VOP(rshl_u16, neon_u16, 2)
 #undef NEON_FN
 
 /* The addition of the rounding constant may overflow, so we use an
- * intermediate 64 bits accumulator.  */
+ * intermediate 64 bit accumulator.  */
 uint32_t HELPER(neon_rshl_u32)(uint32_t val, uint32_t shiftop)
 {
     uint32_t dest;
@@ -608,8 +773,8 @@ uint32_t HELPER(neon_rshl_u32)(uint32_t val, uint32_t shiftop)
     return dest;
 }
 
-/* Handling addition overflow with 64 bits inputs values is more
- * tricky than with 32 bits values.  */
+/* Handling addition overflow with 64 bit input values is more
+ * tricky than with 32 bit values.  */
 uint64_t HELPER(neon_rshl_u64)(uint64_t val, uint64_t shiftop)
 {
     int8_t shift = (uint8_t)shiftop;
@@ -661,7 +826,7 @@ NEON_VOP_ENV(qshl_u16, neon_u16, 2)
 NEON_VOP_ENV(qshl_u32, neon_u32, 1)
 #undef NEON_FN
 
-uint64_t HELPER(neon_qshl_u64)(CPUState *env, uint64_t val, uint64_t shiftop)
+uint64_t HELPER(neon_qshl_u64)(CPUARMState *env, uint64_t val, uint64_t shiftop)
 {
     int8_t shift = (int8_t)shiftop;
     if (shift >= 64) {
@@ -716,7 +881,7 @@ NEON_VOP_ENV(qshl_s16, neon_s16, 2)
 NEON_VOP_ENV(qshl_s32, neon_s32, 1)
 #undef NEON_FN
 
-uint64_t HELPER(neon_qshl_s64)(CPUState *env, uint64_t valop, uint64_t shiftop)
+uint64_t HELPER(neon_qshl_s64)(CPUARMState *env, uint64_t valop, uint64_t shiftop)
 {
     int8_t shift = (uint8_t)shiftop;
     int64_t val = valop;
@@ -770,7 +935,7 @@ NEON_VOP_ENV(qshlu_s8, neon_u8, 4)
 NEON_VOP_ENV(qshlu_s16, neon_u16, 2)
 #undef NEON_FN
 
-uint32_t HELPER(neon_qshlu_s32)(CPUState *env, uint32_t valop, uint32_t shiftop)
+uint32_t HELPER(neon_qshlu_s32)(CPUARMState *env, uint32_t valop, uint32_t shiftop)
 {
     if ((int32_t)valop < 0) {
         SET_QC();
@@ -779,7 +944,7 @@ uint32_t HELPER(neon_qshlu_s32)(CPUState *env, uint32_t valop, uint32_t shiftop)
     return helper_neon_qshl_u32(env, valop, shiftop);
 }
 
-uint64_t HELPER(neon_qshlu_s64)(CPUState *env, uint64_t valop, uint64_t shiftop)
+uint64_t HELPER(neon_qshlu_s64)(CPUARMState *env, uint64_t valop, uint64_t shiftop)
 {
     if ((int64_t)valop < 0) {
         SET_QC();
@@ -788,7 +953,6 @@ uint64_t HELPER(neon_qshlu_s64)(CPUState *env, uint64_t valop, uint64_t shiftop)
     return helper_neon_qshl_u64(env, valop, shiftop);
 }
 
-/* FIXME: This is wrong.  */
 #define NEON_FN(dest, src1, src2) do { \
     int8_t tmp; \
     tmp = (int8_t)src2; \
@@ -817,8 +981,8 @@ NEON_VOP_ENV(qrshl_u16, neon_u16, 2)
 #undef NEON_FN
 
 /* The addition of the rounding constant may overflow, so we use an
- * intermediate 64 bits accumulator.  */
-uint32_t HELPER(neon_qrshl_u32)(CPUState *env, uint32_t val, uint32_t shiftop)
+ * intermediate 64 bit accumulator.  */
+uint32_t HELPER(neon_qrshl_u32)(CPUARMState *env, uint32_t val, uint32_t shiftop)
 {
     uint32_t dest;
     int8_t shift = (int8_t)shiftop;
@@ -846,9 +1010,9 @@ uint32_t HELPER(neon_qrshl_u32)(CPUState *env, uint32_t val, uint32_t shiftop)
     return dest;
 }
 
-/* Handling addition overflow with 64 bits inputs values is more
- * tricky than with 32 bits values.  */
-uint64_t HELPER(neon_qrshl_u64)(CPUState *env, uint64_t val, uint64_t shiftop)
+/* Handling addition overflow with 64 bit input values is more
+ * tricky than with 32 bit values.  */
+uint64_t HELPER(neon_qrshl_u64)(CPUARMState *env, uint64_t val, uint64_t shiftop)
 {
     int8_t shift = (int8_t)shiftop;
     if (shift >= 64) {
@@ -914,8 +1078,8 @@ NEON_VOP_ENV(qrshl_s16, neon_s16, 2)
 #undef NEON_FN
 
 /* The addition of the rounding constant may overflow, so we use an
- * intermediate 64 bits accumulator.  */
-uint32_t HELPER(neon_qrshl_s32)(CPUState *env, uint32_t valop, uint32_t shiftop)
+ * intermediate 64 bit accumulator.  */
+uint32_t HELPER(neon_qrshl_s32)(CPUARMState *env, uint32_t valop, uint32_t shiftop)
 {
     int32_t dest;
     int32_t val = (int32_t)valop;
@@ -942,9 +1106,9 @@ uint32_t HELPER(neon_qrshl_s32)(CPUState *env, uint32_t valop, uint32_t shiftop)
     return dest;
 }
 
-/* Handling addition overflow with 64 bits inputs values is more
- * tricky than with 32 bits values.  */
-uint64_t HELPER(neon_qrshl_s64)(CPUState *env, uint64_t valop, uint64_t shiftop)
+/* Handling addition overflow with 64 bit input values is more
+ * tricky than with 32 bit values.  */
+uint64_t HELPER(neon_qrshl_s64)(CPUARMState *env, uint64_t valop, uint64_t shiftop)
 {
     int8_t shift = (uint8_t)shiftop;
     int64_t val = valop;
@@ -1134,6 +1298,18 @@ uint32_t HELPER(neon_cnt_u8)(uint32_t x)
     return x;
 }
 
+/* Reverse bits in each 8 bit word */
+uint32_t HELPER(neon_rbit_u8)(uint32_t x)
+{
+    x =  ((x & 0xf0f0f0f0) >> 4)
+       | ((x & 0x0f0f0f0f) << 4);
+    x =  ((x & 0x88888888) >> 3)
+       | ((x & 0x44444444) >> 1)
+       | ((x & 0x22222222) << 1)
+       | ((x & 0x11111111) << 3);
+    return x;
+}
+
 #define NEON_QDMULH16(dest, src1, src2, round) do { \
     uint32_t tmp = (int32_t)(int16_t) src1 * (int16_t) src2; \
     if ((tmp ^ (tmp << 1)) & SIGNBIT) { \
@@ -1223,7 +1399,7 @@ uint32_t HELPER(neon_narrow_round_high_u16)(uint64_t x)
     return ((x >> 16) & 0xffff) | ((x >> 32) & 0xffff0000);
 }
 
-uint32_t HELPER(neon_unarrow_sat8)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_unarrow_sat8)(CPUARMState *env, uint64_t x)
 {
     uint16_t s;
     uint8_t d;
@@ -1250,7 +1426,7 @@ uint32_t HELPER(neon_unarrow_sat8)(CPUState *env, uint64_t x)
     return res;
 }
 
-uint32_t HELPER(neon_narrow_sat_u8)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_narrow_sat_u8)(CPUARMState *env, uint64_t x)
 {
     uint16_t s;
     uint8_t d;
@@ -1273,7 +1449,7 @@ uint32_t HELPER(neon_narrow_sat_u8)(CPUState *env, uint64_t x)
     return res;
 }
 
-uint32_t HELPER(neon_narrow_sat_s8)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_narrow_sat_s8)(CPUARMState *env, uint64_t x)
 {
     int16_t s;
     uint8_t d;
@@ -1296,7 +1472,7 @@ uint32_t HELPER(neon_narrow_sat_s8)(CPUState *env, uint64_t x)
     return res;
 }
 
-uint32_t HELPER(neon_unarrow_sat16)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_unarrow_sat16)(CPUARMState *env, uint64_t x)
 {
     uint32_t high;
     uint32_t low;
@@ -1319,7 +1495,7 @@ uint32_t HELPER(neon_unarrow_sat16)(CPUState *env, uint64_t x)
     return low | (high << 16);
 }
 
-uint32_t HELPER(neon_narrow_sat_u16)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_narrow_sat_u16)(CPUARMState *env, uint64_t x)
 {
     uint32_t high;
     uint32_t low;
@@ -1336,7 +1512,7 @@ uint32_t HELPER(neon_narrow_sat_u16)(CPUState *env, uint64_t x)
     return low | (high << 16);
 }
 
-uint32_t HELPER(neon_narrow_sat_s16)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_narrow_sat_s16)(CPUARMState *env, uint64_t x)
 {
     int32_t low;
     int32_t high;
@@ -1353,7 +1529,7 @@ uint32_t HELPER(neon_narrow_sat_s16)(CPUState *env, uint64_t x)
     return (uint16_t)low | (high << 16);
 }
 
-uint32_t HELPER(neon_unarrow_sat32)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_unarrow_sat32)(CPUARMState *env, uint64_t x)
 {
     if (x & 0x8000000000000000ull) {
         SET_QC();
@@ -1366,7 +1542,7 @@ uint32_t HELPER(neon_unarrow_sat32)(CPUState *env, uint64_t x)
     return x;
 }
 
-uint32_t HELPER(neon_narrow_sat_u32)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_narrow_sat_u32)(CPUARMState *env, uint64_t x)
 {
     if (x > 0xffffffffu) {
         SET_QC();
@@ -1375,7 +1551,7 @@ uint32_t HELPER(neon_narrow_sat_u32)(CPUState *env, uint64_t x)
     return x;
 }
 
-uint32_t HELPER(neon_narrow_sat_s32)(CPUState *env, uint64_t x)
+uint32_t HELPER(neon_narrow_sat_s32)(CPUARMState *env, uint64_t x)
 {
     if ((int64_t)x != (int32_t)x) {
         SET_QC();
@@ -1482,7 +1658,7 @@ uint64_t HELPER(neon_subl_u32)(uint64_t a, uint64_t b)
     return (a - b) ^ mask;
 }
 
-uint64_t HELPER(neon_addl_saturate_s32)(CPUState *env, uint64_t a, uint64_t b)
+uint64_t HELPER(neon_addl_saturate_s32)(CPUARMState *env, uint64_t a, uint64_t b)
 {
     uint32_t x, y;
     uint32_t low, high;
@@ -1504,7 +1680,7 @@ uint64_t HELPER(neon_addl_saturate_s32)(CPUState *env, uint64_t a, uint64_t b)
     return low | ((uint64_t)high << 32);
 }
 
-uint64_t HELPER(neon_addl_saturate_s64)(CPUState *env, uint64_t a, uint64_t b)
+uint64_t HELPER(neon_addl_saturate_s64)(CPUARMState *env, uint64_t a, uint64_t b)
 {
     uint64_t result;
 
@@ -1665,13 +1841,7 @@ uint64_t HELPER(neon_negl_u32)(uint64_t x)
     return low | ((uint64_t)high << 32);
 }
 
-/* FIXME:  There should be a native op for this.  */
-uint64_t HELPER(neon_negl_u64)(uint64_t x)
-{
-    return -x;
-}
-
-/* Saturnating sign manuipulation.  */
+/* Saturating sign manipulation.  */
 /* ??? Make these use NEON_VOP1 */
 #define DO_QABS8(x) do { \
     if (x == (int8_t)0x80) { \
@@ -1680,7 +1850,7 @@ uint64_t HELPER(neon_negl_u64)(uint64_t x)
     } else if (x < 0) { \
         x = -x; \
     }} while (0)
-uint32_t HELPER(neon_qabs_s8)(CPUState *env, uint32_t x)
+uint32_t HELPER(neon_qabs_s8)(CPUARMState *env, uint32_t x)
 {
     neon_s8 vec;
     NEON_UNPACK(neon_s8, vec, x);
@@ -1700,7 +1870,7 @@ uint32_t HELPER(neon_qabs_s8)(CPUState *env, uint32_t x)
     } else { \
         x = -x; \
     }} while (0)
-uint32_t HELPER(neon_qneg_s8)(CPUState *env, uint32_t x)
+uint32_t HELPER(neon_qneg_s8)(CPUARMState *env, uint32_t x)
 {
     neon_s8 vec;
     NEON_UNPACK(neon_s8, vec, x);
@@ -1720,7 +1890,7 @@ uint32_t HELPER(neon_qneg_s8)(CPUState *env, uint32_t x)
     } else if (x < 0) { \
         x = -x; \
     }} while (0)
-uint32_t HELPER(neon_qabs_s16)(CPUState *env, uint32_t x)
+uint32_t HELPER(neon_qabs_s16)(CPUARMState *env, uint32_t x)
 {
     neon_s16 vec;
     NEON_UNPACK(neon_s16, vec, x);
@@ -1738,7 +1908,7 @@ uint32_t HELPER(neon_qabs_s16)(CPUState *env, uint32_t x)
     } else { \
         x = -x; \
     }} while (0)
-uint32_t HELPER(neon_qneg_s16)(CPUState *env, uint32_t x)
+uint32_t HELPER(neon_qneg_s16)(CPUARMState *env, uint32_t x)
 {
     neon_s16 vec;
     NEON_UNPACK(neon_s16, vec, x);
@@ -1749,7 +1919,7 @@ uint32_t HELPER(neon_qneg_s16)(CPUState *env, uint32_t x)
 }
 #undef DO_QNEG16
 
-uint32_t HELPER(neon_qabs_s32)(CPUState *env, uint32_t x)
+uint32_t HELPER(neon_qabs_s32)(CPUARMState *env, uint32_t x)
 {
     if (x == SIGNBIT) {
         SET_QC();
@@ -1760,7 +1930,7 @@ uint32_t HELPER(neon_qabs_s32)(CPUState *env, uint32_t x)
     return x;
 }
 
-uint32_t HELPER(neon_qneg_s32)(CPUState *env, uint32_t x)
+uint32_t HELPER(neon_qneg_s32)(CPUARMState *env, uint32_t x)
 {
     if (x == SIGNBIT) {
         SET_QC();
@@ -1771,19 +1941,29 @@ uint32_t HELPER(neon_qneg_s32)(CPUState *env, uint32_t x)
     return x;
 }
 
+uint64_t HELPER(neon_qabs_s64)(CPUARMState *env, uint64_t x)
+{
+    if (x == SIGNBIT64) {
+        SET_QC();
+        x = ~SIGNBIT64;
+    } else if ((int64_t)x < 0) {
+        x = -x;
+    }
+    return x;
+}
+
+uint64_t HELPER(neon_qneg_s64)(CPUARMState *env, uint64_t x)
+{
+    if (x == SIGNBIT64) {
+        SET_QC();
+        x = ~SIGNBIT64;
+    } else {
+        x = -x;
+    }
+    return x;
+}
+
 /* NEON Float helpers.  */
-uint32_t HELPER(neon_min_f32)(uint32_t a, uint32_t b, void *fpstp)
-{
-    float_status *fpst = fpstp;
-    return float32_val(float32_min(make_float32(a), make_float32(b), fpst));
-}
-
-uint32_t HELPER(neon_max_f32)(uint32_t a, uint32_t b, void *fpstp)
-{
-    float_status *fpst = fpstp;
-    return float32_val(float32_max(make_float32(a), make_float32(b), fpst));
-}
-
 uint32_t HELPER(neon_abd_f32)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
@@ -1830,9 +2010,25 @@ uint32_t HELPER(neon_acgt_f32)(uint32_t a, uint32_t b, void *fpstp)
     return -float32_lt(f1, f0, fpst);
 }
 
+uint64_t HELPER(neon_acge_f64)(uint64_t a, uint64_t b, void *fpstp)
+{
+    float_status *fpst = fpstp;
+    float64 f0 = float64_abs(make_float64(a));
+    float64 f1 = float64_abs(make_float64(b));
+    return -float64_le(f1, f0, fpst);
+}
+
+uint64_t HELPER(neon_acgt_f64)(uint64_t a, uint64_t b, void *fpstp)
+{
+    float_status *fpst = fpstp;
+    float64 f0 = float64_abs(make_float64(a));
+    float64 f1 = float64_abs(make_float64(b));
+    return -float64_lt(f1, f0, fpst);
+}
+
 #define ELEM(V, N, SIZE) (((V) >> ((N) * (SIZE))) & ((1ull << (SIZE)) - 1))
 
-void HELPER(neon_qunzip8)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_qunzip8)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm0 = float64_val(env->vfp.regs[rm]);
     uint64_t zm1 = float64_val(env->vfp.regs[rm + 1]);
@@ -1860,7 +2056,7 @@ void HELPER(neon_qunzip8)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd + 1] = make_float64(d1);
 }
 
-void HELPER(neon_qunzip16)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_qunzip16)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm0 = float64_val(env->vfp.regs[rm]);
     uint64_t zm1 = float64_val(env->vfp.regs[rm + 1]);
@@ -1880,7 +2076,7 @@ void HELPER(neon_qunzip16)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd + 1] = make_float64(d1);
 }
 
-void HELPER(neon_qunzip32)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_qunzip32)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm0 = float64_val(env->vfp.regs[rm]);
     uint64_t zm1 = float64_val(env->vfp.regs[rm + 1]);
@@ -1896,7 +2092,7 @@ void HELPER(neon_qunzip32)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd + 1] = make_float64(d1);
 }
 
-void HELPER(neon_unzip8)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_unzip8)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm = float64_val(env->vfp.regs[rm]);
     uint64_t zd = float64_val(env->vfp.regs[rd]);
@@ -1912,7 +2108,7 @@ void HELPER(neon_unzip8)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd] = make_float64(d0);
 }
 
-void HELPER(neon_unzip16)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_unzip16)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm = float64_val(env->vfp.regs[rm]);
     uint64_t zd = float64_val(env->vfp.regs[rd]);
@@ -1924,7 +2120,7 @@ void HELPER(neon_unzip16)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd] = make_float64(d0);
 }
 
-void HELPER(neon_qzip8)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_qzip8)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm0 = float64_val(env->vfp.regs[rm]);
     uint64_t zm1 = float64_val(env->vfp.regs[rm + 1]);
@@ -1952,7 +2148,7 @@ void HELPER(neon_qzip8)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd + 1] = make_float64(d1);
 }
 
-void HELPER(neon_qzip16)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_qzip16)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm0 = float64_val(env->vfp.regs[rm]);
     uint64_t zm1 = float64_val(env->vfp.regs[rm + 1]);
@@ -1972,7 +2168,7 @@ void HELPER(neon_qzip16)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd + 1] = make_float64(d1);
 }
 
-void HELPER(neon_qzip32)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_qzip32)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm0 = float64_val(env->vfp.regs[rm]);
     uint64_t zm1 = float64_val(env->vfp.regs[rm + 1]);
@@ -1988,7 +2184,7 @@ void HELPER(neon_qzip32)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd + 1] = make_float64(d1);
 }
 
-void HELPER(neon_zip8)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_zip8)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm = float64_val(env->vfp.regs[rm]);
     uint64_t zd = float64_val(env->vfp.regs[rd]);
@@ -2004,7 +2200,7 @@ void HELPER(neon_zip8)(CPUState *env, uint32_t rd, uint32_t rm)
     env->vfp.regs[rd] = make_float64(d0);
 }
 
-void HELPER(neon_zip16)(CPUState *env, uint32_t rd, uint32_t rm)
+void HELPER(neon_zip16)(CPUARMState *env, uint32_t rd, uint32_t rm)
 {
     uint64_t zm = float64_val(env->vfp.regs[rm]);
     uint64_t zd = float64_val(env->vfp.regs[rd]);
@@ -2014,4 +2210,34 @@ void HELPER(neon_zip16)(CPUState *env, uint32_t rd, uint32_t rm)
         | (ELEM(zd, 3, 16) << 32) | (ELEM(zm, 3, 16) << 48);
     env->vfp.regs[rm] = make_float64(m0);
     env->vfp.regs[rd] = make_float64(d0);
+}
+
+/* Helper function for 64 bit polynomial multiply case:
+ * perform PolynomialMult(op1, op2) and return either the top or
+ * bottom half of the 128 bit result.
+ */
+uint64_t HELPER(neon_pmull_64_lo)(uint64_t op1, uint64_t op2)
+{
+    int bitnum;
+    uint64_t res = 0;
+
+    for (bitnum = 0; bitnum < 64; bitnum++) {
+        if (op1 & (1ULL << bitnum)) {
+            res ^= op2 << bitnum;
+        }
+    }
+    return res;
+}
+uint64_t HELPER(neon_pmull_64_hi)(uint64_t op1, uint64_t op2)
+{
+    int bitnum;
+    uint64_t res = 0;
+
+    /* bit 0 of op1 can't influence the high 64 bits at all */
+    for (bitnum = 1; bitnum < 64; bitnum++) {
+        if (op1 & (1ULL << bitnum)) {
+            res ^= op2 >> (64 - bitnum);
+        }
+    }
+    return res;
 }

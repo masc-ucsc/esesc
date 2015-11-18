@@ -4,6 +4,7 @@
 
    Contributed by Gabriel Southern
                   Jose Renau
+                  Sushant Kondguli
 
 This file is part of ESESC.
 
@@ -41,8 +42,7 @@ extern "C" int qemuesesc_main(int argc, char **argv, char **envp);
 extern "C" void *qemuesesc_main_bootstrap(void *threadargs) {
 
   static bool qemuStarted = false;
-  if (!qemuStarted)
-  {
+  if (!qemuStarted) {
     qemuStarted = true;
     QEMUArgs *qdata = (struct QEMUArgs *) threadargs;
 
@@ -57,7 +57,9 @@ extern "C" void *qemuesesc_main_bootstrap(void *threadargs) {
 
     MSG("qemu done");
 
-    exit(0);
+    QEMUReader_finish(0);
+
+    pthread_exit(0);
   }else{
     MSG("QEMU already started! Ignoring the new start.");
   }
@@ -72,27 +74,32 @@ extern "C" uint32_t QEMUReader_getFid(FlowID last_fid)
 
 extern "C" uint64_t QEMUReader_get_time() 
 {
-  //FIXME: fid?
   return qsamplerlist[0]->getTime();
 }
 
-extern "C" void QEMUReader_queue_inst(uint32_t insn, uint32_t pc, uint32_t addr, uint32_t fid, char op, uint64_t icount, void *env) 
-{
-  qsamplerlist[fid]->queue(insn,pc,addr,fid,op,icount,env);
+extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *dummy) {
+  I(fid<128); // qsampler statically sized to 128 at most
+
+  return qsamplerlist[fid]->queue(pc,addr,fid,op,src1, src2, dest, LREG_InvalidOutput, dummy);
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid)
 {
+  MSG("QEMUReader_finish(%d)",fid);
   qsamplerlist[fid]->stop();
   qsamplerlist[fid]->pauseThread(fid);
   qsamplerlist[fid]->terminate();
-//  qsamplerlist[fid]->freeFid(fid);
 }
 
 extern "C" void QEMUReader_finish_thread(uint32_t fid)
 {
   qsamplerlist[fid]->stop();
   qsamplerlist[fid]->pauseThread(fid);
+}
+
+extern "C" void QEMUReader_start_roi(uint32_t fid)
+{
+  qsamplerlist[fid]->start_roi();
 }
 
 extern "C" void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid)
@@ -120,13 +127,7 @@ extern "C" void QEMUReader_setFlowCmd(bool* flowStatus) {
 }
 #endif
 
-extern "C" int QEMUReader_is_sampler_done(FlowID fid) {
-  return qsamplerlist[fid]->isSamplerDone();
-}
-
 extern "C" int32_t QEMUReader_setnoStats(FlowID fid){
-  qsamplerlist[fid]->dumpThreadProgressedTime(fid);
-  qsamplerlist[fid]->setnoStats(fid);
   return 0;
 }
 

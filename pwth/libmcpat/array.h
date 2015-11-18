@@ -62,7 +62,7 @@ using namespace std;
 class ArrayST :public Component{
  public:
   ArrayST(){};
-  ArrayST(const InputParameter *configure_interface, string _name, bool _is_default=true);
+  ArrayST(const InputParameter *configure_interface, string _name, bool _is_default=true, bool powervalprovided = false);
 
   InputParameter l_ip;
   string         name;

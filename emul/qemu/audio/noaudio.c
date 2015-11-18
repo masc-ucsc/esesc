@@ -23,7 +23,7 @@
  */
 #include "qemu-common.h"
 #include "audio.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 
 #define AUDIO_CAP "noaudio"
 #include "audio_int.h"
@@ -46,7 +46,7 @@ static int no_run_out (HWVoiceOut *hw, int live)
     int64_t ticks;
     int64_t bytes;
 
-    now = qemu_get_clock_ns (vm_clock);
+    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     ticks = now - no->old_ticks;
     bytes = muldiv64 (ticks, hw->info.bytes_per_second, get_ticks_per_sec ());
     bytes = audio_MIN (bytes, INT_MAX);
@@ -63,7 +63,7 @@ static int no_write (SWVoiceOut *sw, void *buf, int len)
     return audio_pcm_sw_write (sw, buf, len);
 }
 
-static int no_init_out (HWVoiceOut *hw, struct audsettings *as)
+static int no_init_out(HWVoiceOut *hw, struct audsettings *as, void *drv_opaque)
 {
     audio_pcm_init_info (&hw->info, as);
     hw->samples = 1024;
@@ -82,7 +82,7 @@ static int no_ctl_out (HWVoiceOut *hw, int cmd, ...)
     return 0;
 }
 
-static int no_init_in (HWVoiceIn *hw, struct audsettings *as)
+static int no_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
 {
     audio_pcm_init_info (&hw->info, as);
     hw->samples = 1024;
@@ -102,7 +102,7 @@ static int no_run_in (HWVoiceIn *hw)
     int samples = 0;
 
     if (dead) {
-        int64_t now = qemu_get_clock_ns (vm_clock);
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
         int64_t ticks = now - no->old_ticks;
         int64_t bytes =
             muldiv64 (ticks, hw->info.bytes_per_second, get_ticks_per_sec ());

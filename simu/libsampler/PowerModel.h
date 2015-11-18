@@ -81,10 +81,6 @@ private:
   bool   enableNTC;
   int    turboMode;
   float  volNTC;
-#ifdef ENABLE_CUDA
-  uint32_t kId;
-  std::vector <float>  kernelsVolNTC;
-#endif
 
   GStatsCntr *pSig[100];
   uint32_t totalPowerSamples;
@@ -188,7 +184,7 @@ public:
 
   void plug(const char *section);
   void unplug();
-  int  calcStats(uint64_t timeinterval, bool reusePower, FlowID fid); 
+  void calcStats(uint64_t timeinterval, bool reusePower, FlowID fid); 
   void updateActivity(uint64_t timeinterval, FlowID fid = 0);
   void printStatus();
   void testWrapper();
@@ -233,16 +229,6 @@ public:
   int updateFreqDVFS_T();
   float getMaxT();
   double getFreq()                             { return freq; };
-
-#ifdef ENABLE_CUDA
-  void  setTurboRatioGPU(float freqCoef)       { return EmuSampler::setTurboRatioGPU(freqCoef); };
-  void  updatePowerNTC();
-  int   updateFreqNTC();
-  float freqTrendNTC(float volNTC);
-  float freqTrendNTC_var(float volNTC);
-  float getCurrentED();
-  void  setKernelId(uint32_t kId_) { kId = kId_; };
-#endif
 
   void plugStackingValidator();
   void stackingValidator();

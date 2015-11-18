@@ -1,4 +1,5 @@
 // Contributed by Jose Renau
+//                Sushant Kondguli
 //
 // The ESESC/BSD License
 //
@@ -40,11 +41,9 @@
 #include "SescConf.h"
 
 bool cuda_go_ahead = false;
-std        :: vector<bool> EmuSampler :: done;
-int32_t   EmuSampler::inTiming[];
-uint64_t  EmuSampler::nSamples[];
-uint64_t  EmuSampler::totalnSamples                = 0;
-bool      EmuSampler::justUpdatedtotalnSamples     = false;
+bool MIMDmode      = false;
+std::vector<bool> EmuSampler::done;
+bool EmuSampler::terminated = false;
 uint64_t *EmuSampler::instPrev;
 uint64_t *EmuSampler::clockPrev;
 uint64_t *EmuSampler::fticksPrev;
@@ -52,9 +51,6 @@ uint64_t *EmuSampler::fticksPrev;
 uint64_t __thread EmuSampler::local_icount=0; // private per thread
 
 float EmuSampler::turboRatio = 1.0;
-#ifdef ENABLE_CUDA
-float EmuSampler::turboRatioGPU = 1.0;
-#endif
  
 EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   /* EmuSampler constructor  */
@@ -130,15 +126,6 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   numFlow = SescConf->getRecordSize("","cpuemul");
   if (done.size() != numFlow)
     done.resize(numFlow);
-  for(size_t i=1; i< done.size();i++) {
-    //done[i] = true;
-    clearInTiming(i);
-  }
-
-  keepStats = true;
-  //keepStats = false;
-
-  nSamples[fid] = totalnSamples; // Local sample counter get the value of global counter in the beginning
 
   instPrev = new uint64_t[emul->getNumEmuls()]; 
   clockPrev = new uint64_t[emul->getNumEmuls()]; 
@@ -196,7 +183,7 @@ FlowID EmuSampler::getNumFlows()
 void EmuSampler::beginTiming(EmuMode mod)
   /* Start sampling a new mode  */
 {
-  I(stopJustCalled);
+  //I(stopJustCalled);
   stopJustCalled = false;
   phasenInst         = 0;
   mode = mod;
@@ -211,6 +198,9 @@ void EmuSampler::beginTiming(EmuMode mod)
 void EmuSampler::stop()
   /* stop a given mode, and assign statistics  */
 { 
+//  if (terminated)
+//    return;
+
   if (totalnInst >= cuda_inst_skip)
     cuda_go_ahead = true;
 
@@ -227,10 +217,6 @@ void EmuSampler::stop()
   usecs *= 1000000;
   usecs += (endTime.tv_nsec - startTime.tv_nsec)/1000;
   tusage[mode]->add(usecs);
-#ifdef ENABLE_CUDA
-  //AtomicAdd(&phasenInst, icount); FIXME:
-  //iusage[mode]->add(phasenInst);
-#endif
   iusage[mode]->add(phasenInst);
 
   //get the globalClock_Timing, it includes idle clock as well
@@ -249,7 +235,7 @@ void EmuSampler::stop()
   calcCPI();
 
   I(!stopJustCalled);
-  I(phasenInst); // There should be something executed (more likely)
+  //I(phasenInst); // There should be something executed (more likely)
   lastPhasenInst    = phasenInst;
   phasenInst        = 0;
   stopJustCalled    = true;
@@ -274,7 +260,7 @@ void EmuSampler::startRabbit(FlowID fid)
   /* Start Rabbit Mode : No timing or warmup, go as fast as possible  */
 {
   //MSG("Sampler:STARTRABBIT");
-  I(stopJustCalled);
+  //I(stopJustCalled);
   if (mode!=EmuRabbit)
     emul->startRabbit(fid);
   beginTiming(EmuRabbit);
@@ -284,7 +270,7 @@ void EmuSampler::startRabbit(FlowID fid)
 void EmuSampler::startWarmup(FlowID fid)
   /* Start Rabbit Mode : No timing but it has cache/bpred warmup  */
 {
-  I(stopJustCalled);
+  //I(stopJustCalled);
   if (mode!=EmuWarmup)
     emul->startWarmup(fid);
   beginTiming(EmuWarmup);
@@ -294,7 +280,7 @@ void EmuSampler::startWarmup(FlowID fid)
 void EmuSampler::startDetail(FlowID fid)
   /* Start Rabbit Mode : Detailing modeling without no statistics gathering  */
 {
-  I(stopJustCalled);
+  //I(stopJustCalled);
   if (mode!=EmuDetail)
     emul->startDetail(fid);
   beginTiming(EmuDetail);
@@ -305,10 +291,9 @@ void EmuSampler::startTiming(FlowID fid)
   /* Start Timing Mode : full timing model  */
 {
   //MSG("Sampler:STARTTIMING");
-  I(stopJustCalled);
+  //I(stopJustCalled);
   globalClock_Timing_prev = globalClock; 
 
-  setInTiming(fid);
   //if (mode!=EmuTiming)
   emul->startTiming(fid);
 
@@ -358,6 +343,17 @@ bool EmuSampler::execute(FlowID fid, uint64_t icount)
       fprintf(stderr,"?%d",fid );
   }
 
+  // An adjustment when adding more than one instruction. Keeps the sample prints valid 
+  // Repeat: Note, this is racy code. We can miss a rwdt from time to time, but who cares?
+  if (icount > 1) {
+    while (next < totalnInst) {
+        if (mode==EmuRabbit)
+            fprintf(stderr,"r%d",fid );
+        next += 4*1024*1024; 
+    }
+    next = totalnInst;
+  }
+
   return !done[fid];
 }
 /*  */
@@ -366,7 +362,6 @@ void EmuSampler::markDone()
 /* indicate the sampler that a flow is done for good  */
 {
   uint32_t endfid = emul->getNumEmuls() - 1;
-  stop();
   I(!stopJustCalled || endfid==0); 
 
   I(done.size() > endfid);
@@ -417,6 +412,9 @@ void EmuSampler::calcCPI()
   /* calculates cpi for the last EmuTiming mode  */
 {
   if (mode != EmuTiming)
+    return;
+
+  if (terminated)
     return;
 
   I(calcCPIJustCalled == false); 
@@ -471,8 +469,8 @@ void EmuSampler::calcCPI()
 
   float newipc = static_cast<float>(instCount)/static_cast<float>(adjustedClock);
   float newuipc = static_cast<float>(uInstCount)/static_cast<float>(adjustedClock);
-  uipc->sample(100*newuipc);
-  ipc->sample(100*newipc);
+  uipc->sample(100*newuipc,true);
+  ipc->sample(100*newipc,true);
 
   //I(newCPI<=4);
   if (newCPI > 5) {
@@ -484,24 +482,4 @@ void EmuSampler::calcCPI()
   meauCPI = 1.0/newuipc;
 }
 /*  */
-
-void EmuSampler::updatenSamples() {
-  if (justUpdatedtotalnSamples)
-    return;
-
-  totalnSamples++;
-  I(totalnSamples == nSamples[sFid]);
-  justUpdatedtotalnSamples = true;
-  //MSG(" %lu ", totalnSamples);
-}
-
-void EmuSampler::clearInTiming(FlowID fid){ 
-  inTiming[fid] = 0; 
-}
-
-void EmuSampler::setInTiming(FlowID fid)  { 
-  inTiming[fid] = 1; 
-  justUpdatedtotalnSamples = false;
-  nSamples[fid]++;
-}
 

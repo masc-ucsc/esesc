@@ -100,7 +100,7 @@ protected:
   }
 protected:
 public:
-  BPred(int32_t i, int32_t fetchWidth, const char *section, const char *name);
+  BPred(int32_t i, int32_t fetchWidth, const char *section, const char *sname, const char *name);
   virtual ~BPred();
 
   virtual PredType predict(DInst *dinst, bool doUpdate) = 0;
@@ -108,6 +108,9 @@ public:
   PredType doPredict(DInst *dinst, bool doUpdate) {
     PredType pred = predict(dinst, doUpdate);
     if (!doUpdate || pred == NoPrediction)
+      return pred;
+
+    if (dinst->getInst()->isJump())
       return pred;
 
     nHit.inc(pred == CorrectPrediction);
@@ -127,7 +130,7 @@ private:
   int32_t index;
 protected:
 public:
-  BPRas(int32_t i, int32_t fetchWidth, const char *section);
+  BPRas(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BPRas();
   PredType predict(DInst *dinst, bool doUpdate);
 
@@ -155,7 +158,7 @@ private:
   
 protected:
 public:
-  BPBTB(int32_t i, int32_t fetchWidth, const char *section, const char *name=0);
+  BPBTB(int32_t i, int32_t fetchWidth, const char *section, const char *sname, const char *name=0);
   ~BPBTB();
 
   PredType predict(DInst *dinst, bool doUpdate);
@@ -169,9 +172,9 @@ private:
 
 protected:
 public:
-  BPOracle(int32_t i, int32_t fetchWidth, const char *section)
-    :BPred(i, fetchWidth, section, "Oracle")
-    ,btb(i, fetchWidth, section) {
+  BPOracle(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+    :BPred(i, fetchWidth, section, sname, "Oracle")
+    ,btb(i, fetchWidth, section, sname) {
   }
 
   PredType predict(DInst *dinst, bool doUpdate);
@@ -184,9 +187,9 @@ private:
 
 protected:
 public:
-  BPNotTaken(int32_t i, int32_t fetchWidth, const char *section)
-    :BPred(i, fetchWidth, section, "NotTaken") 
-    ,btb(  i, fetchWidth, section) {
+  BPNotTaken(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+    :BPred(i, fetchWidth, section, sname, "NotTaken") 
+    ,btb(  i, fetchWidth, section, sname) {
     // Done
   }
 
@@ -200,9 +203,9 @@ private:
 
 protected:
 public:
-  BPNotTakenEnhanced(int32_t i, int32_t fetchWidth, const char *section)
-    :BPred(i, fetchWidth, section, "NotTakenEnhanced")
-    ,btb(  i, fetchWidth, section) {
+  BPNotTakenEnhanced(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+    :BPred(i, fetchWidth, section, sname, "NotTakenEnhanced")
+    ,btb(  i, fetchWidth, section, sname) {
     // Done
   }
 
@@ -216,9 +219,9 @@ private:
 
 protected:
 public:
-  BPTaken(int32_t i, int32_t fetchWidth, const char *section)
-    :BPred(i, fetchWidth, section, "Taken") 
-    ,btb(  i, fetchWidth, section) {
+  BPTaken(int32_t i, int32_t fetchWidth, const char *section, const char *sname)
+    :BPred(i, fetchWidth, section, sname, "Taken") 
+    ,btb(  i, fetchWidth, section, sname) {
     // Done
   }
 
@@ -233,7 +236,7 @@ private:
   SCTable table;
 protected:
 public:
-  BP2bit(int32_t i, int32_t fetchWidth, const char *section);
+  BP2bit(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
 
   PredType predict(DInst *dinst, bool doUpdate);
 
@@ -254,7 +257,7 @@ private:
   HistoryType *historyTable; // LHR
 protected:
 public:
-  BP2level(int32_t i, int32_t fetchWidth, const char *section);
+  BP2level(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BP2level();
 
   PredType predict(DInst *dinst, bool doUpdate);
@@ -277,7 +280,7 @@ private:
 
 protected:
 public:
-  BPHybrid(int32_t i, int32_t fetchWidth, const char *section);
+  BPHybrid(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BPHybrid();
 
   PredType predict(DInst *dinst, bool doUpdate);
@@ -305,7 +308,7 @@ private:
   HistoryType history;
 protected:
 public:
-  BP2BcgSkew(int32_t i, int32_t fetchWidth, const char *section);
+  BP2BcgSkew(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BP2BcgSkew();
   
   PredType predict(DInst *dinst, bool doUpdate);
@@ -335,7 +338,7 @@ private:
 
 protected:
 public:
-  BPyags(int32_t i, int32_t fetchWidth, const char *section);
+  BPyags(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BPyags();
   
   PredType predict(DInst *dinst, bool doUpdate);
@@ -371,7 +374,7 @@ private:
 protected:
   int32_t geoidx(long long Add, long long *histo, int32_t m, int32_t funct);
 public:
-  BPOgehl(int32_t i, int32_t fetchWidth, const char *section);
+  BPOgehl(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BPOgehl();
   
   PredType predict(DInst *dinst, bool doUpdate);
@@ -407,7 +410,7 @@ private:
 protected:
   uint32_t geoidx2(long long Add, int32_t m);
 public:
-  BPSOgehl(int32_t i, int32_t fetchWidth, const char *section);
+  BPSOgehl(int32_t i, int32_t fetchWidth, const char *section, const char *sname);
   ~BPSOgehl();
   
   PredType predict(DInst *dinst, bool doUpdate);
@@ -431,10 +434,10 @@ private:
 
 protected:
 public:
-  BPredictor(int32_t i, int32_t fetchWidth, const char *section, BPredictor *bpred=0);
+  BPredictor(int32_t i, int32_t fetchWidth, const char *section, const char *sname, BPredictor *bpred=0);
   ~BPredictor();
 
-  static BPred *getBPred(int32_t id, int32_t fetchWidth, const char *sec);
+  static BPred *getBPred(int32_t id, int32_t fetchWidth, const char *sname, const char *sec);
 
   PredType predict(DInst *dinst, bool doUpdate) {
     I(dinst->getInst()->isControl());
@@ -454,6 +457,21 @@ public:
     }
 
     p = pred->doPredict(dinst, doUpdate);
+
+    // Overall stats
+    nMiss.inc(p != CorrectPrediction && doUpdate);
+
+    return p;
+  }
+
+  PredType predict2(DInst *dinst, bool doUpdate) {
+    I(dinst->getInst()->isControl());
+
+    nBranches.inc(doUpdate);
+    nTaken.inc(dinst->isTaken());
+    // No RAS in L2
+
+    PredType p = pred->doPredict(dinst, doUpdate);
 
     // Overall stats
     nMiss.inc(p != CorrectPrediction && doUpdate);

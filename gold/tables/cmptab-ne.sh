@@ -1,8 +1,14 @@
+# shell file to compare tables whose metrics are expected to be unequal 
+
+# cmp_tab.py usage:
+#           python cmp_tab.py infile1 infile2 outfile -e eps1 eps2 ... -c exp1 exp2 ...
+#           Assumes 4 metrics. Use argument -m x, where x is number of metrics in the table          
+
 #crafty
-$7/gold/exe/cmptab -t $1:$2 -f0 $1 -f1 $2 -o $1:$2 -m 6 -e 0.05 0.11 0.21 0.05 0.05 0.0 -c gt gt eq lt lt eq
+python $7/gold/exe/cmp_tab.py $1 $2 $1:$2 -e 0.05 0.11 0.21 0.05 -c gt gt eq lt
 
 #mcf
-$7/gold/exe/cmptab -t $3:$4 -f0 $3 -f1 $4 -o $3:$4 -m 6 -e 0.05 0.11 3.80 0.05 0.05 0.0 -c gt gt eq lt lt eq
+python $7/gold/exe/cmp_tab.py $3 $4 $3:$4 -e 0.05 0.11 0.21 0.05 -c gt gt eq lt
 
 #vpr
-$7/gold/exe/cmptab -t $5:$6 -f0 $5 -f1 $6 -o $5:$6 -m 6 -e 0.05 0.11 0.50 0.05 0.05 0.0 -c gt gt eq lt lt eq
+python $7/gold/exe/cmp_tab.py $5 $6 $5:$6 -e 0.05 0.11 0.21 0.05 -c gt gt eq lt

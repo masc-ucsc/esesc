@@ -288,7 +288,7 @@ def writeScript(options)
     #scriptFile.puts("cp -f " + options[:OOOxmlLoc] +"  .")
     inputpath = options[:inputPath]
     if(inputpath==nil)
-      inputpath = "~/benchsuits/" + "input/"
+      inputpath = "/mada/software/benchmarks/SPEC/input/"
     end
     scriptFile.puts("cp -rf " + File.join(inputpath, benchFullName_a , '/*') + ' .')
     if(options[:numCores] > 1)

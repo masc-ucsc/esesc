@@ -223,7 +223,7 @@ void PowerModel::printStatus()
 }
 /* }}} */
 
-int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
+void PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
 /* calcStats {{{1 */
 {
   // This is called through sampler. So the power/thermal
@@ -232,8 +232,6 @@ int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
   //
   //need to sync stats first
 
-  int return_signal = 0; // check for 90s simulated time to finish
- 
   energyBundle->setFreq(getFreq());
 
   if (!keepPower) {     // Calculate new Power 
@@ -266,19 +264,13 @@ int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
   uint32_t throttleLength = 0;
   if (doTherm) {
     if (energyBundle->cntrs.size()>0){
-      return_signal = sescThermWrapper->calcTemp(energyBundle, temperatures, timeInterval, throttleLength);
+      sescThermWrapper->calcTemp(energyBundle, temperatures, timeInterval, throttleLength);
     }
   }
 
   updatePowerGStats();
   dumpTotalPower("totalpTh");
   //double tp = getLastTotalPower();
-#ifdef ENABLE_CUDA
-  double ed = getCurrentED();
-  //printf("total Power TH:%f, ED:%f, Vol:%f  timeinterval=%lu\n", tp, ed, volNTC, (long unsigned int) timeinterval);
-#else
-  //printf("total Power TH:%f, Vol:%f  timeinterval=%lu\n", tp, volNTC, (long unsigned int) timeinterval);
-#endif
 
   // Thermal Throttling
   throttle(fid, throttleLength);
@@ -289,7 +281,6 @@ int PowerModel::calcStats(uint64_t timeinterval, bool keepPower, FlowID fid)
     if (logprf)
       dumpPerf(false);
   }
-  return(return_signal);
 }
 /* }}} */
 
@@ -752,14 +743,14 @@ void PowerModel::updatePowerGStats() {
 
   for(size_t i=0; i< energyBundle->cntrs.size(); i++) {
     if (clockInterval[ncores-1] > 1 || !energyBundle->cntrs[i].isGPU()){
-        powerDynCntr[i]->sample(1000*energyBundle->cntrs[i].getDyn());  
-        powerLkgCntr[i]->sample(1000*energyBundle->cntrs[i].getScaledLkg());  
-        energyCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*energyBundle->cntrs[i].getCyc()/1e3);  
-        engDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6);  
+        powerDynCntr[i]->sample(1000*energyBundle->cntrs[i].getDyn(), true);  
+        powerLkgCntr[i]->sample(1000*energyBundle->cntrs[i].getScaledLkg(), true);  
+        energyCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*energyBundle->cntrs[i].getCyc()/1e3, true);
+        engDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6, true);
         if (currentWin){
           currentEngDelayCntr[i]->reset();
         }
-        currentEngDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6);  
+        currentEngDelayCntr[i]->sample((energyBundle->cntrs[i].getScaledLkg() + energyBundle->cntrs[i].getDyn())*pow((double)energyBundle->cntrs[i].getCyc(),2)/1e6, true);  
     }
   }
 
@@ -1081,10 +1072,6 @@ void PowerModel::updatePowerTurbo(int freqState) {
 }
 
 void PowerModel::initTurboState() {
-
-#if ENABLE_CUDA
-     setTurboRatioGPU(1.0);
-#endif
      setTurboRatio(1.0);
 }
 
@@ -1103,81 +1090,14 @@ void PowerModel::updateTurboState() {
      freqState =  updateFreqDVFS_T();
      updatePowerTurbo(freqState);
      break;
-#if ENABLE_CUDA
-    case 2:
-    case 3:
-     freqState =  updateFreqNTC();
-     updatePowerNTC();
-     break;
-#endif
     default:
-     printf("\nWarning! Unknown Turbo state.\n");
-#if ENABLE_CUDA
-     setTurboRatioGPU(1.0);
-#endif
+     I(0);
+     LOG("WARNING: Invalid turbo state: %d\n", turboMode);
      setTurboRatio(1.0);
   }
 
   timeInterval /= getTurboRatio();
 }
-
-#if ENABLE_CUDA
-
-float PowerModel::getCurrentED() {
-  float ed     = 0.0;
-  for(size_t i = 0; i< energyBundle->cntrs.size(); i++) {
-    ed +=  currentEngDelayCntr[i]->getDouble();
-  }
-  return ed;
-}
-
-int PowerModel::updateFreqNTC() {
-
-  //get the volNTC
-  //calculate volRatio
-  //calculate freq
-
-  float ntcFreq = freqTrendNTC_var(volNTC);
-  float freqCoef = ntcFreq/getFreq();
-  setTurboRatioGPU(freqCoef);
-
-
-  return 0;
-
-}
-
-void PowerModel::updatePowerNTC() {
-
-  float volCoef = volNTC/1.0;
-
-  float dynCoef = volCoef * volCoef; // dynP ~ V^2
-  float lkgCoef = volCoef; // Lkg ~ V
-  for (size_t k=0;k<energyBundle->cntrs.size();k++) {
-    if (strstr(energyBundle->cntrs[k].getName(), "G")) {
-      energyBundle->cntrs[k].setDyn(energyBundle->cntrs[k].getDyn() * dynCoef);
-      energyBundle->cntrs[k].setScaledLkg(energyBundle->cntrs[k].getLkg() * lkgCoef);
-    }
-  }
-}
-
-
-float PowerModel::freqTrendNTC(float volNTC) {
-  // extracted from the model presented in 
-  // "Practical Strategies for Power-Efficient Computing Technologies"
-  return (3.667*volNTC - 1.276);
-}
-
-float PowerModel::freqTrendNTC_var(float volNTC) {
-  // extracted from the model presented in 
-  // "Practical Strategies for Power-Efficient Computing Technologies"
-  float vfreq    = (3.667*volNTC - 1.276)*freq/(3.667*1.0 - 1.276);
-  float penalty = (5.0528/(volNTC-0.3787))/100 - 0.081;
-  float newfreq = 1.0/((1.0/vfreq) * (1+penalty));
-
-  return newfreq; 
-}
-
-#endif
 
 void PowerModel::plugStackingValidator(){
   // read the solution

@@ -42,7 +42,10 @@ StoreSet::StoreSet(const int32_t id)
   
 #ifdef STORESET_CLEARING
   clear_interval = CLR_INTRVL;
-  clearStoreSetsTimerCB.scheduleAbs(clear_interval+globalClock);
+  Time_t when = clear_interval+globalClock;
+  if (when >= (globalClock*2))
+      when = globalClock*2 - 1; // To avoid assertion about possible bug. Long enough anyway
+  clearStoreSetsTimerCB.scheduleAbs(when);
 #endif
 }
 /* }}} */
@@ -121,7 +124,10 @@ void StoreSet::clearStoreSetsTimer()
   //MSG("------------- CLEAR -----------------");
   clear_SSIT();
   clear_LFST();
-  clearStoreSetsTimerCB.scheduleAbs(clear_interval+globalClock);
+  Time_t when = clear_interval+globalClock;
+  if (when >= (globalClock*2))
+      when = globalClock*2 - 1; // To avoid assertion about possible bug. Long enough anyway
+  clearStoreSetsTimerCB.scheduleAbs(when);
 }
 /* }}} */
 #endif
@@ -155,6 +161,8 @@ bool StoreSet::insert(DInst *dinst)
   I(!lfs_dinst->isExecuted());
   I(!dinst->isExecuted());
   lfs_dinst->addSrc3(dinst); 
+  MSG("addSST %8ld->%8lld %lld",lfs_dinst->getID(), dinst->getID(), globalClock);
+
 
   return true;
 }
@@ -182,6 +190,7 @@ void StoreSet::remove(DInst *dinst)
 void StoreSet::stldViolation(DInst *ld_dinst, AddrType st_pc)
   /* add a new st/ld violation {{{1 */
 {
+  return; // FIXME: no store set
   I(ld_dinst->getInst()->isLoad());
 
   AddrType ld_pc = ld_dinst->getPC();

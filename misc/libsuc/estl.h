@@ -28,32 +28,25 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #ifdef __INTEL_COMPILER
 #include <ext/hash_map>
 #include <ext/hash_set>
-#include <ext/slist>
 #include <algorithm>
 #define HASH_MAP       stlport::hash_map
 #define HASH_SET       stlport::hash_set
 #define HASH_MULTIMAP  stlport::hash_multimap
 #define HASH           std::hash
-#define SLIST          std::slist
 #elif USE_STL_PORT
 /* Sun Studio or Standard compiler -library=stlport5 */
 #include <stlport/hash_map>
 #include <stlport/hash_set>
-#include <stlport/slist>
 #include <stlport/algorithm>
 #define HASH_MAP       std::hash_map
 #define HASH_SET       std::hash_set
 #define HASH_MULTIMAP  std::hash_multimap
 #define HASH           std::hash
-#define SLIST          std::slist
 
 #else
 /* GNU C Compiler */
 
-#include <ext/slist>
-#define SLIST          __gnu_cxx::slist
-
-#if 0
+#if __GNUC__ == 4 && __GNUC_MINOR__ < 6
 #include <ext/hash_set>
 #include <ext/hash_map>
 #define HASH_MAP       __gnu_cxx::hash_map
@@ -61,7 +54,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #define HASH_MULTIMAP  __gnu_cxx::hash_multimap
 #define HASH           __gnu_cxx::hash
 #else
-#include <ext/algorithm>
 #include <boost/functional/hash.hpp>
 #include <boost/utility.hpp>
 #include <boost/unordered_map.hpp>
@@ -94,27 +86,23 @@ namespace boost {
 //#include <backward/hash_set>
 //#include <ext/hash_map>
 //#include <ext/hash_set>
-//#include <ext/slist>
 //#include <ext/algorithm>
 //#define HASH_MAP       __gnu_cxx::hash_map
 //#define HASH_SET       __gnu_cxx::hash_set
 //#define HASH_MULTIMAP  __gnu_cxx::hash_multimap
 //#define HASH           __gnu_cxx::hash
-//#define SLIST          __gnu_cxx::slist
 
 /* gcc 4.4 and later */
 //#include <boost/functional/hash.hpp>
 //#include <boost/utility.hpp>
 //#include <boost/unordered_map.hpp>
 //#include <boost/unordered_set.hpp>
-//#include <ext/slist>
 //#include <ext/hash_map>
 //#define HASH_MAP       __gnu_cxx::hash_map
 ////#define HASH_MAP       boost::unordered_map
 //#define HASH_SET       boost::unordered_set
 //#define HASH_MULTIMAP  boost::unordered_multimap
 //#define HASH           boost::hash
-//#define SLIST          __gnu_cxx::slist
 //namespace boost {
 //  template <> struct hash<const char *> {
 //    std::size_t

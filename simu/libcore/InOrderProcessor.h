@@ -51,16 +51,17 @@ private:
   LSQNone     lsq;
   bool        busy;
 
-  DInst *RAT[LREG_MAX];
+  //DInst *RAT[LREG_MAX];
+  DInst **RAT;
 
   FastQueue<DInst *> rROB; // ready/retiring/executed ROB
 
+  void fetch(FlowID fid);
 protected:
   ClusterManager clusterManager;
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
 
-  void fetch(FlowID fid);
-  bool execute();
+  bool advance_clock(FlowID fid);
   void retire();
 
   StallCause addInst(DInst *dinst);
@@ -85,13 +86,6 @@ public:
     I(0);
     return false;
   }
-
-#ifdef SCOORE_CORE  
-  void set_StoreValueTable(AddrType addr, DataType value){ };
-  void set_StoreAddrTable(AddrType addr){ };
-  DataType get_StoreValueTable(AddrType addr){I(0); return 0; };
-  AddrType get_StoreAddrTable(AddrType addr){I(0); return 0; };
-#endif
 
 };
 

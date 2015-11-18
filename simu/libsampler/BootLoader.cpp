@@ -1,7 +1,7 @@
 // Contributed by Jose Renau
-//
+//  
 // The ESESC/BSD License
-//
+// 
 // Copyright (c) 2005-2013, Regents of the University of California and 
 // the ESESC Project.
 // All rights reserved.
@@ -33,27 +33,20 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include <signal.h>
+#include <pthread.h>
 
 #include "BootLoader.h"
 
 #ifndef ENABLE_NOEMU
 #include "QEMUEmulInterface.h"
 #endif
-#ifdef ENABLE_CUDA
-#include "GPUEmulInterface.h"
-#endif
 
 #include "SamplerSMARTS.h"
 #include "SamplerPeriodic.h"
 
-#ifdef ENABLE_CUDA
-#include "SamplerGPUSim.h"
-#include "SamplerGPUSpacial.h"
-#endif
-
 #include "GProcessor.h"
 #include "OoOProcessor.h"
-#include "SMTProcessor.h"
+#include "AccProcessor.h"
 #include "InOrderProcessor.h"
 #include "GPUSMProcessor.h"
 #include "GMemorySystem.h"
@@ -62,6 +55,7 @@
 #include "Report.h"
 #include "SescConf.h"
 #include "DrawArch.h"
+#include "Transporter.h"
 
 extern DrawArch arch;
 
@@ -107,6 +101,17 @@ timeval     BootLoader::stTime;
 PowerModel *BootLoader::pwrmodel;
 bool        BootLoader::doPower;
 
+int64_t BootLoader::checkpoint_id;
+bool BootLoader::is_live = false;
+int BootLoader::live_group = 0;
+int BootLoader::live_group_cntr = 0;
+int64_t BootLoader::sample_count = 0;
+int64_t BootLoader::live_warmup = 0;
+int64_t BootLoader::genwarm = 0;
+uint64_t BootLoader::live_warmup_cnt = 0;
+uint64_t BootLoader::live_ninst = 0;
+bool BootLoader::schema_sent = false;
+
 void BootLoader::check() 
 {
   if (!SescConf->check()) {
@@ -127,7 +132,7 @@ void BootLoader::reportOnTheFly(const char *file) {
   strcpy(tmp,file);
 
   Report::openFile(tmp);
-
+  
   SescConf->dump();
 
   report("partial");
@@ -157,7 +162,6 @@ void BootLoader::stopReportOnTheFly() {
 }
 
 void BootLoader::report(const char *str) {
-
   timeval endTime;
   gettimeofday(&endTime, 0);
   Report::field("OSSim:reportName=%s", str);
@@ -176,6 +180,52 @@ void BootLoader::report(const char *str) {
   Report::close();
 }
 
+void BootLoader::reportSample() {
+  //live stuff check if we are in live mode
+  if (!is_live)
+    return;
+
+  //check if in warmup mode (live cache)
+  if(live_warmup_cnt > 0) {
+    if(live_warmup_cnt > live_ninst)
+      live_warmup_cnt -= live_ninst;
+    else
+      live_warmup_cnt = 0;
+    GStats::flush();
+    return;
+  }
+
+  //increase sample index
+  sample_count++;
+  live_group_cntr++;
+  if(live_group_cntr < live_group)
+    return;
+  else
+    live_group_cntr = 0;
+
+  //check if schema is sent
+  if(!schema_sent) {
+    GStats::reportSchema();
+    Report::sendSchema();
+    schema_sent = true;
+  }
+
+  Report::setBinField(sample_count);
+  GStats::reportBin();
+  Report::binFlush();
+  GStats::flush();
+
+  //Wait for resume or kill
+#ifdef ESESC_LIVE
+  int k, skp;
+  Transporter::receive_fast("continue", "%d,%d", &k, &skp);
+  if(k == 1)
+    kill(getpid(),SIGTERM);
+#endif
+
+  return;
+}
+
 void BootLoader::plugEmulInterfaces() {
 
   FlowID nemul = SescConf->getRecordSize("","cpuemul");
@@ -189,10 +239,6 @@ void BootLoader::plugEmulInterfaces() {
   // For now, we will assume the simplistic case where there is one QEMU and one GPU. 
   // (So one object each of classes QEMUEmulInterface and GPUEmulInterface)
   const char* QEMUCPUSection = NULL;
-#ifdef ENABLE_CUDA
-  const char* QEMUGPUSection = NULL;
-  FlowID sharedGPUFid=0;
-#endif
   for(FlowID i=0;i<nemul;i++) {
     const char *section = SescConf->getCharPtr("","cpuemul",i);
     const char *type    = SescConf->getCharPtr(section,"type");
@@ -209,21 +255,8 @@ void BootLoader::plugEmulInterfaces() {
       TaskHandler::FlowIDEmulMapping.push_back(0); // Interface 0 is QEMU
 
       createEmulInterface(QEMUCPUSection, i); // each CPU has it's own Emul/Sampler
-
-#ifdef ENABLE_CUDA
-    }else if(strcasecmp(type,"GPU") == 0 ) {
-      if (QEMUGPUSection == NULL) {
-        QEMUGPUSection = section;
-        sharedGPUFid = i;
-        createEmulInterface(QEMUGPUSection, sharedGPUFid); // GPU shares one Emul/Sampler
-      } else if (strcasecmp(QEMUGPUSection,section)){
-        MSG("ERROR: eSESC supports only a single GPU");
-        MSG("cpuemul[%d] specifies a different section %s",i,section);
-        SescConf->notCorrect();
-        return;
-      }
-      TaskHandler::FlowIDEmulMapping.push_back(1); // Interface 1 is GPU
-#endif
+    }else if(strcasecmp(type,"accel") == 0 ) {
+      MSG("cpuemul[%d] specifies a different section %s",i,section);
     }else{
       MSG("ERROR: Unknown type %s of section %s, cpuemul [%d]",type,section,i);
       SescConf->notCorrect();
@@ -249,17 +282,15 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
   const char *sampler_sec  = SescConf->getCharPtr(section,keyword);
   const char *sampler_type = SescConf->getCharPtr(sampler_sec,"type");
 
-  cout<<keyword<<" " <<section<<sampler_sec<<" "<<sampler_type<<"___________________________"<<endl<<endl;
-  EmuSampler *sampler = 0;
+  static EmuSampler *sampler = 0;
+
+  if (sampler)
+    return sampler;
+
   if(strcasecmp(sampler_type,"inst") == 0 ) {
     sampler = new SamplerSMARTS("TASS",sampler_sec,eint, fid);
   }else if(strcasecmp(sampler_type,"time") == 0 ) {
     sampler = new SamplerPeriodic("TBS",sampler_sec,eint, fid);
-#ifdef ENABLE_CUDA
-  }else if(strcasecmp(sampler_type,"GPUSpacial") == 0 ) {
-    I(strcasecmp(sampler_type,"GPUSpacial")==0);
-    sampler = new SamplerGPUSpacial("GPUSpacial",sampler_sec,eint, fid);
-#endif
   }else{
     MSG("ERROR: unknown sampler [%s] type [%s]",sampler_sec,sampler_type);
     SescConf->notCorrect();
@@ -283,11 +314,6 @@ void BootLoader::createEmulInterface(const char *section, FlowID fid)
   if(strcasecmp(type,"QEMU") == 0 ) {
     eint = new QEMUEmulInterface(section);
     TaskHandler::addEmul(eint, fid);
-#ifdef ENABLE_CUDA
-  }else if(strcasecmp(type,"GPU") == 0 ) {
-    eint = new GPUEmulInterface(section);
-    TaskHandler::addEmulShared(eint);
-#endif
   }else{
     MSG("ERROR: unknown cpusim [%s] type [%s]",section,type);
     SescConf->notCorrect();
@@ -315,31 +341,41 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   CPU_t cpuid = static_cast<CPU_t>(i);
 
   GProcessor  *gproc = 0;
-  if(SescConf->checkInt(section,"smtContexts")) {
-    if( SescConf->getInt(section,"smtContexts") > 1 )
-      gproc = new SMTProcessor(gms, cpuid);
-    else{
-      MSG("Invalid smtContexts.. Exiting...");
-      SescConf->notCorrect();
-    }
-#ifdef ENABLE_CUDA
-  } else if(SescConf->checkInt(section,"sp_per_sm")) {
-    if( SescConf->getInt(section,"sp_per_sm") >= 1 ){
-      MSG("SPs per SM in the GPU = %d", SescConf->getInt(section,"sp_per_sm"));
-      gproc = new GPUSMProcessor(gms, cpuid);
-    } else {
-      MSG("Invalid number of sp_per_sm. Exiting...");
-      SescConf->notCorrect();
-    }
-#endif
-  } else if(SescConf->getBool("cpusimu","inorder",cpuid)) {
+  if(!SescConf->checkCharPtr("cpusimu","type",cpuid)) {
+     MSG("error: we expect a type for the cpu type : ooo or inorder or accel or ???");
+     SescConf->notCorrect();
+     return;
+  }
+
+  const char *type = SescConf->getCharPtr("cpusimu","type",cpuid);
+
+  if(strcasecmp(type,"inorder")==0) {
+    MSG("Creating inorder processor %d", cpuid);
     gproc =new InOrderProcessor(gms, cpuid);
-  } else {
+  }else if(strcasecmp(type,"accel")==0) {
+    MSG("Creating accelerator core %d", cpuid);
+    gproc =new AccProcessor(gms, cpuid);
+  }else if(strcasecmp(type,"ooo")==0) {
+    MSG("Creating ooorder processor %d", cpuid);
     gproc =new OoOProcessor(gms, cpuid);
+  }else{
+    MSG("error: we expect a type for the cpu type : ooo or inorder or accel or ???");
+    SescConf->notCorrect();
+    return;
   }
 
   I(gproc);
   TaskHandler::addSimu(gproc);
+}
+
+void BootLoader::plugSocket(int64_t cpid, int64_t fwu, int64_t gw, uint64_t lwcnt) {
+  //live stuff
+  checkpoint_id = cpid;
+  sample_count = 0;
+  live_warmup = fwu;
+  genwarm = gw;
+  live_warmup_cnt = lwcnt;
+  live_ninst = static_cast<uint64_t>(SescConf->getDouble("live","nInstTiming"));
 }
 
 void BootLoader::plug(int argc, const char **argv) {
@@ -351,6 +387,11 @@ void BootLoader::plug(int argc, const char **argv) {
   TaskHandler::plugBegin();
   plugSimuInterfaces();
   check();
+
+  if(argc > 1 && strcmp(argv[1], "check") == 0) {
+    printf("success\n");
+    exit(0);
+  }
   
   const char *tmp;
   if( getenv("REPORTFILE") ) {
@@ -367,6 +408,10 @@ void BootLoader::plug(int argc, const char **argv) {
     sprintf(reportFile,"esesc_%s.XXXXXX",tmp);
   }
 
+  //live stuff
+  is_live = SescConf->getBool("","live");
+  live_group = SescConf->getBool("","live_group");
+
   Report::openFile(reportFile);
   
   SescConf->getDouble("technology","frequency"); // Just read it to get it in the dump
@@ -375,6 +420,11 @@ void BootLoader::plug(int argc, const char **argv) {
   plugEmulInterfaces();
   check();
 
+#if GOOGLE_GRAPH_API
+  arch.drawArchHtml("memory-arch.html");
+#else
+  arch.drawArchDot("memory-arch.dot");
+#endif
 
   const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
   doPower = SescConf->getBool(pwrsection,"doPower",0);
@@ -387,11 +437,6 @@ void BootLoader::plug(int argc, const char **argv) {
 
   check();
   TaskHandler::plugEnd();
-#if GOOGLE_GRAPH_API
-  arch.drawArchHtml("memory-arch.html");
-#else
-  arch.drawArchDot("memory-arch.dot");
-#endif
 }
 
 void BootLoader::boot() {

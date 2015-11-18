@@ -21,3 +21,6 @@ LIST(REMOVE_ITEM mcpat_SOURCE main.cpp)
 
 ADD_LIBRARY(mcpat ${mcpat_SOURCE} ${mcpat_HEADER})
 
+IF(NEW_BOOST)
+  TARGET_LINK_LIBRARIES(mcpat -lboost_serialization)
+ENDIF(NEW_BOOST)

@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -47,15 +47,15 @@ Time_t GProcessor::lastWallClock=0;
 
 GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
   :cpu_id(i)
-  ,MaxFlows(numFlows)
-  ,FetchWidth(SescConf->getInt("cpusimu", "fetchWidth",i))
-  ,IssueWidth(SescConf->getInt("cpusimu", "issueWidth",i))
+   ,MaxFlows(numFlows)
+   ,FetchWidth(SescConf->getInt("cpusimu", "fetchWidth",i))
+   ,IssueWidth(SescConf->getInt("cpusimu", "issueWidth",i))
   ,RetireWidth(SescConf->getInt("cpusimu", "retireWidth",i))
-  ,RealisticWidth(RetireWidth < IssueWidth ? RetireWidth : IssueWidth)
+   ,RealisticWidth(RetireWidth < IssueWidth ? RetireWidth : IssueWidth)
   ,InstQueueSize(SescConf->getInt("cpusimu", "instQueueSize",i))
   ,MaxROBSize(SescConf->getInt("cpusimu", "robSize",i))
   ,memorySystem(gm)
-  ,storeset(i)
+,storeset(i)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
   ,ROB(MaxROBSize)
   ,rrobUsed("P(%d)_rrobUsed", i) // avg
@@ -67,17 +67,22 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
   ,nFreeze("P(%d):nFreeze",i)
   ,clockTicks("P(%d):clockTicks",i)
 {
-  active = true;
+  if (i ==0)
+    active = true;
+  else
+    active = false;
 
   lastReplay = 0;
   if (wallClock ==0)
     wallClock = new GStatsCntr("OS:wallClock");
+  activeclock_start = lastWallClock;
+  activeclock_end   = lastWallClock;
 
-  throttingRatio = SescConf->getDouble("cpusimu", "throttingRatio" , i);
-  throtting_cntr = 0;
+  throttlingRatio = SescConf->getDouble("cpusimu", "throttlingRatio" , i);
+  throttling_cntr = 0;
   bool scooremem = false;
-  if (SescConf->checkBool("cpusimu"    , "scooreMemory" , gm->getId()))
-    scooremem = SescConf->getBool("cpusimu", "scooreMemory",gm->getId());
+  if (SescConf->checkBool("cpusimu"    , "scooreMemory" , gm->getCoreId()))
+    scooremem = SescConf->getBool("cpusimu", "scooreMemory",gm->getCoreId());
 
   if(scooremem) {
     if((!SescConf->checkCharPtr("cpusimu", "SL0", i))&&(!SescConf->checkCharPtr("cpusimu", "VPC", i))){
@@ -106,6 +111,7 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
   nStall[SmallWinStall]      = new GStatsCntr("P(%d)_ExeEngine:nSmallWinStall",i);
   nStall[SmallROBStall]      = new GStatsCntr("P(%d)_ExeEngine:nSmallROBStall",i);
   nStall[SmallREGStall]      = new GStatsCntr("P(%d)_ExeEngine:nSmallREGStall",i);
+  nStall[DivergeStall]      = new GStatsCntr("P(%d)_ExeEngine:nDivergeStall",i);
   nStall[OutsLoadsStall]    = new GStatsCntr("P(%d)_ExeEngine:nOutsLoadsStall",i);
   nStall[OutsStoresStall]   = new GStatsCntr("P(%d)_ExeEngine:nOutsStoresStall",i);
   nStall[OutsBranchesStall] = new GStatsCntr("P(%d)_ExeEngine:nOutsBranchesStall",i);
@@ -140,22 +146,26 @@ int32_t GProcessor::issue(PipeQueue &pipeQ) {
 
   do{
     IBucket *bucket = pipeQ.instQueue.top();
+    //MSG("@%lld  CPU[%d]: Trying to issue instructions from bucket[%p]",(long long int)globalClock,cpu_id,bucket);
     do{
       I(!bucket->empty());
       if( i >= IssueWidth ) {
-  return i;
+        return i;
       }
 
       I(!bucket->empty());
 
       DInst *dinst = bucket->top();
-      //  GMSG(getId()==1,"push to pipe %p", bucket);
+      //  GMSG(getCoreId()==1,"push to pipe %p", bucket);
 
+      //MSG("@%lld  CPU[%d]: preaddInst dinstID=%lld PE[%d]",globalClock,cpu_id, dinst->getID(),dinst->getPE());
       StallCause c = addInst(dinst);
       if (c != NoStall) {
-  if (i < RealisticWidth)
-    nStall[c]->add(RealisticWidth - i, dinst->getStatsFlag());
-  return i;
+        //MSG("@%lld CPU[%d]: stalling dinstID=%lld for %d cycles, reason= %d PE[%d]",globalClock,cpu_id,dinst->getID(),(RealisticWidth-i),c,dinst->getPE());
+        if (i < RealisticWidth)
+          //nStall[c]->add(1, dinst->getStatsFlag());
+          nStall[c]->add(RealisticWidth - i, dinst->getStatsFlag());
+        return i;
       }
       i++;
 

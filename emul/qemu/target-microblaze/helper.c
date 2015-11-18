@@ -2,6 +2,7 @@
  *  MicroBlaze helper routines.
  *
  *  Copyright (c) 2009 Edgar E. Iglesias <edgar.iglesias@gmail.com>
+ *  Copyright (c) 2009-2012 PetaLogix Qld Pty Ltd.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -17,48 +18,48 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-
-#include "config.h"
 #include "cpu.h"
-#include "host-utils.h"
+#include "qemu/host-utils.h"
 
 #define D(x)
-#define DMMU(x)
 
 #if defined(CONFIG_USER_ONLY)
 
-void do_interrupt (CPUState *env)
+void mb_cpu_do_interrupt(CPUState *cs)
 {
-    env->exception_index = -1;
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
+    CPUMBState *env = &cpu->env;
+
+    cs->exception_index = -1;
+    env->res_addr = RES_ADDR_NONE;
     env->regs[14] = env->sregs[SR_PC];
 }
 
-int cpu_mb_handle_mmu_fault(CPUState * env, target_ulong address, int rw,
+int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
                             int mmu_idx)
 {
-    env->exception_index = 0xaa;
-    cpu_dump_state(env, stderr, fprintf, 0);
+    cs->exception_index = 0xaa;
+    cpu_dump_state(cs, stderr, fprintf, 0);
     return 1;
 }
 
 #else /* !CONFIG_USER_ONLY */
 
-int cpu_mb_handle_mmu_fault (CPUState *env, target_ulong address, int rw,
-                             int mmu_idx)
+int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
+                            int mmu_idx)
 {
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
+    CPUMBState *env = &cpu->env;
     unsigned int hit;
     unsigned int mmu_available;
     int r = 1;
     int prot;
 
     mmu_available = 0;
-    if (env->pvr.regs[0] & PVR0_USE_MMU) {
+    if (cpu->cfg.use_mmu) {
         mmu_available = 1;
-        if ((env->pvr.regs[0] & PVR0_PVR_FULL_MASK)
-            && (env->pvr.regs[11] & PVR11_USE_MMU) != PVR11_USE_MMU) {
+        if ((cpu->cfg.pvr == C_PVR_FULL) &&
+            (env->pvr.regs[11] & PVR11_USE_MMU) != PVR11_USE_MMU) {
             mmu_available = 0;
         }
     }
@@ -73,13 +74,14 @@ int cpu_mb_handle_mmu_fault (CPUState *env, target_ulong address, int rw,
             vaddr = address & TARGET_PAGE_MASK;
             paddr = lu.paddr + vaddr - lu.vaddr;
 
-            DMMU(qemu_log("MMU map mmu=%d v=%x p=%x prot=%x\n",
-                     mmu_idx, vaddr, paddr, lu.prot));
-            tlb_set_page(env, vaddr, paddr, lu.prot, mmu_idx, TARGET_PAGE_SIZE);
+            qemu_log_mask(CPU_LOG_MMU, "MMU map mmu=%d v=%x p=%x prot=%x\n",
+                    mmu_idx, vaddr, paddr, lu.prot);
+            tlb_set_page(cs, vaddr, paddr, lu.prot, mmu_idx, TARGET_PAGE_SIZE);
             r = 0;
         } else {
             env->sregs[SR_EAR] = address;
-            DMMU(qemu_log("mmu=%d miss v=%x\n", mmu_idx, address));
+            qemu_log_mask(CPU_LOG_MMU, "mmu=%d miss v=%" VADDR_PRIx "\n",
+                                        mmu_idx, address);
 
             switch (lu.err) {
                 case ERR_PROT:
@@ -95,32 +97,35 @@ int cpu_mb_handle_mmu_fault (CPUState *env, target_ulong address, int rw,
                     break;
             }
 
-            if (env->exception_index == EXCP_MMU) {
-                cpu_abort(env, "recursive faults\n");
+            if (cs->exception_index == EXCP_MMU) {
+                cpu_abort(cs, "recursive faults\n");
             }
 
             /* TLB miss.  */
-            env->exception_index = EXCP_MMU;
+            cs->exception_index = EXCP_MMU;
         }
     } else {
         /* MMU disabled or not available.  */
         address &= TARGET_PAGE_MASK;
         prot = PAGE_BITS;
-        tlb_set_page(env, address, address, prot, mmu_idx, TARGET_PAGE_SIZE);
+        tlb_set_page(cs, address, address, prot, mmu_idx, TARGET_PAGE_SIZE);
         r = 0;
     }
     return r;
 }
 
-void do_interrupt(CPUState *env)
+void mb_cpu_do_interrupt(CPUState *cs)
 {
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
+    CPUMBState *env = &cpu->env;
     uint32_t t;
 
     /* IMM flag cannot propagate across a branch and into the dslot.  */
     assert(!((env->iflags & D_FLAG) && (env->iflags & IMM_FLAG)));
     assert(!(env->iflags & (DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)));
 /*    assert(env->sregs[SR_MSR] & (MSR_EE)); Only for HW exceptions.  */
-    switch (env->exception_index) {
+    env->res_addr = RES_ADDR_NONE;
+    switch (cs->exception_index) {
         case EXCP_HW_EXCP:
             if (!(env->pvr.regs[0] & PVR0_USE_EXC_MASK)) {
                 qemu_log("Exception raised on system without exceptions!\n");
@@ -147,9 +152,9 @@ void do_interrupt(CPUState *env)
                           "hw exception at pc=%x ear=%x esr=%x iflags=%x\n",
                           env->sregs[SR_PC], env->sregs[SR_EAR],
                           env->sregs[SR_ESR], env->iflags);
-            log_cpu_state_mask(CPU_LOG_INT, env, 0);
+            log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             env->iflags &= ~(IMM_FLAG | D_FLAG);
-            env->sregs[SR_PC] = 0x20;
+            env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x20;
             break;
 
         case EXCP_MMU:
@@ -170,7 +175,7 @@ void do_interrupt(CPUState *env)
                                   "bimm exception at pc=%x iflags=%x\n",
                                   env->sregs[SR_PC], env->iflags);
                     env->regs[17] -= 4;
-                    log_cpu_state_mask(CPU_LOG_INT, env, 0);
+                    log_cpu_state_mask(CPU_LOG_INT, cs, 0);
                 }
             } else if (env->iflags & IMM_FLAG) {
                 D(qemu_log("IMM_FLAG set at exception\n"));
@@ -187,9 +192,9 @@ void do_interrupt(CPUState *env)
             qemu_log_mask(CPU_LOG_INT,
                           "exception at pc=%x ear=%x iflags=%x\n",
                           env->sregs[SR_PC], env->sregs[SR_EAR], env->iflags);
-            log_cpu_state_mask(CPU_LOG_INT, env, 0);
+            log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             env->iflags &= ~(IMM_FLAG | D_FLAG);
-            env->sregs[SR_PC] = 0x20;
+            env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x20;
             break;
 
         case EXCP_IRQ:
@@ -200,7 +205,7 @@ void do_interrupt(CPUState *env)
             t = (env->sregs[SR_MSR] & (MSR_VM | MSR_UM)) << 1;
 
 #if 0
-#include "disas.h"
+#include "disas/disas.h"
 
 /* Useful instrumentation when debugging interrupt issues in either
    the models or in sw.  */
@@ -217,7 +222,7 @@ void do_interrupt(CPUState *env)
                          env->sregs[SR_PC], env->sregs[SR_MSR], t, env->iflags,
                          sym);
 
-                    log_cpu_state(env, 0);
+                    log_cpu_state(cs, 0);
                 }
             }
 #endif
@@ -230,8 +235,8 @@ void do_interrupt(CPUState *env)
             env->sregs[SR_MSR] |= t;
 
             env->regs[14] = env->sregs[SR_PC];
-            env->sregs[SR_PC] = 0x10;
-            //log_cpu_state_mask(CPU_LOG_INT, env, 0);
+            env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x10;
+            //log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             break;
 
         case EXCP_BREAK:
@@ -242,26 +247,28 @@ void do_interrupt(CPUState *env)
             qemu_log_mask(CPU_LOG_INT,
                         "break at pc=%x msr=%x %x iflags=%x\n",
                         env->sregs[SR_PC], env->sregs[SR_MSR], t, env->iflags);
-            log_cpu_state_mask(CPU_LOG_INT, env, 0);
+            log_cpu_state_mask(CPU_LOG_INT, cs, 0);
             env->sregs[SR_MSR] &= ~(MSR_VMS | MSR_UMS | MSR_VM | MSR_UM);
             env->sregs[SR_MSR] |= t;
             env->sregs[SR_MSR] |= MSR_BIP;
-            if (env->exception_index == EXCP_HW_BREAK) {
+            if (cs->exception_index == EXCP_HW_BREAK) {
                 env->regs[16] = env->sregs[SR_PC];
                 env->sregs[SR_MSR] |= MSR_BIP;
-                env->sregs[SR_PC] = 0x18;
+                env->sregs[SR_PC] = cpu->cfg.base_vectors + 0x18;
             } else
                 env->sregs[SR_PC] = env->btarget;
             break;
         default:
-            cpu_abort(env, "unhandled exception type=%d\n",
-                      env->exception_index);
+            cpu_abort(cs, "unhandled exception type=%d\n",
+                      cs->exception_index);
             break;
     }
 }
 
-target_phys_addr_t cpu_get_phys_page_debug(CPUState * env, target_ulong addr)
+hwaddr mb_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
+    CPUMBState *env = &cpu->env;
     target_ulong vaddr, paddr = 0;
     struct microblaze_mmu_lookup lu;
     unsigned int hit;
@@ -279,3 +286,19 @@ target_phys_addr_t cpu_get_phys_page_debug(CPUState * env, target_ulong addr)
     return paddr;
 }
 #endif
+
+bool mb_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
+{
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
+    CPUMBState *env = &cpu->env;
+
+    if ((interrupt_request & CPU_INTERRUPT_HARD)
+        && (env->sregs[SR_MSR] & MSR_IE)
+        && !(env->sregs[SR_MSR] & (MSR_EIP | MSR_BIP))
+        && !(env->iflags & (D_FLAG | IMM_FLAG))) {
+        cs->exception_index = EXCP_IRQ;
+        mb_cpu_do_interrupt(cs);
+        return true;
+    }
+    return false;
+}

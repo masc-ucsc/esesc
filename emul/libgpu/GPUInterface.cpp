@@ -36,7 +36,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "Report.h"
 #include "GStats.h"
 
-extern   bool     istsfifoBlocked;
 timeval endTime, stTime;
 GStatsCntr msecGpu("OSSim:msecs_gpu");
 GStatsCntr totalThreadCount("PTXStats:totalThreadCount");
@@ -79,15 +78,17 @@ uint32_t max_regs_sm        = 0;
 uint32_t max_warps_sm       = 0;
 uint32_t max_blocks_sm      = 0;
 bool unifiedCPUGPUmem       = false;
+extern bool MIMDmode;
 div_type branch_div_mech    = serial;
 uint64_t loopcounter = 0;
 uint64_t relaunchcounter = 1;
+uint64_t memref_interval = 0;
 
 extern EmuSampler *qsamplerlist[];
 extern EmuSampler *qsampler;
 extern "C" void loadSampler(FlowID fid);
 
-bool istsfifoBlocked            = false;
+bool* istsfifoBlocked           = NULL;
 bool finishkernel               = false;
 bool rabbit_threads_executing   = false;
 uint32_t gpuid                  = 0;
@@ -142,7 +143,7 @@ extern "C" uint64_t GPUReader_getBlockThreads (){
 }
 
 extern "C" uint32_t GPUReader_setNumThreads (uint64_t binnumthreads, uint64_t binblockthreads){
-  //At this point, kernelname has already been set. 
+  //At this point, kernelname has already been set.
 
   if ((different_kernel) || (numThreads != binnumthreads) || (blockSize != binblockthreads)){
     numThreads  = binnumthreads;
@@ -153,9 +154,9 @@ extern "C" uint32_t GPUReader_setNumThreads (uint64_t binnumthreads, uint64_t bi
     IS(MSG(" NOT Calling Reorganize"));
   }
 
-  IS(MSG("Numthreads set to %llu blockSize set to %llu, maxthreadstobesampled is %lld", 
+  IS(MSG("Numthreads set to %llu blockSize set to %llu, maxthreadstobesampled is %lld",
         numThreads,
-        blockSize, 
+        blockSize,
         maxSamplingThreads));
   return 0;
 }
@@ -164,12 +165,13 @@ extern "C" uint32_t GPUReader_getTracesize() {
   return traceSize;
 }
 
-extern "C" void GPUReader_mallocAddress(uint32_t dev_addr, uint32_t size, uint32_t* cpufid){
+extern "C" void GPUReader_mallocAddress(uint32_t dev_addr, uint32_t size, uint32_t* cpufid)
+{/*{{{*/
 
   cudamalloc.add(size);
   if (unifiedCPUGPUmem){
     MSG("Mapping %d bytes of memory on the GPU starting from address %x ", (int)size, dev_addr);
-    AddrRange a; 
+    AddrRange a;
 
     a.dev_start = dev_addr;
     a.size  = size;
@@ -180,21 +182,22 @@ extern "C" void GPUReader_mallocAddress(uint32_t dev_addr, uint32_t size, uint32
 
     Addrmap.push_back(a);
   }
-}
+}/*}}}*/
 
-extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t size, uint32_t kind,void *env, uint32_t* cpufid){
+extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t size, uint32_t kind,void *env, uint32_t* cpufid)
+{/*{{{*/
   uint32_t dev_addr  = 0;
   uint32_t host_addr = 0;
   //avgMemcpy.sample(size);
 
   if (firstevertime == true){
 
-#if SPECRATE_SYNC   
+#if SPECRATE_SYNC
 
     //Pause the CPU
     qsamplerlist[*cpufid]->pauseThread(*cpufid);
     oldqemuid = *cpufid;
-    gpuTM->putinfile(qsamplerlist[*cpufid]->totalnInst);   
+    gpuTM->putinfile(qsamplerlist[*cpufid]->totalnInst);
     //MSG("BYEEEEEEEEEEEEEEEE!!!!!");
     //MSG("BYEEEEEEEEEEEEEEEE!!!!!");
     //MSG("BYEEEEEEEEEEEEEEEE!!!!!");
@@ -291,7 +294,7 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
     //op = 1  (8ld+9alu)  fcf8: e8b151f8        ldm     r1!, {r3, r4, r5, r6, r7, r8, ip, lr}                                                        │~
     //op = 4  (2alu)      fcfc: e2522020        subs    r2, r2, #32                                                                                  │~
     //op = 2  (8st+9alu)  fd00: e8a051f8        stmia   r0!, {r3, r4, r5, r6, r7, r8, ip, lr}                                                        │~
-    //op =3  (1br)       fd04: aafffffa        bge     fcf4 <memcpy+0x44>    
+    //op =3  (1br)       fd04: aafffffa        bge     fcf4 <memcpy+0x44>
     RAWInstType insn1 = 0xf5d1f07c; // DO NOT CHANGE
     RAWInstType insn2 = 0xe8b151f8; // DO NOT CHANGE
     RAWInstType insn3 = 0xe2522020; // DO NOT CHANGE
@@ -322,7 +325,7 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
       dev_addr           = addr0;
       host_addr          = addr1;
       memcpy2device.add(bytecount);
-//      qsamplerlist[*cpufid]->setyesStats(*cpufid); 
+//      qsamplerlist[*cpufid]->setyesStats(*cpufid);
       do {
         //loadSampler(cpufid);
 
@@ -348,13 +351,13 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         bytecount = bytecount - datachunk;
 
       } while (bytecount > 0);
-   //   qsamplerlist[*cpufid]->setnoStats(*cpufid); 
+   //   qsamplerlist[*cpufid]->setnoStats(*cpufid);
     } else if (kind == 2){
       //cudaMemcpyDeviceToHost   = 2, /* *< Device -> Host   */
       memcpy2host.add(bytecount);
       dev_addr           = addr1;
       host_addr          = addr0;
-//      qsamplerlist[*cpufid]->setyesStats(*cpufid); 
+//      qsamplerlist[*cpufid]->setyesStats(*cpufid);
       do {
         //loadSampler(cpufid);
 
@@ -375,18 +378,18 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         //qsamplerlist[*cpufid]->queue(storeinsn1,storepc1,host_addr,*cpufid,op,icount,env);
         //qsamplerlist[*cpufid]->queue(storeinsn2,storepc2,host_addr,*cpufid,op,icount,env);
         //gsampler->queue(insn,pc,addr,*cpufid,op,icount,env);
-        
+
         dev_addr += datachunk;
         host_addr += datachunk;
         bytecount = bytecount - datachunk;
 
       } while (bytecount > 0);
-   //   qsamplerlist[*cpufid]->setnoStats(*cpufid); 
+   //   qsamplerlist[*cpufid]->setnoStats(*cpufid);
     }
 #else
 #if 1
     //IF CPU DOES NOT DO MEMCPY, instead GPU fetched the memory address.
-    
+
     uint32_t smid        = 0;
     uint32_t glofid      = 0;
 
@@ -405,12 +408,12 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
     gsampler->startTiming(glofid);
     if (kind == 1) {
       //cudaMemcpyHostToDevice   = 1, /* *< Host   -> Device */
-      
+
       memcpy2device.add(bytecount);
       dev_addr           = addr0;
       host_addr          = addr1;
 
-     
+
       //Pause the CPU
       oldqemuid = *cpufid;
       qsamplerlist[*cpufid]->pauseThread(*cpufid);
@@ -420,13 +423,13 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         glofid          = gpuTM->mapLocalID(smid);
 
         //Load
-        gsampler->queue(loadinsn,loadpc,host_addr,glofid,op,1,env); 
+        gsampler->queue(loadinsn,loadpc,host_addr,glofid,op,1,env);
 
-        if (istsfifoBlocked){
+        if (istsfifoBlocked[glofid]){
           gsampler->resumeThread(glofid);
         } else {
           //Store
-          gsampler->queue(storeinsn,storepc,dev_addr,glofid,op,1,env); 
+          gsampler->queue(storeinsn,storepc,dev_addr,glofid,op,1,env);
           host_addr += datachunk;
           dev_addr  += datachunk;
           bytecount -= datachunk;
@@ -449,11 +452,11 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
 
     } else if (kind == 2){
       //cudaMemcpyDeviceToHost   = 2, /* *< Device -> Host   */
-      
+
       memcpy2host.add(bytecount);
       dev_addr           = addr1;
       host_addr          = addr0;
-      
+
       //Pause the CPU
       oldqemuid = *cpufid;
       qsamplerlist[*cpufid]->pauseThread(*cpufid);
@@ -463,12 +466,12 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         glofid          = gpuTM->mapLocalID(smid);
 
         //Load
-        gsampler->queue(loadinsn,loadpc,host_addr,glofid,op,1,env); 
-        if (istsfifoBlocked){
+        gsampler->queue(loadinsn,loadpc,host_addr,glofid,op,1,env);
+        if (istsfifoBlocked[glofid]){
           gsampler->resumeThread(glofid);
         } else {
           //Store
-          gsampler->queue(storeinsn,storepc,dev_addr,glofid,op,1,env); 
+          gsampler->queue(storeinsn,storepc,dev_addr,glofid,op,1,env);
           host_addr += datachunk;
           dev_addr  += datachunk;
           bytecount -= datachunk;
@@ -489,17 +492,18 @@ extern "C" void GPUReader_mapcudaMemcpy(uint32_t addr0, uint32_t addr1, uint32_t
         gsampler->pauseThread(glofid);
       }
 
-    } 
+    }
 
     gsampler->stop();
 #endif
 #endif
 #endif
   }
-}
+}/*}}}*/
 
 
-extern "C" void GPUReader_setCurrentKernel(const char *local_kernel_name) {
+extern "C" void GPUReader_setCurrentKernel(const char *local_kernel_name)
+{/*{{{*/
   CUDAKernelMapType::iterator iter = kernels.begin();
   uint32_t size = 0;
   bool found = false;
@@ -532,9 +536,10 @@ extern "C" void GPUReader_setCurrentKernel(const char *local_kernel_name) {
     MSG("Cannot find details for kernel %s. Verify the .info file \n Terminating...", local_kernel_name);
     exit(-1);
   }
-}
+}/*}}}*/
 
-extern "C" void GPUReader_CUDA_exec_done() {
+extern "C" void GPUReader_CUDA_exec_done()
+{/*{{{*/
   gettimeofday(&endTime, 0);  // WARNING: This does not support
   static double msecs = 0.0;
   double msec = (endTime.tv_sec - stTime.tv_sec) * 1000 + (endTime.tv_usec - stTime.tv_usec) / 1000;
@@ -542,9 +547,10 @@ extern "C" void GPUReader_CUDA_exec_done() {
   msecGpu.add(msec);
   //msecGpu.stop();
   //totalThreadCount.stop();
-}
+}/*}}}*/
 
-extern "C" void GPUReader_getKernelParameters(uint32_t * DFL_REG32, uint32_t * DFL_REG64, uint32_t * DFL_REGFP, uint32_t * DFL_REGFP64, uint32_t * SM_REG32, uint32_t * SM_REG64, uint32_t * SM_REGFP, uint32_t * SM_REGFP64, uint32_t * SM_ADDR, uint32_t * TRACESIZE) {
+extern "C" void GPUReader_getKernelParameters(uint32_t * DFL_REG32, uint32_t * DFL_REG64, uint32_t * DFL_REGFP, uint32_t * DFL_REGFP64, uint32_t * SM_REG32, uint32_t * SM_REG64, uint32_t * SM_REGFP, uint32_t * SM_REGFP64, uint32_t * SM_ADDR, uint32_t * TRACESIZE)
+{/*{{{*/
 
   CUDAKernelMapType::iterator iter = kernels.begin();
   iter = kernels.find(current_CUDA_kernel);
@@ -562,7 +568,7 @@ extern "C" void GPUReader_getKernelParameters(uint32_t * DFL_REG32, uint32_t * D
     *SM_ADDR = iter->second->sm_addr;
 
     *TRACESIZE = iter->second->tracesize;
-    /* 
+    /*
      *DFL_REG32 = CUDAKernel::max_dfl_reg32;
      *DFL_REG64 = CUDAKernel::max_dfl_reg64;
      *DFL_REGFP = CUDAKernel::max_dfl_regFP;
@@ -581,16 +587,17 @@ extern "C" void GPUReader_getKernelParameters(uint32_t * DFL_REG32, uint32_t * D
     exit(-1);
   }
 
-}
+}/*}}}*/
 
-extern "C" void GPUReader_init_trace(uint32_t * h_trace) {
+extern "C" void GPUReader_init_trace(uint32_t * h_trace)
+{/*{{{*/
   gpuTM->init_trace(h_trace);
   cuda_execution_complete = 0;
   cuda_execution_started = 0;
-}
+}/*}}}*/
 
-
-extern "C" uint32_t GPUReader_decode_trace(uint32_t * h_trace, uint32_t * qemuid, void *env) {
+extern "C" uint32_t GPUReader_decode_trace(uint32_t * h_trace, uint32_t * qemuid, void *env)
+{/*{{{*/
 
   if (firstevertime == true){
   }
@@ -623,10 +630,10 @@ extern "C" uint32_t GPUReader_decode_trace(uint32_t * h_trace, uint32_t * qemuid
     for (local_fid = 0; (local_fid < numSM) && (onestarted == false); local_fid++) {
       if (gpuTM->isSMactive(local_fid) == true) {
         GPUFlowsAlive++;
-        GPUFlowStatus[local_fid] = true; 
+        GPUFlowStatus[local_fid] = true;
         onestarted = true;
       } else {
-        GPUFlowStatus[local_fid] = false; 
+        GPUFlowStatus[local_fid] = false;
       }
     }
 
@@ -637,13 +644,23 @@ extern "C" uint32_t GPUReader_decode_trace(uint32_t * h_trace, uint32_t * qemuid
     while (local_fid < numSM) {
       if (gpuTM->isSMactive(local_fid) == true) {
         GPUFlowsAlive++;
-        GPUFlowStatus[local_fid] = true; 
+        GPUFlowStatus[local_fid] = true;
       } else{
-        GPUFlowStatus[local_fid] = false; 
+        GPUFlowStatus[local_fid] = false;
       }
       local_fid++;
     }
-
+#if 0
+    //Resume all the GPUThreads
+    if (MIMDmode){
+      for (uint64_t i = 0; i < numSM; i++) {
+        for (uint64_t j = 0; j < gpuTM->ret_numSP(); j++) {
+          gsampler->resumeThread(gpuTM->mapLocalID(i,j));
+        }
+      }
+    } else {
+    }
+#endif
   }
 
   if (!cuda_execution_complete && h_trace_qemu != NULL) {
@@ -678,9 +695,11 @@ extern "C" uint32_t GPUReader_decode_trace(uint32_t * h_trace, uint32_t * qemuid
 
   return (alldone);    // no pause
 
-}
+}/*}}}*/
 
-extern "C" uint64_t GPUReader_translate_d2h(AddrType addr_ptr){
+#ifdef USE_OUTDATED_CUDE
+extern "C" uint64_t GPUReader_translate_d2h(AddrType addr_ptr)
+{/*{{{*/
   if (unifiedCPUGPUmem){
     //Translate device address to the host address.
     uint64_t devaddr = addr_ptr;
@@ -700,23 +719,22 @@ extern "C" uint64_t GPUReader_translate_d2h(AddrType addr_ptr){
       I(0);
       IS(MSG("Addr %llx not found!!!",addr_ptr));
     }
-    
+
     return hostaddr;
 
   } else {
-    //If it not unified memory address, then just mark the memory as GPU memory and we are good. 
-    uint64_t ret_addr_ptr  = (0x0FFFFFFFFFFFFFFFULL & addr_ptr); 
-    ret_addr_ptr  = (0xA000000000000000ULL | ret_addr_ptr); 
+    //If it not unified memory address, then just mark the memory as GPU memory and we are good.
+    uint64_t ret_addr_ptr  = (0x0FFFFFFFFFFFFFFFULL & addr_ptr);
+    ret_addr_ptr  = (0xA000000000000000ULL | ret_addr_ptr);
     //IS(MSG("Returning Addr %llx",(ret_addr_ptr)));
     return ret_addr_ptr;
   }
-}
+}/*}}}*/
 
+extern "C" uint64_t GPUReader_translate_shared(AddrType addr_ptr, uint32_t blockid, uint32_t warpid)
+{/*{{{*/
 
-
-extern "C" uint64_t GPUReader_translate_shared(AddrType addr_ptr, uint32_t blockid, uint32_t warpid){
-
-  uint64_t raw_addr = addr_ptr;    //Upper 32 bits will be zero. 
+  uint64_t raw_addr = addr_ptr;    //Upper 32 bits will be zero.
   uint16_t bid      = 0xFFFF & blockid;
   uint8_t wid       = 0xFF & warpid;
 
@@ -726,19 +744,64 @@ extern "C" uint64_t GPUReader_translate_shared(AddrType addr_ptr, uint32_t block
    * Bits 31-0  -> raw_addr
    * Bits 47-32 -> blockid
    * Bits 48-55 -> warpid
-   * 
+   *
    * The upper three bits are then set to  101 to denote GPU memory
    * ******************************************************************/
 
   uint64_t upper = wid<<16;
   upper          = upper | bid;
   raw_addr       = (upper<<32) | (0x00000000FFFFFFFFULL & raw_addr);
-  raw_addr  = (0xC000000000000000ULL | raw_addr); 
+  raw_addr  = (0xC000000000000000ULL | raw_addr);
 
   //IS(MSG("Returning Addr %llx",raw_addr));
   return raw_addr;
 
-}
+}/*}}}*/
+#else
+extern "C" uint64_t GPUReader_encode_rawaddr(AddrType addr_ptr, uint32_t blockid, uint32_t warpid, uint32_t pe_id, bool sharedAddr)
+{/*{{{*/
+
+  /*******************************************************************
+   * The 64 bits are decoded as follows
+   * Bits 31-0  -> raw_addr
+   * Bits 36-32 -> warpid (5 bits)
+   * Bits 43-37 -> pe_id (7 bits) 
+   * Bits 59-44 -> block_id (16 bits)
+   * Bit  60    -> 1-Shared/0-Global
+   * Bits 61-63 -> Bits differentiating CPU and GPU memory, set to  101 to
+   *               denote GPU memory
+   *               This means that the upper 4 bits will be 0b1010 i.e. 0xA for global addresses
+   *               This means that the upper 4 bits will be 0b1011 i.e. 0xB for shared addresses
+   *
+   * ******************************************************************/
+
+
+  if (unifiedCPUGPUmem){
+    I(0);
+    MSG("Not figured a way out to pass peid and blockid for a unified address");
+    exit(1);
+  }
+
+  uint64_t raw_addr = addr_ptr;                                         // Upper 32 bits will be zero.
+  //raw_addr = setspBits64(raw_addr,warpid,32,47);
+  //raw_addr = setspBits64(raw_addr,pe_id,48,55);
+  
+  raw_addr = setspBits64(raw_addr,warpid ,32,36);
+  raw_addr = setspBits64(raw_addr,pe_id  ,37,43);
+  raw_addr = setspBits64(raw_addr,blockid,44,59);
+
+  if(sharedAddr){
+    raw_addr = setspBits64(raw_addr,1,60,60);
+  } else {
+    raw_addr = setspBits64(raw_addr,0,60,60);
+  }
+
+  raw_addr = setspBits64(raw_addr,5,61,63);
+
+  return raw_addr;
+
+}/*}}}*/
+#endif
 
 extern "C" uint32_t GPUReader_reexecute_same_kernel() {
   return reexecute;

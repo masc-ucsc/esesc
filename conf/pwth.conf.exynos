@@ -1,0 +1,479 @@
+######################################
+## Configuration for power counters ##
+######################################
+[OoOPwrCounterTemplate]
+template[0] = "stats[%d] = %s_core_total_instructions +%s:nCommitted +testCounter"
+template[1] = "stats[%d] = %s_core_int_instructions +%s_ExeEngine_iAALU:n +%s_ExeEngine_iRALU:n +%s_ExeEngine_iCALU_MULT:n +%s_ExeEngine_iCALU_DIV:n +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +%s_ExeEngine_iSALU_LL:n +%s_ExeEngine_iSALU_SC:n +%s_ExeEngine_iSALU_ADDR:n +testCounter"
+template[2] = "stats[%d] = %s_core_fp_instructions +%s_ExeEngine_iCALU_FPMULT:n +%s_ExeEngine_iCALU_FPDIV:n +%s_ExeEngine_iCALU_FPALU:n +testCounter"
+template[3] = "stats[%d] = %s_core_branch_instructions +%s_ExeEngine_iBALU_LBRANCH:n +%s_ExeEngine_iBALU_RBRANCH:n +%s_ExeEngine_iBALU_LJUMP:n +%s_ExeEngine_iBALU_RJUMP:n +%s_ExeEngine_iBALU_LCALL:n +%s_ExeEngine_iBALU_RCALL:n +%s_ExeEngine_iBALU_RET:n +testCounter"
+template[4] = "stats[%d] = %s_core_branch_mispredictions +%s_BPRED_Hybrid:nMiss +testCounter"
+template[5] = "stats[%d] = %s_core_total_cycles +%s:clockTicks +testCounter"
+template[6] = "stats[%d] = %s_core_ROB_reads +%s:nCommitted +testCounter"
+template[7] = "stats[%d] = %s_core_ROB_writes +%s:nCommitted +testCounter"
+template[8] = "stats[%d] = %s_core_int_regfile_reads +%s_AUNIT_rdRegPool +%s_BUNIT_rdRegPool +%s_LSUNIT_rdRegPool +testCounter"
+template[9] = "stats[%d] = %s_core_int_regfile_writes +%s_AUNIT_wrRegPool +%s_BUNIT_wrRegPool +%s_LSUNIT_wrRegPool +testCounter"
+template[10] = "stats[%d] = %s_core_float_regfile_reads +%s_CUNIT_rdRegPool +testCounter"
+template[11] = "stats[%d] = %s_core_float_regfile_writes +%s_CUNIT_wrRegPool +testCounter"
+template[12] = "stats[%d] = %s_core_function_calls +%s_ExeEngine_iBALU_LCALL:n +%s_ExeEngine_iBALU_RCALL:n +testCounter"
+template[13] = "stats[%d] = %s_core_bypassbus_access +%s:nCommitted +testCounter"
+template[14] = "stats[%d] = %s_core_loadq_read_accesses +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[15] = "stats[%d] = %s_core_loadq_write_accesses +%s_ExeEngine_iLALU_LD:n +testCounter"
+template[16] = "stats[%d] = %s_core_storq_read_accesses +%s_ExeEngine_iSALU_ST:n +%s_ExeEngine_iLALU_LD:n +testCounter"
+template[17] = "stats[%d] = %s_core_storq_write_accesses +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[18] = "stats[%d] = %s_core_ssit_read_accesses +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[19] = "stats[%d] = %s_core_ssit_write_accesses +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[20] = "stats[%d] = %s_core_lfst_read_accesses +%s_ExeEngine_iLALU_LD:n +testCounter"
+template[21] = "stats[%d] = %s_core_lfst_write_accesses +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[22] = "stats[%d] = %s_core_strb_read_accesses +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[23] = "stats[%d] = %s_core_strb_write_accesses +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[24] = "stats[%d] = %s_core_ldrb_read_accesses +%s_ExeEngine_iLALU_LD:n +testCounter"
+template[25] = "stats[%d] = %s_core_ldrb_write_accesses +%s_ExeEngine_iSALU_ST:n +testCounter"
+#template[26] = "stats[%d] = %s_core_vpc_buffer_hit +%s_wcbHit +testCounter"
+#template[27] = "stats[%d] = %s_core_vpc_buffer_miss +%s_wcbMiss +testCounter"
+
+[inorderPwrCounterTemplate]
+template[0] = "stats[%d] = %s_core_total_instructions +%s:nCommitted +testCounter"
+template[1] = "stats[%d] = %s_core_int_instructions +%s_ExeEngine_iAALU:n +%s_ExeEngine_iRALU:n +%s_ExeEngine_iCALU_MULT:n +%s_ExeEngine_iCALU_DIV:n +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +%s_ExeEngine_iSALU_LL:n +%s_ExeEngine_iSALU_SC:n +%s_ExeEngine_iSALU_ADDR:n +testCounter"
+template[2] = "stats[%d] = %s_core_fp_instructions +%s_ExeEngine_iCALU_FPMULT:n +%s_ExeEngine_iCALU_FPDIV:n +%s_ExeEngine_iCALU_FPALU:n +testCounter"
+template[3] = "stats[%d] = %s_core_branch_instructions +%s_ExeEngine_iBALU_LBRANCH:n +%s_ExeEngine_iBALU_RBRANCH:n +%s_ExeEngine_iBALU_LJUMP:n +%s_ExeEngine_iBALU_RJUMP:n +%s_ExeEngine_iBALU_LCALL:n +%s_ExeEngine_iBALU_RCALL:n +%s_ExeEngine_iBALU_RET:n +testCounter"
+template[4] = "stats[%d] = %s_core_total_cycles +%s:clockTicks +testCounter"
+template[5] = "stats[%d] = %s_core_int_regfile_reads +%s_GUNIT_rdRegPool +testCounter"
+template[6] = "stats[%d] = %s_core_int_regfile_writes +%s_GUNIT_wrRegPool +testCounter"
+template[7] = "stats[%d] = %s_core_function_calls +%s_ExeEngine_iBALU_LCALL:n +%s_ExeEngine_iBALU_RCALL:n +testCounter"
+template[8] = "stats[%d] = %s_core_bypassbus_access +%s:nCommitted +testCounter"
+template[9] = "stats[%d] = %s_core_storq_read_accesses +%s_ExeEngine_iLALU_LD:n +%s_ExeEngine_iSALU_ST:n +testCounter"
+template[10] = "stats[%d] = %s_core_storq_write_accesses +%s_ExeEngine_iLALU_LD:n +testCounter"
+
+[MemPwrCounterTemplate]
+template[0] = "stats[%d] = %s_read_accesses +%s:readHit +%s:readMiss +%s:readHalfMiss +testCounter"
+template[1] = "stats[%d] = %s_write_accesses +%s:writeHit +%s:writeMiss +%s:writeHalfMiss +%s:writeExclusive +testCounter"
+template[2] = "stats[%d] = %s_read_misses +%s:readMiss +%s:readHalfMiss +testCounter"
+template[3] = "stats[%d] = %s_write_misses +%s:writeBack +%s:writeMiss +testCounter"
+
+[MCPwrCounterTemplate]
+template[0] = "stats[%d] = mc_read_accesses +MemBus(0):readHit +testCounter"
+template[1] = "stats[%d] = mc_write_accesses +testCounter"
+
+[TLBPwrCounterTemplate]
+template[0] = "stats[%d] = %s_read_misses +%s:readMiss +testCounter"
+template[1] = "stats[%d] = %s_read_hits +%s:readHit +testCounter"
+template[2] = "stats[%d] = %s_write_accesses +%s:readMiss +testCounter"
+
+[OoOLayoutDescrTemplate]
+template[0] = "blockMatch[%d]  = %s_iRNU   +%s_iRNU"
+template[1] = "blockMatch[%d]  = %s_fRNU   +%s_fRNU"
+template[2] = "blockMatch[%d]  = %s_fetch  +%s_fetch"  
+template[3] = "blockMatch[%d]  = %s_icache +%s_icache"  
+template[4] = "blockMatch[%d]  = %s_dcache +%s_dcache"  
+template[5] = "blockMatch[%d]  = %s_LSU    +%s_LSU"  
+template[6] = "blockMatch[%d]  = %s_ALU    +%s_ALU"  
+template[7] = "blockMatch[%d]  = %s_FPU    +%s_FPU"  
+template[8] = "blockMatch[%d]  = %s_iRF    +%s_iRF"  
+template[9] = "blockMatch[%d]  = %s_fRF    +%s_fRF"  
+template[10] = "blockMatch[%d] = %s_iIW    +%s_iIW"  
+template[11] = "blockMatch[%d] = %s_fIW    +%s_fIW"  
+template[12] = "blockMatch[%d] = %s_ROB    +%s_ROB"  
+
+
+[inorderLayoutDescrTemplate]
+template[0] = "blockMatch[%d] = +%s_lanes"  
+
+[McPatPwrCounters]
+#logfile = "powerstats.log"
+updateInterval = 100000
+thermalThrottle= $(thermTT) #468.15
+nFastForward   = $(thermFF) 
+throttleCycleRatio = 3  # Around 100us
+doPower          = $(enablePower)
+doPeq            = $(enablePeq)
+doTherm          = $(enableTherm) 
+dumpPower        = true 
+reFloorplan      = false
+enableTurbo      = false
+turboMode        = "ntc"
+volNTC = 1.0
+
+<flp.conf>
+
+
+#			********* SESCTHERM MAIN CONFIGURATION *************
+[SescTherm]
+# MaxTemp (if over the limit, simulation stops)
+maxTemp = 100 # Celsius
+floorplan[0] = 'floorplan_1cg'
+layoutDescr[0] = 'layoutDescr_1cg'
+
+#these are bulk materials
+materials_bulk[0] = 'BULK_SI'
+materials_bulk[1] = 'COPPER'
+materials_bulk[2] = 'VIRTUAL'
+materials_bulk[3] = 'DOPED_POLYSILICON'	
+materials_bulk[4] = 'SI_O2'			
+materials_bulk[5] = 'SIMOX'
+materials_bulk[6] = 'XEROGEL'
+
+#layer[0] = 'air_layer0'
+layer[0] = 'mainboard0' # Mainboard
+#layer[1] = 'pins0' # Pins
+#layer[2] = 'pwb0' # PCB
+#layer[3] = 'fcpbga0' # uPCB-C5
+#layer[4] = 'c4_underfill0' # C4
+layer[1] = 'interconnect0' # metal
+layer[2] = 'die_transistor0' # transistor
+layer[3] = 'bulk_silicon0' # Substrate
+#layer[4] = 'spreader_layer1'
+#layer[9]  = 'bulk_silicon1' # Extra silicon to account for metal spreader
+#layer[11] = 'oil_layer' # OIL
+#layer[9] = 'spreader_layer2'
+layer[4] = 'air_layer0' # air
+
+model    = 'model_config'
+graphics = 'graphics_config'
+cooling  = 'air_cooling_config'
+#cooling  = 'oil_cooling_config'
+chip     = 'chip_config'
+spreader_sink = 'spreader_sink_config'
+
+[model_config]
+useRK4   = true
+CyclesPerSample = 100000
+initialTemp = 35+273.15 # Init temperature
+ambientTemp = 50+273.15
+#default time increment (can be changed per call to the solver)
+PowerSamplesPerThermSample = 1
+
+[graphics_config]
+enableGraphics = true
+resolution_x= 1024									#image resolution (1440x900)	
+resolution_y= 768											
+perspective_view=false								#display the view in perspective
+graphics_floorplan_layer = 2						#specify the layer with the floorplan
+graphics_file_type[0] = "NORM_TEMP_CUR_M_[25-80]_2"				#output power map for each timestep for layer 5 using model_unit
+#graphics_file_type[1] = "FLOORPLAN_5"				#output floorplan
+#graphics_file_type[2] = "NORM_TEMP_CUR_M_1,2,3,4,5,6,7"	#output cur temperature for layer 1-7 using model_units
+#graphics_file_type[3] = "AVE_TEMP_AVE_M_5,6"		#output ave temperature for layers 5-6, 
+													#where those temps are the average temps over sample duration using model_units
+#graphics_file_type[4] = "AVE_TEMP_CUR_F_ 5,6"		#output ave temperature for layers 5-6, where those temps are the cur temps using floorplan_units
+#graphics_file_type[5] = "DIF_TEMP_CUR_M_ 5,6"		#output the difference in the cur temperature for layers 5-6 using model_units
+
+
+#			(SESCTHERM)  *COOLING PROPERTIES*
+[air_cooling_config]
+# Fan may not be used (ignored otherwise)
+# Fan Velocity (m/s) (typical range 2-8m/s) (assume laminar flow)                                       
+# Velocity (LFM) = Volume (CFM) / area (ft^2)
+# Velocity (m/s) = Volume (m^3/s) / area (m^2)
+Fan_Used     = 1
+Fan_Velocity = 60.00
+Fan_Distance = 0.01
+Air_Pressure = 1.0433e5 #N/m^2 (default is 1 atm)
+#Liquid coolant Properties
+#Properties obtained for Fluka Mineral Oil
+#We assume that the oil flow is over the width of the chip (NOT the height)
+Coolant_density = 850 #kg/m^3
+Coolant_viscosity = 15e-6	#m^2/s
+Coolant_thermal_conductivity = 0.098 #W/mK
+Coolant_specific_heat = 1670 #J/kg*K
+Coolant_prandtl_number = 260.42
+Coolant_flow_rate = 15.8e-6 #m^3/sec
+Coolant_angle = 10 #degrees
+Coolant_nozzle_diameter= 0.3 #m
+Coolant_coverage_percent  = 1.0 #percent of oil actually flowing over chip
+
+[oil_cooling_config]
+# Fan may not be used (ignored otherwise)
+# Fan Velocity (m/s) (typical range 2-8m/s) (assume laminar flow)                                       
+# Velocity (LFM) = Volume (CFM) / area (ft^2)
+# Velocity (m/s) = Volume (m^3/s) / area (m^2)
+Fan_Used     = 0
+Fan_Velocity = 20.00
+Fan_Distance = 0.1
+Air_Pressure = 1.0133e5 #N/m^2 (default is 1 atm)
+#Liquid coolant Properties
+#Properties obtained for Fluka Mineral Oil
+#We assume that the oil flow is over the width of the chip (NOT the height)
+Coolant_density = 850 #kg/m^31
+Coolant_viscosity = 15e-6	#m^2/s
+Coolant_thermal_conductivity = 0.002 #W/mK
+Coolant_specific_heat = 1670 #J/kg*K
+Coolant_prandtl_number = 260.42
+Coolant_flow_rate = 1e-8 #m^3/sec
+Coolant_angle = 10 #degrees
+Coolant_nozzle_diameter= 0.0001 #m
+Coolant_coverage_percent  = 0.05 #percent of oil actually flowing over chip
+
+#			(SESCTHERM)		*CHIP PARAMETERS*
+# The parameters are currently configured for the following processor:
+#		AMA3200BEX5AR (CLAWHAMMER 754 3200+ 130nm soi 105.9M transistors 193mm^2 89W, 1.4V 57.4A)
+[chip_config]
+transistor_count = 5e8
+pin_count        = 754
+pins_height      = 0.003 #m
+pin_pitch        = 0.00025 #mm
+chip_width       = 0.002151682480000 #m 
+chip_height      = 0.005231339500000 #m
+chip_thickness   = 0.00083 #m
+package_height   = 0.020 #m
+package_width    = 0.020 #m
+package_thickness= 0.0005 #m
+technology       =  65 #nm
+
+#			(SESCTHERM)		*HEAT SINK/SPREADER PROPERTIES*
+[spreader_sink_config]
+heat_spreader_width = .0575		#AMD 754 Pin Package
+heat_spreader_height = .0575 	
+#heat_spreader_thickness = .003195
+heat_spreader_thickness = 0.4
+heat_spreader_microhardness =  0 # 924.1 #MPa = 1x10^6 Pa
+heat_spreader_surfaceroughness = 0 # .45 #um = 1x10^-6  m
+heat_sink_resistance = 0 #specify heat sink resistance
+                                #this will be -1 if unused
+                                #standard value 2e-5 is used normally
+heat_sink_microhardness =  924.1 #MPa = 1x10^6 Pa
+heat_sink_surfaceroughness = .45 #um = 1x10^-6  m
+heat_sink_contactpressure = 0.10 #MPa = 1x10^6 Pa
+heat_sink_fins = 50
+heat_sink_fins_thickness = 0.100
+heat_sink_width = 0.060
+heat_sink_height = 0.060
+heat_sink_thickness = 0.050
+interface_material_conductivity = 200 #W/mK
+interface_material_gasparameter = 0.0
+
+#			(SESCTHERM)		*MATERIALS LIBRARY*
+#		 This is a list of the materials currently used
+[BULK_SI]
+density  = 2330
+specHeat =  710
+conductivity = 148
+emissivity = 0.04
+governing_equation = 1	#the conductivity of silicon is governed by the surrounding temperature
+
+[TUNGSTON]
+density = 2700
+specHeat = 938
+conductivity = 230
+emissivity = 0.02 
+governing_equation = 0 
+
+[COPPER]
+density  = 8933
+specHeat = 385
+conductivity = 401
+emissivity = .03
+governing_equation = 0	
+
+[VIRTUAL]
+density     = 0
+specHeat    = 0
+conductivity = 0
+emissivity = 0
+governing_equation = 0 
+
+[DOPED_POLYSILICON]
+density = 2330
+specHeat = 753
+conductivity = 28 #Note: another paper quotes 125W/mK for undoped polysilicon
+emissivity = 0.65 #this is for heavily-doped polysilicon, 0.05 for lighly doped
+governing_equation = 0 
+
+[SI_O2]
+density = 2220
+specHeat = 1000
+conductivity = 1.4
+emissivity = 0.05
+governing_equation = 0
+
+#FIXME: simox density and specific heat assumed to be the same as bulk
+[SIMOX]
+density = 2220
+specHeat = 1000
+conductivity = 0.82
+emissivity = 0.05
+governing_equation = 0
+
+[DIELECTRIC_CHIP]
+density = 2220
+specHeat = 0		#unknown, computed
+conductivity = 0	#unknown, computed
+emissivity = 0.5	#glass-epoxy 
+governing_equation = 0 
+
+[XEROGEL]	#interlayer-dielectric
+density = 150			#taken from Bisson et al.
+specHeat = 750
+conductivity = 0.25		#taken from R. Stangl et al.
+emissivity = 0.3
+governing_equation = 0
+
+#			(SESCTHERM)		*LAYER CONFIGURATION*
+# these layers are from the bottom of the  model (pins) to top (HEATSINK)
+# Note: 1) granularity of zero means coarsest granularity possible
+#       2) granularity of -1 means the minimum granularity of adjacent layers
+#		3) lock_temp of -1 means do not set the temperature on the layer to a constant temp
+#		4) floorplan of -1 means undefined. Otherwise, value corresponds to floorplan index within main configuration
+#		4) floorplan must be defined for the transistor layer
+#		4) floorplan may NOT be defined for cooling devices (heatspreader, heatsink, heatsink_fins, oil)
+#		5) only layers with a defined floorplan may have internal power generation
+#motherboard layer
+[mainboard0]
+name=mainboard0
+type=mainboard
+thickness = .0006
+width = .40
+height = .40
+granularity = -1
+lock_temp = 25+273.15
+floorplan = -1
+
+#pins layer
+[pins0]
+name=pins0
+type=pins
+thickness = 0   #FIXME, Pins layer thickness is hard-coded now
+width	=	0	#pins layer will have the same width as the PWB Layer
+height	=	0
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+#pwb layer
+[pwb0]
+name=pwb0
+type=package_pwb
+thickness = 0   #FIXME, PWB thickness is hard-coded now
+width = 0		#width and height determined by package configuration parameters
+height = 0
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+#FC-PBGA substrate
+[fcpbga0]
+name=fcpbga0
+type=package_substrate_c5
+thickness = 0   #FIXME, package-substrate thickness is hard-coded now
+width = 0	#FIXME: measure 
+height = 0
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+#C4, Underfill
+[c4_underfill0]
+name=c4underfill0
+type=c4_underfill
+thickness = 0   #FIXME, c4 underfill thickness is hard-coded now
+width = 0		#this will be the same as the chip height and width (determined at runtime based upon the floorplan)
+height = 0
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+#interconnect layers (metal)
+[interconnect0]
+name=interconnect0
+type=interconnect
+thickness = 0    #interconnect thickness determined at runtime
+width = 0   	 #this will be the same as the chip height and width (determined at runtime based upon the floorplan)
+height = 0
+granularity = -1
+lock_temp = -1
+floorplan = 0	 #interconnect layer looks to floorplan 0 to get interconnect densities
+
+#Die transistor level with polysilicon and SIMOX/Strained Silicon
+[die_transistor0]
+name=die_transistor0
+type=die_transistor
+thickness = 0
+width = 0			#determined at runtime based upon the floorplan
+height = 0
+granularity = 0.002
+lock_temp = -1
+floorplan = 0
+
+#bulksilicon
+[bulk_silicon0]
+name=bulk_silicon0
+type=bulk_silicon
+thickness = 0.0002
+width = 0			#determined at runtime based upon the floorplan
+height = 0
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+#air layer
+[air_layer0]
+name=air0
+type=air
+thickness= .1
+width = 0
+height = 0
+granularity = -1
+lock_temp = 25+273.15
+floorplan = -1
+
+#air layer
+[air_layer1]
+name=air1
+type=air
+thickness= .1
+width = 0
+height = 0
+granularity = -1
+lock_temp = -1 # 35.0+273.15
+floorplan = -1
+
+#heat spreader layer
+[spreader_layer]
+name=heatspreader0
+type=heat_spreader
+thickness = 0.005 
+height = 0
+width = 0
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+[spreader_layer1]
+name=heatspreader1
+type=heat_spreader
+thickness = 0.001
+height = 0.01
+width = 0.01
+granularity = -1
+lock_temp = -1
+floorplan = -1
+
+[spreader_layer2]
+name=heatspreader2
+type=heat_spreader
+thickness = 0.01
+height = 0
+width = 0
+granularity = -1
+lock_temp = 25+273.15
+floorplan = -1
+
+[oil_layer]
+name=oil0_air
+type=oil
+thickness = 0
+width     = 0
+height    = 0
+granularity = -1
+lock_temp  = -1
+#lock_temp = 26.85+273.15
+floorplan = -1
+
+[heatsink1]
+name=heatsinkfins0
+type=heat_sink_fins
+thickness = 0.100
+width = 0.060
+height = 0.060
+granularity = -1
+lock_temp = -1
+floorplan = -1
+

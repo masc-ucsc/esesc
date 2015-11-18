@@ -22,9 +22,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #ifndef REPORT_H
 #define REPORT_H
-
+#define MAX_REPORT_BUFFER 40960
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 
 class Report {
 private:
@@ -33,6 +34,13 @@ private:
   static FILE *rfd[MAXREPORTSTACK];
   static const char *fns[MAXREPORTSTACK];
   static int32_t tos;
+
+  //live stuff
+  static char checkpoint_id[];
+  static bool is_live;
+  static unsigned char * binReportData;
+  static int binLength;
+  static std::string schema;
   //static FILE *createTmp(const char *name);
   Report();
 public:
@@ -44,6 +52,15 @@ public:
   static void field(const char *format,...);
   static void close();
   static void flush();
+  static void openSocket(int64_t cpid);
+  static void flushSocket(int64_t sample_count);
+  static void binField(double val);
+  static void binField(double nData, double data);
+  static void binField(double d1, double d2, double d3);
+  static void setBinField(int data);
+  static void binFlush();
+  static void scheme(const char * name, const char * sch);
+  static void sendSchema();
 };
 
 // Report::field("bla bla bla:",a);

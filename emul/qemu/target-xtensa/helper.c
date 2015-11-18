@@ -26,66 +26,111 @@
  */
 
 #include "cpu.h"
-#include "exec-all.h"
-#include "gdbstub.h"
-#include "qemu-common.h"
-#include "host-utils.h"
+#include "exec/exec-all.h"
+#include "exec/gdbstub.h"
+#include "qemu/host-utils.h"
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/loader.h"
 #endif
 
-static void reset_mmu(CPUState *env);
+static struct XtensaConfigList *xtensa_cores;
 
-void cpu_reset(CPUXtensaState *env)
+static void xtensa_core_class_init(ObjectClass *oc, void *data)
 {
-    env->exception_taken = 0;
-    env->pc = env->config->exception_vector[EXC_RESET];
-    env->sregs[LITBASE] &= ~1;
-    env->sregs[PS] = xtensa_option_enabled(env->config,
-            XTENSA_OPTION_INTERRUPT) ? 0x1f : 0x10;
-    env->sregs[VECBASE] = env->config->vecbase;
+    CPUClass *cc = CPU_CLASS(oc);
+    XtensaCPUClass *xcc = XTENSA_CPU_CLASS(oc);
+    const XtensaConfig *config = data;
 
-    env->pending_irq_level = 0;
-    reset_mmu(env);
+    xcc->config = config;
+
+    /* Use num_core_regs to see only non-privileged registers in an unmodified
+     * gdb. Use num_regs to see all registers. gdb modification is required
+     * for that: reset bit 0 in the 'flags' field of the registers definitions
+     * in the gdb/xtensa-config.c inside gdb source tree or inside gdb overlay.
+     */
+    cc->gdb_num_core_regs = config->gdb_regmap.num_regs;
 }
 
-static struct XtensaConfigList *xtensa_cores;
+void xtensa_finalize_config(XtensaConfig *config)
+{
+    unsigned i, n = 0;
+
+    if (config->gdb_regmap.num_regs) {
+        return;
+    }
+
+    for (i = 0; config->gdb_regmap.reg[i].targno >= 0; ++i) {
+        n += (config->gdb_regmap.reg[i].type != 6);
+    }
+    config->gdb_regmap.num_regs = n;
+}
 
 void xtensa_register_core(XtensaConfigList *node)
 {
+    TypeInfo type = {
+        .parent = TYPE_XTENSA_CPU,
+        .class_init = xtensa_core_class_init,
+        .class_data = (void *)node->config,
+    };
+
     node->next = xtensa_cores;
     xtensa_cores = node;
+    type.name = g_strdup_printf("%s-" TYPE_XTENSA_CPU, node->config->name);
+    type_register(&type);
+    g_free((gpointer)type.name);
 }
 
-CPUXtensaState *cpu_xtensa_init(const char *cpu_model)
+static uint32_t check_hw_breakpoints(CPUXtensaState *env)
 {
-    static int tcg_inited;
-    CPUXtensaState *env;
-    const XtensaConfig *config = NULL;
-    XtensaConfigList *core = xtensa_cores;
+    unsigned i;
 
-    for (; core; core = core->next)
-        if (strcmp(core->config->name, cpu_model) == 0) {
-            config = core->config;
-            break;
+    for (i = 0; i < env->config->ndbreak; ++i) {
+        if (env->cpu_watchpoint[i] &&
+                env->cpu_watchpoint[i]->flags & BP_WATCHPOINT_HIT) {
+            return DEBUGCAUSE_DB | (i << DEBUGCAUSE_DBNUM_SHIFT);
         }
+    }
+    return 0;
+}
 
-    if (config == NULL) {
+void xtensa_breakpoint_handler(CPUState *cs)
+{
+    XtensaCPU *cpu = XTENSA_CPU(cs);
+    CPUXtensaState *env = &cpu->env;
+
+    if (cs->watchpoint_hit) {
+        if (cs->watchpoint_hit->flags & BP_CPU) {
+            uint32_t cause;
+
+            cs->watchpoint_hit = NULL;
+            cause = check_hw_breakpoints(env);
+            if (cause) {
+                debug_exception_env(env, cause);
+            }
+            cpu_resume_from_signal(cs, NULL);
+        }
+    }
+}
+
+XtensaCPU *cpu_xtensa_init(const char *cpu_model)
+{
+    ObjectClass *oc;
+    XtensaCPU *cpu;
+    CPUXtensaState *env;
+
+    oc = cpu_class_by_name(TYPE_XTENSA_CPU, cpu_model);
+    if (oc == NULL) {
         return NULL;
     }
 
-    env = g_malloc0(sizeof(*env));
-    env->config = config;
-    cpu_exec_init(env);
-
-    if (!tcg_inited) {
-        tcg_inited = 1;
-        xtensa_translate_init();
-    }
+    cpu = XTENSA_CPU(object_new(object_class_get_name(oc)));
+    env = &cpu->env;
 
     xtensa_irq_init(env);
-    qemu_init_vcpu(env);
-    return env;
+
+    object_property_set_bool(OBJECT(cpu), true, "realized", NULL);
+
+    return cpu;
 }
 
 
@@ -98,24 +143,25 @@ void xtensa_cpu_list(FILE *f, fprintf_function cpu_fprintf)
     }
 }
 
-target_phys_addr_t cpu_get_phys_page_debug(CPUState *env, target_ulong addr)
+hwaddr xtensa_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
+    XtensaCPU *cpu = XTENSA_CPU(cs);
     uint32_t paddr;
     uint32_t page_size;
     unsigned access;
 
-    if (xtensa_get_physical_addr(env, addr, 0, 0,
+    if (xtensa_get_physical_addr(&cpu->env, false, addr, 0, 0,
                 &paddr, &page_size, &access) == 0) {
         return paddr;
     }
-    if (xtensa_get_physical_addr(env, addr, 2, 0,
+    if (xtensa_get_physical_addr(&cpu->env, false, addr, 2, 0,
                 &paddr, &page_size, &access) == 0) {
         return paddr;
     }
     return ~0;
 }
 
-static uint32_t relocated_vector(CPUState *env, uint32_t vector)
+static uint32_t relocated_vector(CPUXtensaState *env, uint32_t vector)
 {
     if (xtensa_option_enabled(env->config,
                 XTENSA_OPTION_RELOCATABLE_VECTOR)) {
@@ -131,7 +177,7 @@ static uint32_t relocated_vector(CPUState *env, uint32_t vector)
  * For the level-1 interrupt convert it to either user, kernel or double
  * exception with the 'level-1 interrupt' exception cause.
  */
-static void handle_interrupt(CPUState *env)
+static void handle_interrupt(CPUXtensaState *env)
 {
     int level = env->pending_irq_level;
 
@@ -140,6 +186,8 @@ static void handle_interrupt(CPUState *env)
             (env->config->level_mask[level] &
              env->sregs[INTSET] &
              env->sregs[INTENABLE])) {
+        CPUState *cs = CPU(xtensa_env_get_cpu(env));
+
         if (level > 1) {
             env->sregs[EPC1 + level - 1] = env->pc;
             env->sregs[EPS2 + level - 2] = env->sregs[PS];
@@ -156,10 +204,10 @@ static void handle_interrupt(CPUState *env)
                 } else {
                     env->sregs[EPC1] = env->pc;
                 }
-                env->exception_index = EXC_DOUBLE;
+                cs->exception_index = EXC_DOUBLE;
             } else {
                 env->sregs[EPC1] = env->pc;
-                env->exception_index =
+                cs->exception_index =
                     (env->sregs[PS] & PS_UM) ? EXC_USER : EXC_KERNEL;
             }
             env->sregs[PS] |= PS_EXCM;
@@ -168,9 +216,12 @@ static void handle_interrupt(CPUState *env)
     }
 }
 
-void do_interrupt(CPUState *env)
+void xtensa_cpu_do_interrupt(CPUState *cs)
 {
-    if (env->exception_index == EXC_IRQ) {
+    XtensaCPU *cpu = XTENSA_CPU(cs);
+    CPUXtensaState *env = &cpu->env;
+
+    if (cs->exception_index == EXC_IRQ) {
         qemu_log_mask(CPU_LOG_INT,
                 "%s(EXC_IRQ) level = %d, cintlevel = %d, "
                 "pc = %08x, a0 = %08x, ps = %08x, "
@@ -183,7 +234,7 @@ void do_interrupt(CPUState *env)
         handle_interrupt(env);
     }
 
-    switch (env->exception_index) {
+    switch (cs->exception_index) {
     case EXC_WINDOW_OVERFLOW4:
     case EXC_WINDOW_UNDERFLOW4:
     case EXC_WINDOW_OVERFLOW8:
@@ -193,17 +244,18 @@ void do_interrupt(CPUState *env)
     case EXC_KERNEL:
     case EXC_USER:
     case EXC_DOUBLE:
+    case EXC_DEBUG:
         qemu_log_mask(CPU_LOG_INT, "%s(%d) "
                 "pc = %08x, a0 = %08x, ps = %08x, ccount = %08x\n",
-                __func__, env->exception_index,
+                __func__, cs->exception_index,
                 env->pc, env->regs[0], env->sregs[PS], env->sregs[CCOUNT]);
-        if (env->config->exception_vector[env->exception_index]) {
+        if (env->config->exception_vector[cs->exception_index]) {
             env->pc = relocated_vector(env,
-                    env->config->exception_vector[env->exception_index]);
+                    env->config->exception_vector[cs->exception_index]);
             env->exception_taken = 1;
         } else {
             qemu_log("%s(pc = %08x) bad exception_index: %d\n",
-                    __func__, env->pc, env->exception_index);
+                    __func__, env->pc, cs->exception_index);
         }
         break;
 
@@ -212,13 +264,23 @@ void do_interrupt(CPUState *env)
 
     default:
         qemu_log("%s(pc = %08x) unknown exception_index: %d\n",
-                __func__, env->pc, env->exception_index);
+                __func__, env->pc, cs->exception_index);
         break;
     }
     check_interrupts(env);
 }
 
-static void reset_tlb_mmu_all_ways(CPUState *env,
+bool xtensa_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
+{
+    if (interrupt_request & CPU_INTERRUPT_HARD) {
+        cs->exception_index = EXC_IRQ;
+        xtensa_cpu_do_interrupt(cs);
+        return true;
+    }
+    return false;
+}
+
+static void reset_tlb_mmu_all_ways(CPUXtensaState *env,
         const xtensa_tlb *tlb, xtensa_tlb_entry entry[][MAX_TLB_WAY_SIZE])
 {
     unsigned wi, ei;
@@ -231,7 +293,7 @@ static void reset_tlb_mmu_all_ways(CPUState *env,
     }
 }
 
-static void reset_tlb_mmu_ways56(CPUState *env,
+static void reset_tlb_mmu_ways56(CPUXtensaState *env,
         const xtensa_tlb *tlb, xtensa_tlb_entry entry[][MAX_TLB_WAY_SIZE])
 {
     if (!tlb->varway56) {
@@ -278,7 +340,7 @@ static void reset_tlb_mmu_ways56(CPUState *env,
     }
 }
 
-static void reset_tlb_region_way0(CPUState *env,
+static void reset_tlb_region_way0(CPUXtensaState *env,
         xtensa_tlb_entry entry[][MAX_TLB_WAY_SIZE])
 {
     unsigned ei;
@@ -292,7 +354,7 @@ static void reset_tlb_region_way0(CPUState *env,
     }
 }
 
-static void reset_mmu(CPUState *env)
+void reset_mmu(CPUXtensaState *env)
 {
     if (xtensa_option_enabled(env->config, XTENSA_OPTION_MMU)) {
         env->sregs[RASID] = 0x04030201;
@@ -309,7 +371,7 @@ static void reset_mmu(CPUState *env)
     }
 }
 
-static unsigned get_ring(const CPUState *env, uint8_t asid)
+static unsigned get_ring(const CPUXtensaState *env, uint8_t asid)
 {
     unsigned i;
     for (i = 0; i < 4; ++i) {
@@ -329,7 +391,7 @@ static unsigned get_ring(const CPUState *env, uint8_t asid)
  * \param pring: [out] access ring
  * \return 0 if ok, exception cause code otherwise
  */
-int xtensa_tlb_lookup(const CPUState *env, uint32_t addr, bool dtlb,
+int xtensa_tlb_lookup(const CPUXtensaState *env, uint32_t addr, bool dtlb,
         uint32_t *pwi, uint32_t *pei, uint8_t *pring)
 {
     const xtensa_tlb *tlb = dtlb ?
@@ -369,6 +431,7 @@ int xtensa_tlb_lookup(const CPUState *env, uint32_t addr, bool dtlb,
 static unsigned mmu_attr_to_access(uint32_t attr)
 {
     unsigned access = 0;
+
     if (attr < 12) {
         access |= PAGE_READ;
         if (attr & 0x1) {
@@ -377,8 +440,22 @@ static unsigned mmu_attr_to_access(uint32_t attr)
         if (attr & 0x2) {
             access |= PAGE_WRITE;
         }
+
+        switch (attr & 0xc) {
+        case 0:
+            access |= PAGE_CACHE_BYPASS;
+            break;
+
+        case 4:
+            access |= PAGE_CACHE_WB;
+            break;
+
+        case 8:
+            access |= PAGE_CACHE_WT;
+            break;
+        }
     } else if (attr == 13) {
-        access |= PAGE_READ | PAGE_WRITE;
+        access |= PAGE_READ | PAGE_WRITE | PAGE_CACHE_ISOLATE;
     }
     return access;
 }
@@ -389,14 +466,35 @@ static unsigned mmu_attr_to_access(uint32_t attr)
  */
 static unsigned region_attr_to_access(uint32_t attr)
 {
-    unsigned access = 0;
-    if ((attr < 6 && attr != 3) || attr == 14) {
-        access |= PAGE_READ | PAGE_WRITE;
-    }
-    if (attr > 0 && attr < 6) {
-        access |= PAGE_EXEC;
-    }
-    return access;
+    static const unsigned access[16] = {
+         [0] = PAGE_READ | PAGE_WRITE             | PAGE_CACHE_WT,
+         [1] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_WT,
+         [2] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_BYPASS,
+         [3] =                          PAGE_EXEC | PAGE_CACHE_WB,
+         [4] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_WB,
+         [5] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_WB,
+        [14] = PAGE_READ | PAGE_WRITE             | PAGE_CACHE_ISOLATE,
+    };
+
+    return access[attr & 0xf];
+}
+
+/*!
+ * Convert cacheattr to PAGE_{READ,WRITE,EXEC} mask.
+ * See ISA, A.2.14 The Cache Attribute Register
+ */
+static unsigned cacheattr_attr_to_access(uint32_t attr)
+{
+    static const unsigned access[16] = {
+         [0] = PAGE_READ | PAGE_WRITE             | PAGE_CACHE_WT,
+         [1] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_WT,
+         [2] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_BYPASS,
+         [3] =                          PAGE_EXEC | PAGE_CACHE_WB,
+         [4] = PAGE_READ | PAGE_WRITE | PAGE_EXEC | PAGE_CACHE_WB,
+        [14] = PAGE_READ | PAGE_WRITE             | PAGE_CACHE_ISOLATE,
+    };
+
+    return access[attr & 0xf];
 }
 
 static bool is_access_granted(unsigned access, int is_write)
@@ -416,30 +514,48 @@ static bool is_access_granted(unsigned access, int is_write)
     }
 }
 
-static int autorefill_mmu(CPUState *env, uint32_t vaddr, bool dtlb,
-        uint32_t *wi, uint32_t *ei, uint8_t *ring);
+static int get_pte(CPUXtensaState *env, uint32_t vaddr, uint32_t *pte);
 
-static int get_physical_addr_mmu(CPUState *env,
+static int get_physical_addr_mmu(CPUXtensaState *env, bool update_tlb,
         uint32_t vaddr, int is_write, int mmu_idx,
-        uint32_t *paddr, uint32_t *page_size, unsigned *access)
+        uint32_t *paddr, uint32_t *page_size, unsigned *access,
+        bool may_lookup_pt)
 {
     bool dtlb = is_write != 2;
     uint32_t wi;
     uint32_t ei;
     uint8_t ring;
+    uint32_t vpn;
+    uint32_t pte;
+    const xtensa_tlb_entry *entry = NULL;
+    xtensa_tlb_entry tmp_entry;
     int ret = xtensa_tlb_lookup(env, vaddr, dtlb, &wi, &ei, &ring);
 
     if ((ret == INST_TLB_MISS_CAUSE || ret == LOAD_STORE_TLB_MISS_CAUSE) &&
-            (mmu_idx != 0 || ((vaddr ^ env->sregs[PTEVADDR]) & 0xffc00000)) &&
-            autorefill_mmu(env, vaddr, dtlb, &wi, &ei, &ring) == 0) {
+            may_lookup_pt && get_pte(env, vaddr, &pte) == 0) {
+        ring = (pte >> 4) & 0x3;
+        wi = 0;
+        split_tlb_entry_spec_way(env, vaddr, dtlb, &vpn, wi, &ei);
+
+        if (update_tlb) {
+            wi = ++env->autorefill_idx & 0x3;
+            xtensa_tlb_set_entry(env, dtlb, wi, ei, vpn, pte);
+            env->sregs[EXCVADDR] = vaddr;
+            qemu_log("%s: autorefill(%08x): %08x -> %08x\n",
+                    __func__, vaddr, vpn, pte);
+        } else {
+            xtensa_tlb_set_entry_mmu(env, &tmp_entry, dtlb, wi, ei, vpn, pte);
+            entry = &tmp_entry;
+        }
         ret = 0;
     }
     if (ret != 0) {
         return ret;
     }
 
-    const xtensa_tlb_entry *entry =
-        xtensa_tlb_get_entry(env, dtlb, wi, ei);
+    if (entry == NULL) {
+        entry = xtensa_tlb_get_entry(env, dtlb, wi, ei);
+    }
 
     if (ring < mmu_idx) {
         return dtlb ?
@@ -447,7 +563,8 @@ static int get_physical_addr_mmu(CPUState *env,
             INST_FETCH_PRIVILEGE_CAUSE;
     }
 
-    *access = mmu_attr_to_access(entry->attr);
+    *access = mmu_attr_to_access(entry->attr) &
+        ~(dtlb ? PAGE_EXEC : PAGE_READ | PAGE_WRITE);
     if (!is_access_granted(*access, is_write)) {
         return dtlb ?
             (is_write ?
@@ -462,35 +579,27 @@ static int get_physical_addr_mmu(CPUState *env,
     return 0;
 }
 
-static int autorefill_mmu(CPUState *env, uint32_t vaddr, bool dtlb,
-        uint32_t *wi, uint32_t *ei, uint8_t *ring)
+static int get_pte(CPUXtensaState *env, uint32_t vaddr, uint32_t *pte)
 {
+    CPUState *cs = CPU(xtensa_env_get_cpu(env));
     uint32_t paddr;
     uint32_t page_size;
     unsigned access;
     uint32_t pt_vaddr =
         (env->sregs[PTEVADDR] | (vaddr >> 10)) & 0xfffffffc;
-    int ret = get_physical_addr_mmu(env, pt_vaddr, 0, 0,
-            &paddr, &page_size, &access);
+    int ret = get_physical_addr_mmu(env, false, pt_vaddr, 0, 0,
+            &paddr, &page_size, &access, false);
 
     qemu_log("%s: trying autorefill(%08x) -> %08x\n", __func__,
             vaddr, ret ? ~0 : paddr);
 
     if (ret == 0) {
-        uint32_t vpn;
-        uint32_t pte = ldl_phys(paddr);
-
-        *ring = (pte >> 4) & 0x3;
-        *wi = (++env->autorefill_idx) & 0x3;
-        split_tlb_entry_spec_way(env, vaddr, dtlb, &vpn, *wi, ei);
-        xtensa_tlb_set_entry(env, dtlb, *wi, *ei, vpn, pte);
-        qemu_log("%s: autorefill(%08x): %08x -> %08x\n",
-                __func__, vaddr, vpn, pte);
+        *pte = ldl_phys(cs->as, paddr);
     }
     return ret;
 }
 
-static int get_physical_addr_region(CPUState *env,
+static int get_physical_addr_region(CPUXtensaState *env,
         uint32_t vaddr, int is_write, int mmu_idx,
         uint32_t *paddr, uint32_t *page_size, unsigned *access)
 {
@@ -521,13 +630,13 @@ static int get_physical_addr_region(CPUState *env,
  *
  * \return 0 if ok, exception cause code otherwise
  */
-int xtensa_get_physical_addr(CPUState *env,
+int xtensa_get_physical_addr(CPUXtensaState *env, bool update_tlb,
         uint32_t vaddr, int is_write, int mmu_idx,
         uint32_t *paddr, uint32_t *page_size, unsigned *access)
 {
     if (xtensa_option_enabled(env->config, XTENSA_OPTION_MMU)) {
-        return get_physical_addr_mmu(env, vaddr, is_write, mmu_idx,
-                paddr, page_size, access);
+        return get_physical_addr_mmu(env, update_tlb,
+                vaddr, is_write, mmu_idx, paddr, page_size, access, true);
     } else if (xtensa_option_bits_enabled(env->config,
                 XTENSA_OPTION_BIT(XTENSA_OPTION_REGION_PROTECTION) |
                 XTENSA_OPTION_BIT(XTENSA_OPTION_REGION_TRANSLATION))) {
@@ -536,7 +645,85 @@ int xtensa_get_physical_addr(CPUState *env,
     } else {
         *paddr = vaddr;
         *page_size = TARGET_PAGE_SIZE;
-        *access = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+        *access = cacheattr_attr_to_access(
+                env->sregs[CACHEATTR] >> ((vaddr & 0xe0000000) >> 27));
         return 0;
+    }
+}
+
+static void dump_tlb(FILE *f, fprintf_function cpu_fprintf,
+        CPUXtensaState *env, bool dtlb)
+{
+    unsigned wi, ei;
+    const xtensa_tlb *conf =
+        dtlb ? &env->config->dtlb : &env->config->itlb;
+    unsigned (*attr_to_access)(uint32_t) =
+        xtensa_option_enabled(env->config, XTENSA_OPTION_MMU) ?
+        mmu_attr_to_access : region_attr_to_access;
+
+    for (wi = 0; wi < conf->nways; ++wi) {
+        uint32_t sz = ~xtensa_tlb_get_addr_mask(env, dtlb, wi) + 1;
+        const char *sz_text;
+        bool print_header = true;
+
+        if (sz >= 0x100000) {
+            sz >>= 20;
+            sz_text = "MB";
+        } else {
+            sz >>= 10;
+            sz_text = "KB";
+        }
+
+        for (ei = 0; ei < conf->way_size[wi]; ++ei) {
+            const xtensa_tlb_entry *entry =
+                xtensa_tlb_get_entry(env, dtlb, wi, ei);
+
+            if (entry->asid) {
+                static const char * const cache_text[8] = {
+                    [PAGE_CACHE_BYPASS >> PAGE_CACHE_SHIFT] = "Bypass",
+                    [PAGE_CACHE_WT >> PAGE_CACHE_SHIFT] = "WT",
+                    [PAGE_CACHE_WB >> PAGE_CACHE_SHIFT] = "WB",
+                    [PAGE_CACHE_ISOLATE >> PAGE_CACHE_SHIFT] = "Isolate",
+                };
+                unsigned access = attr_to_access(entry->attr);
+                unsigned cache_idx = (access & PAGE_CACHE_MASK) >>
+                    PAGE_CACHE_SHIFT;
+
+                if (print_header) {
+                    print_header = false;
+                    cpu_fprintf(f, "Way %u (%d %s)\n", wi, sz, sz_text);
+                    cpu_fprintf(f,
+                            "\tVaddr       Paddr       ASID  Attr RWX Cache\n"
+                            "\t----------  ----------  ----  ---- --- -------\n");
+                }
+                cpu_fprintf(f,
+                        "\t0x%08x  0x%08x  0x%02x  0x%02x %c%c%c %-7s\n",
+                        entry->vaddr,
+                        entry->paddr,
+                        entry->asid,
+                        entry->attr,
+                        (access & PAGE_READ) ? 'R' : '-',
+                        (access & PAGE_WRITE) ? 'W' : '-',
+                        (access & PAGE_EXEC) ? 'X' : '-',
+                        cache_text[cache_idx] ? cache_text[cache_idx] :
+                            "Invalid");
+            }
+        }
+    }
+}
+
+void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUXtensaState *env)
+{
+    if (xtensa_option_bits_enabled(env->config,
+                XTENSA_OPTION_BIT(XTENSA_OPTION_REGION_PROTECTION) |
+                XTENSA_OPTION_BIT(XTENSA_OPTION_REGION_TRANSLATION) |
+                XTENSA_OPTION_BIT(XTENSA_OPTION_MMU))) {
+
+        cpu_fprintf(f, "ITLB:\n");
+        dump_tlb(f, cpu_fprintf, env, false);
+        cpu_fprintf(f, "\nDTLB:\n");
+        dump_tlb(f, cpu_fprintf, env, true);
+    } else {
+        cpu_fprintf(f, "No TLB for this CPU core\n");
     }
 }

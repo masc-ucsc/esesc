@@ -58,6 +58,7 @@ enum StallCause {
   SmallWinStall,
   SmallROBStall,
   SmallREGStall,
+  DivergeStall,
   OutsLoadsStall,
   OutsStoresStall,
   OutsBranchesStall,
@@ -110,9 +111,6 @@ public:
   virtual bool       retire(DInst    *dinst, bool flushing) = 0;
   virtual void       performed(DInst *dinst) =    0;
 
-  void select(DInst *dinst);
-
-  typedef CallbackMember1<Resource, DInst *, &Resource::select>    selectCB;
   typedef CallbackMember1<Resource, DInst *, &Resource::executing> executingCB;
   typedef CallbackMember1<Resource, DInst *, &Resource::executed>  executedCB;
   typedef CallbackMember1<Resource, DInst *, &Resource::performed> performedCB;
@@ -161,7 +159,8 @@ private:
 protected:
   MemObj        *DL1;
   GMemorySystem *memorySystem;
-  MemResource_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
+  LSQ           *lsq;
+  MemResource_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *lsq, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
 public:
 };
 
@@ -251,6 +250,11 @@ private:
 
   int32_t freeEntries;
   bool    enableDcache;
+	int32_t scbSize;
+	int32_t scbEntries;
+
+	typedef std::list<DInst *> SCBQueueType;
+	SCBQueueType scbQueue;
 
 public:
   FUStore(Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
@@ -311,7 +315,8 @@ public:
 
 class FURALU : public Resource {
 private:
-  GStatsCntr memoryBarrier;
+  GStatsCntr dmemoryBarrier;
+  GStatsCntr imemoryBarrier;
   Time_t blockUntil;
   bool scooreMemory;
 
@@ -339,7 +344,7 @@ protected:
   typedef CallbackMember1<FULoad_noMemSpec, DInst *, &FULoad_noMemSpec::cacheDispatched> cacheDispatchedCB;
 
 public:
-  FULoad_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
+  FULoad_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
@@ -356,7 +361,7 @@ private:
   bool    enableDcache;
 
 public:
-  FUStore_noMemSpec(Cluster *cls, PortGeneric *aGen, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
+  FUStore_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);

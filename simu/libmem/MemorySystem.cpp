@@ -41,7 +41,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "UnMemXBar.h"
 #include "MemorySystem.h"
 #include "MemController.h"
-
+#include "MarkovPrefetcher.h"
 
 #include "DrawArch.h"
 extern DrawArch arch;
@@ -85,35 +85,25 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     //mdev = new GHB(this, dev_section, dev_name);
 		I(0);
     devtype = 4;
-#if 0
   } else if (!strcasecmp(device_type, "stridePrefetcher")) {
     mdev = new StridePrefetcher(this, dev_section, dev_name);
     devtype = 5;
   } else if (!strcasecmp(device_type, "markovPrefetcher")) {
     mdev = new MarkovPrefetcher(this, dev_section, dev_name);
     devtype = 6;
+/*
   } else if (!strcasecmp(device_type, "taggedPrefetcher")) {
     mdev = new TaggedPrefetcher(this, dev_section, dev_name);
     devtype = 7;
-#endif
+*/
   }  else if (!strcasecmp(device_type, "bus")) {
     mdev = new Bus(this, dev_section, dev_name);
     devtype = 8;
   } else if (!strcasecmp(device_type, "tlb")) {
-		I(0);
-    //mdev = new TLB(this, dev_section, dev_name);
     devtype = 9;
-  } else if (!strcasecmp(device_type, "splitter")) {
-    //mdev = new Splitter(this, dev_section, dev_name);
-		I(0);
-    devtype = 10;
-  } else if (!strcasecmp(device_type, "memxbar")) {
-    mdev = new MemXBar(this, dev_section, dev_name);    
-    devtype = 11;
-  } else if (!strcasecmp(device_type, "unmemxbar")) {
-    mdev = new UnMemXBar(this, dev_section, dev_name);    
-    devtype = 12;
-  }  else if (!strcasecmp(device_type, "memcontroller")) {
+    mdev = new TLB(this, dev_section, dev_name);
+  } 
+  else if (!strcasecmp(device_type, "memcontroller")) {
     mdev = new MemController(this, dev_section, dev_name);
     devtype = 13;
   } else if (!strcasecmp(device_type, "void")) {
@@ -146,11 +136,15 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     case 8://bus
       mystr += "\"[shape=record,sides=5,peripheries=1,color=lightpink,style=filled]";
       break;
-    case 10: //Splitter
+    case 9://tlb
+      mystr += "\"[shape=record,sides=5,peripheries=1,color=lavender,style=filled]";
+      break;
+    case 10: //ScratchXBar //ScratchUnXBar //PECacheXBar //PECacheUnXBar
     case 11: //MemXBar
+    case 12: //MemXBar
       mystr += "\"[shape=record,sides=5,peripheries=1,color=thistle,style=filled]";
       break;
-    case 12: //memcontroller
+    case 13: //memcontroller
       mystr += "\"[shape=record,sides=5,peripheries=1,color=skyblue,style=filled]";
       break;
     default:
@@ -162,7 +156,9 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
 
   I(mdev);
   addMemObjName(mdev->getName());
+#ifdef DEBUG
   LOG("Added: %s", mdev->getName());
+#endif
 
   return mdev;
 }

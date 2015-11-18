@@ -92,8 +92,8 @@ struct icmp {
 
 /*
  * Lower bounds on packet lengths for various types.
- * For the error advice packets must first insure that the
- * packet is large enought to contain the returned ip header.
+ * For the error advice packets must first ensure that the
+ * packet is large enough to contain the returned ip header.
  * Only then can we do the check to see if 64 bits of packet
  * data have been returned, since we need to check the returned
  * ip header length.
@@ -154,6 +154,7 @@ struct icmp {
 	(type) == ICMP_MASKREQ || (type) == ICMP_MASKREPLY)
 
 void icmp_init(Slirp *slirp);
+void icmp_cleanup(Slirp *slirp);
 void icmp_input(struct mbuf *, int);
 void icmp_error(struct mbuf *msrc, u_char type, u_char code, int minsize,
                 const char *message);

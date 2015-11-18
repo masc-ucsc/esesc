@@ -20,14 +20,13 @@ ESESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#define TRACKGPU_MEMADDR 0
 #include "GPUThreadManager.h"
 #include <inttypes.h>
 
-
-bool printnow = false;
+#define TRACKGPU_MEMADDR 0
+bool     printnow = false;
 extern   uint64_t numThreads;
-extern    int64_t maxSamplingThreads;
+extern   int64_t  maxSamplingThreads;
 
 extern   uint64_t GPUFlowsAlive;
 extern   bool*    GPUFlowStatus;
@@ -37,54 +36,49 @@ extern   uint64_t newqemuid;
 
 extern   uint32_t traceSize;
 extern   bool     unifiedCPUGPUmem;
-extern   bool     istsfifoBlocked;
+extern   bool*    istsfifoBlocked;
 extern   bool     rabbit_threads_executing;
-extern ThreadBlockStatus *block;
-extern div_type branch_div_mech;
+extern   ThreadBlockStatus *block;
+extern   div_type branch_div_mech;
 
 GStatsCntr*  GPUThreadManager::totalPTXinst_T;
 GStatsCntr*  GPUThreadManager::totalPTXinst_R;
-#if 1
 GStatsCntr*  GPUThreadManager::totalPTXmemAccess_Shared;
 GStatsCntr*  GPUThreadManager::totalPTXmemAccess_Global;
 GStatsCntr*  GPUThreadManager::totalPTXmemAccess_Rest;
-#endif
 
 
 extern uint64_t GPUReader_translate_d2h(AddrType addr_ptr);
 extern uint64_t GPUReader_translate_shared(AddrType addr_ptr, uint32_t blockid, uint32_t warpid);
 extern uint32_t roundUp(uint32_t numToRound, uint32_t multiple);
 extern uint32_t roundDown(uint32_t numToRound, uint32_t multiple);
-
 extern uint64_t loopcounter;
 extern uint64_t relaunchcounter;
+extern uint64_t memref_interval;
+extern bool     MIMDmode;
 
-GPUThreadManager::GPUThreadManager(uint64_t numFlows, uint64_t numPEs) {
+bool sort_by_refcount(const sort_map& a ,const sort_map& b)
+{/*{{{*/
+  return (a.line->refcount < b.line->refcount) ;
+}
+/*}}}*/
+
+GPUThreadManager::GPUThreadManager(uint64_t numFlows, uint64_t numPEs)
+{/*{{{*/
   loopcounter = 0;
   totalPTXinst_T = new GStatsCntr("PTXStats:totalPTXinst_T");
-  //totalPTXinst_T->setIgnoreSampler();
-  //totalPTXinst_T->start();
-
   totalPTXinst_R = new GStatsCntr("PTXStats:totalPTXinst_R");
-  //totalPTXinst_R->setIgnoreSampler();
-  //totalPTXinst_R->start();
-
-#if 1
   totalPTXmemAccess_Shared = new GStatsCntr("PTXStats:totalmemAccess_Shared");
-  //totalPTXmemAccess_Shared->setIgnoreSampler();
-  //totalPTXmemAccess_Shared->start();
-
   totalPTXmemAccess_Global = new GStatsCntr("PTXStats:totalmemAccess_Global");
-  //totalPTXmemAccess_Global->setIgnoreSampler();
-  //totalPTXmemAccess_Global->start();
-
   totalPTXmemAccess_Rest = new GStatsCntr("PTXStats:totalmemAccess_Rest");
-  //totalPTXmemAccess_Rest->setIgnoreSampler();
-  //totalPTXmemAccess_Rest->start();
-#endif
 
   maxSMID = 0;
-  numSM = numFlows;
+  if (MIMDmode) {
+    numSM = (numFlows / numPEs) ;
+  } else {
+    numSM = numFlows;
+  }
+
   numSP = numPEs;
   SM = new esescSM[numSM];
   GPUFlowStatus = new bool[numSM];
@@ -104,17 +98,22 @@ GPUThreadManager::GPUThreadManager(uint64_t numFlows, uint64_t numPEs) {
   }
 #endif
 
-}
+  L1cache.setEntries(192);
+  L1cache.setlinesize(32);
+}/*}}}*/
 
-GPUThreadManager::~GPUThreadManager() {
+GPUThreadManager::~GPUThreadManager()
+{/*{{{*/
 #if TRACKGPU_MEMADDR
   memdata.close();
 #endif
   delete []SM;
   delete SM_fid_revmap;
-}
+  delete istsfifoBlocked;
+}/*}}}*/
 
-inline uint32_t GPUThreadManager::calcOccupancy() {
+inline uint32_t GPUThreadManager::calcOccupancy()
+{/*{{{*/
   CUDAKernel* kernel = kernels[current_CUDA_kernel];
 
   uint32_t warps_per_block = blockSize/warpsize;
@@ -144,9 +143,10 @@ inline uint32_t GPUThreadManager::calcOccupancy() {
   }
 
   return (i-1)*warps_per_block;
-}
+}/*}}}*/
 
-inline void GPUThreadManager::pauseAllThreads(uint32_t* h_trace, bool init, bool isRabbit) {
+inline void GPUThreadManager::pauseAllThreads(uint32_t* h_trace, bool init, bool isRabbit)
+{/*{{{*/
   CUDAKernel* kernel = kernels[current_CUDA_kernel];
   traceSize = kernel->tracesize;
   int64_t active_thread = 0;
@@ -180,9 +180,10 @@ inline void GPUThreadManager::pauseAllThreads(uint32_t* h_trace, bool init, bool
       }
     }
   }
-}
+}/*}}}*/
 
-inline void GPUThreadManager::resumeAllThreads(uint32_t* h_trace, bool init, bool isRabbit) {
+inline void GPUThreadManager::resumeAllThreads(uint32_t* h_trace, bool init, bool isRabbit)
+{/*{{{*/
 
   CUDAKernel* kernel = kernels[current_CUDA_kernel];
   traceSize = kernel->tracesize;
@@ -217,9 +218,10 @@ inline void GPUThreadManager::resumeAllThreads(uint32_t* h_trace, bool init, boo
       }
     }
   }
-}
+}/*}}}*/
 
-inline void GPUThreadManager::pauseThreadsInRange(uint32_t* h_trace, uint64_t startRange, uint64_t endRange, bool init, bool isRabbit) {
+inline void GPUThreadManager::pauseThreadsInRange(uint32_t* h_trace, uint64_t startRange, uint64_t endRange, bool init, bool isRabbit)
+{/*{{{*/
   CUDAKernel* kernel = kernels[current_CUDA_kernel];
   traceSize = kernel->tracesize;
   int64_t active_thread = 0;
@@ -252,9 +254,10 @@ inline void GPUThreadManager::pauseThreadsInRange(uint32_t* h_trace, uint64_t st
       }
     }
   }
-}
+}/*}}}*/
 
-inline void GPUThreadManager::resumeThreadsInRange(uint32_t* h_trace, uint64_t startRange, uint64_t endRange, bool init, bool isRabbit) {
+inline void GPUThreadManager::resumeThreadsInRange(uint32_t* h_trace, uint64_t startRange, uint64_t endRange, bool init, bool isRabbit)
+{/*{{{*/
   CUDAKernel* kernel = kernels[current_CUDA_kernel];
   traceSize = kernel->tracesize;
   int64_t active_thread = 0;
@@ -265,8 +268,7 @@ inline void GPUThreadManager::resumeThreadsInRange(uint32_t* h_trace, uint64_t s
         h_trace[active_thread*traceSize+2]=32760; //Skip Inst to a large number
         h_trace[active_thread*traceSize+4]=0;     //Pause = 0 (Resume)
       }
-    }
-    else  {
+    } else  {
       for (active_thread = startRange; active_thread < (int64_t)endRange; active_thread++) {
         h_trace[active_thread*traceSize+0]=1;     //First BB to 1
         h_trace[active_thread*traceSize+4]=0;     //Pause = 0 (Resume)
@@ -279,16 +281,16 @@ inline void GPUThreadManager::resumeThreadsInRange(uint32_t* h_trace, uint64_t s
         h_trace[active_thread*traceSize+2]=32760; //Skip Inst to a large number
         h_trace[active_thread*traceSize+4]=0;     //Pause = 0 (Resume)
       }
-    }
-    else  {
+    } else  {
       for (active_thread = startRange; active_thread < (int64_t)endRange; active_thread++) {
         h_trace[active_thread*traceSize+4]=0;     //Pause = 0 (Resume)
       }
     }
   }
-}
+}/*}}}*/
 
-inline void GPUThreadManager::resumeSelectivethreads(uint32_t* h_trace, uint32_t smid, uint64_t warpid, bool init, bool isRabbit) {
+inline void GPUThreadManager::resumeSelectivethreads(uint32_t* h_trace, uint32_t smid, uint64_t warpid, bool init, bool isRabbit)
+{/*{{{*/
   int64_t active_thread = 0;
   uint64_t maxcount = numSP;
 
@@ -307,8 +309,7 @@ inline void GPUThreadManager::resumeSelectivethreads(uint32_t* h_trace, uint32_t
           h_trace[active_thread*traceSize+4]=0; //Resume
         }
       }
-    }
-    else {
+    } else {
       for (uint64_t pe_id = 0; pe_id < maxcount; pe_id++) {
         active_thread = SM[smid].threads_per_pe[pe_id][warpid];
         if (likely(active_thread >= 0)) {
@@ -317,8 +318,7 @@ inline void GPUThreadManager::resumeSelectivethreads(uint32_t* h_trace, uint32_t
         }
       }
     }
-  }
-  else {
+  } else {
     if (isRabbit) {
       for (uint64_t pe_id = 0; pe_id < maxcount; pe_id++) {
         active_thread = SM[smid].threads_per_pe[pe_id][warpid];
@@ -327,8 +327,7 @@ inline void GPUThreadManager::resumeSelectivethreads(uint32_t* h_trace, uint32_t
           h_trace[active_thread*traceSize+4]=0; //Resume
         }
       }
-    }
-    else {
+    } else {
       for (uint64_t pe_id = 0; pe_id < maxcount; pe_id++) {
         active_thread = SM[smid].threads_per_pe[pe_id][warpid];
         if (likely(active_thread >= 0)) {
@@ -338,9 +337,10 @@ inline void GPUThreadManager::resumeSelectivethreads(uint32_t* h_trace, uint32_t
     }
   }
 
-}
+}/*}}}*/
 
-inline void GPUThreadManager::pauseSelectivethreads(uint32_t* h_trace, uint32_t smid, uint64_t warpid, bool init, bool isRabbit) {
+inline void GPUThreadManager::pauseSelectivethreads(uint32_t* h_trace, uint32_t smid, uint64_t warpid, bool init, bool isRabbit)
+{/*{{{*/
   int64_t active_thread = 0;
   uint64_t maxcount = numSP;
 
@@ -358,8 +358,7 @@ inline void GPUThreadManager::pauseSelectivethreads(uint32_t* h_trace, uint32_t 
           h_trace[active_thread*traceSize+4]=1; //Pause
         }
       }
-    }
-    else {
+    } else {
       for (uint64_t pe_id = 0; pe_id < maxcount; pe_id++) {
         active_thread = SM[smid].threads_per_pe[pe_id][warpid];
         if (likely(active_thread >= 0)) {
@@ -368,8 +367,7 @@ inline void GPUThreadManager::pauseSelectivethreads(uint32_t* h_trace, uint32_t 
         }
       }
     }
-  }
-  else {
+  } else {
     if (isRabbit) {
       for (uint64_t pe_id = 0; pe_id < maxcount; pe_id++) {
         active_thread = SM[smid].threads_per_pe[pe_id][warpid];
@@ -387,10 +385,10 @@ inline void GPUThreadManager::pauseSelectivethreads(uint32_t* h_trace, uint32_t 
     }
   }
 
-}
+}/*}}}*/
 
-
-void GPUThreadManager::dump() {
+void GPUThreadManager::dump()
+{/*{{{*/
 #if 0
   for (uint32_t smid = 0; smid < numSM; smid++) {
     MSG("*************************************************************************");
@@ -421,19 +419,19 @@ void GPUThreadManager::dump() {
   }
 #endif
 #endif
-}
+}/*}}}*/
 
-inline void GPUThreadManager::clearAll() {
-
+inline void GPUThreadManager::clearAll()
+{/*{{{*/
 
   for (uint32_t localsmid =0; localsmid < numSM; localsmid++) {
     SM[localsmid].clearAll();
   }
 
+}/*}}}*/
 
-}
-
-void GPUThreadManager::reOrganize() {
+void GPUThreadManager::reOrganize()
+{/*{{{*/
   clearAll();
 
   static bool first = true;
@@ -504,7 +502,8 @@ void GPUThreadManager::reOrganize() {
       SM[smid].active_sps.reserve(num_warps);
       SM[smid].warp_threadcount.reserve(num_warps);
 
-      divergence_data div_data;
+      warp_div_data div_data;
+      uint32_t warpcount = 0;
       do {
 
         SM[smid].warp_status.push_back(traceReady);
@@ -533,8 +532,10 @@ void GPUThreadManager::reOrganize() {
         }
 
         num_warps--;
-      }
-      while (num_warps > 0);
+        warpcount++;
+      } while (num_warps > 0);
+
+      MSG("\nSM[%d] has %d warps",smid, warpcount);
 
       num_warps = nWarps;
       do {
@@ -581,7 +582,11 @@ void GPUThreadManager::reOrganize() {
 
   if (maxSamplingThreads != 0) {
     uint64_t total_timing_threads  = maxSamplingThreads;
-    if ((int64_t) total_timing_threads == -1) {
+    if ((int64_t) total_timing_threads < 0 ) {
+      IS(cout <<"maxSamplingThreads defined as "<< maxSamplingThreads <<", sampling all the threads" <<endl);
+      total_timing_threads = numThreads;
+    } else if ((int64_t) total_timing_threads > numThreads) {
+      IS(cout <<"maxSamplingThreads defined as "<< maxSamplingThreads <<",which is more than the number of threads in the application ( " << numThreads <<" ), sampling all the threads... " <<endl);
       total_timing_threads = numThreads;
     }
     uint32_t smid = 0;
@@ -653,31 +658,63 @@ void GPUThreadManager::reOrganize() {
     }
   }
 
+  newlaunch = true;
   IS(dump());
   //exit(-1);
   ////////////////
-}
+}/*}}}*/
 
-void GPUThreadManager::link(uint64_t glosmid, uint64_t smid) {
+void GPUThreadManager::link(uint64_t glosmid, uint64_t smid)
+{/*{{{*/
   I(smid < numSM);
   SM[smid].setglobal_smid(glosmid);
-  if (glosmid > maxSMID)
-    maxSMID = glosmid;
-  else
-    I(0);
-}
 
-void GPUThreadManager::createRevMap() {
+  //MSG("SM[%lld] configured as GlobalFlow[%lld]",smid, glosmid);
+
+  if (MIMDmode) {
+    maxSMID = glosmid + SM[smid].getnumSP();
+    //MSG("maxSMID configured as [%lld]", maxSMID);
+  } else {
+    if (glosmid > maxSMID){
+      maxSMID = glosmid;
+      //MSG("maxSMID configured as [%lld]", maxSMID);
+    } else {
+      I(0);
+    }
+  }
+
+}/*}}}*/
+
+void GPUThreadManager::createRevMap()
+{/*{{{*/
   //How do we check if a gloid actually is a valid GPU flow? :-)
   I(SM_fid_revmap == NULL);
 
-  SM_fid_revmap = new uint64_t[maxSMID+1];
-  for (uint64_t i = 0; i < numSM; i++) {
-    SM_fid_revmap[SM[i].getglobal_smid()] = i;
+  if (MIMDmode) {
+    SM_fid_revmap = new uint64_t[maxSMID+1];
+    for (uint64_t i = 0; i < numSM; i++) {
+      for (uint64_t j = 0; j < SM[i].getnumSP(); j++) {
+        SM_fid_revmap[SM[i].getglobal_smid(j)] = i;
+        //MSG("Global Flow [%lld] Maps to SM [%lld] PE[%lld]", SM[i].getglobal_smid(j), i,j);
+      }
+    }
+  } else {
+    SM_fid_revmap = new uint64_t[maxSMID+1];
+    for (uint64_t i = 0; i < numSM; i++) {
+      SM_fid_revmap[SM[i].getglobal_smid()] = i;
+    }
   }
-}
 
-void GPUThreadManager::init_trace(uint32_t* h_trace) {
+  istsfifoBlocked = new bool[maxSMID+1];
+  for (uint64_t k = 0; k < maxSMID+1; k++) {
+    istsfifoBlocked[k] = false;
+  }
+
+
+}/*}}}*/
+
+void GPUThreadManager::init_trace(uint32_t* h_trace)
+{/*{{{*/
   CUDAKernel* kernel = kernels[current_CUDA_kernel];
   traceSize = kernel->tracesize;
   bool init   = true;
@@ -729,10 +766,10 @@ void GPUThreadManager::init_trace(uint32_t* h_trace) {
   IS(fprintf(stderr, "\n\n\n"));
   //exit(-1);
   ////////////////
-}
+}/*}}}*/
 
-
-bool GPUThreadManager::Rabbit(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid) {
+bool GPUThreadManager::Rabbit(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid)
+{/*{{{*/
   /*
    * In this loop we start the Rabbit mode and then  insert the instructions for the threads that
    * we have decided to skip.
@@ -829,27 +866,40 @@ bool GPUThreadManager::Rabbit(EmuSampler* gsampler, uint32_t* h_trace_qemu, void
     return true;
   else
     return false;
-}
+}/*}}}*/
 
-bool GPUThreadManager::Timing(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid) {
+bool GPUThreadManager::Timing(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid)
+{/*{{{*/
   bool status = false;
-  /*
-     if (branch_div_mech == serial){
-     status      =  Timing_serial_branchdiv(gsampler, h_trace_qemu, env, qemuid);
-     } else if (branch_div_mech == post_dom){
-     status      =  Timing_postdom_branchdiv(gsampler, h_trace_qemu, env, qemuid);
-     } else if (branch_div_mech == sbi ){
-     status      =  Timing_sbi_branchdiv(gsampler, h_trace_qemu, env, qemuid);
-     } else if (branch_div_mech == sbi_swi){
-     status      =  Timing_sbi_swi_branchdiv(gsampler, h_trace_qemu, env, qemuid);
-     }
-     */
-  status      =  Timing_Original(gsampler, h_trace_qemu, env, qemuid);
-  //status      =  Timing_serial_branchdiv(gsampler, h_trace_qemu, env, qemuid);
+  memref_interval = 0;
+  if (MIMDmode){
+    newlaunch = true;
+    status      =  Timing_MIMD(gsampler, h_trace_qemu, env, qemuid);
+  } else {
+    if (branch_div_mech == serial){
+      status      =  Timing_serial_branchdiv(gsampler, h_trace_qemu, env, qemuid);
+    }
+    /*
+       else if (branch_div_mech == post_dom){
+       status      =  Timing_postdom_branchdiv(gsampler, h_trace_qemu, env, qemuid);
+       } else if (branch_div_mech == sbi ){
+       status      =  Timing_sbi_branchdiv(gsampler, h_trace_qemu, env, qemuid);
+       } else if (branch_div_mech == sbi_swi){
+       status      =  Timing_sbi_swi_branchdiv(gsampler, h_trace_qemu, env, qemuid);
+       }
+       */
+    else if (branch_div_mech == original){
+      status      =  Timing_Original(gsampler, h_trace_qemu, env, qemuid);
+    } else {
+      I(0);
+      //status      =  Timing_serial_branchdiv(gsampler, h_trace_qemu, env, qemuid);
+    }
+  }
   return status;
-}
+}/*}}}*/
 
-void GPUThreadManager::possiblyturnOFFSM(uint32_t smid) {
+void GPUThreadManager::possiblyturnOFFSM(uint32_t smid)
+{/*{{{*/
   //MSG("Checking to see if I can turn off SM [%d]", (int) smid);
   if (canTurnOffTiming(smid) && GPUFlowStatus[smid]) {
     IS(MSG ("SM %d Timing DONE, Pausing global flow %d ",(int) smid, (int)SM[smid].getglobal_smid()));
@@ -858,9 +908,10 @@ void GPUThreadManager::possiblyturnOFFSM(uint32_t smid) {
     //MSG("Yes I can turn it off" );
     GPUFlowsAlive--;
   }
-}
+}/*}}}*/
 
-bool GPUThreadManager::switch2nextwarp(uint32_t smid, uint32_t* h_trace) {
+bool GPUThreadManager::switch2nextwarp(uint32_t smid, uint32_t* h_trace)
+{/*{{{*/
   int64_t active_thread;
   uint32_t warpid = SM[smid].getCurrentWarp();
 
@@ -1004,16 +1055,17 @@ bool GPUThreadManager::switch2nextwarp(uint32_t smid, uint32_t* h_trace) {
         if (SM[smid].thread_status_per_pe[pe_id][newwarpid] != paused_on_a_barrier){
           h_trace[active_thread*traceSize+4]=0; //Resume
         } else {
-          MSG("New Warp %u : thread %lld is a barrier thread, not unpausing it",newwarpid, active_thread );
+          //MSG("New Warp %u : thread %lld is a barrier thread, not unpausing it",newwarpid, active_thread );
         }
       }
     }
   }
 
   return true;
-}
+}/*}}}*/
 
-bool GPUThreadManager::decode_trace(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid) {
+bool GPUThreadManager::decode_trace(EmuSampler* gsampler, uint32_t* h_trace_qemu, void* env, uint32_t* qemuid)
+{/*{{{*/
   static int conta = 0;
   bool continue_samestate;
   if (rabbit_threads_executing == false) {
@@ -1064,9 +1116,10 @@ bool GPUThreadManager::decode_trace(EmuSampler* gsampler, uint32_t* h_trace_qemu
     }
   }
 
-}
+}/*}}}*/
 
-void GPUThreadManager::reset_nextTimingBB(uint32_t* h_trace) {
+void GPUThreadManager::reset_nextTimingBB(uint32_t* h_trace)
+{/*{{{*/
   for (uint32_t smid = 0; smid < numSM; smid++) {
     if (canTurnOffTiming(smid)) {
       SM[smid].smstatus = SMcomplete;
@@ -1093,9 +1146,10 @@ void GPUThreadManager::reset_nextTimingBB(uint32_t* h_trace) {
     }
 
   } //End of for each SM loop.
-}
+}/*}}}*/
 
-void GPUThreadManager::reset_nextRabbitBB(uint32_t* h_trace) {
+void GPUThreadManager::reset_nextRabbitBB(uint32_t* h_trace)
+{/*{{{*/
   //Pause the timing threads, //Unpause the Rabbit threads
   GPUFlowsAlive = 0;
 
@@ -1151,9 +1205,10 @@ void GPUThreadManager::reset_nextRabbitBB(uint32_t* h_trace) {
       SM[smid].smstatus = SMcomplete;
     }
   }
-}
+}/*}}}*/
 
-void GPUThreadManager::reset_nextkernel() {
+void GPUThreadManager::reset_nextkernel()
+{/*{{{*/
 
   for (uint32_t smid = 0; smid < numSM; smid++) {
     if (SM[smid].totalthreadsinSM > 0) {
@@ -1189,9 +1244,10 @@ void GPUThreadManager::reset_nextkernel() {
       SM[smid].smstatus = SMcomplete;
     }
   }
-}
+}/*}}}*/
 
-void GPUThreadManager::decodeSignature(uint32_t* h_trace_qemu) {
+void GPUThreadManager::decodeSignature(uint32_t* h_trace_qemu)
+{/*{{{*/
   ofstream outdata; // outdata is like cin
   uint64_t threadid; // loop index
 
@@ -1218,10 +1274,10 @@ void GPUThreadManager::decodeSignature(uint32_t* h_trace_qemu) {
 
   outdata.close();
 
-}
+}/*}}}*/
 
-
-void GPUThreadManager::putinfile(uint64_t inst) {
+void GPUThreadManager::putinfile(uint64_t inst)
+{/*{{{*/
   ofstream outdata; // outdata is like cin
   outdata.open("starthere.csv"); // opens the file
 
@@ -1236,7 +1292,8 @@ void GPUThreadManager::putinfile(uint64_t inst) {
   //exit(1);
 
 }
+/*}}}*/
 
 uint32_t GPUThreadManager::getMinNumSM() {
-  return maxSamplingThreads/(blockSize*max_blocks_sm);
-}
+  return maxSamplingThreads/(blockSize*max_blocks_sm);/*{{{*/
+}/*}}}*/

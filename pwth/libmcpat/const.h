@@ -245,7 +245,6 @@ const double    bit_to_byte  = 8.0;
 
 // abbreviations used in this project
 // ----------------------------------
-//
 //  num  : number
 //  rw   : read/write
 //  rd   : read
@@ -267,8 +266,8 @@ enum ram_cell_tech_type_num
   comm_dram = 4
 };
 
-const double pppm[4]      = {1,1,1,1};
-const double pppm_lkg[4]  = {0,1,1,0};
+const double pppm[4]      = {1,1,1,1};   
+const double pppm_lkg[4]  = {0,25,25,0}; // Adjust to match ARM A15
 const double pppm_dyn[4]  = {1,0,0,0};
 const double pppm_Isub[4] = {0,1,0,0};
 const double pppm_Ig[4]   = {0,0,1,0};

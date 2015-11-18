@@ -43,7 +43,6 @@
 #include "RAWDInst.h"
 #include "callback.h"
 #include "Snippets.h"
-#include "CUDAInstruction.h"
 
 typedef int32_t SSID_t;
 
@@ -54,7 +53,8 @@ class Cluster;
 class Resource;
 class EmulInterface;
 
-// FIXME: do a nice class. Not so public
+//#define ESESC_TRACE 1
+
 class DInstNext {
  private:
   DInst *dinst;
@@ -109,24 +109,23 @@ private:
 
   // BEGIN Boolean flags
   bool loadForwarded;
+  bool renamed;
   bool issued;
   bool executed;
   bool replay;
 
   bool performed;
+  bool retired;
 
+  bool interCluster;
   bool keepStats;
-
-#ifdef ENABLE_CUDA
-  CUDAMemType memaccess;
-  uint32_t pe_id;
-#endif
 
   // END Boolean flags
 
-  // BEGIN Time counters
+#ifdef ESESC_TRACE
   Time_t wakeUpTime;
-  // END Time counters
+#endif
+  Time_t executedTime;
 
   SSID_t       SSID;
   AddrType     conflictStorePC;
@@ -153,7 +152,6 @@ private:
 #ifdef DEBUG
     mreq_id       = 0;
 #endif
-    wakeUpTime    = 0;
     first         = 0;
 
     cluster         = 0;
@@ -166,14 +164,19 @@ private:
     conflictStorePC = 0;
 
     loadForwarded = false;
+    renamed       = false;
     issued        = false;
     executed      = false;
     replay        = false;
     performed     = false;
-#ifdef ENABLE_CUDA
-    memaccess   = GlobalMem;
-#endif
+    retired       = false;
+    interCluster  = false;
+
     fetchTime = 0;
+#ifdef ESESC_TRACE
+    wakeUpTime    = 0;
+#endif
+    executedTime  = 0;
 #ifdef DINST_PARENT
     pend[0].setParentDInst(0);
     pend[1].setParentDInst(0);
@@ -193,23 +196,20 @@ public:
 
   bool getStatsFlag() const { return keepStats; }
 
-  static DInst *create(const Instruction *inst, RAWDInst *rinst, AddrType address, FlowID fid) {
+  static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
     DInst *i = dInstPool.out(); 
 
-    i->fid           = fid;
-    i->inst          = *inst;
     I(inst);
-    i->pc            = rinst->getPC();
-    i->addr          = address;
-    i->fetchTime = 0;
-    i->keepStats  = rinst->getStatsFlag();
 
-    //GI(inst->isMemory(), (i->getAddr() & 0x3) == 0); // Always word aligned access
-    //GI(i->getAddr(), (i->getAddr() & 0x3) == 0); // Even branches should be word aligned
+    i->fid       = fid;
+    i->inst      = *inst;
+    i->pc        = pc;
+    i->addr      = address;
+    i->fetchTime = 0;
+    i->keepStats = keepStats;
 
     i->setup();
     I(i->getInst()->getOpcode());
-
 
     return i;
   }
@@ -269,14 +269,14 @@ public:
   }
 #endif
 
-#if 0
-  void setFetch(FetchEngine *fe) {
-    fetch = fe;
-  }
-#else
-
   void lockFetch(FetchEngine *fe) {
+    I(fetch==0);
     fetch     = fe;
+    fetchTime = globalClock;
+  }
+
+  void setFetchTime() {
+    I(fetch==0);
     fetchTime = globalClock;
   }
 
@@ -286,7 +286,6 @@ public:
   Time_t getFetchTime() const {
     return fetchTime;
   }
-#endif
 
   DInst *getNextPending() {
     I(first);
@@ -308,6 +307,8 @@ public:
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
 
+    I(!executed);
+    I(!d->executed);
     DInstNext *n = &d->pend[0];
     I(!n->isUsed);
     n->isUsed = true;
@@ -326,6 +327,9 @@ public:
   void addSrc2(DInst * d) {
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
+    I(!executed);
+    I(!d->executed);
+
     DInstNext *n = &d->pend[1];
     I(!n->isUsed);
     n->isUsed = true;
@@ -344,6 +348,9 @@ public:
   void addSrc3(DInst * d) {
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
+    I(!executed);
+    I(!d->executed);
+
     DInstNext *n = &d->pend[2];
     I(!n->isUsed);
     n->isUsed = true;
@@ -390,7 +397,18 @@ public:
     loadForwarded=true;
   }
 
+  bool hasInterCluster() const { return interCluster; }
+  void markInterCluster() {
+    interCluster = true;
+  }
+
   bool isIssued() const { return issued; }
+
+  void markRenamed() {
+    I(!renamed);
+    renamed = true;
+  }
+  bool isRenamed() const { return renamed; }
 
   void markIssued() {
     I(!issued);
@@ -403,6 +421,7 @@ public:
     I(issued);
     I(!executed);
     executed = true;
+    executedTime = globalClock;
   }
 
   bool isReplay() const { return replay; }
@@ -419,16 +438,26 @@ public:
   void markPerformed() {
     // Loads get performed first, and then executed
     GI(!inst.isLoad(),executed);
-    I(inst.isLoad() || inst.isStore());
     performed = true;
   }
 
+  bool isRetired() const { return retired; }
+  void markRetired() {
+    I(inst.isStore());
+    retired = true;
+  }
+
+#ifdef ESESC_TRACE
   void setWakeUpTime(Time_t t)  {
     //I(wakeUpTime <= t || t == 0);
     wakeUpTime = t;
   }
 
   Time_t getWakeUpTime() const { return wakeUpTime; }
+#else
+  void setWakeUpTime(Time_t t)  { }
+#endif
+  Time_t getExecutedTime() const { return executedTime; }
 
   Time_t getID() const { return ID; }
 
@@ -436,65 +465,6 @@ public:
   uint64_t getmreq_id() { return mreq_id; }
   void setmreq_id(uint64_t _mreq_id) { mreq_id = _mreq_id; }
 #endif
-
-#ifdef ENABLE_CUDA
-  bool isSharedAddress(){
-    // FIXME: This is not a check, it changes the memaccess value. It should not do so (bad coding)
-    if ((addr >> 61) == 6){
-      memaccess = SharedMem;
-      return true;
-    } 
-    return false;
-  }
-  bool isGlobalAddress() const {
-    return (memaccess==GlobalMem);
-  }
-
-  bool isParamAddress() const {
-    return (memaccess==ParamMem);
-  }
-
-  bool isLocalAddress() const {
-    return (memaccess==LocalMem);
-  }
-
-  bool isConstantAddress() const {
-    return (memaccess==ConstantMem);
-  }
-
-  bool isTextureAddress() const {
-    return (memaccess==TextureMem);
-  }
-
-  bool useSharedAddress(){ // SHould be phased out.. use isSharedAddress instead
-    return (memaccess==SharedMem);
-  }
-
-  void setcudastats(RAWDInst *rinst){
-    memaccess            = rinst->getMemaccesstype();
-    uint64_t local_addr        = rinst->getAddr();
-    uint32_t peid_warpid = (local_addr >> 32);
-    pe_id                = ((peid_warpid >> 16) & 0x0000FFFF);
-  }
-
-  void setPE(uint64_t local_addr){
-    uint32_t peid_warpid = (local_addr >> 32);
-    pe_id       = ((peid_warpid >> 16) & 0x0000FFFF);
-  }
-
-
-  void markAddressLocal(FlowID fid){
-    memaccess = LocalMem;
-  }
-#endif
-
-  uint32_t getPE() const {
-#ifdef ENABLE_CUDA
-    return pe_id;
-#else
-    return 0;
-#endif
-  }
 
 };
 
@@ -504,5 +474,6 @@ class Hash4DInst {
     return (size_t)(dinst);
   }
 };
+
 
 #endif   // DINST_H

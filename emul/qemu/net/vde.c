@@ -21,26 +21,25 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "net/vde.h"
-
 #include "config-host.h"
 
 #include <libvdeplug.h>
 
-#include "net.h"
-#include "qemu-char.h"
+#include "net/net.h"
+#include "clients.h"
 #include "qemu-common.h"
-#include "qemu-option.h"
+#include "qemu/option.h"
+#include "qemu/main-loop.h"
 
 typedef struct VDEState {
-    VLANClientState nc;
+    NetClientState nc;
     VDECONN *vde;
 } VDEState;
 
 static void vde_to_qemu(void *opaque)
 {
     VDEState *s = opaque;
-    uint8_t buf[4096];
+    uint8_t buf[NET_BUFSIZE];
     int size;
 
     size = vde_recv(s->vde, (char *)buf, sizeof(buf), 0);
@@ -49,7 +48,7 @@ static void vde_to_qemu(void *opaque)
     }
 }
 
-static ssize_t vde_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
+static ssize_t vde_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
     VDEState *s = DO_UPCAST(VDEState, nc, nc);
     ssize_t ret;
@@ -61,7 +60,7 @@ static ssize_t vde_receive(VLANClientState *nc, const uint8_t *buf, size_t size)
     return ret;
 }
 
-static void vde_cleanup(VLANClientState *nc)
+static void vde_cleanup(NetClientState *nc)
 {
     VDEState *s = DO_UPCAST(VDEState, nc, nc);
     qemu_set_fd_handler(vde_datafd(s->vde), NULL, NULL, NULL);
@@ -69,17 +68,17 @@ static void vde_cleanup(VLANClientState *nc)
 }
 
 static NetClientInfo net_vde_info = {
-    .type = NET_CLIENT_TYPE_VDE,
+    .type = NET_CLIENT_OPTIONS_KIND_VDE,
     .size = sizeof(VDEState),
     .receive = vde_receive,
     .cleanup = vde_cleanup,
 };
 
-static int net_vde_init(VLANState *vlan, const char *model,
+static int net_vde_init(NetClientState *peer, const char *model,
                         const char *name, const char *sock,
                         int port, const char *group, int mode)
 {
-    VLANClientState *nc;
+    NetClientState *nc;
     VDEState *s;
     VDECONN *vde;
     char *init_group = (char *)group;
@@ -96,7 +95,7 @@ static int net_vde_init(VLANState *vlan, const char *model,
         return -1;
     }
 
-    nc = qemu_new_net_client(&net_vde_info, vlan, NULL, model, name);
+    nc = qemu_new_net_client(&net_vde_info, peer, model, name);
 
     snprintf(nc->info_str, sizeof(nc->info_str), "sock=%s,fd=%d",
              sock, vde_datafd(vde));
@@ -110,19 +109,18 @@ static int net_vde_init(VLANState *vlan, const char *model,
     return 0;
 }
 
-int net_init_vde(QemuOpts *opts, Monitor *mon, const char *name, VLANState *vlan)
+int net_init_vde(const NetClientOptions *opts, const char *name,
+                 NetClientState *peer, Error **errp)
 {
-    const char *sock;
-    const char *group;
-    int port, mode;
+    /* FIXME error_setg(errp, ...) on failure */
+    const NetdevVdeOptions *vde;
 
-    sock  = qemu_opt_get(opts, "sock");
-    group = qemu_opt_get(opts, "group");
+    assert(opts->kind == NET_CLIENT_OPTIONS_KIND_VDE);
+    vde = opts->vde;
 
-    port = qemu_opt_get_number(opts, "port", 0);
-    mode = qemu_opt_get_number(opts, "mode", 0700);
-
-    if (net_vde_init(vlan, "vde", name, sock, port, group, mode) == -1) {
+    /* missing optional values have been initialized to "all bits zero" */
+    if (net_vde_init(peer, "vde", name, vde->sock, vde->port, vde->group,
+                     vde->has_mode ? vde->mode : 0700) == -1) {
         return -1;
     }
 

@@ -22,13 +22,14 @@ MSR_IA32_VMX_TRUE_PINBASED_CTLS = 0x48D
 MSR_IA32_VMX_TRUE_PROCBASED_CTLS = 0x48E
 MSR_IA32_VMX_TRUE_EXIT_CTLS = 0x48F
 MSR_IA32_VMX_TRUE_ENTRY_CTLS = 0x490
+MSR_IA32_VMX_VMFUNC = 0x491
 
 class msr(object):
     def __init__(self):
         try:
-            self.f = file('/dev/cpu/0/msr')
+            self.f = open('/dev/cpu/0/msr', 'r', 0)
         except:
-            self.f = file('/dev/msr0')
+            self.f = open('/dev/msr0', 'r', 0)
     def read(self, index, default = None):
         import struct
         self.f.seek(index)
@@ -95,6 +96,19 @@ class Misc(object):
             print '  %-40s %s' % (self.bits[bits], fmt(v))
 
 controls = [
+    Misc(
+        name = 'Basic VMX Information',
+        bits = {
+            (0, 30): 'Revision',
+            (32,44): 'VMCS size',
+            48: 'VMCS restricted to 32 bit addresses',
+            49: 'Dual-monitor support',
+            (50, 53): 'VMCS memory type',
+            54: 'INS/OUTS instruction information',
+            55: 'IA32_VMX_TRUE_*_CTLS support',
+            },
+        msr = MSR_IA32_VMX_BASIC,
+        ),
     Control(
         name = 'pin-based controls',
         bits = {
@@ -102,6 +116,7 @@ controls = [
             3: 'NMI exiting',
             5: 'Virtual NMIs',
             6: 'Activate VMX-preemption timer',
+            7: 'Process posted interrupts',
             },
         cap_msr = MSR_IA32_VMX_PINBASED_CTLS,
         true_cap_msr = MSR_IA32_VMX_TRUE_PINBASED_CTLS,
@@ -142,11 +157,21 @@ controls = [
             0: 'Virtualize APIC accesses',
             1: 'Enable EPT',
             2: 'Descriptor-table exiting',
+            3: 'Enable RDTSCP',
             4: 'Virtualize x2APIC mode',
             5: 'Enable VPID',
             6: 'WBINVD exiting',
             7: 'Unrestricted guest',
+            8: 'APIC register emulation',
+            9: 'Virtual interrupt delivery',
             10: 'PAUSE-loop exiting',
+            11: 'RDRAND exiting',
+            12: 'Enable INVPCID',
+            13: 'Enable VM functions',
+            14: 'VMCS shadowing',
+            16: 'RDSEED exiting',
+            18: 'EPT-violation #VE',
+            20: 'Enable XSAVES/XRSTORS',
             },
         cap_msr = MSR_IA32_VMX_PROCBASED_CTLS2,
         ),
@@ -172,7 +197,7 @@ controls = [
         name = 'VM-Entry controls',
         bits = {
             2: 'Load debug controls',
-            9: 'IA-64 mode guest',
+            9: 'IA-32e mode guest',
             10: 'Entry to SMM',
             11: 'Deactivate dual-monitor treatment',
             13: 'Load IA32_PERF_GLOBAL_CTRL',
@@ -191,9 +216,12 @@ controls = [
             6: 'HLT activity state',
             7: 'Shutdown activity state',
             8: 'Wait-for-SIPI activity state',
+            15: 'IA32_SMBASE support',
             (16,24): 'Number of CR3-target values',
-            (25,27): 'MSR-load/store count recommenation',
-            (32,62): 'MSEG revision identifier',
+            (25,27): 'MSR-load/store count recommendation',
+            28: 'IA32_SMM_MONITOR_CTL[2] can be set to 1',
+            29: 'VMWRITE to VM-exit information fields',
+            (32,63): 'MSEG revision identifier',
             },
         msr = MSR_IA32_VMX_MISC_CTLS,
         ),
@@ -208,6 +236,7 @@ controls = [
             16: '2MB EPT pages',
             17: '1GB EPT pages',
             20: 'INVEPT supported',
+            21: 'EPT accessed and dirty flags',
             25: 'Single-context INVEPT',
             26: 'All-context INVEPT',
             32: 'INVVPID supported',
@@ -217,6 +246,13 @@ controls = [
             43: 'Single-context-retaining-globals INVVPID',
             },
         msr = MSR_IA32_VMX_EPT_VPID_CAP,
+        ),
+    Misc(
+        name = 'VM Functions',
+        bits = {
+            0: 'EPTP Switching',
+            },
+        msr = MSR_IA32_VMX_VMFUNC,
         ),
     ]
 

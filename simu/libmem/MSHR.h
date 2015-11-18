@@ -47,18 +47,13 @@
 
 #include "MSHRentry.h"
 
-#include "BloomFilter.h"
 /* }}} */
+
+class MemRequest;
 
 class MSHR {
 private:
 protected:
-  class OverflowField {
-  public:
-    AddrType      addr;
-    CallbackBase *cb;
-  };
-
   const char    *name;
   const uint32_t Log2LineSize;
   const int16_t  nEntries;
@@ -68,73 +63,9 @@ protected:
 
   GStatsAvg      avgUse;
   GStatsAvg      avgSubUse;
-  GStatsCntr     nOverflows;
-
-  typedef std::deque<OverflowField> Overflow;
-  Overflow overflow;
 
   AddrType calcLineAddr(AddrType addr) const { return addr >> Log2LineSize; }
 
-  static MSHR *create(const char *name, const char *type, int32_t size, int16_t lineSize, int16_t nSubEntries);
-public:
-  static MSHR *create(const char *name, const char *section, int16_t lineSize);
-
-  MSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
-  virtual ~MSHR() { 
-  }
-  bool hasFreeEntries() const {
-     return (nFreeEntries > 0);
-  }
-
-  // All derived classes must implement this interface
-  virtual bool canAccept(AddrType paddr) const = 0;
-  virtual bool canIssue(AddrType addr) const = 0;
-  virtual void addEntry(AddrType addr, CallbackBase *c=0) = 0;
-  virtual void retire(AddrType addr) = 0;
-  virtual void dump() const = 0;
-};
-
-//
-// MSHR that just queues the reqs, does NOT enforce address dependencies
-//
-class BlockingMSHR : public MSHR {
-private:  
-protected:
-  friend class MSHR;
-  BlockingMSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
-  
-public:
-  virtual ~BlockingMSHR() { }
-
-  bool canAccept(AddrType paddr) const;
-  bool canIssue(AddrType paddr) const; 
-  void addEntry(AddrType paddr, CallbackBase *c=0);
-  void retire(AddrType paddr);
-  void dump() const;
-};
-
-class NoMSHR : public MSHR {
-private:  
-protected:
-  friend class MSHR;
-  NoMSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
-  
-public:
-  virtual ~NoMSHR() { }
-
-  bool canAccept(AddrType paddr) const;
-  bool canIssue(AddrType paddr) const; 
-  void addEntry(AddrType paddr, CallbackBase *c=0);
-  void retire(AddrType paddr);
-  void dump() const;
-};
-
-//
-// regular full MSHR, address deps enforcement and overflowing capabilities
-//
-
-class FullMSHR : public MSHR {
-private:
   GStatsCntr nStallConflict;
 
   const int32_t    MSHRSize;
@@ -155,66 +86,28 @@ private:
   public:
     CallbackContainer cc;
     int32_t nUse;
+#ifdef DEBUG
+    std::deque<MemRequest *> pending_mreq;
+    MemRequest *block_mreq;
+#endif
   };
 
   std::vector<EntryType> entry;
-
-protected:
-  friend class MSHR;
-  FullMSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
-
 public:
-  virtual ~FullMSHR() { 
+
+  MSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
+  virtual ~MSHR() { 
+  }
+  bool hasFreeEntries() const {
+     return (nFreeEntries > 0);
   }
 
-  bool canAccept(AddrType paddr) const; // block cache requests if necessary
-  bool canIssue(AddrType paddr) const;
-  void addEntry(AddrType paddr, CallbackBase *c=0);
-  void retire(AddrType paddr);
+  bool canAccept(AddrType paddr) const;
+  bool canIssue(AddrType addr) const;
+  void addEntry(AddrType addr, CallbackBase *c, MemRequest *mreq);
+  void blockEntry(AddrType addr, MemRequest *mreq);
+  void retire(AddrType addr, MemRequest *mreq);
   void dump() const;
 };
-
-#if 0
-class SingleMSHR : public MSHR {
-private:  
-  int32_t nOutsReqs;
-
-  bool checkingOverflow;
-
-  int32_t nFullReadEntries;
-  int32_t nFullWriteEntries;
-
-  typedef HASH_MAP<AddrType, MSHRentry > MSHRstruct;
-  typedef MSHRstruct::iterator       MSHRit;
-  typedef MSHRstruct::const_iterator const_MSHRit;
-
-  MSHRstruct ms;
-  GStatsAvg  avgOverflowConsumptions;
-  GStatsMax  maxOutsReqs;
-  GStatsAvg  avgReqsPerLine;
-  GStatsCntr nIssuesNewEntry;
-  GStatsAvg  avgQueueSize;
-  GStatsAvg  avgWritesPerLine;
-  GStatsAvg  avgWritesPerLineComb;
-  GStatsCntr nOnlyWrites;
-  GStatsCntr nRetiredEntries;
-  GStatsCntr nRetiredEntriesWritten;
-
-protected:
-  friend class MSHR;
-  SingleMSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
-
-  void toOverflow(AddrType paddr, CallbackBase *c);
-
-  void checkOverflow();
-public:
-
-  virtual ~SingleMSHR() { }
-
-  bool canIssue(AddrType paddr) const; 
-  void addEntry(AddrType paddr, CallbackBase *c=0);
-  bool retire(AddrType paddr);
-};
-#endif
 
 #endif // MSHR_H

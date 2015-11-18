@@ -1,4 +1,0 @@
-FAST, Exetime, BrMis, DL1lat, IPC, uIPC, rawInst,
-CRAFTY ,MemAccesses, Aggr.uIPC, ProgressedTime, Proc, 
-SWIM ,MemAccesses, Aggr.uIPC, ProgressedTime, Proc, 
-MCF ,MemAccesses, Aggr.uIPC, ProgressedTime, Proc, 

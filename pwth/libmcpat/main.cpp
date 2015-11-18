@@ -1,3 +1,4 @@
+#if 0
 /*------------------------------------------------------------
  *                              CACTI 6.5
  *         Copyright 2008 Hewlett-Packard Development Corporation
@@ -154,3 +155,4 @@ void print_usage(char * argv0)
     cerr << "    Note:default print level is at processor level, please increase it to see the details" << endl;
     exit(1);
 }
+#endif

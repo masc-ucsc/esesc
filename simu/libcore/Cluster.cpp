@@ -72,9 +72,9 @@ Cluster::Cluster(const char *clusterName, GProcessor *gp)
   ,MaxWinSize(SescConf->getInt(clusterName,"winSize"))
   ,windowSize(SescConf->getInt(clusterName,"winSize")) 
   ,gproc(gp)
-  ,winNotUsed("P(%d)_%s_winNotUsed",gp->getId(), clusterName)
-  ,rdRegPool("P(%d)_%s_rdRegPool",gp->getId(), clusterName)
-  ,wrRegPool("P(%d)_%s_wrRegPool",gp->getId(), clusterName)
+  ,winNotUsed("P(%d)_%s_winNotUsed",gp->getID(), clusterName)
+  ,rdRegPool("P(%d)_%s_rdRegPool",gp->getID(), clusterName)
+  ,wrRegPool("P(%d)_%s_wrRegPool",gp->getID(), clusterName)
 {
   bzero(res,sizeof(Resource *)*iMAX);  
 }
@@ -113,7 +113,7 @@ void Cluster::buildUnit(const char *clusterName
     SescConf->isBetween(unitName,"occ",0,1024);
       
     char name[1024];
-    sprintf(name,"%s(%d)", unitName, (int)gproc->getId());
+    sprintf(name,"%s(%d)", unitName, (int)gproc->getID());
     e.gen = PortGeneric::create(name,e.num,e.occ);
 
     unitMap[unitName] = e;
@@ -123,18 +123,18 @@ void Cluster::buildUnit(const char *clusterName
   Resource *r=0;
 
   char name[100];
-  sprintf(name, "Cluster(%d)", (int)gproc->getId());
+  sprintf(name, "Cluster(%d)", (int)gproc->getID());
 
   bool scooreMemory=false;
-  if (SescConf->checkBool("cpusimu", "scooreMemory",gproc->getId()))
-    scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gproc->getId());
+  if (SescConf->checkBool("cpusimu", "scooreMemory",gproc->getID()))
+    scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gproc->getID());
   
-  bool noMemSpec = SescConf->getBool("cpusimu", "noMemSpec",gproc->getId());
+  bool noMemSpec = SescConf->getBool("cpusimu", "noMemSpec",gproc->getID());
 
   switch(type) {
     case iOpInvalid: 
     case iRALU:
-      r = new FURALU(cluster, gen, lat, scooreMemory, gproc->getId());
+      r = new FURALU(cluster, gen, lat, scooreMemory, gproc->getID());
       break ;
     case iAALU:
     case iCALU_FPMULT:
@@ -152,7 +152,7 @@ void Cluster::buildUnit(const char *clusterName
     case iBALU_RCALL:
     case iBALU_RET:
       {
-        int32_t MaxBranches = SescConf->getInt("cpusimu", "maxBranches", gproc->getId());
+        int32_t MaxBranches = SescConf->getInt("cpusimu", "maxBranches", gproc->getID());
         if( MaxBranches == 0 )
           MaxBranches = INT_MAX;
 
@@ -162,19 +162,19 @@ void Cluster::buildUnit(const char *clusterName
     case iLALU_LD: 
       {
         if(scooreMemory){
-          r = new FUSCOORELoad(cluster, gen, gproc->getSS(), lat, ms, gproc->getId(), "scooreld");
+          r = new FUSCOORELoad(cluster, gen, gproc->getSS(), lat, ms, gproc->getID(), "scooreld");
         }else{
-          TimeDelta_t ldstdelay=SescConf->getInt("cpusimu", "stForwardDelay",gproc->getId());
-          SescConf->isInt("cpusimu", "maxLoads",gproc->getId());
-          SescConf->isBetween("cpusimu", "maxLoads", 0, 256*1024, gproc->getId());
-          int32_t maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getId());
+          TimeDelta_t ldstdelay=SescConf->getInt("cpusimu", "stForwardDelay",gproc->getID());
+          SescConf->isInt("cpusimu", "maxLoads",gproc->getID());
+          SescConf->isBetween("cpusimu", "maxLoads", 0, 256*1024, gproc->getID());
+          int32_t maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getID());
           if( maxLoads == 0 )
             maxLoads = 256*1024;
 
           if(noMemSpec){        
-            r = new FULoad_noMemSpec(cluster, gen, ldstdelay, lat, ms, maxLoads, gproc->getId(), "nonspecld");
+            r = new FULoad_noMemSpec(cluster, gen, gproc->getLSQ(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "nonspecld");
           }else{
-            r = new FULoad(cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, gproc->getId(), "specld");
+            r = new FULoad(cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "specld");
           }
         }
       }
@@ -185,18 +185,18 @@ void Cluster::buildUnit(const char *clusterName
     case iSALU_ADDR:
       {
         if(scooreMemory){
-          r = new FUSCOOREStore(cluster, gen, gproc->getSS(), lat, ms, gproc->getId(), "scoorest");
+          r = new FUSCOOREStore(cluster, gen, gproc->getSS(), lat, ms, gproc->getID(), "scoorest");
         }else{
-          SescConf->isInt("cpusimu", "maxStores",gproc->getId());
-          SescConf->isBetween("cpusimu", "maxStores", 0, 256*1024, gproc->getId());
-          int32_t maxStores=SescConf->getInt("cpusimu", "maxStores",gproc->getId());
+          SescConf->isInt("cpusimu", "maxStores",gproc->getID());
+          SescConf->isBetween("cpusimu", "maxStores", 0, 256*1024, gproc->getID());
+          int32_t maxStores=SescConf->getInt("cpusimu", "maxStores",gproc->getID());
           if( maxStores == 0 )
             maxStores = 256*1024;
 
           if(noMemSpec){
-            r = new FUStore_noMemSpec(cluster, gen, lat, ms, maxStores, gproc->getId(), Instruction::opcode2Name(type));
+            r = new FUStore_noMemSpec(cluster, gen, gproc->getLSQ(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
           }else{
-            r = new FUStore(cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, gproc->getId(), Instruction::opcode2Name(type));
+            r = new FUStore(cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
           }
         }
       }
@@ -281,16 +281,15 @@ void Cluster::addInst(DInst *dinst) {
     regPool--;
   }
 
-  window.addInst(dinst);
-
   newEntry();
+
+  window.addInst(dinst);
 }
 
 //************ Executing Cluster
 
 void ExecutingCluster::executing(DInst *dinst) {
 
-  window.wakeUpDeps(dinst);
   delEntry();
 }
 
@@ -320,12 +319,12 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 
 void ExecutedCluster::executing(DInst *dinst) {
 
-  window.wakeUpDeps(dinst);
 }
 
 void ExecutedCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
+  I(!dinst->hasPending());
 
   delEntry();
 }
@@ -349,7 +348,6 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
 
 void RetiredCluster::executing(DInst *dinst) {
 
-  window.wakeUpDeps(dinst);
 }
 
 void RetiredCluster::executed(DInst *dinst) {

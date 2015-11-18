@@ -47,6 +47,7 @@
 
 #define MAX_REMEMBERED_VALUES 16384
 
+#define RCMEM 1
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -69,7 +70,8 @@ private:
     }
   };
   
-  const bool NoMemoryReplay;
+  const bool MemoryReplay;
+  const int32_t RetireDelay;
   
   FetchEngine IFID;
   PipeQueue   pipeQ;
@@ -84,6 +86,7 @@ private:
 
   int32_t spaceInInstQueue;
   DInst   *RAT[LREG_MAX];
+  int32_t  nTotalRegs;
 
   DInst   *serializeRAT[LREG_MAX];
   RegType  last_serializeLogical;
@@ -101,14 +104,14 @@ private:
   bool scooreMemory;
   StaticCallbackMember0<OoOProcessor, &OoOProcessor::retire_lock_check> retire_lock_checkCB;
 
+  void fetch(FlowID fid);
 protected:
   ClusterManager clusterManager;
 
   GStatsAvg avgFetchWidth;
 
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
-  void fetch(FlowID fid);
-  bool execute();
+  bool advance_clock(FlowID fid);
   StallCause addInst(DInst *dinst);
   void retire();
 

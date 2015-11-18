@@ -43,31 +43,34 @@
 #include "config-host.h"
 
 #define TCG_TARGET_INTERPRETER 1
+#define TCG_TARGET_INSN_UNIT_SIZE 1
+#define TCG_TARGET_TLB_DISPLACEMENT_BITS 32
+
+#if UINTPTR_MAX == UINT32_MAX
+# define TCG_TARGET_REG_BITS 32
+#elif UINTPTR_MAX == UINT64_MAX
+# define TCG_TARGET_REG_BITS 64
+#else
+# error Unknown pointer size for tci target
+#endif
 
 #ifdef CONFIG_DEBUG_TCG
 /* Enable debug output. */
 #define CONFIG_DEBUG_TCG_INTERPRETER
 #endif
 
-#if 0 /* TCI tries to emulate a little endian host. */
-#if defined(HOST_WORDS_BIGENDIAN)
-# define TCG_TARGET_WORDS_BIGENDIAN
-#endif
-#endif
-
 /* Optional instructions. */
 
 #define TCG_TARGET_HAS_bswap16_i32      1
 #define TCG_TARGET_HAS_bswap32_i32      1
-/* Not more than one of the next two defines must be 1. */
 #define TCG_TARGET_HAS_div_i32          1
-#define TCG_TARGET_HAS_div2_i32         0
+#define TCG_TARGET_HAS_rem_i32          1
 #define TCG_TARGET_HAS_ext8s_i32        1
 #define TCG_TARGET_HAS_ext16s_i32       1
 #define TCG_TARGET_HAS_ext8u_i32        1
 #define TCG_TARGET_HAS_ext16u_i32       1
 #define TCG_TARGET_HAS_andc_i32         0
-#define TCG_TARGET_HAS_deposit_i32      0
+#define TCG_TARGET_HAS_deposit_i32      1
 #define TCG_TARGET_HAS_eqv_i32          0
 #define TCG_TARGET_HAS_nand_i32         0
 #define TCG_TARGET_HAS_nor_i32          0
@@ -75,15 +78,19 @@
 #define TCG_TARGET_HAS_not_i32          1
 #define TCG_TARGET_HAS_orc_i32          0
 #define TCG_TARGET_HAS_rot_i32          1
+#define TCG_TARGET_HAS_movcond_i32      0
+#define TCG_TARGET_HAS_muls2_i32        0
+#define TCG_TARGET_HAS_muluh_i32        0
+#define TCG_TARGET_HAS_mulsh_i32        0
 
 #if TCG_TARGET_REG_BITS == 64
+#define TCG_TARGET_HAS_trunc_shr_i32    0
 #define TCG_TARGET_HAS_bswap16_i64      1
 #define TCG_TARGET_HAS_bswap32_i64      1
 #define TCG_TARGET_HAS_bswap64_i64      1
-#define TCG_TARGET_HAS_deposit_i64      0
-/* Not more than one of the next two defines must be 1. */
+#define TCG_TARGET_HAS_deposit_i64      1
 #define TCG_TARGET_HAS_div_i64          0
-#define TCG_TARGET_HAS_div2_i64         0
+#define TCG_TARGET_HAS_rem_i64          0
 #define TCG_TARGET_HAS_ext8s_i64        1
 #define TCG_TARGET_HAS_ext16s_i64       1
 #define TCG_TARGET_HAS_ext32s_i64       1
@@ -98,10 +105,19 @@
 #define TCG_TARGET_HAS_not_i64          1
 #define TCG_TARGET_HAS_orc_i64          0
 #define TCG_TARGET_HAS_rot_i64          1
+#define TCG_TARGET_HAS_movcond_i64      0
+#define TCG_TARGET_HAS_muls2_i64        0
+#define TCG_TARGET_HAS_add2_i32         0
+#define TCG_TARGET_HAS_sub2_i32         0
+#define TCG_TARGET_HAS_mulu2_i32        0
+#define TCG_TARGET_HAS_add2_i64         0
+#define TCG_TARGET_HAS_sub2_i64         0
+#define TCG_TARGET_HAS_mulu2_i64        0
+#define TCG_TARGET_HAS_muluh_i64        0
+#define TCG_TARGET_HAS_mulsh_i64        0
+#else
+#define TCG_TARGET_HAS_mulu2_i32        1
 #endif /* TCG_TARGET_REG_BITS == 64 */
-
-/* Offset to user memory in user mode. */
-#define TCG_TARGET_HAS_GUEST_BASE
 
 /* Number of registers available.
    For 32 bit hosts, we need more than 8 registers (call arguments). */
@@ -119,7 +135,6 @@ typedef enum {
     TCG_REG_R5,
     TCG_REG_R6,
     TCG_REG_R7,
-    TCG_AREG0 = TCG_REG_R7,
 #if TCG_TARGET_NB_REGS >= 16
     TCG_REG_R8,
     TCG_REG_R9,
@@ -152,12 +167,18 @@ typedef enum {
     TCG_CONST = UINT8_MAX
 } TCGReg;
 
+#define TCG_AREG0                       (TCG_TARGET_NB_REGS - 2)
+
+/* Used for function call generation. */
+#define TCG_REG_CALL_STACK              (TCG_TARGET_NB_REGS - 1)
+#define TCG_TARGET_CALL_STACK_OFFSET    0
+#define TCG_TARGET_STACK_ALIGN          16
+
 void tci_disas(uint8_t opc);
 
-unsigned long tcg_qemu_tb_exec(CPUState *env, uint8_t *tb_ptr);
-#define tcg_qemu_tb_exec tcg_qemu_tb_exec
+#define HAVE_TCG_QEMU_TB_EXEC
 
-static inline void flush_icache_range(unsigned long start, unsigned long stop)
+static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 {
 }
 

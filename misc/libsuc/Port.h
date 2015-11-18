@@ -80,6 +80,7 @@ public:
   //!  nextSlot();
   //! }
   //! return t;
+  virtual void occupyUntil(Time_t t);
 
   //! returns when the next slot can be free without occupying any slot
   virtual Time_t calcNextSlot() const =0;
@@ -92,10 +93,12 @@ public:
 
 
 class PortUnlimited : public PortGeneric {
-  Time_t lTime;
+protected:
+  Time_t until;
 public:
   PortUnlimited(const char *name);
   
+  void occupyUntil(Time_t t);
   Time_t nextSlot(bool en);
   Time_t calcNextSlot() const;
 };

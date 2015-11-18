@@ -45,6 +45,7 @@ typedef	uint32_t tcp_seq;
  * TCP header.
  * Per RFC 793, September, 1981.
  */
+#define tcphdr slirp_tcphdr
 struct tcphdr {
 	uint16_t th_sport;              /* source port */
 	uint16_t th_dport;              /* destination port */
@@ -58,12 +59,6 @@ struct tcphdr {
 		th_off:4;		/* data offset */
 #endif
 	uint8_t th_flags;
-#define	TH_FIN	0x01
-#define	TH_SYN	0x02
-#define	TH_RST	0x04
-#define	TH_PUSH	0x08
-#define	TH_ACK	0x10
-#define	TH_URG	0x20
 	uint16_t th_win;                /* window */
 	uint16_t th_sum;                /* checksum */
 	uint16_t th_urp;                /* urgent pointer */
@@ -71,21 +66,35 @@ struct tcphdr {
 
 #include "tcp_var.h"
 
+#ifndef TH_FIN
+#define	TH_FIN	0x01
+#define	TH_SYN	0x02
+#define	TH_RST	0x04
+#define	TH_PUSH	0x08
+#define	TH_ACK	0x10
+#define	TH_URG	0x20
+#endif
+
+#ifndef TCPOPT_EOL
 #define	TCPOPT_EOL		0
 #define	TCPOPT_NOP		1
 #define	TCPOPT_MAXSEG		2
-#define    TCPOLEN_MAXSEG		4
 #define TCPOPT_WINDOW		3
-#define    TCPOLEN_WINDOW		3
 #define TCPOPT_SACK_PERMITTED	4		/* Experimental */
-#define    TCPOLEN_SACK_PERMITTED	2
 #define TCPOPT_SACK		5		/* Experimental */
 #define TCPOPT_TIMESTAMP	8
-#define    TCPOLEN_TIMESTAMP		10
-#define    TCPOLEN_TSTAMP_APPA		(TCPOLEN_TIMESTAMP+2) /* appendix A */
 
 #define TCPOPT_TSTAMP_HDR	\
     (TCPOPT_NOP<<24|TCPOPT_NOP<<16|TCPOPT_TIMESTAMP<<8|TCPOLEN_TIMESTAMP)
+#endif
+
+#ifndef TCPOLEN_MAXSEG
+#define    TCPOLEN_MAXSEG		4
+#define    TCPOLEN_WINDOW		3
+#define    TCPOLEN_SACK_PERMITTED	2
+#define    TCPOLEN_TIMESTAMP		10
+#define    TCPOLEN_TSTAMP_APPA		(TCPOLEN_TIMESTAMP+2) /* appendix A */
+#endif
 
 /*
  * Default maximum segment size for TCP.
@@ -95,10 +104,13 @@ struct tcphdr {
  *
  * We make this 1460 because we only care about Ethernet in the qemu context.
  */
+#undef TCP_MSS
 #define	TCP_MSS	1460
 
+#undef TCP_MAXWIN
 #define	TCP_MAXWIN	65535	/* largest value for (unscaled) window */
 
+#undef TCP_MAX_WINSHIFT
 #define TCP_MAX_WINSHIFT	14	/* maximum window shift */
 
 /*

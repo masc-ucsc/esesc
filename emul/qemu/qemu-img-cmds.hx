@@ -10,50 +10,68 @@ STEXI
 ETEXI
 
 DEF("check", img_check,
-    "check [-f fmt] filename")
+    "check [-q] [-f fmt] [--output=ofmt] [-r [leaks | all]] [-T src_cache] filename")
 STEXI
-@item check [-f @var{fmt}] @var{filename}
+@item check [-q] [-f @var{fmt}] [--output=@var{ofmt}] [-r [leaks | all]] [-T @var{src_cache}] @var{filename}
 ETEXI
 
 DEF("create", img_create,
-    "create [-f fmt] [-o options] filename [size]")
+    "create [-q] [-f fmt] [-o options] filename [size]")
 STEXI
-@item create [-f @var{fmt}] [-o @var{options}] @var{filename} [@var{size}]
+@item create [-q] [-f @var{fmt}] [-o @var{options}] @var{filename} [@var{size}]
 ETEXI
 
 DEF("commit", img_commit,
-    "commit [-f fmt] [-t cache] filename")
+    "commit [-q] [-f fmt] [-t cache] [-b base] [-d] [-p] filename")
 STEXI
-@item commit [-f @var{fmt}] [-t @var{cache}] @var{filename}
+@item commit [-q] [-f @var{fmt}] [-t @var{cache}] [-b @var{base}] [-d] [-p] @var{filename}
+ETEXI
+
+DEF("compare", img_compare,
+    "compare [-f fmt] [-F fmt] [-T src_cache] [-p] [-q] [-s] filename1 filename2")
+STEXI
+@item compare [-f @var{fmt}] [-F @var{fmt}] [-T @var{src_cache}] [-p] [-q] [-s] @var{filename1} @var{filename2}
 ETEXI
 
 DEF("convert", img_convert,
-    "convert [-c] [-p] [-f fmt] [-t cache] [-O output_fmt] [-o options] [-s snapshot_name] [-S sparse_size] filename [filename2 [...]] output_filename")
+    "convert [-c] [-p] [-q] [-n] [-f fmt] [-t cache] [-T src_cache] [-O output_fmt] [-o options] [-s snapshot_id_or_name] [-l snapshot_param] [-S sparse_size] filename [filename2 [...]] output_filename")
 STEXI
-@item convert [-c] [-p] [-f @var{fmt}] [-t @var{cache}] [-O @var{output_fmt}] [-o @var{options}] [-s @var{snapshot_name}] [-S @var{sparse_size}] @var{filename} [@var{filename2} [...]] @var{output_filename}
+@item convert [-c] [-p] [-q] [-n] [-f @var{fmt}] [-t @var{cache}] [-T @var{src_cache}] [-O @var{output_fmt}] [-o @var{options}] [-s @var{snapshot_id_or_name}] [-l @var{snapshot_param}] [-S @var{sparse_size}] @var{filename} [@var{filename2} [...]] @var{output_filename}
 ETEXI
 
 DEF("info", img_info,
-    "info [-f fmt] filename")
+    "info [-f fmt] [--output=ofmt] [--backing-chain] filename")
 STEXI
-@item info [-f @var{fmt}] @var{filename}
+@item info [-f @var{fmt}] [--output=@var{ofmt}] [--backing-chain] @var{filename}
+ETEXI
+
+DEF("map", img_map,
+    "map [-f fmt] [--output=ofmt] filename")
+STEXI
+@item map [-f @var{fmt}] [--output=@var{ofmt}] @var{filename}
 ETEXI
 
 DEF("snapshot", img_snapshot,
-    "snapshot [-l | -a snapshot | -c snapshot | -d snapshot] filename")
+    "snapshot [-q] [-l | -a snapshot | -c snapshot | -d snapshot] filename")
 STEXI
-@item snapshot [-l | -a @var{snapshot} | -c @var{snapshot} | -d @var{snapshot}] @var{filename}
+@item snapshot [-q] [-l | -a @var{snapshot} | -c @var{snapshot} | -d @var{snapshot}] @var{filename}
 ETEXI
 
 DEF("rebase", img_rebase,
-    "rebase [-f fmt] [-t cache] [-p] [-u] -b backing_file [-F backing_fmt] filename")
+    "rebase [-q] [-f fmt] [-t cache] [-T src_cache] [-p] [-u] -b backing_file [-F backing_fmt] filename")
 STEXI
-@item rebase [-f @var{fmt}] [-t @var{cache}] [-p] [-u] -b @var{backing_file} [-F @var{backing_fmt}] @var{filename}
+@item rebase [-q] [-f @var{fmt}] [-t @var{cache}] [-T @var{src_cache}] [-p] [-u] -b @var{backing_file} [-F @var{backing_fmt}] @var{filename}
 ETEXI
 
 DEF("resize", img_resize,
-    "resize filename [+ | -]size")
+    "resize [-q] filename [+ | -]size")
 STEXI
-@item resize @var{filename} [+ | -]@var{size}
+@item resize [-q] @var{filename} [+ | -]@var{size}
+ETEXI
+
+DEF("amend", img_amend,
+    "amend [-p] [-q] [-f fmt] [-t cache] -o options filename")
+STEXI
+@item amend [-p] [-q] [-f @var{fmt}] [-t @var{cache}] -o @var{options} @var{filename}
 @end table
 ETEXI

@@ -52,7 +52,8 @@ void PowerGlue::plug(const char *section, ChipEnergyBundle *eBundle)
   reFloorplan = SescConf->getBool(section, "reFloorplan");
 }
 
-void PowerGlue::createStatCounters() {
+void PowerGlue::createStatCounters() 
+{
   
   nStats = 0;
   createCoreStats();
@@ -69,6 +70,11 @@ void PowerGlue::createCoreStats() {
 
     const char *temp_sec = 0;
     bool inorder = SescConf->getBool(section, "inorder");
+    if (SescConf->checkInt(section,"sp_per_sm")) {
+      if( SescConf->getInt(section,"sp_per_sm") >= 1 ){
+        inorder = true; //GPU
+      }
+    }
     if (inorder) { // probably GPU?
       temp_sec = "inorderPwrCounterTemplate";
     } else {
@@ -116,7 +122,8 @@ void PowerGlue::createCoreDescr(const char *temp_sec, uint32_t i) {
   }
 }
 
-void PowerGlue::autoCreateCoreDescr(const char *temp_sec) {
+void PowerGlue::autoCreateCoreDescr(const char *temp_sec) 
+{/*{{{*/
   //uint32_t statsCount = SescConf->getRecordSize(temp_sec, "template");
   const char *layoutDescr_sec = SescConf->getCharPtr("SescTherm", "layoutDescr", 0);
   for (uint32_t j = 0; j < energyBundle->coreEIdx; j++) {
@@ -126,22 +133,28 @@ void PowerGlue::autoCreateCoreDescr(const char *temp_sec) {
     addVRecord(layoutDescr_sec, ret_str);
     nStats++;
   }
-}
+}/*}}}*/
 
-void PowerGlue::createMemStats() {
+void PowerGlue::createMemStats() 
+{/*{{{*/
 
   GMemorySystem *Memsys = getSimu(0)->getMemorySystem(); 
   // Just a pointer to memory system to get the created objects
   for(uint32_t j = 0; j < Memsys->getNumMemObjs(); j++) {
     string name = Memsys->getMemObjName(j);
-    if ((name.find("DL1") != string::npos) && (name.find("IL1") != string::npos))
+    if ((name.find("DL1") != string::npos) && (name.find("IL1") != string::npos)){ 
+      //FIXME!!! Shouldn't it be ||?
+      //FIXME!!! Crude way of finding out which one is the first level data cache. 
+      I(fprintf(stderr,"\nNOT Using template for object [%s]", name.c_str()));
       continue;
-    
+    }
+
     char *pname = privateName(&name); // all the objects will have a (%d) at the end 
 
     size_t pos = name.find("MemBus");
     if ( pos != string::npos) {
       const char *temp_sec = "MCPwrCounterTemplate";
+      I(fprintf(stderr,"\nUsing template[%s] for object [%s]",temp_sec, name.c_str()));
       createMemObjStats(temp_sec, pname, name.c_str());
       continue;
     }
@@ -149,15 +162,28 @@ void PowerGlue::createMemStats() {
     pos = name.find("TLB");
     if ( pos != string::npos) {
       const char *temp_sec = "TLBPwrCounterTemplate";
+      I(fprintf(stderr,"\nUsing template[%s] for object [%s]",temp_sec, name.c_str()));
       createMemObjStats(temp_sec, pname, name.c_str());
       continue;
     }
 
+    pos = name.find("Split");
+    if ( pos != string::npos) {
+      I(fprintf(stderr,"\nNo Power Stats for Splitter %s\n",name.c_str()));
+      continue;
+    }
+
+    pos = name.find("Join");
+    if ( pos != string::npos) {
+      I(fprintf(stderr,"\nNo Power Stats for Joiner %s\n",name.c_str()));
+      continue;
+    }
 
     const char *temp_sec = "MemPwrCounterTemplate";
     createMemObjStats(temp_sec, pname, name.c_str());
+    I(fprintf(stderr,"\nUsing template[%s] for object [%s]",temp_sec, name.c_str()));
   }
-}
+}/*}}}*/
 
 void PowerGlue::createMemObjStats(const char *temp_sec, const char *pname, const char *name) {
 

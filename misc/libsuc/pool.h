@@ -31,7 +31,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <pthread.h>
 
 #include "nanassert.h"
-
 // Recycle memory allocated from time to time. This is useful for adapting to
 // the phases of the application
 
@@ -227,7 +226,7 @@ protected:
   ID(bool deleted;)
 
   void insert(Holder *h) {
-    // Equivalent to 
+    // Equivalent to
     //  h->holderNext = first;
     //  first         = h;
 
@@ -315,7 +314,8 @@ protected:
 #ifdef POOL_TIMEOUT
     Time_t outCycle; // Only valid if inPool is false
 #endif
-    ID(bool inPool;)
+    //ID(bool inPool;)
+    bool inPool;
   };
 
 #ifdef POOL_SIZE_CHECK
@@ -385,7 +385,7 @@ public:
 
   ~pool() {
     // The last pool whould delete all the crap
-#if 0 
+#if 0
     while(first) {
       Holder *h = first;
       first = first->holderNext;
@@ -410,6 +410,22 @@ public:
     }
 #endif // POOL_TIMEOUT
   }
+
+#ifdef DEBUG
+	Ttype *nextInUse(Ttype *current) {
+    Holder *tmp = static_cast<Holder *>(current);
+		tmp = tmp->allNext;
+		while( tmp ) {
+			if (!tmp->inPool)
+    		return static_cast<Ttype *>(tmp);
+			tmp = tmp->allNext;
+		}
+		return 0;
+	}
+	Ttype *firstInUse() {
+		return nextInUse(static_cast<Ttype *>(allFirst));
+	}
+#endif
 
   void in(Ttype *data) {
 #ifdef DEBUG
@@ -472,7 +488,7 @@ public:
       I(ptr[i] == 0);
     }
 #endif
-    
+
     return h;
   }
 };

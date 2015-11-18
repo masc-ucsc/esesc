@@ -77,6 +77,7 @@ public:
   bool drainedFIFO (FlowID fid);
 
   uint32_t getKernelId() { return kernelsId[current_CUDA_kernel]; };
+  void fillCudaSpecficfields(DInst* dinst, RAWDInst* rinst, FlowID fid);
 
 };
 

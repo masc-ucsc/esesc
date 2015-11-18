@@ -62,7 +62,8 @@ void PowerStats::addGStat(const char *str, const int32_t scale)
     Container c(ref, scale);
     stats.push_back(c);
   } else if (strcmp(str, "testCounter")) {
-    LOG("WARNING: GStat '%s' needed by PowerModel not found", str);
+    MSG("WARNING: GStat '%s' needed by PowerModel not found", str);
+    I(0);
   }
 }
 /* }}} */

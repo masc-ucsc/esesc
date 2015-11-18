@@ -49,6 +49,14 @@ udp_init(Slirp *slirp)
     slirp->udb.so_next = slirp->udb.so_prev = &slirp->udb;
     slirp->udp_last_so = &slirp->udb;
 }
+
+void udp_cleanup(Slirp *slirp)
+{
+    while (slirp->udb.so_next != &slirp->udb) {
+        udp_detach(slirp->udb.so_next);
+    }
+}
+
 /* m->m_data  points at ip packet header
  * m->m_len   length ip packet
  * ip->ip_len length data (IPDU)
@@ -144,7 +152,7 @@ udp_input(register struct mbuf *m, int iphlen)
 	 * Locate pcb for datagram.
 	 */
 	so = slirp->udp_last_so;
-	if (so->so_lport != uh->uh_sport ||
+	if (so == &slirp->udb || so->so_lport != uh->uh_sport ||
 	    so->so_laddr.s_addr != ip->ip_src.s_addr) {
 		struct socket *tmp;
 
@@ -223,7 +231,6 @@ udp_input(register struct mbuf *m, int iphlen)
 	return;
 bad:
 	m_free(m);
-	return;
 }
 
 int udp_output2(struct socket *so, struct mbuf *m,
@@ -347,7 +354,7 @@ udp_listen(Slirp *slirp, uint32_t haddr, u_int hport, uint32_t laddr,
 {
 	struct sockaddr_in addr;
 	struct socket *so;
-	socklen_t addrlen = sizeof(struct sockaddr_in), opt = 1;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
 
 	so = socreate(slirp);
 	if (!so) {
@@ -365,7 +372,7 @@ udp_listen(Slirp *slirp, uint32_t haddr, u_int hport, uint32_t laddr,
 		udp_detach(so);
 		return NULL;
 	}
-	setsockopt(so->s,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(int));
+	socket_set_fast_reuse(so->s);
 
 	getsockname(so->s,(struct sockaddr *)&addr,&addrlen);
 	so->so_fport = addr.sin_port;

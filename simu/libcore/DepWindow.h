@@ -46,19 +46,15 @@ class Cluster;
 
 class DepWindow {
 private:
-  GProcessor *gproc;
   Cluster    *srcCluster;
 
   const int32_t Id;
 
   const TimeDelta_t InterClusterLat;
-  const TimeDelta_t WakeUpDelay;
   const TimeDelta_t SchedDelay;
-  const TimeDelta_t RegFileDelay;
 
   GStatsCntr wrForwardBus;
 
-  PortGeneric *wakeUpPort;
   PortGeneric *schedPort;
 
 protected:
@@ -67,8 +63,6 @@ protected:
 public:
   ~DepWindow();
   DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName);
-
-  void wakeUpDeps(DInst *dinst);
 
   void select(DInst *dinst);
 

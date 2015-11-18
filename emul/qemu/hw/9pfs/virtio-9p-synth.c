@@ -12,16 +12,17 @@
  *
  */
 
-#include "hw/virtio.h"
+#include "hw/virtio/virtio.h"
 #include "virtio-9p.h"
 #include "virtio-9p-xattr.h"
 #include "fsdev/qemu-fsdev.h"
 #include "virtio-9p-synth.h"
-
+#include "qemu/rcu.h"
+#include "qemu/rcu_queue.h"
 #include <sys/stat.h>
 
 /* Root node for synth file system */
-V9fsSynthNode v9fs_synth_root = {
+static V9fsSynthNode v9fs_synth_root = {
     .name = "/",
     .actual_attr = {
         .mode = 0555 | S_IFDIR,
@@ -58,7 +59,7 @@ static V9fsSynthNode *v9fs_add_dir_node(V9fsSynthNode *parent, int mode,
         node->attr->read  = NULL;
     }
     node->private = node;
-    strncpy(node->name, name, sizeof(node->name));
+    pstrcpy(node->name, sizeof(node->name), name);
     QLIST_INSERT_HEAD_RCU(&parent->child, node, sibling);
     return node;
 }
@@ -132,7 +133,7 @@ int qemu_v9fs_synth_add_file(V9fsSynthNode *parent, int mode,
     node->attr->write  = write;
     node->attr->mode   = mode;
     node->private      = arg;
-    strncpy(node->name, name, sizeof(node->name));
+    pstrcpy(node->name, sizeof(node->name), name);
     QLIST_INSERT_HEAD_RCU(&parent->child, node, sibling);
     ret = 0;
 err_out:

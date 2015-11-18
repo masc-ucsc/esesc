@@ -4,15 +4,18 @@ ESESC runs on Linux.  It has been tested on x86-64 and ARM platforms. The x86-64
 # Requirements 
 ESESC is currently tested with Arch Linux and with Ubunut 12.04 LTS.  The following commands list the packages and configuration settings required for each tested OS.  Other Linux version should work as well, but the list of packages will need to be adapted.
 
-## Arch Linux:
+## Arch Linux: (64bit)
 
     pacman -S boost
     pacman -S bison flex
-    pacman -S g++
+    pacman -S gcc
     pacman -S python2
     pacman -S texinfo
+    pacman -S cmake
+    pacman -S make
+    pacman -S pkgconfig
 
-## Ubuntu 12.04 LTS
+## Ubuntu 12.04 LTS (64bit)
     sudo apt-get install build-essential
     sudo apt-get install cmake
     sudo apt-get install libboost-dev
@@ -47,88 +50,28 @@ These steps assume that the ESESC repo is checked out in the `~/projs/esesc` dir
 # Release
     mkdir ~/build_release
     cd ~/build_release
-    cmake ~/projs/esesc -DESESC_QEMU_ISA=armel
+    cmake ~/projs/esesc 
+    make 
+
+# Release and System
+    mkdir ~/build_system
+    cd ~/build_release
+    cmake -DESESC_SYSTEM=1 ~/projs/esesc 
     make 
 
 # Compile with QEMU in a arm machine (arch linux chromebook)
 
-cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_HOST_ARCH=armel -DESESC_QEMU_ISA=armel ~/projs/esesc
+cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_HOST_ARCH=armel ~/projs/esesc
 
 # Compile ESESC with DEBUG and clang compiler
 
-CC=clang cmake -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
+CC=clang CXX=clang++ cmake -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
 
-# Compile scmain (SCCORE) 
+# Compile ESESC with DEBUG and emscripten compiler
 
-cmake ~/projs/esesc/ -DENABLE_SCQEMU=1 -DCMAKE_HOST_ARCH=i386 -DESESC_QEMU_ISA=armel -DCMAKE_BUILD_TYPE=Debug
+CC=emcc CXX=em++ cmake -D_CMAKE_TOOLCHAIN_PREFIX=em -DCMAKE_BUILD_TYPE=Debug ~/projs/esesc
 
---------------------------------------------------------
-# Compile scmain in an arm machine (arch linux chromebook)
-
-cmake ~/projs/esesc/ -DENABLE_SCQEMU=1 -DCMAKE_HOST_ARCH=armel -DESESC_QEMU_ISA=armel -DCMAKE_BUILD_TYPE=Debug
-
-
---------------------------------------------------------
-## Sample execution for ARM + CUDA
-
-* Enable CUDA with ARM for QEMU (experimental)
-* NOTE: THIS DOES NOT WORK WITH ANY OTHER TARGET (i.e. SPARC, MIPS, etc. ) 
-* NOTE: This works only if qemu is compiled for a 32 bit host.  
-
-# Required : 
-1. CUDA enabled device 
-2. CUDA version 3.2 (Check the version you have by typing "nvcc --version")
-3. Compatibility Libraries (for 32 bit development) on the host machine.
-
-Compile QEMU and generate the  "qemu-arm" binary
-    ./configure --target-list=arm-linux-user --cpu=i386 --disable-vnc-sasl --disable-vnc-tls --enable-esesc_cuda --enable-esesc_user --disable-uuid --disable-sdl  --interp-prefix=/mada/software/benchmarks/armel-root  --extra-cflags="-Wno-unused-but-set-variable" --enable-debug --disable-guest-base
-    gmake 
-
-Run a test application "simple-kernel-arm" which takes an array of 10 floats and squares them on the GPU. and returns the value back to the host
-    cp ~/projs/esesc/conf/simple-kernel-arm ~/projs/esesc/emul/qemu/arm-linux-user/.
-    cd ~/projs/esesc/emul/qemu/arm-linux-user/
-    ./qemu-arm simple-kernel-arm
-
-If you see the following error message 
-    "cannot restore segment prot after reloc: Permission denied"
- you will need to disable SELINUX. 
-
-To Temporarily disable enforcement on a running system
-(requires su access)
-    /usr/sbin/setenforce 0
-
-To permanently disable enforcement during a system startup
-change "enforcing" to "disabled" in ''/etc/selinux/config'' and reboot.
-
---------------------------------------------------------
-
-
-Enable CUDA with ARM, Run a sample benchmark with eSESC (currently without traces)
-* NOTE: THIS DOES NOT WORK WITH ANY OTHER TARGET (i.e. SPARC, MIPS, etc. ) 
-* NOTE: This works only if qemu is compiled for a 32 bit host.  
-* NOTE: eSESC will be compiled in a 32 bit mode. 
-* NOTE: Not tested Linux binfmt mode.
-
-1. Compile CUDA with ARM for QEMU
-    cd <ESESC_DIR>/emul/qemu
-    ./configure --cpu=i386 --target-list=arm-linux-user --disable-vnc-sasl --disable-vnc-tls --enable-esesc_cuda --enable-esesc_user --disable-uuid --disable-sdl --disable-guest-base
-
-2. Run cmake to generate the makefiles in the build directory with the flags set
-    cd <BUILD_DIR>
-    cmake -DCMAKE_BUILD_TYPE=Release -DESESC_QEMU_ISA=armel -DCMAKE_HOST_ARCH=i386 -DENABLE_CUDA=1 <ESESC_DIR>
-    cmake -DCMAKE_BUILD_TYPE=Debug -DESESC_QEMU_ISA=armel -DCMAKE_HOST_ARCH=i386 -DENABLE_CUDA=1 <ESESC_DIR>
-
-    gmake
-3. Copy the configuration files to the folder. Change the "benchName" to point to a CUDA application compiled for ARM. (Specify the path of the binary relative to the conf file)
-    e.g. benchName  = "./exe/matrixMul-CUDA3.0-arm"
-4. Run qemumain from the directory where the conf files are located. 
-    <ESESC_DIR>/emul/libqemuint/qemumain
-
-    This simply calls the CUDA program through qemumain, None of the traces are passed onto the eSESC yet. 
-       
---------------------------------------------------------
-
-eSESC generates a dot file named memory-arch.dot, which is a description of the memory hierarchy as eSesc sees, after parsing shared.conf.
+ESESC generates a dot file named memory-arch.dot, which is a description of the memory hierarchy as eSesc sees, after parsing shared.conf.
 To view this in as a png, run the following command. 
 
     dot memory-arch.dot -Tpng -o memory-arch.png

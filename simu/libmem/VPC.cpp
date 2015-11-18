@@ -64,8 +64,8 @@ VPC::VPC(MemorySystem *gms, const char *section, const char *name)
   ,missDelay (SescConf->getInt(section,"missDelay"))
   ,ms        (gms)
     // wcb  stats
-  ,wcbHit          ("P(%d):wcbHit",       gms->getId())
-  ,wcbMiss         ("P(%d):wcbMiss",      gms->getId())
+  ,wcbHit          ("P(%d):wcbHit",       gms->getID())
+  ,wcbMiss         ("P(%d):wcbMiss",      gms->getID())
 
   ,wcbPass         ("%s:wcbPass",         name)
   ,wcbFail         ("%s:wcbFail",         name)
@@ -256,7 +256,7 @@ void VPC::checkSetXCoreStore(AddrType addr){
 
 void VPC::updateXCoreStores(AddrType addr){
   for(uint32_t i=0; i<VPCvec.size(); i++){ //check if xCore VPC sharing possible
-    if(i==ms->getId())
+    if(i==ms->getID())
       continue;
     VPCvec[i]->checkSetXCoreStore(addr);    
   }

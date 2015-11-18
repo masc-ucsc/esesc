@@ -58,7 +58,18 @@ struct target_revectored_struct {
  */
 
 #if defined(TARGET_PPC64) && !defined(TARGET_ABI32)
+#ifdef TARGET_WORDS_BIGENDIAN
 #define UNAME_MACHINE "ppc64"
+#else
+#define UNAME_MACHINE "ppc64le"
+#endif
 #else
 #define UNAME_MACHINE "ppc"
 #endif
+#define UNAME_MINIMUM_RELEASE "2.6.32"
+
+#define TARGET_CLONE_BACKWARDS
+
+#define TARGET_MINSIGSTKSZ 2048
+#define TARGET_MLOCKALL_MCL_CURRENT 0x2000
+#define TARGET_MLOCKALL_MCL_FUTURE  0x4000

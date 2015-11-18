@@ -1,9 +1,13 @@
+sudo: required
+
 language: cpp
 compiler:
   - g++
 
-env:
+services:
+  - docker
 
+env:
   global:
     # The next declration is the encrypted COVERITY_SCAN_TOKEN, created
     #   via the "travis encrypt" command using the project repo's public key
@@ -15,11 +19,15 @@ addons:
        name: "masc-ucsc/esesc"
      description: "ESESC: A Fast Multicore Simulator"
      notification_email: southerngs@gmail.com
-     build_command_prepend: "sudo apt-get install libboost-dev; mkdir build; cd build; cmake -DCMAKE_BUILD_TYPE=Debug .."
+     build_command_prepend: "sudo apt-get install libboost-dev libsdl1.2-dev; mkdir build; cd build; cmake -DCMAKE_BUILD_TYPE=Debug .."
      build_command: "make"
      branch_pattern: coverity_scan
 
 script:
   - echo "Done"
+before_install:
+  - docker pull mascucsc/esescbase
 
+script: 
+  - if [ "${COVERITY_SCAN_BRANCH}" != 1 ]; then conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE 0; fi
 

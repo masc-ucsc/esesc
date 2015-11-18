@@ -79,5 +79,14 @@ class LRUClusterScheduler : public ClusterScheduler {
   Resource *getResource(DInst *dinst);
 };
 
+class UseClusterScheduler : public ClusterScheduler {
+ private:
+ public:
+  UseClusterScheduler(const ResourcesPoolType res);
+  ~UseClusterScheduler();
+
+  Resource *getResource(DInst *dinst);
+};
+
 #endif
 

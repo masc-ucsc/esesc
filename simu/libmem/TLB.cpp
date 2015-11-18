@@ -1,4 +1,3 @@
-#if 0
 // Contributed by Jose Renau
 //                Alamelu Sankaranarayanan
 //
@@ -38,29 +37,19 @@
 #include "MemorySystem.h"
 #include "TLB.h"
 /* }}} */
-#define TLB_ALWAYS_HITS 0  
+//#define TLB_ALWAYS_HITS 1  
 
 TLB::TLB(MemorySystem* current ,const char *section ,const char *name)
   /* constructor {{{1 */
   : MemObj(section, name)
     ,delay(SescConf->getInt(section, "hitDelay")) // this is the delay with which the mem requests will be sent 
-    ,nWrite("%s_nWrite",name)
-    ,nWriteAddress("%s_nWriteAddress",name)
-    ,nRead("%s_nRead",name)
-    ,nBusReadRead("%s_nBusReadRead",name)
-    ,nBusReadWrite("%s_nBusReadWrite",name)
-    ,tlbReadHit("%s:Hit",name)
-    ,tlbReadMiss("%s:Miss",name)
-    ,tlbMSHRcant_issue("%s:MSHRcant_issue",name)
+    ,tlbReadHit("%s:readHit",name)
+    ,tlbReadMiss("%s:readMiss",name)
     ,tlblowerReadHit("%s:LowerTLBHit",name)
     ,tlblowerReadMiss("%s:LowerTLBMiss",name)
-    ,tlbInvalidate("%s:tlbInvalidate",name)
-    ,mmuavgMissLat("%s_mmuavgMissLat",name)
-    ,mmuavgMemLat("%s_mmuavgMemLat",name)
     ,avgMissLat("%s_avgMissLat",name)
     ,avgMemLat("%s_avgMemLat",name)
 {
-  localcall = false;
   I(current);
   SescConf->isInt(section, "hitDelay");
 
@@ -74,6 +63,9 @@ TLB::TLB(MemorySystem* current ,const char *section ,const char *name)
   MemObj *lower_level     = NULL;
   lower_level             = current->declareMemoryObj(section, "lowerLevel");
 
+  maxRequests             = SescConf->getInt(section, "maxRequests");
+  curRequests = 0;
+
   if (lower_level){
     addLowerLevel(lower_level);
     lowerCache = lower_level;
@@ -84,174 +76,48 @@ TLB::TLB(MemorySystem* current ,const char *section ,const char *name)
   char tmpName[512];
   sprintf(tmpName, "%s_TLB", name);
   tlbBank                 = CacheType::create(section, "", tmpName);
-  uint32_t lineSize       = tlbBank->getLineSize();
   I(tlbBank->getLineSize()>1024); // Line size is the TLB page size, so make sure that it is big (4K standard?)
-
-  const char* mshrSection = SescConf->getCharPtr(section,"MSHR");
-  bmshr                   = MSHR::create(tmpName, mshrSection, lineSize);
 
   if(SescConf->checkCharPtr(section, "lowerTLB")){
     SescConf->isInt(section, "lowerTLB_delay");
     lowerTLBdelay = SescConf->getInt(section, "lowerTLB_delay");
     lowerTLB      = current->declareMemoryObj(section, "lowerTLB");
-    } else {
+  } else {
     lowerTLB      = NULL;
-    lowerTLBdelay = 0;
+    lowerTLBdelay = delay;
   }
-
 }
 /* }}} */
 
-Time_t TLB::nextReadSlot(       const MemRequest *mreq)
-  /* calculate next free time {{{1 */
+void TLB::doReq(MemRequest *mreq)
+  /* forward bus read {{{1 */
 {
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t TLB::nextWriteSlot(      const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t TLB::nextBusReadSlot(    const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t TLB::nextPushDownSlot(   const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return cmdPort->nextSlot(mreq->getStatsFlag());
-}
-/* }}} */
-Time_t TLB::nextPushUpSlot(     const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
-Time_t TLB::nextInvalidateSlot( const MemRequest *mreq)
-  /* calculate next free time {{{1 */
-{
-  return globalClock;
-}
-/* }}} */
+  bool retrying = mreq->isRetrying();
+  if (retrying)
+    mreq->clearRetrying();
+  //MSG("@%lld bus %s 0x%lx %d",globalClock, mreq->getCurrMem()->getName(), mreq->getAddr(), mreq->getAction());
 
-void TLB::readPage1(MemRequest *mreq) 
-{
-  MemRequest *newreq = MemRequest::createRead(this
-      ,mreq->getDInst()
-      ,calcPage2Addr(mreq->getAddr())
-      ,readPage2CB::create(this,mreq)
-      );
-
-  newreq->markMMU();
-  router->fwdBusRead(newreq, delay);
-}
-
-void TLB::readPage2(MemRequest *mreq) 
-{
-  MemRequest *newreq = MemRequest::createRead(this
-      ,mreq->getDInst()
-      ,calcPage3Addr(mreq->getAddr())
-      ,readPage3CB::create(this,mreq)
-      );
-
-  newreq->markMMU();
-  router->fwdBusRead(newreq, delay);
-}
-
-void TLB::readPage3(MemRequest *mreq) 
-{
-  // Alamelu : Anything more to be added here?
-  tlbBank->fillLine(mreq->getAddr());
-  bmshr->retire(mreq->getAddr());
-  //MSG("TLB::readPage3 :--------------  Remove  PC %x from the BMSHR",mreq->getAddr());
-
-  router->fwdBusRead(mreq);
-}
-
-void TLB::read(MemRequest *mreq)
-{
-  nRead.inc();
-
-  //MSG("TLB:read %llx",(mreq->getDInst())->getPC());
-  if(mreq->getAddr() == 0) {
-    mreq->ack(delay);
-    return;
-  }
-
-  doRead(mreq,false);
-}
-
-void TLB::write(MemRequest *mreq)
-{
-  nWrite.inc();
-
-  //MSG("TLB:write %llx",(mreq->getDInst())->getPC());
-  if(mreq->getAddr() == 0) {
-    mreq->ack(delay);
-    return;
-  }
-  doRead(mreq,false);
-
-}
-
-/* }}} */
-void TLB::writeAddress(MemRequest *mreq)
-{
-  nWriteAddress.inc();
-
-    mreq->ack(delay);
-    return;
-
-  //MSG("TLB:writeAddress %llx",(mreq->getDInst())->getPC());
-  I(lowerCache != NULL);
-  // The processor may want to write to the L1 cache. The first TLB will be above the cache. 
-  lowerCache->writeAddress(mreq); //FIXME: RISKY.
-}
-/* }}} */
-
-void TLB::busRead(MemRequest *mreq)
-{
-  if (mreq->isWrite()) {
-    nBusReadWrite.inc();
-  }else{
-    nBusReadRead.inc();
-  }
-
-  //MSG("TLB:busRead %llx",(mreq->getDInst())->getPC());
-  doRead(mreq,false);
-}
-
-
-void TLB::doRead(MemRequest *mreq,bool retrying) {
-#if TLB_ALWAYS_HITS 
-    mmuavgMemLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-    avgMemLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-
-    if (retrying) {
-      bmshr->retire(mreq->getAddr());
-    }
-
-    tlbReadHit.inc(mreq->getStatsFlag());
-    router->fwdBusRead(mreq,delay);
-    return;
-#endif
-
+#ifdef TLB_ALWAYS_HITS
+  bool l = true;
+#else
   Line *l = tlbBank->readLine(mreq->getAddr());
-  if (l) { //TLB Hit
-    mmuavgMemLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-    avgMemLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-
-    if (retrying) {
-      bmshr->retire(mreq->getAddr());
+#endif
+  if (l==0 && mreq->isWarmup()) {
+    l = tlbBank->fillLine(mreq->getAddr());
+    if (lowerTLB) {
+      lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
     }
+  }
+  if (l) { //TLB Hit
 
     tlbReadHit.inc(mreq->getStatsFlag());
-    router->fwdBusRead(mreq,delay);
+    router->scheduleReq(mreq, delay);
+
+    if (retrying) {
+      I(pending.front() == mreq);
+      pending.pop_front();
+      wakeupNext();
+    }
     return;
   }
 
@@ -261,116 +127,236 @@ void TLB::doRead(MemRequest *mreq,bool retrying) {
   if (lowerTLB != NULL){
     //Check the lowerTLB for a miss. 
     if (lowerTLB->checkL2TLBHit(mreq) == true){
+
       tlbBank->fillLine(mreq->getAddr());
       tlblowerReadHit.inc(mreq->getStatsFlag());
-      router->fwdBusRead(mreq,lowerTLBdelay);
+
+      router->scheduleReq(mreq, lowerTLBdelay);
+
+      if (retrying) {
+        I(pending.front() == mreq);
+        pending.pop_front();
+        wakeupNext();
+      }
       return;
     }
 
     tlblowerReadMiss.inc(mreq->getStatsFlag());
   }
 
-  if(!retrying && !bmshr->canIssue(mreq->getAddr())) {
-    //MSG("TLB::busRead:Waiting to add PC %x by the BMSHR HomeNode(%s)",mreq->getAddr(),mreq->getHomeNode());
-    tlbMSHRcant_issue.inc(mreq->getStatsFlag());
-    CallbackBase *cb  = doReadCB::create(this, mreq,true);
-    bmshr->addEntry(mreq->getAddr(), cb);
-    return;
-  }
-
-  //MSG("TLB::busRead:Adding PC %x to the BMSHR",mreq->getAddr());
-  bmshr->addEntry(mreq->getAddr());
-
-  MemRequest *newreq = MemRequest::createRead(this
-        ,mreq->getDInst()
-        ,calcPage1Addr(mreq->getAddr())
-        ,readPage1CB::create(this,mreq)
+  if (pending.empty() || retrying) {
+    // 1 outstanding miss at most (TLB, no MSHR complications)
+    MemRequest::sendReqRead( 
+        lowerCache,
+        mreq->getStatsFlag(),
+        calcPage1Addr(mreq->getAddr()),
+        readPage1CB::create(this,mreq)
         );
-  router->fwdBusRead(newreq,delay);
-}
-
-void TLB::pushDown(MemRequest *mreq)
-{
-  I(mreq->isInvalidate() || mreq->isWriteback());
-
-
-  router->fwdPushDown(mreq);
-}
-
-void TLB::pushUp(MemRequest *mreq)
-{
-  //MSG("TLB:pushUp %llx",(mreq->getDInst())->getPC());
-  if (mreq->isMMU()) {
-    mmuavgMissLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-    mmuavgMemLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-  }else{
-    avgMissLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-    avgMemLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
   }
 
-  if (mreq->isInvalidate()){
-    tlbInvalidate.inc(); 
-  }
+  if (!retrying)
+    pending.push_back(mreq);
+}
+/* }}} */
 
-  if(!mreq->isHomeNode()) {
-    router->fwdPushUp(mreq);
+void TLB::doDisp(MemRequest *mreq)
+  /* forward bus read {{{1 */
+{
+	router->scheduleDisp(mreq, delay);
+}
+/* }}} */
+
+void TLB::doReqAck(MemRequest *mreq)
+  /* data is coming back {{{1 */
+{
+  avgMemLat.sample(mreq->getTimeDelay()+delay, mreq->getStatsFlag());
+
+  if (mreq->isHomeNode()) {
+    mreq->ack();
     return;
   }
 
-  mreq->ack();
+  router->scheduleReqAck(mreq, delay);
 }
+/* }}} */
 
-void TLB::invalidate(MemRequest *mreq)
+void TLB::doSetState(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
 {
-  I(!mreq->isHomeNode());
-
-  // broadcast the invalidate through the upper nodes
-  router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
-  router->fwdPushDown(mreq, 1); // invalidate ack
+  if (router->isTopLevel()) {
+    mreq->convert2SetStateAck(ma_setInvalid,false);
+    router->scheduleSetStateAck(mreq,delay);
+    return;
+  }
+  router->sendSetStateAll(mreq, mreq->getAction(), delay);
 }
+/* }}} */
 
-bool TLB::canAcceptRead(DInst *dinst) const
+void TLB::doSetStateAck(MemRequest *mreq)
+  /* forward set state to all the upper nodes {{{1 */
 {
-  AddrType addr = dinst->getAddr();
-  if (!bmshr->canAccept(addr))
+  router->scheduleSetStateAck(mreq, delay);
+}
+/* }}} */
+
+bool TLB::isBusy(AddrType addr) const
+/* accept requests if no pending misses {{{1 */
+{
+  if(!pending.empty())
+    return true;
+
+  if (curRequests >= maxRequests)
+    return true;
+
+  if (lowerCache==0)
     return false;
-  return lowerCache->canAcceptRead(dinst);
-}
 
-bool TLB::canAcceptWrite(DInst *dinst) const
+  return lowerCache->isBusy(addr);
+}
+/* }}} */
+
+void TLB::readPage1(MemRequest *mreq) 
 {
-  AddrType addr = dinst->getAddr();
-  if (!bmshr->canAccept(addr))
-    return false;
-  return lowerCache->canAcceptWrite(dinst);
+  MemRequest::sendReqRead(
+      lowerCache,
+      mreq->getStatsFlag(),
+      calcPage2Addr(mreq->getAddr()),
+      readPage2CB::create(this,mreq)
+      );
 }
 
-TimeDelta_t TLB::ffread(AddrType addr, DataType data)
+void TLB::readPage2(MemRequest *mreq) 
+{
+  MemRequest::sendReqRead(
+      lowerCache,
+      mreq->getStatsFlag(),
+      calcPage3Addr(mreq->getAddr()),
+      readPage3CB::create(this,mreq)
+      );
+}
+
+void TLB::wakeupNext() 
+{
+  if (pending.empty())
+    return;
+
+  MemRequest *preq = pending.front();
+  //pending.pop_front();
+  preq->setRetrying();
+
+  doReq(preq);
+}
+
+void TLB::readPage3(MemRequest *mreq) 
+{
+  tlbBank->fillLine(mreq->getAddr());
+  TimeDelta_t lat = 0;
+  if (lowerTLB)
+    lat += lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
+
+  I(!pending.empty());
+  I(pending.front() == mreq);
+
+  pending.pop_front();
+
+  avgMissLat.sample(lat+delay, mreq->getStatsFlag());
+  router->scheduleReq(mreq, delay);
+  wakeupNext();
+}
+
+TimeDelta_t TLB::ffread(AddrType addr)
+  // {{{1 rabbit read
 { 
+  if (tlbBank->readLine(addr))
+    return delay;   // done!
+
+  if (lowerTLB)
+    lowerTLB->ffread(addr);
+ 
   tlbBank->fillLine(addr);
-  return router->ffread(addr,data) + delay;
+  if (lowerCache)
+    return router->ffread(addr) + lowerTLBdelay;
+  return delay;
 }
+// 1}}}
 
-TimeDelta_t TLB::ffwrite(AddrType addr, DataType data)
+TimeDelta_t TLB::ffwrite(AddrType addr)
+  // {{{1 rabbit write
 { 
+  if (tlbBank->readLine(addr))
+    return delay;   // done!
+
+  if (lowerTLB)
+    lowerTLB->ffwrite(addr);
+ 
   tlbBank->fillLine(addr);
-  return router->ffwrite(addr,data) + delay;
+  if (lowerCache)
+    return router->ffwrite(addr) + delay;
+  return delay;
 }
+/// 1}}}
 
-void TLB::ffinvalidate(AddrType addr, int32_t ilineSize)
-{ 
-  //I(0);
-  // FIXME: router->sendInvalidateAll(mreq->getLineSize(), mreq, mreq->getAddr(), delay);
-}
-
-// TLB direct requests  
-bool TLB::checkL2TLBHit(MemRequest *mreq) {
+bool TLB::checkL2TLBHit(MemRequest *mreq) 
+// {{{1 TLB direct requests  
+{
   AddrType addr = mreq->getAddr();
   Line *l = tlbBank->readLine(addr);
   if (l) {
-    //mreq->ack(delay); // Alamelu: Should I?? 
     return true;
   }
+
   return false;
 }
-#endif
+// 1}}}
+
+void TLB::req(MemRequest *mreq)
+/* main read entry point {{{1 */
+{
+  if(mreq->getAddr() == 0) {
+    mreq->ack();
+    return;
+  }
+  if (!mreq->isRetrying())
+    curRequests++;
+  //I(curRequests<=maxRequests && !mreq->isWarmup());
+  I(curRequests>0);
+	//I(!mreq->isRetrying());
+	mreq->redoReqAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
+}
+// }}}
+
+void TLB::reqAck(MemRequest *mreq)
+/* main read entry point {{{1 */
+{
+	//I(!mreq->isRetrying());
+  if (!mreq->isRetrying())
+    curRequests--;
+  //I(curRequests<=maxRequests && !mreq->isWarmup());
+  I(curRequests>=0);
+	mreq->redoReqAckAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
+}
+// }}}
+
+void TLB::setState(MemRequest *mreq)
+/* main read entry point {{{1 */
+{
+	I(!mreq->isRetrying());
+	mreq->redoSetStateAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
+}
+// }}}
+
+void TLB::setStateAck(MemRequest *mreq)
+/* main read entry point {{{1 */
+{
+	I(!mreq->isRetrying());
+	mreq->redoSetStateAckAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
+}
+// }}}
+
+void TLB::disp(MemRequest *mreq)
+/* displacement entry point {{{1 */
+{
+	I(!mreq->isRetrying());
+	mreq->redoDispAbs(cmdPort->nextSlot(mreq->getStatsFlag()));
+}
+// }}}

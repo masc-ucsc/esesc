@@ -49,12 +49,15 @@ protected:
   uint32_t LineSize;
   uint32_t Modfactor;
 
-  GStatsCntr  readHit;
-  GStatsCntr  writeHit;
+  GStatsCntr**  XBar_rw_req;
 
 public:
   MemXBar(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
+  MemXBar(const char *section ,const char *name);
   ~MemXBar() {}
+
+  //Helper functions
+  void setParam(const char *section, const char *name);
 
 	// Entry points to schedule that may schedule a do?? if needed
 	void req(MemRequest *req)         { doReq(req); };

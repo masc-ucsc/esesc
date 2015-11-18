@@ -39,17 +39,42 @@
 #include "nanassert.h"
 #include "MemObj.h"
 #include "GStats.h"
+#include "estl.h"
 /* }}} */
 
 class NICECache : public MemObj {
+private:
   // a 100% hit cache, used for debugging or as main memory
   const uint32_t hitDelay;
+  const uint32_t bsize;
+  const uint32_t bsizeLog2;
+
+  bool     coldWarmup;
+
+  HASH_SET<uint32_t> warmup;
+  uint32_t  warmupStepStart;
+  uint32_t  warmupStep;
+  uint32_t  warmupNext;
+  uint32_t  warmupSlowEvery;
 protected:
 
   // BEGIN Statistics
   GStatsCntr  readHit;
   GStatsCntr  pushDownHit;
   GStatsCntr  writeHit;
+
+
+  // The following statistics don't make any sense for a niceCache, but are instantiated 
+  // for compatibility, and to supress bogus warnings from the PowerModel about missing
+  // statistics for the NICECache. 
+  
+  GStatsCntr readMiss;
+  GStatsCntr readHalfMiss; 
+  GStatsCntr writeMiss; 
+  GStatsCntr writeHalfMiss; 
+  GStatsCntr writeExclusive;
+  GStatsCntr writeBack;
+
 public:
   NICECache(MemorySystem *gms, const char *section, const char *name = NULL);
 

@@ -62,30 +62,38 @@
 
 using namespace std;
 
-ArrayST::ArrayST(const InputParameter *configure_interface,
-		               string _name,
-		               bool _is_default)
+ArrayST::ArrayST(const InputParameter *configure_interface
+    ,string _name
+    ,bool _is_default
+    ,bool precomputed_power
+    )
 :l_ip(*configure_interface),
- name(_name),
- is_default(_is_default)
-    {
+  name(_name),
+  is_default(_is_default)
+{
 
-	maxDynPower = new GStatsMax("maxpwr_%s", _name.c_str());
-	if (l_ip.cache_sz<64) l_ip.cache_sz=64;
-	l_ip.error_checking();//not only do the error checking but also fill some missing parameters
-//#ifdef ENABLE_PEQ
-bool doPeq;
+  fprintf(stderr,"\nAttempting to set up %s",_name.c_str());
+  maxDynPower = new GStatsMax("maxpwr_%s", _name.c_str());
+  if (l_ip.cache_sz<64) l_ip.cache_sz=64;
+  l_ip.error_checking();//not only do the error checking but also fill some missing parameters
+  //#ifdef ENABLE_PEQ
+  bool doPeq;
   const char *pwrsection = SescConf->getCharPtr("","pwrmodel",0);
   doPeq = SescConf->getBool(pwrsection,"doPeq",0);
+  
+  if (precomputed_power){
+    I(fprintf(stderr,"Energy values provided for structure %s, ESESC does not compute them",name.c_str()));
+    //useProvidedEnergyNumbers();
+  } else if (doPeq) {
+    optimize_array_peq();
+  } else {
+    optimize_array();
+  }
 
-if (doPeq)
-	optimize_array_peq();
-else
-//#else
-	optimize_array();
-//#endif
+  fprintf(stderr,"\nDone setting up %s",_name.c_str());
 
 }
+
 //#ifdef ENABLE_PEQ
 void ArrayST::optimize_array_peq()
 {
@@ -256,7 +264,7 @@ void ArrayST::optimize_array()
 		local_result.tag_array2->power.searchOp.dynamic *= sckRation;
 	}
 
-	maxDynPower->sample((local_result.power.readOp.dynamic+local_result.power.searchOp.dynamic+local_result.power.writeOp.dynamic)*l_ip.freq*1e6*100);
+	maxDynPower->sample((local_result.power.readOp.dynamic+local_result.power.searchOp.dynamic+local_result.power.writeOp.dynamic)*l_ip.freq*1e6*100, true);
 
 	double macro_layout_overhead = g_tp.macro_layout_overhead;
 	local_result.area *= macro_layout_overhead;

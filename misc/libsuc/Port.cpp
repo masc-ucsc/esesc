@@ -75,20 +75,42 @@ void PortGeneric::destroy()
   delete this;
 }
 
+void PortGeneric::occupyUntil(Time_t u) 
+{
+  Time_t t = globalClock;
+
+  while(t<u) {
+    t = nextSlot(false);
+  }
+}
 
 PortUnlimited::PortUnlimited(const char *name)
   : PortGeneric(name) 
 {
+  until = 0;
 }
 
 Time_t PortUnlimited::nextSlot(bool en) {
-  avgTime.sample(0, en); // Just to keep usage statistics
-  return globalClock;
+  if (until<globalClock)
+    until = globalClock;
+
+  avgTime.sample(until-globalClock, en); // Just to keep usage statistics
+  return until;
+}
+
+void PortUnlimited::occupyUntil(Time_t u) 
+{
+  if (u>globalClock && u>until)
+    until = u;
 }
 
 Time_t PortUnlimited::calcNextSlot() const
 {
-  return globalClock;
+  Time_t t = until;
+  if (t<globalClock)
+    t = globalClock;
+
+  return t;
 }
 
 PortFullyPipe::PortFullyPipe(const char *name) 

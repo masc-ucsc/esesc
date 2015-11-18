@@ -101,7 +101,7 @@ public:
     start = (start+1) & pipeMask;
   }
 
-  uint32_t getIdFromTop(uint32_t i) const {
+  uint32_t getIDFromTop(uint32_t i) const {
     I(nElems > i);
     return (start+i) & pipeMask;
   }
@@ -115,7 +115,7 @@ public:
     return pipe[id];
   }
 
-  Data topNext() const { return getData(getIdFromTop(1)); }
+  Data topNext() const { return getData(getIDFromTop(1)); }
 
   size_t size() const { return nElems; }
   bool empty()  const { return nElems == 0; }

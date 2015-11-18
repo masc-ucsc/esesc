@@ -4,7 +4,7 @@
 #include <vector>
 #include <list>
 
-#include "EnergyMgr.h"
+//#include "EnergyMgr.h"  No reference to EnergyMgr.h appears anywhere else in esesc
 #include "estl.h"
 #include "nanassert.h"
 #include "Port.h"

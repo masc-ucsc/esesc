@@ -37,31 +37,22 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "QEMUInterface.h"
 #include "ThreadSafeFIFO.h"
-#include "CrackBase.h"
-#include "ARMCrack.h"
-#include "ThumbCrack.h"
-
-
 
 class DInst;
 
 class QEMUReader : public Reader {
 private:
 
-#ifdef ESESC_QEMU_ISA_ARMEL
-  ARMCrack    *crackInstARM;
-  ThumbCrack  *crackInstThumb;
-  std::vector<CrackBase *>   crackInst;
-#endif
-
   pthread_t         qemu_thread;
   FlowID            numFlows;
   FlowID            numAllFlows;
   static bool       started;
   QEMUArgs         *qemuargs;
-  EmulInterface    *eint;
 
 public:
+	static void setStarted() {
+		started = true;
+	}
   QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint);
   virtual ~QEMUReader();
 
@@ -70,7 +61,7 @@ public:
   void  syncHeadTail(FlowID  fid);
 
   // Only method called by remote thread
-  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool keepStats = false);
+  void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats);
   void syscall(uint32_t num, Time_t time, FlowID fid);
   
   void start();

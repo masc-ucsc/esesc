@@ -43,7 +43,7 @@ UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *nam
   /* constructor {{{1 */
   : GXBar(section, name)
 {
-  printf("building an UnMemXbar named:%s\n",name);
+  MSG("building an UnMemXbar named:%s\n",name);
   Xbar_unXbar_balance--; //decrement balance of XBars
   lower_level = NULL; 
 
@@ -62,15 +62,18 @@ UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *nam
     exit(1);
   }
 
+#ifdef OLD_CODE_TO_BE_PHASED_OUT
   std::vector<char *> vPars = SescConf->getSplitCharPtr(section, "lowerLevel");
   size_t size = strlen(vPars[0]);
   char *tmp = (char*)malloc(size + 6);
-
-  sprintf(tmp,"%s(0)",vPars[1]);
-  //lower_level = current->declareMemoryObj(section, "lowerLevel");   
+  sprintf(tmp,"%s",vPars[1]);
   lower_level = current->declareMemoryObj_uniqueName(tmp,vPars[0]);         
+#else
+  lower_level = current->declareMemoryObj(section,"lowerLevel");         
+  //Must have only one lower level!
+#endif
+
   addLowerLevel(lower_level);
-    
   I(current);
 }
 /* }}} */
@@ -87,12 +90,8 @@ void UnMemXBar::doReqAck(MemRequest *mreq)
 {
   I(!mreq->isHomeNode());
 
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);  
+  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);
   router->scheduleReqAckPos(pos, mreq);
-
-	I(0); 
-	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
-
 }
 /* }}} */
 
@@ -138,4 +137,3 @@ TimeDelta_t UnMemXBar::ffwrite(AddrType addr)
   return router->ffwrite(addr);
 }
 /* }}} */
-

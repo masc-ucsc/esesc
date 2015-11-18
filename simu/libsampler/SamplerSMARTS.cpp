@@ -1,5 +1,6 @@
 // Contributed by Jose Renau
 //                Ehsan K.Ardestani
+//                Sushant Kondguli
 //
 // The ESESC/BSD License
 //
@@ -53,17 +54,17 @@ SamplerSMARTS::SamplerSMARTS(const char *iname, const char *section, EmulInterfa
 
   nInstForcedDetail = nInstDetail==0? nInstTiming/2:nInstDetail;
 
-  nextSwitch = nInstSkip;
+  setNextSwitch(nInstSkip);
   if (nInstSkip)
     startRabbit(fid);
 
-  std::cout << "Sampler: TBS, R:" << nInstRabbit
+  std::cout << "Sampler: inst, R:" << nInstRabbit
             << ", W:"             << nInstWarmup
             << ", D:"             << nInstDetail
             << ", T:"             << nInstTiming
             << std::endl;
 
-  std::cout << "Sampler: TBS, nInstMax:" << nInstMax
+  std::cout << "Sampler: inst, nInstMax:" << nInstMax
             << ", nInstSkip:"            << nInstSkip
             << ", maxnsTime:"           << maxnsTime
             << std::endl;
@@ -77,73 +78,87 @@ SamplerSMARTS::~SamplerSMARTS()
 }
 /* }}} */
 
-void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid, char op, uint64_t icount, void *env)
+uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, int src1, int src2, int dest, int dest2, void *dummy)
   /* main qemu/gpu/tracer/... entry point {{{1 */
 {
-
   I(fid < emul->getNumEmuls());
-  if(likely(!execute(fid, icount)))
-    return; // QEMU can still send a few additional instructions (emul should stop soon)
+  if(likely(!execute(fid, 1)))
+    return 0; // QEMU can still send a few additional instructions (emul should stop soon)
   I(mode!=EmuInit);
 
-  I(insn);
-
   // process the current sample mode
-  if (nextSwitch>totalnInst) {
+  if (getNextSwitch()>totalnInst) {
 
-    if (mode == EmuRabbit || mode == EmuInit)
-      return;
+    if (mode == EmuRabbit || mode == EmuInit) {
+      uint64_t rabbitInst = getNextSwitch() - totalnInst;
+      execute(fid,rabbitInst);
+      // Qemu is not going to return untill it has executed these many instructions
+      // Or untill it hits a syscall that causes it to exit
+      // Untill then, you are on your own. Sit back and relax!
+      return rabbitInst; 
+    }
 
     if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(insn,pc,addr, (op&0xc0) /* thumb */ ,fid, env, getStatsFlag());
-      return;
+      emul->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, getStatsFlag());
+      return 0;
     }
 
     I(mode == EmuWarmup);
-		doWarmupOpAddr(op, addr);
-    return;
-  }
-
-
-  // We did enough
-  if (totalnInst >= nInstMax || endSimSiged) {
-    markThisDone(fid);
-    
-    if (allDone())
-      markDone();
-    else {
-      keepStats = false;
-    }
-    return;
+#if 1
+    if ( op == iLALU_LD || op == iSALU_ST)
+      // cache warmup fake inst, do not need SRC deps (faster)
+      emul->queueInstruction(0,addr, fid, op, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, false);
+#else
+		//doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
+#endif
+    return 0;
   }
 
   // Look for the new mode
-  I(nextSwitch <= totalnInst);
-
+  I(getNextSwitch() <= totalnInst);
 
  // I(mode != next_mode);
   pthread_mutex_lock (&mode_lock);
   //
 
-  if (nextSwitch > totalnInst){//another thread just changed the mode
+  if (getNextSwitch() > totalnInst){//another thread just changed the mode
     pthread_mutex_unlock (&mode_lock);
-    return;
+    return 0;
   }
 
   lastMode = mode;
   nextMode(ROTATE, fid);
-  if (doPower) {
-    if (lastMode == EmuTiming) { // timing is going to be over
+  if (lastMode == EmuTiming) { // timing is going to be over
+
+#if 0
+		static double last_timing         = 0;
+		static long long last_globalClock = 0;
+
+		MSG("%f %lld"
+				,iusage[EmuTiming]->getDouble()
+				,globalClock-last_globalClock);
+
+		last_timing      = iusage[EmuTiming]->getDouble();
+		last_globalClock = globalClock;
+#endif
+
+    BootLoader::reportSample();
+    
+    if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
+      markDone();
+      pthread_mutex_unlock (&mode_lock);
+      return 0;
+    }
+    if (doPower) {
       uint64_t mytime = getTime();
       int64_t ti = mytime - lastTime;
       I(ti > 0);
-      ti = freq*ti/1e9;
+      ti = (static_cast<int64_t>(freq)*ti)/1e9;
 
       BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
-      int32_t simt = BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
+      BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
       lastTime = mytime;
       updateCPI(fid); 
-      endSimSiged = (simt==90)?1:0;
       if (doTherm) {
         BootLoader::getPowerModelPtr()->updateSescTherm(ti);  
       }
@@ -151,10 +166,9 @@ void SamplerSMARTS::queue(uint32_t insn, uint64_t pc, uint64_t addr, FlowID fid,
   }
   pthread_mutex_unlock (&mode_lock);
 
+  return 0;
 }
 /* }}} */
-
-
 
 void SamplerSMARTS::updateCPI(FlowID fid){
   //extract cpi of last sample interval 
@@ -164,37 +178,32 @@ void SamplerSMARTS::updateCPI(FlowID fid){
 
 }
 
-
 void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
-
   if (rotate){
-
     fetchNextMode();
     I(next_mode != EmuInit);
 
-    setMode(next_mode, fid);
+    //If in live mode and warmup is to be forced
+    if(BootLoader::genwarm > 0 && next_mode == EmuTiming) {
+      BootLoader::genwarm--;
+      setMode(EmuWarmup, fid);
+      //setMode(EmuDetail, fid);
+    } else if(BootLoader::live_warmup > 0 && next_mode == EmuTiming) {
+      BootLoader::live_warmup--;
+      //BootLoader::sample_count++;
+      setMode(EmuDetail, fid);
+      //setMode(EmuRabbit, fid);
+    } else {
+      setMode(next_mode, fid);
+    }
+
     I(mode == next_mode);
     if (next_mode == EmuRabbit){
       setModeNativeRabbit();
     }
-    nextSwitch       = nextSwitch + sequence_size[sequence_pos];
+    setNextSwitch(getNextSwitch() + sequence_size[sequence_pos]);
   }else{
     I(0);
   }
 }
-  
 
-bool SamplerSMARTS::allDone() {
-  for (size_t i=0; i< emul->getNumFlows(); i++) {
-    if (!finished[i])
-      return false;
-  }
-  return true;
-}
-
-void SamplerSMARTS::markThisDone(FlowID fid) {
-  if (!finished[fid]) {
-    finished[fid] = true;
-    printf("fid %d finished, waiting for the rest...\n", fid);
-  }
-}

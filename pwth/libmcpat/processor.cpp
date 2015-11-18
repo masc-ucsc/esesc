@@ -34,6 +34,10 @@
 //eka, TEMPORARY
 //#define PRINT_ALL 1
 
+
+extern bool gpu_tcd_present;
+extern bool gpu_tci_present;
+
 //eka, to be able to declare the object with no processing
 Processor::Processor()
 {
@@ -119,7 +123,6 @@ Processor::Processor(ParseXML *XML_interface)
     }
 #if 1
   if (procdynp.numGPU > 0) {
-
     gpu = new GPUU(XML,&interface_ip);
     gpu->computeEnergy();
     gpu->computeEnergy(false);
@@ -136,8 +139,38 @@ Processor::Processor(ParseXML *XML_interface)
     for (i = 0;i < numL2; i++)
       {
         l2array.push_back(new SharedCache(XML,i, &interface_ip));
+        if (XML->sys.L2[i].force_lkg == true){
+          l2array[i]->unicache.caches->local_result.power.readOp.leakage = XML->sys.L2[i].force_lkg_w;
+          l2array[i]->unicache.caches->local_result.power.readOp.gate_leakage = 0;
+
+          l2array[i]->unicache.missb->local_result.power.readOp.leakage = 0;
+          l2array[i]->unicache.ifb->local_result.power.readOp.leakage = 0;
+          l2array[i]->unicache.prefetchb->local_result.power.readOp.leakage = 0;
+          l2array[i]->unicache.wbb->local_result.power.readOp.leakage = 0;
+
+        }
+        if (XML->sys.L2[i].force_rddyn == true){
+          l2array[i]->unicache.caches->local_result.power.readOp.dynamic = XML->sys.L2[i].force_rddyn_w;
+
+          l2array[i]->unicache.missb->local_result.power.readOp.dynamic= 0;
+          l2array[i]->unicache.ifb->local_result.power.readOp.dynamic = 0;
+          l2array[i]->unicache.prefetchb->local_result.power.readOp.dynamic = 0;
+          l2array[i]->unicache.wbb->local_result.power.readOp.dynamic = 0;
+
+        }
+        if (XML->sys.L2[i].force_wrdyn == true){
+          l2array[i]->unicache.caches->local_result.power.writeOp.dynamic = XML->sys.L2[i].force_wrdyn_w ;
+
+          l2array[i]->unicache.missb->local_result.power.writeOp.dynamic= 0;
+          l2array[i]->unicache.ifb->local_result.power.writeOp.dynamic = 0;
+          l2array[i]->unicache.prefetchb->local_result.power.writeOp.dynamic = 0;
+          l2array[i]->unicache.wbb->local_result.power.writeOp.dynamic = 0;
+
+        }
+        
         l2array[i]->computeEnergy();
         l2array[i]->computeEnergy(false);
+
         if (procdynp.homoL2){
           for(int j=1; j<procdynp.numL2;j++)
             l2array.push_back(l2array[i]);
@@ -199,6 +232,35 @@ Processor::Processor(ParseXML *XML_interface)
     for (i = 0;i < numL3; i++)
       {
         l3array.push_back(new SharedCache(XML,i, &interface_ip, L3));
+        if (XML->sys.L3[i].force_lkg == true){
+          l3array[i]->unicache.caches->local_result.power.readOp.leakage = XML->sys.L3[i].force_lkg_w;
+          l3array[i]->unicache.caches->local_result.power.readOp.gate_leakage = 0;
+
+          l3array[i]->unicache.missb->local_result.power.readOp.leakage = 0;
+          l3array[i]->unicache.ifb->local_result.power.readOp.leakage = 0;
+          l3array[i]->unicache.prefetchb->local_result.power.readOp.leakage = 0;
+          l3array[i]->unicache.wbb->local_result.power.readOp.leakage = 0;
+
+        }
+        if (XML->sys.L3[i].force_rddyn == true){
+          l3array[i]->unicache.caches->local_result.power.readOp.dynamic = XML->sys.L3[i].force_rddyn_w;
+
+          l3array[i]->unicache.missb->local_result.power.readOp.dynamic= 0;
+          l3array[i]->unicache.ifb->local_result.power.readOp.dynamic = 0;
+          l3array[i]->unicache.prefetchb->local_result.power.readOp.dynamic = 0;
+          l3array[i]->unicache.wbb->local_result.power.readOp.dynamic = 0;
+
+        }
+        if (XML->sys.L3[i].force_wrdyn == true){
+          l3array[i]->unicache.caches->local_result.power.writeOp.dynamic = XML->sys.L3[i].force_wrdyn_w ;
+
+          l3array[i]->unicache.missb->local_result.power.writeOp.dynamic= 0;
+          l3array[i]->unicache.ifb->local_result.power.writeOp.dynamic = 0;
+          l3array[i]->unicache.prefetchb->local_result.power.writeOp.dynamic = 0;
+          l3array[i]->unicache.wbb->local_result.power.writeOp.dynamic = 0;
+
+        }
+
         l3array[i]->computeEnergy();
         l3array[i]->computeEnergy(false);
         if (procdynp.homoL3){
@@ -1457,17 +1519,10 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
   for( int ii = 0; ii< (procdynp.numSM) ; ii++){
 
     int i = procdynp.homoCore? 0:ii;
-    sprintf(name, "lanesG(%d)",ii); 
-    sprintf(conn, "IL1G(%d)", ii);
-    area = 1.5e-12*gpu->sms[i]->lane.area.get_area();
-    tdp  = gpu->sms[i]->lane.power.readOp.dynamic;
-    lkg  = gpu->sms[i]->lane.rt_power.readOp.get_leak();
-    type = 0;
-    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
-    area = tdp = lkg = 0;
 
-    sprintf(name, "RFG(%d)",ii); 
-    sprintf(conn, "lanesG(%d)", ii);
+    /* -------------------------------------- TEST COUNTER      ----------------------------------------*/
+    sprintf(name, "P(%d)_RFGTest",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG", (*gpuIndex)[ii]);
     area = 1.25e-12*gpu->sms[i]->lanes[0]->exu->rfu->area.get_area()*procdynp.numLane;
     tdp  = (gpu->sms[i]->lanes[0]->exu->rfu->power.readOp.dynamic)*procdynp.numLane;
     lkg  = gpu->sms[i]->lanes[0]->exu->rfu->power.readOp.get_leak()*procdynp.numLane;
@@ -1475,8 +1530,56 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
     area = tdp = lkg = 0;
 
-    sprintf(name, "IL1G(%d)",ii); 
-    sprintf(conn, "lanesG(%d)",ii); 
+    /* -------------------------------------- GPU Register File ----------------------------------------*/
+    sprintf(name, "P(%d)_RFG",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]);
+    area = 1.25e-12*gpu->sms[i]->lanes[0]->exu->rfu->area.get_area()*procdynp.numLane;
+    tdp  = (gpu->sms[i]->lanes[0]->exu->rfu->power.readOp.dynamic)*procdynp.numLane;
+    lkg  = gpu->sms[i]->lanes[0]->exu->rfu->power.readOp.get_leak()*procdynp.numLane;
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+
+    
+    /* -------------------------------------- GPU Tinycache_D   ----------------------------------------*/
+
+    if (gpu_tcd_present){
+      sprintf(name, "P(%d)_TCD",(*gpuIndex)[ii]); 
+      sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]);
+      area = 1.25e-12*gpu->sms[i]->lanes[0]->tcdata->area.get_area()*procdynp.numLane;
+      tdp  = (gpu->sms[i]->lanes[0]->tcdata->power.readOp.dynamic)*procdynp.numLane;
+      lkg  = gpu->sms[i]->lanes[0]->tcdata->power.readOp.get_leak()*procdynp.numLane;
+      type = 0;
+      energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+      area = tdp = lkg = 0;
+    }
+
+    /* -------------------------------------- GPU Tinycache_I   ----------------------------------------*/
+    if (gpu_tci_present){
+      sprintf(name, "P(%d)_TCI",(*gpuIndex)[ii]); 
+      sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]);
+      area = 1.25e-12*gpu->sms[i]->lanes[0]->exu->rfu->area.get_area()*procdynp.numLane;
+      tdp  = (gpu->sms[i]->lanes[0]->tcinst->power.readOp.dynamic)*procdynp.numLane;
+      lkg  = gpu->sms[i]->lanes[0]->tcinst->power.readOp.get_leak()*procdynp.numLane;
+      type = 0;
+      energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+      area = tdp = lkg = 0;
+    }
+
+    
+    /* -------------------------------------- GPU Lanes         ----------------------------------------*/
+    sprintf(name, "P(%d)_lanesG",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_IL1G",(*gpuIndex)[ii]);
+    area = 1.5e-12*gpu->sms[i]->lane.area.get_area();
+    tdp  = gpu->sms[i]->lane.power.readOp.dynamic;
+    lkg  = gpu->sms[i]->lane.rt_power.readOp.get_leak();
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+
+    /* -------------------------------------- GPU ICACHE        ----------------------------------------*/
+    sprintf(name, "P(%d)_IL1G",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
     area = 1.5e-12*gpu->sms[i]->icache.area.get_area();
     tdp  = gpu->sms[i]->icache.power.readOp.dynamic;
     lkg  = gpu->sms[i]->icache.rt_power.readOp.get_leak();
@@ -1484,8 +1587,31 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
     area = tdp = lkg = 0;
 
-    sprintf(name, "DL1G(%d)",ii); 
-    sprintf(conn, "lanesG(%d)",ii); 
+    /* -------------------------------------- GPU IFU           ----------------------------------------*/
+#if 0
+	sprintf(name, "IFUG(%d)",(*gpuIndex)[ii]); 
+    sprintf(conn, "lanesG(%d)",(*gpuIndex)[ii]); 
+    area = 1.5e-12*gpu->sms[i]->icache.area.get_area();
+    tdp  = gpu->sms[i]->icache.power.readOp.dynamic;
+    lkg  = gpu->sms[i]->icache.rt_power.readOp.get_leak();
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+#endif
+
+    /* -------------------------------------- GPU ITLB          ----------------------------------------*/
+    sprintf(name, "P(%d)_ITLBG",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
+    area = 1.5e-12*gpu->sms[i]->mmu_i->area.get_area();
+    tdp  = gpu->sms[i]->mmu_i->power.readOp.dynamic;
+    lkg  = gpu->sms[i]->mmu_i->rt_power.readOp.get_leak();
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+
+    /* -------------------------------------- GPU DCACHE        ----------------------------------------*/
+    sprintf(name, "P(%d)_DL1G",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
     area = 1.5e-12*gpu->sms[i]->dcache.area.get_area();
     tdp  = gpu->sms[i]->dcache.power.readOp.dynamic;
     lkg  = gpu->sms[i]->dcache.rt_power.readOp.get_leak();
@@ -1493,9 +1619,47 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
     area = tdp = lkg = 0;
 
+    /* -------------------------------------- GPU DTLB          ----------------------------------------*/
+   
+
+    sprintf(name, "P(%d)_DTLBG",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
+    area = 1.5e-12*gpu->sms[i]->mmu_d->area.get_area();
+    tdp  = gpu->sms[i]->mmu_d->power.readOp.dynamic;
+    lkg  = gpu->sms[i]->mmu_d->rt_power.readOp.get_leak();
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+
+
+
+
+    /* -------------------------------------- GPU Coalescer     ----------------------------------------*/
 #if 0
-    sprintf(name, "pipeG(%d)",ii); 
-    sprintf(conn, "lanesG(%d) DL1G(%d) IL1G(%d) RFG(%d)",ii, ii, ii, ii); 
+    sprintf(name, "P(%d)_Coal",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
+    area = 1.5e-12*gpu->sms[i]->icache.area.get_area();
+    tdp  = gpu->sms[i]->icache.power.readOp.dynamic;
+    lkg  = gpu->sms[i]->icache.rt_power.readOp.get_leak();
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+#endif
+
+    /* -------------------------------------- GPU Scratch Pad   ----------------------------------------*/
+    sprintf(name, "P(%d)_ScratchG",(*gpuIndex)[ii]); 
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
+    area = 1.5e-12*gpu->sms[i]->scratchpad->area.get_area();
+    tdp  = gpu->sms[i]->scratchpad->power.readOp.dynamic;
+    lkg  = gpu->sms[i]->scratchpad->rt_power.readOp.get_leak();
+    type = 0;
+    energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, type, area, tdp, 0.0, lkg, isGPU));
+    area = tdp = lkg = 0;
+
+
+#if 0
+    sprintf(name, "P(%d)_pipeG",(*gpuIndex)[ii]); 
+    sprintf(conn, "lanesG(%d) DL1G(%d) IL1G(%d) RFG(%d)",(*gpuIndex)[ii],(*gpuIndex)[ii],(*gpuIndex)[ii],(*gpuIndex)[ii]); 
     area = 1.5e-12*gpu->sms[i]->lanes[0]->corepipe->area.get_area()*procdynp.numLane;
     tdp  = gpu->sms[i]->lanes[0]->corepipe->power.readOp.dynamic;
     lkg  = gpu->sms[i]->lanes[0]->corepipe->power.readOp.get_leak();
@@ -2085,22 +2249,90 @@ void Processor::dumpGPUDyn(int i) {
   else
     set_pppm(cccm_t, 0, 1,1,1);
 
+  /* -------------------------------------- TEST COUNTER      ----------------------------------------*/
+  dyn = 100;
+  sprintf(name, "P(%d)_RFGTest",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
 
-  dyn = ((gpu->sms[i]->lane.rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
-  sprintf(name, "lanesG(%d)",i);
-  energyBundle->setDynCycByName(name, dyn, cyc);
+
+  /* -------------------------------------- GPU Register File ----------------------------------------*/
   dyn = ((gpu->sms[i]->lanes[0]->exu->rfu->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn()*procdynp.numLane;
-  sprintf(name, "RFG(%d)",i); 
+  sprintf(name, "P(%d)_RFG",(*gpuIndex)[i]); 
   energyBundle->setDynCycByName(name, dyn, cyc);
+
+
+  /* -------------------------------------- GPU Tinycache_D   ----------------------------------------*/
+  dyn = 0; 
+  if (gpu_tcd_present){
+    dyn = ((gpu->sms[i]->lanes[0]->tcdata->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn()*procdynp.numLane;
+	sprintf(name, "P(%d)_TCD",(*gpuIndex)[i]);
+	energyBundle->setDynCycByName(name, dyn, cyc);
+  }
+  
+  /* -------------------------------------- GPU Tinycache_I   ----------------------------------------*/
+  dyn = 0; 
+  if (gpu_tci_present){
+    dyn = ((gpu->sms[i]->lanes[0]->tcinst->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn()*procdynp.numLane;
+	sprintf(name, "P(%d)_TCI",(*gpuIndex)[i]);
+	energyBundle->setDynCycByName(name, dyn, cyc);
+
+  }
+
+  /* -------------------------------------- GPU Lanes         ----------------------------------------*/
+  dyn = ((gpu->sms[i]->lane.rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
+  sprintf(name, "P(%d)_lanesG",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
+
+
+  /* -------------------------------------- GPU ICACHE        ----------------------------------------*/
   dyn = ((gpu->sms[i]->icache.rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
-  sprintf(name, "IL1G(%d)",i); 
+  sprintf(name, "P(%d)_IL1G",(*gpuIndex)[i]); 
   energyBundle->setDynCycByName(name, dyn, cyc);
+
+
+  /* -------------------------------------- GPU IFU           ----------------------------------------*/
+#if 0
+  dyn = 0; //TODO
+  sprintf(name, "IFUG(%d)",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
+#endif
+
+  /* -------------------------------------- GPU ITLB          ----------------------------------------*/
+  dyn = ((gpu->sms[i]->mmu_i->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
+  sprintf(name, "P(%d)_ITLBG",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
+
+
+  /* -------------------------------------- GPU DCACHE        ----------------------------------------*/
   dyn = ((gpu->sms[i]->dcache.rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
-  sprintf(name, "DL1G(%d)",i); 
+  sprintf(name, "P(%d)_DL1G",(*gpuIndex)[i]); 
   energyBundle->setDynCycByName(name, dyn, cyc);
+
+
+  /* -------------------------------------- GPU DTLB          ----------------------------------------*/
+  dyn = ((gpu->sms[i]->mmu_d->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
+  sprintf(name, "P(%d)_DTLBG",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
+
+
+  /* -------------------------------------- GPU Coalescer     ----------------------------------------*/
+#if 0
+  dyn = 0; //TODO
+  dyn = ((gpu->sms[i]->dcache.xbar->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
+  sprintf(name, "P(%d)_Coal",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
+#endif
+
+  /* -------------------------------------- GPU Scratch Pad   ----------------------------------------*/
+  dyn = 0; //TODO
+  dyn = ((gpu->sms[i]->scratchpad->rt_power + gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
+  sprintf(name, "P(%d)_ScratchG",(*gpuIndex)[i]);
+  energyBundle->setDynCycByName(name, dyn, cyc);
+
+
 #if 0
   dyn = ((gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
-  sprintf(name, "pipeG(%d)",i); 
+  sprintf(name, "P(%d)_pipeG",(*gpuIndex)[i]); 
   energyBundle->setDynCycByName(name, dyn, cyc);
 #endif
 
@@ -2130,6 +2362,3 @@ void Processor::dumpL2GDyn(){
   sprintf(name, "L2G(0)"); 
   energyBundle->setDynCycByName(name, dyn, clockIntAvg);
 }
-
-
-

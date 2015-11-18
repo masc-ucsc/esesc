@@ -76,6 +76,9 @@ class BasicBlock
   @ninst
   @isShMused
   @pred_in_use
+  @reconv_node
+  @isDiv
+  @visited
 
 
   # Static variables, shared by all basic blocks inside a function.
@@ -123,6 +126,9 @@ class BasicBlock
       incTotalBBs()
       @Pre = Array.new
       @Succ = Array.new
+      @reconv_node = Array.new
+      @isDiv = false
+      @visited = false
       @Live_Ins = Set.new
       @Live_Outs = Set.new
     end
@@ -179,13 +185,21 @@ class BasicBlock
     @Pre.sort!
 
     if (@Succ.size>0)
+      if (@Succ.size>1)
+        @isDiv = true
+      else
+        @isDiv = false
+        #@reconv_bb.insert(@reconv_bb.size,@Succ[0]);
+      end
       #puts "BB #{@BBID} goes to BB #{@Succ.inspect}"
-      #        puts "BB #{@Pre.inspect} come to BB #{@BBID}"
-      #        puts
+      #puts "BB #{@Pre.inspect} comes to BB #{@BBID}"
+      #puts
     else
+      @isDiv = false
+      #@reconv_bb.insert(@reconv_bb.size,"0");
       #puts "BB #{@BBID} is the terminal BB"
-      #        puts "BB #{@Pre.inspect} come to BB #{@BBID}"
-      #        puts
+      #puts "BB #{@Pre.inspect} comes to BB #{@BBID}"
+      #puts
       @termblock = true;
       termblocks.insert(termblocks.size,@BBID)
     end
@@ -231,6 +245,38 @@ class BasicBlock
   def setPredec(bbid)
     @Pre.insert(@Pre.size,bbid)
   end
+
+  def isDivergent
+    return @isDiv
+  end
+
+  def getreconv_node  
+    return @reconv_node
+  end
+
+  def setreconv_node(id)
+    @reconv_node.insert(@reconv_node.size,id)
+    @reconv_node.sort!
+    @reconv_node.uniq!
+  end
+
+  def clearreconv_node
+    @reconv_node.clear()
+  end
+
+  def markvisited
+    @visited = true
+  end
+
+  def markunvisited
+    @visited = false
+  end
+
+  def isvisited
+    return @visited
+  end
+
+
 
   def getPredec
     @Pre.uniq!

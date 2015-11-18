@@ -18,13 +18,10 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <string.h>
-
-#include "config.h"
 #include "cpu.h"
 #include "mmu.h"
-#include "host-utils.h"
+#include "qemu/host-utils.h"
+#include "exec/cpu_ldst.h"
 
 
 //#define CRIS_HELPER_DEBUG
@@ -32,7 +29,7 @@
 
 #ifdef CRIS_HELPER_DEBUG
 #define D(x) x
-#define D_LOG(...) qemu_log(__VA__ARGS__)
+#define D_LOG(...) qemu_log(__VA_ARGS__)
 #else
 #define D(x)
 #define D_LOG(...) do { } while (0)
@@ -40,231 +37,281 @@
 
 #if defined(CONFIG_USER_ONLY)
 
-void do_interrupt (CPUState *env)
+void cris_cpu_do_interrupt(CPUState *cs)
 {
-	env->exception_index = -1;
-	env->pregs[PR_ERP] = env->pc;
+    CRISCPU *cpu = CRIS_CPU(cs);
+    CPUCRISState *env = &cpu->env;
+
+    cs->exception_index = -1;
+    env->pregs[PR_ERP] = env->pc;
 }
 
-int cpu_cris_handle_mmu_fault(CPUState * env, target_ulong address, int rw,
+void crisv10_cpu_do_interrupt(CPUState *cs)
+{
+    cris_cpu_do_interrupt(cs);
+}
+
+int cris_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
                               int mmu_idx)
 {
-	env->exception_index = 0xaa;
-	env->pregs[PR_EDA] = address;
-	cpu_dump_state(env, stderr, fprintf, 0);
-	return 1;
+    CRISCPU *cpu = CRIS_CPU(cs);
+
+    cs->exception_index = 0xaa;
+    cpu->env.pregs[PR_EDA] = address;
+    cpu_dump_state(cs, stderr, fprintf, 0);
+    return 1;
 }
 
 #else /* !CONFIG_USER_ONLY */
 
 
-static void cris_shift_ccs(CPUState *env)
+static void cris_shift_ccs(CPUCRISState *env)
 {
-	uint32_t ccs;
-	/* Apply the ccs shift.  */
-	ccs = env->pregs[PR_CCS];
-	ccs = ((ccs & 0xc0000000) | ((ccs << 12) >> 2)) & ~0x3ff;
-	env->pregs[PR_CCS] = ccs;
+    uint32_t ccs;
+    /* Apply the ccs shift.  */
+    ccs = env->pregs[PR_CCS];
+    ccs = ((ccs & 0xc0000000) | ((ccs << 12) >> 2)) & ~0x3ff;
+    env->pregs[PR_CCS] = ccs;
 }
 
-int cpu_cris_handle_mmu_fault (CPUState *env, target_ulong address, int rw,
-                               int mmu_idx)
+int cris_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
+                              int mmu_idx)
 {
-	struct cris_mmu_result res;
-	int prot, miss;
-	int r = -1;
-	target_ulong phy;
+    CRISCPU *cpu = CRIS_CPU(cs);
+    CPUCRISState *env = &cpu->env;
+    struct cris_mmu_result res;
+    int prot, miss;
+    int r = -1;
+    target_ulong phy;
 
-	D(printf ("%s addr=%x pc=%x rw=%x\n", __func__, address, env->pc, rw));
-	miss = cris_mmu_translate(&res, env, address & TARGET_PAGE_MASK,
-				  rw, mmu_idx, 0);
-	if (miss)
-	{
-		if (env->exception_index == EXCP_BUSFAULT)
-			cpu_abort(env,
-				  "CRIS: Illegal recursive bus fault."
-				 "addr=%x rw=%d\n",
-				 address, rw);
+    qemu_log_mask(CPU_LOG_MMU, "%s addr=%" VADDR_PRIx " pc=%x rw=%x\n",
+            __func__, address, env->pc, rw);
+    miss = cris_mmu_translate(&res, env, address & TARGET_PAGE_MASK,
+                              rw, mmu_idx, 0);
+    if (miss) {
+        if (cs->exception_index == EXCP_BUSFAULT) {
+            cpu_abort(cs,
+                      "CRIS: Illegal recursive bus fault."
+                      "addr=%" VADDR_PRIx " rw=%d\n",
+                      address, rw);
+        }
 
-		env->pregs[PR_EDA] = address;
-		env->exception_index = EXCP_BUSFAULT;
-		env->fault_vector = res.bf_vec;
-		r = 1;
-	}
-	else
-	{
-		/*
-		 * Mask off the cache selection bit. The ETRAX busses do not
-		 * see the top bit.
-		 */
-		phy = res.phy & ~0x80000000;
-		prot = res.prot;
-		tlb_set_page(env, address & TARGET_PAGE_MASK, phy,
-                             prot, mmu_idx, TARGET_PAGE_SIZE);
-                r = 0;
-	}
-	if (r > 0)
-            D_LOG("%s returns %d irqreq=%x addr=%x phy=%x vec=%x pc=%x\n",
-                  __func__, r, env->interrupt_request, address, res.phy,
-                  res.bf_vec, env->pc);
-	return r;
+        env->pregs[PR_EDA] = address;
+        cs->exception_index = EXCP_BUSFAULT;
+        env->fault_vector = res.bf_vec;
+        r = 1;
+    } else {
+        /*
+         * Mask off the cache selection bit. The ETRAX busses do not
+         * see the top bit.
+         */
+        phy = res.phy & ~0x80000000;
+        prot = res.prot;
+        tlb_set_page(cs, address & TARGET_PAGE_MASK, phy,
+                     prot, mmu_idx, TARGET_PAGE_SIZE);
+        r = 0;
+    }
+    if (r > 0) {
+        qemu_log_mask(CPU_LOG_MMU,
+                "%s returns %d irqreq=%x addr=%" VADDR_PRIx " phy=%x vec=%x"
+                " pc=%x\n", __func__, r, cs->interrupt_request, address,
+                res.phy, res.bf_vec, env->pc);
+    }
+    return r;
 }
 
-static void do_interruptv10(CPUState *env)
+void crisv10_cpu_do_interrupt(CPUState *cs)
 {
-	int ex_vec = -1;
+    CRISCPU *cpu = CRIS_CPU(cs);
+    CPUCRISState *env = &cpu->env;
+    int ex_vec = -1;
 
-	D_LOG( "exception index=%d interrupt_req=%d\n",
-		   env->exception_index,
-		   env->interrupt_request);
+    D_LOG("exception index=%d interrupt_req=%d\n",
+          cs->exception_index,
+          cs->interrupt_request);
 
-	assert(!(env->pregs[PR_CCS] & PFIX_FLAG));
-	switch (env->exception_index)
-	{
-		case EXCP_BREAK:
-			/* These exceptions are genereated by the core itself.
-			   ERP should point to the insn following the brk.  */
-			ex_vec = env->trap_vector;
-			env->pregs[PR_ERP] = env->pc;
-			break;
+    if (env->dslot) {
+        /* CRISv10 never takes interrupts while in a delay-slot.  */
+        cpu_abort(cs, "CRIS: Interrupt on delay-slot\n");
+    }
 
-		case EXCP_NMI:
-			/* NMI is hardwired to vector zero.  */
-			ex_vec = 0;
-			env->pregs[PR_CCS] &= ~M_FLAG;
-			env->pregs[PR_NRP] = env->pc;
-			break;
+    assert(!(env->pregs[PR_CCS] & PFIX_FLAG));
+    switch (cs->exception_index) {
+    case EXCP_BREAK:
+        /* These exceptions are genereated by the core itself.
+           ERP should point to the insn following the brk.  */
+        ex_vec = env->trap_vector;
+        env->pregs[PRV10_BRP] = env->pc;
+        break;
 
-		case EXCP_BUSFAULT:
-                        cpu_abort(env, "Unhandled busfault");
-			break;
+    case EXCP_NMI:
+        /* NMI is hardwired to vector zero.  */
+        ex_vec = 0;
+        env->pregs[PR_CCS] &= ~M_FLAG_V10;
+        env->pregs[PRV10_BRP] = env->pc;
+        break;
 
-		default:
-			/* The interrupt controller gives us the vector.  */
-			ex_vec = env->interrupt_vector;
-			/* Normal interrupts are taken between
-			   TB's.  env->pc is valid here.  */
-			env->pregs[PR_ERP] = env->pc;
-			break;
-	}
+    case EXCP_BUSFAULT:
+        cpu_abort(cs, "Unhandled busfault");
+        break;
 
-	if (env->pregs[PR_CCS] & U_FLAG) {
-		/* Swap stack pointers.  */
-		env->pregs[PR_USP] = env->regs[R_SP];
-		env->regs[R_SP] = env->ksp;
-	}
+    default:
+        /* The interrupt controller gives us the vector.  */
+        ex_vec = env->interrupt_vector;
+        /* Normal interrupts are taken between
+           TB's.  env->pc is valid here.  */
+        env->pregs[PR_ERP] = env->pc;
+        break;
+    }
 
-	/* Now that we are in kernel mode, load the handlers address.  */
-	env->pc = ldl_code(env->pregs[PR_EBP] + ex_vec * 4);
-	env->locked_irq = 1;
-	env->pregs[PR_CCS] |= F_FLAG_V10; /* set F.  */
+    if (env->pregs[PR_CCS] & U_FLAG) {
+        /* Swap stack pointers.  */
+        env->pregs[PR_USP] = env->regs[R_SP];
+        env->regs[R_SP] = env->ksp;
+    }
 
-	qemu_log_mask(CPU_LOG_INT, "%s isr=%x vec=%x ccs=%x pid=%d erp=%x\n", 
-		      __func__, env->pc, ex_vec, 
-		      env->pregs[PR_CCS],
-		      env->pregs[PR_PID], 
-		      env->pregs[PR_ERP]);
+    /* Now that we are in kernel mode, load the handlers address.  */
+    env->pc = cpu_ldl_code(env, env->pregs[PR_EBP] + ex_vec * 4);
+    env->locked_irq = 1;
+    env->pregs[PR_CCS] |= F_FLAG_V10; /* set F.  */
+
+    qemu_log_mask(CPU_LOG_INT, "%s isr=%x vec=%x ccs=%x pid=%d erp=%x\n",
+                  __func__, env->pc, ex_vec,
+                  env->pregs[PR_CCS],
+                  env->pregs[PR_PID],
+                  env->pregs[PR_ERP]);
 }
 
-void do_interrupt(CPUState *env)
+void cris_cpu_do_interrupt(CPUState *cs)
 {
-	int ex_vec = -1;
+    CRISCPU *cpu = CRIS_CPU(cs);
+    CPUCRISState *env = &cpu->env;
+    int ex_vec = -1;
 
-	if (env->pregs[PR_VR] < 32)
-		return do_interruptv10(env);
+    D_LOG("exception index=%d interrupt_req=%d\n",
+          cs->exception_index,
+          cs->interrupt_request);
 
-	D_LOG( "exception index=%d interrupt_req=%d\n",
-		   env->exception_index,
-		   env->interrupt_request);
+    switch (cs->exception_index) {
+    case EXCP_BREAK:
+        /* These exceptions are genereated by the core itself.
+           ERP should point to the insn following the brk.  */
+        ex_vec = env->trap_vector;
+        env->pregs[PR_ERP] = env->pc;
+        break;
 
-	switch (env->exception_index)
-	{
-		case EXCP_BREAK:
-			/* These exceptions are genereated by the core itself.
-			   ERP should point to the insn following the brk.  */
-			ex_vec = env->trap_vector;
-			env->pregs[PR_ERP] = env->pc;
-			break;
+    case EXCP_NMI:
+        /* NMI is hardwired to vector zero.  */
+        ex_vec = 0;
+        env->pregs[PR_CCS] &= ~M_FLAG_V32;
+        env->pregs[PR_NRP] = env->pc;
+        break;
 
-		case EXCP_NMI:
-			/* NMI is hardwired to vector zero.  */
-			ex_vec = 0;
-			env->pregs[PR_CCS] &= ~M_FLAG;
-			env->pregs[PR_NRP] = env->pc;
-			break;
+    case EXCP_BUSFAULT:
+        ex_vec = env->fault_vector;
+        env->pregs[PR_ERP] = env->pc;
+        break;
 
-		case EXCP_BUSFAULT:
-			ex_vec = env->fault_vector;
-			env->pregs[PR_ERP] = env->pc;
-			break;
+    default:
+        /* The interrupt controller gives us the vector.  */
+        ex_vec = env->interrupt_vector;
+        /* Normal interrupts are taken between
+           TB's.  env->pc is valid here.  */
+        env->pregs[PR_ERP] = env->pc;
+        break;
+    }
 
-		default:
-			/* The interrupt controller gives us the vector.  */
-			ex_vec = env->interrupt_vector;
-			/* Normal interrupts are taken between
-			   TB's.  env->pc is valid here.  */
-			env->pregs[PR_ERP] = env->pc;
-			break;
-	}
+    /* Fill in the IDX field.  */
+    env->pregs[PR_EXS] = (ex_vec & 0xff) << 8;
 
-	/* Fill in the IDX field.  */
-	env->pregs[PR_EXS] = (ex_vec & 0xff) << 8;
-
-	if (env->dslot) {
-		D_LOG("excp isr=%x PC=%x ds=%d SP=%x"
-			  " ERP=%x pid=%x ccs=%x cc=%d %x\n",
-			  ex_vec, env->pc, env->dslot,
-			  env->regs[R_SP],
-			  env->pregs[PR_ERP], env->pregs[PR_PID],
-			  env->pregs[PR_CCS],
-			  env->cc_op, env->cc_mask);
-		/* We loose the btarget, btaken state here so rexec the
-		   branch.  */
-		env->pregs[PR_ERP] -= env->dslot;
-		/* Exception starts with dslot cleared.  */
-		env->dslot = 0;
-	}
+    if (env->dslot) {
+        D_LOG("excp isr=%x PC=%x ds=%d SP=%x"
+              " ERP=%x pid=%x ccs=%x cc=%d %x\n",
+              ex_vec, env->pc, env->dslot,
+              env->regs[R_SP],
+              env->pregs[PR_ERP], env->pregs[PR_PID],
+              env->pregs[PR_CCS],
+              env->cc_op, env->cc_mask);
+        /* We loose the btarget, btaken state here so rexec the
+           branch.  */
+        env->pregs[PR_ERP] -= env->dslot;
+        /* Exception starts with dslot cleared.  */
+        env->dslot = 0;
+    }
 	
-	if (env->pregs[PR_CCS] & U_FLAG) {
-		/* Swap stack pointers.  */
-		env->pregs[PR_USP] = env->regs[R_SP];
-		env->regs[R_SP] = env->ksp;
-	}
+    if (env->pregs[PR_CCS] & U_FLAG) {
+        /* Swap stack pointers.  */
+        env->pregs[PR_USP] = env->regs[R_SP];
+        env->regs[R_SP] = env->ksp;
+    }
 
-	/* Apply the CRIS CCS shift. Clears U if set.  */
-	cris_shift_ccs(env);
+    /* Apply the CRIS CCS shift. Clears U if set.  */
+    cris_shift_ccs(env);
 
-	/* Now that we are in kernel mode, load the handlers address.
-	   This load may not fault, real hw leaves that behaviour as
-	   undefined.  */
-	env->pc = ldl_code(env->pregs[PR_EBP] + ex_vec * 4);
+    /* Now that we are in kernel mode, load the handlers address.
+       This load may not fault, real hw leaves that behaviour as
+       undefined.  */
+    env->pc = cpu_ldl_code(env, env->pregs[PR_EBP] + ex_vec * 4);
 
-	/* Clear the excption_index to avoid spurios hw_aborts for recursive
-	   bus faults.  */
-	env->exception_index = -1;
+    /* Clear the excption_index to avoid spurios hw_aborts for recursive
+       bus faults.  */
+    cs->exception_index = -1;
 
-	D_LOG("%s isr=%x vec=%x ccs=%x pid=%d erp=%x\n",
-		   __func__, env->pc, ex_vec,
-		   env->pregs[PR_CCS],
-		   env->pregs[PR_PID], 
-		   env->pregs[PR_ERP]);
+    D_LOG("%s isr=%x vec=%x ccs=%x pid=%d erp=%x\n",
+          __func__, env->pc, ex_vec,
+          env->pregs[PR_CCS],
+          env->pregs[PR_PID],
+          env->pregs[PR_ERP]);
 }
 
-target_phys_addr_t cpu_get_phys_page_debug(CPUState * env, target_ulong addr)
+hwaddr cris_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 {
-	uint32_t phy = addr;
-	struct cris_mmu_result res;
-	int miss;
+    CRISCPU *cpu = CRIS_CPU(cs);
+    uint32_t phy = addr;
+    struct cris_mmu_result res;
+    int miss;
 
-	miss = cris_mmu_translate(&res, env, addr, 0, 0, 1);
-	/* If D TLB misses, try I TLB.  */
-	if (miss) {
-		miss = cris_mmu_translate(&res, env, addr, 2, 0, 1);
-	}
+    miss = cris_mmu_translate(&res, &cpu->env, addr, 0, 0, 1);
+    /* If D TLB misses, try I TLB.  */
+    if (miss) {
+        miss = cris_mmu_translate(&res, &cpu->env, addr, 2, 0, 1);
+    }
 
-	if (!miss)
-		phy = res.phy;
-	D(fprintf(stderr, "%s %x -> %x\n", __func__, addr, phy));
-	return phy;
+    if (!miss) {
+        phy = res.phy;
+    }
+    D(fprintf(stderr, "%s %x -> %x\n", __func__, addr, phy));
+    return phy;
 }
 #endif
+
+bool cris_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
+{
+    CPUClass *cc = CPU_GET_CLASS(cs);
+    CRISCPU *cpu = CRIS_CPU(cs);
+    CPUCRISState *env = &cpu->env;
+    bool ret = false;
+
+    if (interrupt_request & CPU_INTERRUPT_HARD
+        && (env->pregs[PR_CCS] & I_FLAG)
+        && !env->locked_irq) {
+        cs->exception_index = EXCP_IRQ;
+        cc->do_interrupt(cs);
+        ret = true;
+    }
+    if (interrupt_request & CPU_INTERRUPT_NMI) {
+        unsigned int m_flag_archval;
+        if (env->pregs[PR_VR] < 32) {
+            m_flag_archval = M_FLAG_V10;
+        } else {
+            m_flag_archval = M_FLAG_V32;
+        }
+        if ((env->pregs[PR_CCS] & m_flag_archval)) {
+            cs->exception_index = EXCP_NMI;
+            cc->do_interrupt(cs);
+            ret = true;
+        }
+    }
+
+    return ret;
+}

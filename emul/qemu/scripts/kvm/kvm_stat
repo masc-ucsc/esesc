@@ -12,7 +12,8 @@
 # the COPYING file in the top-level directory.
 
 import curses
-import sys, os, time, optparse
+import sys, os, time, optparse, ctypes
+from ctypes import *
 
 class DebugfsProvider(object):
     def __init__(self):
@@ -65,6 +66,8 @@ vmx_exit_reasons = {
     49: 'EPT_MISCONFIG',
     54: 'WBINVD',
     55: 'XSETBV',
+    56: 'APIC_WRITE',
+    58: 'INVPCID',
 }
 
 svm_exit_reasons = {
@@ -138,36 +141,157 @@ svm_exit_reasons = {
     0x08a: 'MONITOR',
     0x08b: 'MWAIT',
     0x08c: 'MWAIT_COND',
+    0x08d: 'XSETBV',
     0x400: 'NPF',
 }
 
-vendor_exit_reasons = {
+# EC definition of HSR (from arch/arm64/include/asm/kvm_arm.h)
+aarch64_exit_reasons = {
+    0x00: 'UNKNOWN',
+    0x01: 'WFI',
+    0x03: 'CP15_32',
+    0x04: 'CP15_64',
+    0x05: 'CP14_MR',
+    0x06: 'CP14_LS',
+    0x07: 'FP_ASIMD',
+    0x08: 'CP10_ID',
+    0x0C: 'CP14_64',
+    0x0E: 'ILL_ISS',
+    0x11: 'SVC32',
+    0x12: 'HVC32',
+    0x13: 'SMC32',
+    0x15: 'SVC64',
+    0x16: 'HVC64',
+    0x17: 'SMC64',
+    0x18: 'SYS64',
+    0x20: 'IABT',
+    0x21: 'IABT_HYP',
+    0x22: 'PC_ALIGN',
+    0x24: 'DABT',
+    0x25: 'DABT_HYP',
+    0x26: 'SP_ALIGN',
+    0x28: 'FP_EXC32',
+    0x2C: 'FP_EXC64',
+    0x2F: 'SERROR',
+    0x30: 'BREAKPT',
+    0x31: 'BREAKPT_HYP',
+    0x32: 'SOFTSTP',
+    0x33: 'SOFTSTP_HYP',
+    0x34: 'WATCHPT',
+    0x35: 'WATCHPT_HYP',
+    0x38: 'BKPT32',
+    0x3A: 'VECTOR32',
+    0x3C: 'BRK64',
+}
+
+# From include/uapi/linux/kvm.h, KVM_EXIT_xxx
+userspace_exit_reasons = {
+     0: 'UNKNOWN',
+     1: 'EXCEPTION',
+     2: 'IO',
+     3: 'HYPERCALL',
+     4: 'DEBUG',
+     5: 'HLT',
+     6: 'MMIO',
+     7: 'IRQ_WINDOW_OPEN',
+     8: 'SHUTDOWN',
+     9: 'FAIL_ENTRY',
+    10: 'INTR',
+    11: 'SET_TPR',
+    12: 'TPR_ACCESS',
+    13: 'S390_SIEIC',
+    14: 'S390_RESET',
+    15: 'DCR',
+    16: 'NMI',
+    17: 'INTERNAL_ERROR',
+    18: 'OSI',
+    19: 'PAPR_HCALL',
+    20: 'S390_UCONTROL',
+    21: 'WATCHDOG',
+    22: 'S390_TSCH',
+    23: 'EPR',
+    24: 'SYSTEM_EVENT',
+}
+
+x86_exit_reasons = {
     'vmx': vmx_exit_reasons,
     'svm': svm_exit_reasons,
 }
 
+sc_perf_evt_open = None
 exit_reasons = None
 
-for line in file('/proc/cpuinfo').readlines():
-    if line.startswith('flags'):
-        for flag in line.split():
-            if flag in vendor_exit_reasons:
-                exit_reasons = vendor_exit_reasons[flag]
-
-filters = {
-    'kvm_exit': ('exit_reason', exit_reasons)
+ioctl_numbers = {
+    'SET_FILTER' : 0x40082406,
+    'ENABLE'     : 0x00002400,
+    'DISABLE'    : 0x00002401,
+    'RESET'      : 0x00002403,
 }
+
+def x86_init(flag):
+    globals().update({
+        'sc_perf_evt_open' : 298,
+        'exit_reasons' : x86_exit_reasons[flag],
+    })
+
+def s390_init():
+    globals().update({
+        'sc_perf_evt_open' : 331
+    })
+
+def ppc_init():
+    globals().update({
+        'sc_perf_evt_open' : 319,
+        'ioctl_numbers' : {
+            'SET_FILTER' : 0x80002406 | (ctypes.sizeof(ctypes.c_char_p) << 16),
+            'ENABLE'     : 0x20002400,
+            'DISABLE'    : 0x20002401,
+        }
+    })
+
+def aarch64_init():
+    globals().update({
+        'sc_perf_evt_open' : 241,
+        'exit_reasons' : aarch64_exit_reasons,
+    })
+
+def detect_platform():
+    if os.uname()[4].startswith('ppc'):
+        ppc_init()
+        return
+    elif os.uname()[4].startswith('aarch64'):
+        aarch64_init()
+        return
+
+    for line in file('/proc/cpuinfo').readlines():
+        if line.startswith('flags'):
+            for flag in line.split():
+                if flag in x86_exit_reasons:
+                    x86_init(flag)
+                    return
+        elif line.startswith('vendor_id'):
+            for flag in line.split():
+                if flag == 'IBM/S390':
+                    s390_init()
+                    return
+
+detect_platform()
 
 def invert(d):
     return dict((x[1], x[0]) for x in d.iteritems())
 
-for f in filters:
-    filters[f] = (filters[f][0], invert(filters[f][1]))
+filters = {}
+filters['kvm_userspace_exit'] = ('reason', invert(userspace_exit_reasons))
+if exit_reasons:
+    filters['kvm_exit'] = ('exit_reason', invert(exit_reasons))
 
-import ctypes, struct, array
+import struct, array
 
 libc = ctypes.CDLL('libc.so.6')
 syscall = libc.syscall
+get_errno = libc.__errno_location
+get_errno.restype = POINTER(c_int)
+
 class perf_event_attr(ctypes.Structure):
     _fields_ = [('type', ctypes.c_uint32),
                 ('size', ctypes.c_uint32),
@@ -182,7 +306,7 @@ class perf_event_attr(ctypes.Structure):
                 ('bp_len', ctypes.c_uint64),
                 ]
 def _perf_event_open(attr, pid, cpu, group_fd, flags):
-    return syscall(298, ctypes.pointer(attr), ctypes.c_int(pid),
+    return syscall(sc_perf_evt_open, ctypes.pointer(attr), ctypes.c_int(pid),
                    ctypes.c_int(cpu), ctypes.c_int(group_fd),
                    ctypes.c_long(flags))
 
@@ -251,17 +375,21 @@ class Event(object):
             group_leader = group.events[0].fd
         fd = _perf_event_open(attr, -1, group.cpu, group_leader, 0)
         if fd == -1:
-            raise Exception('perf_event_open failed')
+            err = get_errno()[0]
+            raise Exception('perf_event_open failed, errno = ' + err.__str__())
         if filter:
             import fcntl
-            fcntl.ioctl(fd, 0x40082406, filter)
+            fcntl.ioctl(fd, ioctl_numbers['SET_FILTER'], filter)
         self.fd = fd
     def enable(self):
         import fcntl
-        fcntl.ioctl(self.fd, 0x00002400, 0)
+        fcntl.ioctl(self.fd, ioctl_numbers['ENABLE'], 0)
     def disable(self):
         import fcntl
-        fcntl.ioctl(self.fd, 0x00002401, 0)
+        fcntl.ioctl(self.fd, ioctl_numbers['DISABLE'], 0)
+    def reset(self):
+        import fcntl
+        fcntl.ioctl(self.fd, ioctl_numbers['RESET'], 0)
 
 class TracepointProvider(object):
     def __init__(self):
@@ -280,18 +408,30 @@ class TracepointProvider(object):
         self.select(fields)
     def fields(self):
         return self._fields
+
+    def _online_cpus(self):
+        l = []
+        pattern = r'cpu([0-9]+)'
+        basedir = '/sys/devices/system/cpu'
+        for entry in os.listdir(basedir):
+            match = re.match(pattern, entry)
+            if not match:
+                continue
+            path = os.path.join(basedir, entry, 'online')
+            if os.path.exists(path) and open(path).read().strip() != '1':
+                continue
+            l.append(int(match.group(1)))
+        return l
+
     def _setup(self, _fields):
         self._fields = _fields
-        cpure = r'cpu([0-9]+)'
-        self.cpus = [int(re.match(cpure, x).group(1))
-                     for x in os.listdir('/sys/devices/system/cpu')
-                     if re.match(cpure, x)]
+        cpus = self._online_cpus()
         import resource
-        nfiles = len(self.cpus) * 1000
+        nfiles = len(cpus) * 1000
         resource.setrlimit(resource.RLIMIT_NOFILE, (nfiles, nfiles))
         events = []
         self.group_leaders = []
-        for cpu in self.cpus:
+        for cpu in cpus:
             group = Group(cpu)
             for name in _fields:
                 tracepoint = name
@@ -309,6 +449,7 @@ class TracepointProvider(object):
         for group in self.group_leaders:
             for event in group.events:
                 if event.name in fields:
+                    event.reset()
                     event.enable()
                 else:
                     event.disable()
@@ -321,8 +462,8 @@ class TracepointProvider(object):
         return ret
 
 class Stats:
-    def __init__(self, provider, fields = None):
-        self.provider = provider
+    def __init__(self, providers, fields = None):
+        self.providers = providers
         self.fields_filter = fields
         self._update()
     def _update(self):
@@ -331,22 +472,25 @@ class Stats:
             if not self.fields_filter:
                 return True
             return re.match(self.fields_filter, key) is not None
-        self.values = dict([(key, None)
-                            for key in provider.fields()
-                            if wanted(key)])
-        self.provider.select(self.values.keys())
+        self.values = dict()
+        for d in providers:
+            provider_fields = [key for key in d.fields() if wanted(key)]
+            for key in provider_fields:
+                self.values[key] = None
+            d.select(provider_fields)
     def set_fields_filter(self, fields_filter):
         self.fields_filter = fields_filter
         self._update()
     def get(self):
-        new = self.provider.read()
-        for key in self.provider.fields():
-            oldval = self.values.get(key, (0, 0))
-            newval = new[key]
-            newdelta = None
-            if oldval is not None:
-                newdelta = newval - oldval[0]
-            self.values[key] = (newval, newdelta)
+        for d in providers:
+            new = d.read()
+            for key in d.fields():
+                oldval = self.values.get(key, (0, 0))
+                newval = new[key]
+                newdelta = None
+                if oldval is not None:
+                    newdelta = newval - oldval[0]
+                self.values[key] = (newval, newdelta)
         return self.values
 
 if not os.access('/sys/kernel/debug', os.F_OK):
@@ -375,7 +519,10 @@ def tui(screen, stats):
     def refresh(sleeptime):
         screen.erase()
         screen.addstr(0, 0, 'kvm statistics')
-        row = 2
+        screen.addstr(2, 1, 'Event')
+        screen.addstr(2, 1 + label_width + number_width - len('Total'), 'Total')
+        screen.addstr(2, 1 + label_width + number_width + 8 - len('Current'), 'Current')
+        row = 3
         s = stats.get()
         def sortkey(x):
             if s[x][1]:
@@ -456,6 +603,18 @@ options.add_option('-l', '--log',
                    dest = 'log',
                    help = 'run in logging mode (like vmstat)',
                    )
+options.add_option('-t', '--tracepoints',
+                   action = 'store_true',
+                   default = False,
+                   dest = 'tracepoints',
+                   help = 'retrieve statistics from tracepoints',
+                   )
+options.add_option('-d', '--debugfs',
+                   action = 'store_true',
+                   default = False,
+                   dest = 'debugfs',
+                   help = 'retrieve statistics from debugfs',
+                   )
 options.add_option('-f', '--fields',
                    action = 'store',
                    default = None,
@@ -464,12 +623,19 @@ options.add_option('-f', '--fields',
                    )
 (options, args) = options.parse_args(sys.argv)
 
-try:
-    provider = TracepointProvider()
-except:
-    provider = DebugfsProvider()
+providers = []
+if options.tracepoints:
+    providers.append(TracepointProvider())
+if options.debugfs:
+    providers.append(DebugfsProvider())
 
-stats = Stats(provider, fields = options.fields)
+if len(providers) == 0:
+    try:
+        providers = [TracepointProvider()]
+    except:
+        providers = [DebugfsProvider()]
+
+stats = Stats(providers, fields = options.fields)
 
 if options.log:
     log(stats)

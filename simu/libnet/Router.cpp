@@ -115,10 +115,17 @@ void Router::launchMsg(Message *msg)
     dstRouter->receiveMsg(msg);
 
   } else {
-
-    Time_t when = l2rPort[portid]->occupySlots(calcNumFlits(msg));
-
-    when+=addFixDelay;
+   
+    //JUDITH commented this out because
+     // occupySlots not defined anywhere in esesc
+//    Time_t when = l2rPort[portid]->occupySlots(calcNumFlits(msg)); //original code
+      Time_t when = l2rPort[portid]->nextSlot(true);
+         for(int i = 0; i < calcNumFlits(msg); i++){
+            l2rPort[portid]->nextSlot(true);
+         }
+   //   printf("%d\n", when);
+     
+      when+=addFixDelay;
   
     if (congestionFree)
       msg->receiveMsgAbs(when,dstRouter);
@@ -168,7 +175,13 @@ void Router::forwardMsg(Message *msg)
     wire = 0;
   }
 
-  Time_t when = r2rPort[wire->port]->occupySlots(calcNumFlits(msg));
+//  JUDITH commented this out because
+//  occupySlots not defined anywhere in esesc
+//  Time_t when = r2rPort[wire->port]->occupySlots(calcNumFlits(msg));
+ Time_t when = r2rPort[wire->port]->nextSlot(true);
+      for(int i = 0; i < calcNumFlits(msg); i++){
+         r2rPort[wire->port]->nextSlot(true);
+      }
 
   // MSG("%lld router::forwardMsg %d->%d",globalClock,myID, wire->rID);
 
@@ -184,7 +197,16 @@ void Router::receiveMsg(Message *msg)
   PortID_t portid = msg->getDstPortID();
   I(r2lPort[portid]);
 
-  Time_t when = r2lPort[portid]->occupySlots(calcNumFlits(msg));
+//  JUDITH commented this out because
+//  occupySlots not defined anywhere in esesc
+//
+//  Time_t when = r2lPort[portid]->occupySlots(calcNumFlits(msg));
+    Time_t when = r2lPort[portid]->nextSlot(true);
+       for(int i = 0; i < calcNumFlits(msg); i++){
+          r2lPort[portid]->nextSlot(true);
+      }
+
+
 
   // MSG("dstport:%d srcport:%d router:%d",portid,msg->getSrcPortID(),myID);
   msg->notifyMsgAbs(when + calcNumFlits(msg), this);
@@ -197,9 +219,9 @@ void Router::notifyMsg(Message *msg)
   // Karin: remove the following if block to enable processing
   // of RCV_AND_PASS & RCV messages
   if (msg->getDelivery() != Message::PT_TO_PT) {
-    LOG("[%zu] received %s message from %zu", myID, 
-	(msg->getDelivery() == Message::RCV_AND_PASS) ? "RCV_AND_PASS" : "RCV", 
-	 msg->getSrcRouterID());
+    LOG("[%d] received %s message from %d", myID, 
+        (msg->getDelivery() == Message::RCV_AND_PASS) ? "RCV_AND_PASS" : "RCV", 
+        msg->getSrcRouterID());
     msg->garbageCollect();
     return;
   }
@@ -211,7 +233,7 @@ void Router::notifyMsg(Message *msg)
 
   ProtHandlersType::iterator it = localPortProtocol.find(msg->getUniqueProtID());
   GLOG(it==localPortProtocol.end(),
-       "Router[%d]::receiveMsg no one accepts packet in router[%d:%d] (uniqueID=%ld)\n", 
+       "Router[%d]::receiveMsg no one accepts packet in router[%d:%d] (uniqueID=%d)\n", 
        myID, 
        msg->getDstRouterID(),
        msg->getDstPortID(),

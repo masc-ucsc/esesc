@@ -39,6 +39,7 @@
 
 #include "MemObj.h"
 #include "MemRequest.h"
+#include "SescConf.h"
 /* }}} */
 
 #ifdef DEBUG
@@ -60,6 +61,11 @@ MemObj::MemObj(const char *sSection, const char *sName)
   ,name(sName)
   ,id(id_counter++)
 {
+  deviceType = SescConf->getCharPtr(section,"deviceType");
+
+	coreid = -1; // No first Level cache by default
+  firstLevelIL1 = false;
+  firstLevelDL1 = false;
   // Create router (different objects may override the default router)
   router = new MRouter(this);
 
@@ -92,12 +98,17 @@ void MemObj::addLowerLevel(MemObj *obj) {
 	router->addDownNode(obj);
 	I( obj );
 	obj->addUpperLevel(this);
-	printf("%s with lower level %s\n",getName(),obj->getName());
+	//printf("%s with lower level %s\n",getName(),obj->getName());
 }
 
 void MemObj::addUpperLevel(MemObj *obj) { 
-	printf("%s upper level is %s\n",getName(),obj->getName());
+	//printf("%s upper level is %s\n",getName(),obj->getName());
 	router->addUpNode(obj);
+}
+
+void MemObj::blockFill(MemRequest *mreq)
+{
+	// Most objects do nothing
 }
 
 void MemObj::dump() const

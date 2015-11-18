@@ -9,7 +9,7 @@ for debugging, profiling, and observing execution.
 
 1. Build with the 'simple' trace backend:
 
-    ./configure --trace-backend=simple
+    ./configure --enable-trace-backends=simple
     make
 
 2. Create a file with the events you want to trace:
@@ -23,7 +23,7 @@ for debugging, profiling, and observing execution.
 
 4. Pretty-print the binary trace file:
 
-    ./simpletrace.py trace-events trace-*
+    ./scripts/simpletrace.py trace-events trace-* # Override * with QEMU <pid>
 
 == Trace events ==
 
@@ -98,52 +98,38 @@ respectively.  This ensures portability between 32- and 64-bit platforms.
 4. Name trace events after their function.  If there are multiple trace events
    in one function, append a unique distinguisher at the end of the name.
 
-5. If specific trace events are going to be called a huge number of times, this
-   might have a noticeable performance impact even when the trace events are
-   programmatically disabled. In this case you should declare the trace event
-   with the "disable" property, which will effectively disable it at compile
-   time (using the "nop" backend).
-
 == Generic interface and monitor commands ==
 
-You can programmatically query and control the dynamic state of trace events
-through a backend-agnostic interface:
+You can programmatically query and control the state of trace events through a
+backend-agnostic interface provided by the header "trace/control.h".
 
-* trace_print_events
+Note that some of the backends do not provide an implementation for some parts
+of this interface, in which case QEMU will just print a warning (please refer to
+header "trace/control.h" to see which routines are backend-dependent).
 
-* trace_event_set_state
-  Enables or disables trace events at runtime inside QEMU.
-  The function returns "true" if the state of the event has been successfully
-  changed, or "false" otherwise:
-
-    #include "trace/control.h"
-    
-    trace_event_set_state("virtio_irq", true); /* enable */
-    [...]
-    trace_event_set_state("virtio_irq", false); /* disable */
-
-Note that some of the backends do not provide an implementation for this
-interface, in which case QEMU will just print a warning.
-
-This functionality is also provided through monitor commands:
+The state of events can also be queried and modified through monitor commands:
 
 * info trace-events
   View available trace events and their state.  State 1 means enabled, state 0
   means disabled.
 
 * trace-event NAME on|off
-  Enable/disable a given trace event or a group of events having common prefix
-  through wildcard.
+  Enable/disable a given trace event or a group of events (using wildcards).
 
 The "-trace events=<file>" command line argument can be used to enable the
 events listed in <file> from the very beginning of the program. This file must
 contain one event name per line.
 
-A basic wildcard matching is supported in both the monitor command "trace
--event" and the events list file. That means you can enable/disable the events
-having a common prefix in a batch. For example, virtio-blk trace events could
-be enabled using:
-  trace-event virtio_blk_* on
+If a line in the "-trace events=<file>" file begins with a '-', the trace event
+will be disabled instead of enabled.  This is useful when a wildcard was used
+to enable an entire family of events but one noisy event needs to be disabled.
+
+Wildcard matching is supported in both the monitor command "trace-event" and the
+events list file. That means you can enable/disable the events having a common
+prefix in a batch. For example, virtio-blk trace events could be enabled using
+the following monitor command:
+
+    trace-event virtio_blk_* on
 
 == Trace backends ==
 
@@ -153,12 +139,12 @@ events are not tightly coupled to a specific trace backend, such as LTTng or
 SystemTap.  Support for trace backends can be added by extending the "tracetool"
 script.
 
-The trace backend is chosen at configure time and only one trace backend can
-be built into the binary:
+The trace backends are chosen at configure time:
 
-    ./configure --trace-backend=simple
+    ./configure --enable-trace-backends=simple
 
 For a list of supported trace backends, try ./configure --help or see below.
+If multiple backends are enabled, the trace is sent to them all.
 
 The following subsections describe the supported trace backends.
 
@@ -189,16 +175,23 @@ unless you have specific needs for more advanced backends.
 The "simple" backend currently does not capture string arguments, it simply
 records the char* pointer value instead of the string that is pointed to.
 
+=== Ftrace ===
+
+The "ftrace" backend writes trace data to ftrace marker. This effectively
+sends trace events to ftrace ring buffer, and you can compare qemu trace
+data and kernel(especially kvm.ko when using KVM) trace data.
+
+if you use KVM, enable kvm events in ftrace:
+
+   # echo 1 > /sys/kernel/debug/tracing/events/kvm/enable
+
+After running qemu by root user, you can get the trace:
+
+   # cat /sys/kernel/debug/tracing/trace
+
+Restriction: "ftrace" backend is restricted to Linux only.
+
 ==== Monitor commands ====
-
-* info trace
-  Display the contents of trace buffer.  This command dumps the trace buffer
-  with simple formatting.  For full pretty-printing, use the simpletrace.py
-  script on a binary trace file.
-
-  The trace buffer is written into until full.  The full trace buffer is
-  flushed and emptied.  This means the 'info trace' will display few or no
-  entries if the buffer has just been flushed.
 
 * trace-file on|off|flush|set <path>
   Enable/disable/flush the trace file or set the trace file name.
@@ -209,7 +202,7 @@ The "simple" backend produces binary trace files that can be formatted with the
 simpletrace.py script.  The script takes the "trace-events" file and the binary
 trace:
 
-    ./simpletrace.py trace-events trace-12345
+    ./scripts/simpletrace.py trace-events trace-12345
 
 You must ensure that the same "trace-events" file was used to build QEMU,
 otherwise trace event declarations may have changed and output will not be
@@ -220,6 +213,42 @@ consistent.
 The "ust" backend uses the LTTng Userspace Tracer library.  There are no
 monitor commands built into QEMU, instead UST utilities should be used to list,
 enable/disable, and dump traces.
+
+Package lttng-tools is required for userspace tracing. You must ensure that the
+current user belongs to the "tracing" group, or manually launch the
+lttng-sessiond daemon for the current user prior to running any instance of
+QEMU.
+
+While running an instrumented QEMU, LTTng should be able to list all available
+events:
+
+    lttng list -u
+
+Create tracing session:
+
+    lttng create mysession
+
+Enable events:
+
+    lttng enable-event qemu:g_malloc -u
+
+Where the events can either be a comma-separated list of events, or "-a" to
+enable all tracepoint events. Start and stop tracing as needed:
+
+    lttng start
+    lttng stop
+
+View the trace:
+
+    lttng view
+
+Destroy tracing session:
+
+    lttng destroy
+
+Babeltrace can be used at any later time to view the trace:
+
+    babeltrace $HOME/lttng-traces/mysession-<date>-<time>
 
 === SystemTap ===
 
@@ -232,5 +261,89 @@ probes:
     scripts/tracetool --dtrace --stap \
                       --binary path/to/qemu-binary \
                       --target-type system \
-                      --target-arch x86_64 \
+                      --target-name x86_64 \
                       <trace-events >qemu.stp
+
+== Trace event properties ==
+
+Each event in the "trace-events" file can be prefixed with a space-separated
+list of zero or more of the following event properties.
+
+=== "disable" ===
+
+If a specific trace event is going to be invoked a huge number of times, this
+might have a noticeable performance impact even when the event is
+programmatically disabled.
+
+In this case you should declare such event with the "disable" property. This
+will effectively disable the event at compile time (by using the "nop" backend),
+thus having no performance impact at all on regular builds (i.e., unless you
+edit the "trace-events" file).
+
+In addition, there might be cases where relatively complex computations must be
+performed to generate values that are only used as arguments for a trace
+function. In these cases you can use the macro 'TRACE_${EVENT_NAME}_ENABLED' to
+guard such computations and avoid its compilation when the event is disabled:
+
+    #include "trace.h"  /* needed for trace event prototype */
+    
+    void *qemu_vmalloc(size_t size)
+    {
+        void *ptr;
+        size_t align = QEMU_VMALLOC_ALIGN;
+    
+        if (size < align) {
+            align = getpagesize();
+        }
+        ptr = qemu_memalign(align, size);
+        if (TRACE_QEMU_VMALLOC_ENABLED) { /* preprocessor macro */
+            void *complex;
+            /* some complex computations to produce the 'complex' value */
+            trace_qemu_vmalloc(size, ptr, complex);
+        }
+        return ptr;
+    }
+
+You can check both if the event has been disabled and is dynamically enabled at
+the same time using the 'trace_event_get_state' routine (see header
+"trace/control.h" for more information).
+
+=== "tcg" ===
+
+Guest code generated by TCG can be traced by defining an event with the "tcg"
+event property. Internally, this property generates two events:
+"<eventname>_trans" to trace the event at translation time, and
+"<eventname>_exec" to trace the event at execution time.
+
+Instead of using these two events, you should instead use the function
+"trace_<eventname>_tcg" during translation (TCG code generation). This function
+will automatically call "trace_<eventname>_trans", and will generate the
+necessary TCG code to call "trace_<eventname>_exec" during guest code execution.
+
+Events with the "tcg" property can be declared in the "trace-events" file with a
+mix of native and TCG types, and "trace_<eventname>_tcg" will gracefully forward
+them to the "<eventname>_trans" and "<eventname>_exec" events. Since TCG values
+are not known at translation time, these are ignored by the "<eventname>_trans"
+event. Because of this, the entry in the "trace-events" file needs two printing
+formats (separated by a comma):
+
+    tcg foo(uint8_t a1, TCGv_i32 a2) "a1=%d", "a1=%d a2=%d"
+
+For example:
+
+    #include "trace-tcg.h"
+    
+    void some_disassembly_func (...)
+    {
+        uint8_t a1 = ...;
+        TCGv_i32 a2 = ...;
+        trace_foo_tcg(a1, a2);
+    }
+
+This will immediately call:
+
+    void trace_foo_trans(uint8_t a1);
+
+and will generate the TCG code to call:
+
+    void trace_foo(uint8_t a1, uint32_t a2);

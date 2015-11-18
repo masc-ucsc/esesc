@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -53,31 +53,41 @@ GPUSMProcessor::GPUSMProcessor(GMemorySystem *gm, CPU_t i)
   ,lsq(i)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
   ,clusterManager(gm, this)
-{
-  numSP = SescConf->getInt("cpusimu", "sp_per_sm", i); 
-  uint32_t maxwarps = SescConf->getInt("cpuemul", "max_warps_sm", i); 
+{/*{{{*/
+  numSP = SescConf->getInt("cpusimu", "sp_per_sm", i);
+  uint32_t maxwarps = SescConf->getInt("cpuemul", "max_warps_sm", i);
   IS(MSG("Number of SPs = %d, maxwarps = %d", numSP,maxwarps));
+  inst_perpe_percyc = new bool[numSP];
+  for (uint32_t spcount = 0; spcount < numSP; spcount++){
+    inst_perpe_percyc[spcount]=false;
+  }
+
 
   spaceInInstQueue = InstQueueSize;
 
-  RAT = new DInst* [LREG_MAX * numSP * maxwarps];
-  bzero(RAT,sizeof(DInst*)*LREG_MAX*numSP*maxwarps);
-  
-  busy = false;
-}
+  // RAT = new DInst* [LREG_MAX * numSP * maxwarps * 128];
+  //bzero(RAT,sizeof(DInst*)*LREG_MAX * numSP * maxwarps * 128);
 
-GPUSMProcessor::~GPUSMProcessor() {
+  uint64_t ratsize = LREG_MAX * numSP * maxwarps; //16777216; //2^24
+  //uint64_t ratsize =4294967296; //2^32
+  RAT = new DInst* [ratsize];
+  bzero(RAT,sizeof(DInst*)*ratsize);
+
+
+  busy = false;
+}/*}}}*/
+
+GPUSMProcessor::~GPUSMProcessor()
+{/*{{{*/
   delete RAT;
   // Nothing to do
-}
+}/*}}}*/
 
-void GPUSMProcessor::fetch(FlowID fid) {
+void GPUSMProcessor::fetch(FlowID fid)
+{/*{{{*/
   I(eint);
 
-  if(!active){
-    TaskHandler::removeFromRunning(cpu_id);
-    return;
-  }
+  I(active);
 
   // Do not block fetch for a branch miss
   if( IFID.isBlocked(0)) {
@@ -91,87 +101,101 @@ void GPUSMProcessor::fetch(FlowID fid) {
       }
     }
   }
-}
+}/*}}}*/
 
-bool GPUSMProcessor::execute() {
-
+bool GPUSMProcessor::advance_clock(FlowID fid)
+{/*{{{*/
+  
   if (!active) {
     // time to remove from the running queue
-    TaskHandler::removeFromRunning(cpu_id);
+    //TaskHandler::removeFromRunning(cpu_id);
     return false;
   }
 
-  if (!busy) {
+  //IS(if (cpu_id == 1 )MSG("\n**\n@%lld: Processing CPU (%d)",(long long int)globalClock,cpu_id));
+  fetch(fid);
+
+  if (!busy)
     return false;
+
+  bool getStatsFlag = false;
+  if( !ROB.empty() ) {
+    getStatsFlag = ROB.top()->getStatsFlag();
   }
 
-  clockTicks.inc();
-  setWallClock();
+  //IS(if (cpu_id == 1 ) MSG("@%lld: Fetching CPU (%d)",(long long int)globalClock,cpu_id));
+  clockTicks.inc(getStatsFlag);
+  setWallClock(getStatsFlag);
 
-  if (unlikely(throttingRatio>1)) { 
-    throtting_cntr++;
-
-    uint32_t skip = ceil(throttingRatio/getTurboRatioGPU()); 
-
-    if (throtting_cntr < skip) {
+  if (unlikely(throttlingRatio>1)) {
+    throttling_cntr++;
+    uint32_t skip = ceil(throttlingRatio/getTurboRatioGPU());
+    if (throttling_cntr < skip) {
       return true;
     }
-    throtting_cntr = 1;
+    throttling_cntr = 1;
   }
 
   // ID Stage (insert to instQueue)
   if (spaceInInstQueue >= FetchWidth) {
-    //MSG("\nFor CPU %d:",getId());
+    //MSG("\nFor CPU %d:",getID());
     IBucket *bucket = pipeQ.pipeLine.nextItem();
     if( bucket ) {
       I(!bucket->empty());
+      //IS(if (cpu_id == 1 ) MSG("@%lld: CPU (%d) fetched bucket size is %d ",(long long int)globalClock,cpu_id,bucket->size()));
       spaceInInstQueue -= bucket->size();
       pipeQ.instQueue.push(bucket);
     }else{
-      noFetch2.inc();
+      //IS(if (cpu_id == 1 ) MSG("@%lld: CPU (%d) Empty Bucket ",(long long int)globalClock,cpu_id));
+      noFetch2.inc(getStatsFlag);
     }
   }else{
-    noFetch.inc();
+    //IS(if (cpu_id == 1 ) MSG("@%lld: CPU (%d) NO space in InstQueue",(long long int)globalClock,cpu_id));
+    noFetch.inc(getStatsFlag);
   }
 
+  //IS(if (cpu_id == 1 ) MSG("@%lld: Renaming CPU (%d)",(long long int)globalClock,cpu_id));
   // RENAME Stage
   if ( !pipeQ.instQueue.empty() ) {
-    spaceInInstQueue += issue(pipeQ);
+    // FIXME: Clear the per PE counter
+    for(uint32_t i=0;i<numSP;i++)
+      inst_perpe_percyc[i]= false;
+    //MSG("@%lld Clearing PEs",globalClock);
+
+    uint32_t n_insn =  issue(pipeQ);
+    spaceInInstQueue += n_insn;
+    //IS(if (cpu_id == 1) MSG("@%lld: Issuing %d items in pipeline for CPU (%d)",(long long int)globalClock,n_insn, cpu_id));
   }else if (ROB.empty() && rROB.empty()) {
     //I(0);
     // Still busy if we have some in-flight requests
     busy = pipeQ.pipeLine.hasOutstandingItems();
+    //IS(if (cpu_id == 1) MSG("@%lld: ROB and rROB are both empty for CPU (%d)",(long long int)globalClock,cpu_id));
+    //IS(if ((cpu_id == 1)&&(busy)) MSG("@%lld: pipeline also has outstanding items CPU (%d)",(long long int)globalClock,cpu_id));
     return true;
   }
 
+  //IS(if (cpu_id == 1) MSG("@%lld: Retiring CPU (%d)",(long long int)globalClock,cpu_id));
   retire();
 
   return true;
-}
+}/*}}}*/
 
-StallCause GPUSMProcessor::addInst(DInst *dinst) {
+StallCause GPUSMProcessor::addInst(DInst *dinst)
+{/*{{{*/
 
   const Instruction *inst = dinst->getInst();
 
-#if 0
-  if(RAT[inst->getSrc(0)+dinst->getPE()*LREG_MAX] != 0 ||
-     RAT[inst->getSrc(1)+dinst->getPE()*LREG_MAX] != 0 ||
-     RAT[inst->getDst(0)+dinst->getPE()*LREG_MAX] != 0 ||
-     RAT[inst->getDst(1)+dinst->getPE()*LREG_MAX] != 0) {
-    return SmallWinStall;
-  }
-#endif
   if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence) && (inst->getSrc1() != LREG_InvalidOutput)) ||
      ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence) && (inst->getSrc2() != LREG_InvalidOutput))||
      ((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
      ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))){
 #if 0
     //Useful for debug
-    if (cpu_id > 0 ){
+    if (cpu_id == 1 ){
+      MSG("\n---------- (@%lld) ---------------",(long long int)globalClock);
       string str ="";
-      str.append("CONFLICT->");
-      MSG(" SRC1 = %d, RAT[entry] = %d",inst->getSrc1(), RAT[inst->getSrc1()] );
-      if (RAT[inst->getSrc1()] != 0){ 
+      str.append("\nCONFLICT->");
+      if (RAT[inst->getSrc1()] != 0){
         str.append("src1, ");
         MSG(" SRC1 = %d, RAT[entry] = %d",inst->getSrc1(), RAT[inst->getSrc1()] );
         RAT[inst->getSrc1()]->dump("\nSRC1 in use by:");
@@ -202,6 +226,13 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
   if( (ROB.size()+rROB.size()) >= MaxROBSize )
     return SmallROBStall;
 
+  // FIXME: if nInstPECounter is >0 for this cycle, do a DivertStall
+#if 0
+  if (inst_perpe_percyc[dinst->getPE()] == true){
+    //MSG("d-%d",dinst->getPE());
+    return DivergeStall;
+  }
+#endif
   Cluster *cluster = dinst->getCluster();
   if( !cluster ) {
     Resource *res = clusterManager.getResource(dinst);
@@ -217,11 +248,15 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
   // BEGIN INSERTION (note that cluster already inserted in the window)
   //dinst->dump("");
 
-  nInst[inst->getOpcode()]->inc(); // FIXME: move to cluster
+
+  inst_perpe_percyc[dinst->getPE()] = true;
+  //MSG("Setting DInst %lld PE-%d, GlobalClock = %lld ",dinst->getID(), dinst->getPE(),globalClock);
+
+  nInst[inst->getOpcode()]->inc(dinst->getStatsFlag());
 
   ROB.push(dinst);
-  I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
 
+#if 0
 
   dinst->setRAT1Entry(&RAT[inst->getDst1()]);
   dinst->setRAT2Entry(&RAT[inst->getDst2()]);
@@ -230,15 +265,42 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) {
 
   I(dinst->getCluster());
   dinst->getCluster()->addInst(dinst);
+#else
+  if( !dinst->isSrc2Ready() ) {
+    // It already has a src2 dep. It means that it is solved at
+    // retirement (Memory consistency. coherence issues)
+    if( RAT[inst->getSrc1()] )
+      RAT[inst->getSrc1()]->addSrc1(dinst);
+  }else{
+    if( RAT[inst->getSrc1()] )
+      RAT[inst->getSrc1()]->addSrc1(dinst);
+
+    if( RAT[inst->getSrc2()] )
+      RAT[inst->getSrc2()]->addSrc2(dinst);
+  }
+
+  dinst->setRAT1Entry(&RAT[inst->getDst1()]);
+  dinst->setRAT2Entry(&RAT[inst->getDst2()]);
+
+  dinst->getCluster()->addInst(dinst);
+
+  RAT[inst->getDst1()] = dinst;
+  RAT[inst->getDst2()] = dinst;
+
+  I(dinst->getCluster());
+#endif
 
   return NoStall;
-}
+}/*}}}*/
 
-void GPUSMProcessor::retire() {
+void GPUSMProcessor::retire()
+{/*{{{*/
 
   // Pass all the ready instructions to the rrob
+  bool stats = false;
   while(!ROB.empty()) {
     DInst *dinst = ROB.top();
+    stats = dinst->getStatsFlag();
 
     if( !dinst->isExecuted() )
       break;
@@ -250,10 +312,12 @@ void GPUSMProcessor::retire() {
     rROB.push(dinst);
     ROB.pop();
 
+    nCommitted.inc(dinst->getStatsFlag());
   }
 
-  robUsed.sample(ROB.size());
-  rrobUsed.sample(rROB.size());
+
+  robUsed.sample(ROB.size(), stats);
+  rrobUsed.sample(rROB.size(), stats);
 
   for(uint16_t i=0 ; i<RetireWidth && !rROB.empty() ; i++) {
     DInst *dinst = rROB.top();
@@ -269,7 +333,7 @@ void GPUSMProcessor::retire() {
       return;
     }
 
-    nCommitted.inc();
+    //nCommitted.inc();
 
 #if 0
     FlowID fid = dinst->getFlowId();
@@ -283,16 +347,12 @@ void GPUSMProcessor::retire() {
     rROB.pop();
   }
 
-}
+}/*}}}*/
 
-void GPUSMProcessor::replay(DInst *dinst) {
+void GPUSMProcessor::replay(DInst *dinst)
+{/*{{{*/
 
-  MSG("GPU_SM cores(which are essentially inorder) do not support replays. Set NoMemoryReplay = true at the confguration");
+  MSG("GPU_SM cores(which are essentially inorder) do not support replays. Set MemoryReplay = false at the confguration");
 
-  // FIXME: foo should be equal to the number of in-flight instructions (check OoOProcessor)
-  size_t foo= 1;
-  nReplayInst.sample(foo);
-
-  // FIXME: How do we manage a replay in this processor??
-}
+}/*}}}*/
 #endif

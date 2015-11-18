@@ -1,12 +1,12 @@
 #include "hw/hw.h"
 #include "hw/boards.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 
 #include "cpu.h"
 
 void cpu_save(QEMUFile *f, void *opaque)
 {
-    CPUState *env = opaque;
+    CPUSPARCState *env = opaque;
     int i;
     uint32_t tmp;
 
@@ -111,7 +111,8 @@ void cpu_save(QEMUFile *f, void *opaque)
 
 int cpu_load(QEMUFile *f, void *opaque, int version_id)
 {
-    CPUState *env = opaque;
+    CPUSPARCState *env = opaque;
+    SPARCCPU *cpu = sparc_env_get_cpu(env);
     int i;
     uint32_t tmp;
 
@@ -212,6 +213,6 @@ int cpu_load(QEMUFile *f, void *opaque, int version_id)
     qemu_get_be64s(f, &env->ssr);
     cpu_get_timer(f, env->hstick);
 #endif
-    tlb_flush(env, 1);
+    tlb_flush(CPU(cpu), 1);
     return 0;
 }

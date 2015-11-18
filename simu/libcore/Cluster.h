@@ -107,7 +107,7 @@ class Cluster {
 
   GProcessor *getGProcessor() const { return gproc; }
 
- 
+  int32_t getAvailSpace() const { return windowSize; }
 };
 
 class ExecutingCluster : public Cluster {

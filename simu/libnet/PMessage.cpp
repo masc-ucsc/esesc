@@ -154,7 +154,7 @@ void PMessage::trace(const char *format,...)
 {
   va_list ap;
 
-  fprintf(stderr, "%6lld ", globalClock);
+  fprintf(stderr, "@%lld ", (long long)globalClock);
 
   fprintf(stderr, "\ttype[%d]\t",msgType);
 

@@ -1,6 +1,6 @@
 This file documents changes for QEMU releases 0.12 and earlier.
 For changelog information for later releases, see
-http://wiki.qemu.org/ChangeLog or look at the git history for
+http://wiki.qemu-project.org/ChangeLog or look at the git history for
 more detailed information.
 
 
@@ -447,7 +447,7 @@ version 0.5.0:
   - multi-target build
   - fixed: no error code in hardware interrupts
   - fixed: pop ss, mov ss, x and sti disable hardware irqs for the next insn
-  - correct single stepping thru string operations
+  - correct single stepping through string operations
   - preliminary SPARC target support (Thomas M. Ogrisegg)
   - tun-fd option (Rusty Russell)
   - automatic IDE geometry detection

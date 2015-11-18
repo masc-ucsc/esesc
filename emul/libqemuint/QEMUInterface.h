@@ -43,23 +43,17 @@ extern "C" {
   void QEMUReader_goto_sleep(void *env);
   void QEMUReader_wakeup_from_sleep(void *env);
 
-  void QEMUReader_queue_inst(uint32_t insn
-      ,uint32_t pc
-      ,uint32_t addr
-      ,uint32_t fid
-      ,char op       // opcode 0 other, 1 LD, 2 ST, 3 BR
-      ,uint64_t icount   // #inst >1 while in rabbit or warmup
-      ,void *env    // CPU env
-      );
+  uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *dummy);
 
   void QEMUReader_finish(uint32_t fid);
   void QEMUReader_finish_thread(uint32_t fid);
+
+  void QEMUReader_start_roi(uint32_t fid);
 
   void esesc_set_rabbit(uint32_t fid);
   void esesc_set_warmup(uint32_t fid);
   void esesc_set_timing(uint32_t fid);
   void loadSampler(uint32_t fid);
-  int QEMUReader_is_sampler_done(uint32_t fid);
 }
 
 #endif

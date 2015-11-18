@@ -32,7 +32,7 @@ cp $1/conf/* ./regression/run > /dev/null 2>&1
 
 #Run mt-scripts to generate benchmark testing scripts
 cd ./regression/run
-./mt-scripts.rb -b single_core -e default_user -m SMARTSMode \
+./mt-scripts.rb -b single_core -e default_user -m TASS \
               -c esesc.conf \
               -x ../../main/esesc -l -j $path
 
