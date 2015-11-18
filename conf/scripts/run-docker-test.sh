@@ -1,13 +1,14 @@
 #!/bin/bash
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: <esesc_src_dir> [build_type] [enable_live]"
+  echo "Usage: <esesc_src_dir> [build_type] [enable_live] [docker_image]"
   exit -1
 fi
 
 ESESC_SRC=$1
 BUILD_TYPE=${2:-Debug}
 ENABLE_LIVE=${3:-0}
+DOCKER_IMAGE=${4:-mascucsc/esescbase}
 
 : ${ESESC_HOST_PROCS:=`nproc`}
 
@@ -26,5 +27,5 @@ docker run  -t \
   -e ESESC_BUILD_TYPE=${BUILD_TYPE} \
   -e ESESC_HOST_PROCS=${ESESC_HOST_PROCS} \
   -e ESESC_ENABLE_LIVE=${ENABLE_LIVE} \
-  mascucsc/esescbase /esesc/conf/scripts/build-and-run.sh 
+  ${DOCKER_IMAGE} /esesc/conf/scripts/build-and-run.sh 
 
