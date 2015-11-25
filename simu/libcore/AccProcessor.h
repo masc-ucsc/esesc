@@ -55,7 +55,6 @@ private:
 
   bool busy;
 
-
 protected:
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
   bool advance_clock(FlowID fid);
