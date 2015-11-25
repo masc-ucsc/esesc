@@ -145,6 +145,15 @@ void TaskHandler::addSimu(GProcessor *gproc) {
   /* add a new simulator to the system {{{1 */
   I(cpus.size() == static_cast<size_t>(gproc->getID()));
   cpus.push_back(gproc);
+
+  EmulSimuMapping map;
+
+  map.fid    = gproc->getID();
+  map.emul   = 0;
+  map.simu   = gproc;
+  map.active = gproc->isActive();
+
+  allmaps.push_back(map);
 }
 /* }}} */
 
@@ -340,7 +349,8 @@ void TaskHandler::terminate()
   for(size_t i = 0; i<allmaps.size();i++) {
     if (!allmaps[i].active)
       continue;
-    allmaps[i].emul->getSampler()->stop();
+    if (allmaps[i].emul)
+      allmaps[i].emul->getSampler()->stop();
     allmaps[i].active = false;
   }
   
@@ -420,28 +430,21 @@ void TaskHandler::plugEnd()
       MSG("Warning: There are more cores than threads (%zu vs %zu). Powering down unusable cores", emulas.size(), nCPUThreads);
   }
 
-  allmaps.resize(emulas.size());
-
+  // Tie the emulas to the all maps
   size_t cpuid     = 0;
   size_t cpuid_sub = 0;
-
-  /*************************************************/
-  /* 
-  FIXME: This loop will be buggy in the case of a cpu 
-  with maxFlows > 1 and interleaved interfaces
-  */
 
   for(size_t i = 0;i<emulas.size();i++) {
     allmaps[i].fid    = static_cast<FlowID>(i);
     allmaps[i].emul   = emulas[i];
-    allmaps[i].simu   = cpus[cpuid];
+    I(allmaps[i].simu == cpus[cpuid]);
+
     if (i == 0){
-      allmaps[i].active = true;      // active by default
+      I(allmaps[i].active == true);      // active by default
     } else {
-      allmaps[i].active = false;
+      I(allmaps[i].active == false);
     }
 
-    running_size = 1; //Only Thread 0 i started initially
     allmaps[i].simu->setEmulInterface(emulas[i]);
     
     cpuid_sub++;
@@ -451,16 +454,22 @@ void TaskHandler::plugEnd()
       cpuid     = cpuid+1;
     }
   }
+  for(size_t i=0;i<allmaps.size();i++) {
+    if (allmaps[i].active)
+      running_size++;
+  }
+  I(running_size>0);
   /*************************************************/
 
-  //running = new FlowID[allmaps.size()];
-  running = new FlowID[100];
-  for(size_t i = 0;i<emulas.size();i++) {
-    allmaps[i].emul->start();
-    running[i] = i;
+  running = new FlowID[allmaps.size()];
+  int running_pos = 0;
+  for(size_t i = 0;i<allmaps.size();i++) {
+    if (allmaps[i].emul)
+      allmaps[i].emul->start();
+    if (allmaps[i].active)
+      running[running_pos++] = i;
   }
-
-
+  I(running_pos == running_size);
 }
 /* }}} */
 

@@ -87,13 +87,6 @@ public:
     return false;
   }
 
-#ifdef SCOORE_CORE  
-  void set_StoreValueTable(AddrType addr, DataType value){ };
-  void set_StoreAddrTable(AddrType addr){ };
-  DataType get_StoreValueTable(AddrType addr){I(0); return 0; };
-  AddrType get_StoreAddrTable(AddrType addr){I(0); return 0; };
-#endif
-
 };
 
 

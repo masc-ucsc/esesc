@@ -1,7 +1,9 @@
+sudo: required
+
 language: cpp
-compiler:
-  - gcc
-  #- clang
+
+services:
+  - docker
 
 env:
   matrix:
@@ -9,27 +11,9 @@ env:
     - BUILD_TYPE=Debug
 
 before_install:
-  - sudo apt-get install bison flex                                                                                                                                                      
-  - sudo apt-get install libglib2.0-dev                                                                                                                                                  
-  - sudo apt-get install libncurses5-dev  
-  - sudo apt-get install libboost-all-dev
-
-before_script:
-  - cd ..
-  - mkdir build
-  - cd build
-  - cmake ../esesc -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+  - docker pull mascucsc/esescbase
 
 script: 
-  - make
-    #- make check
+  - conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE 0
 
-after_script:
-  - mkdir run
-  - cd run
-  - cp ../../esesc/conf/* .
-  - cp ../../esesc/bins/mips64/* .
-  - cp ../../esesc/bins/inputs/* .
-  - ../main/esesc < crafty.in
-  - ../../esesc/conf/scripts/report.pl -last
 

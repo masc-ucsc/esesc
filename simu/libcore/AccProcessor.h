@@ -1,8 +1,6 @@
 // Contributed by Jose Renau
 //                Basilio Fraguela
-//                James Tuck
 //                Milos Prvulovic
-//                Luis Ceze
 //
 // The ESESC/BSD License
 //
@@ -36,18 +34,63 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
+#ifndef _ACCPROCESSOR_H_
+#define _ACCPROCESSOR_H_
 
+#include "nanassert.h"
+
+#include "callback.h"
 #include "GOoOProcessor.h"
-
+#include "Pipeline.h"
 #include "FetchEngine.h"
-#include "GMemorySystem.h"
+#include "FastQueue.h"
+#include "GStats.h"
 
-GOoOProcessor::GOoOProcessor(GMemorySystem *gm, CPU_t i)
-  :GProcessor(gm, i) {
-}
+#define MAX_REMEMBERED_VALUES 16384
 
-//GOoOProcessor::~GOoOProcessor() {
-  // Nothing to do
-//}
+#define RCMEM 1
 
+class AccProcessor : public GProcessor {
+private:
+
+  bool busy;
+
+
+protected:
+  // BEGIN VIRTUAL FUNCTIONS of GProcessor
+  bool advance_clock(FlowID fid);
+
+  // Not needed for Acc
+  StallCause addInst(DInst *dinst);
+  void retire();
+  void fetch(FlowID fid);
+  LSQ *getLSQ();
+  bool isFlushing();
+  bool isReplayRecovering();
+  Time_t getReplayID();
+
+    virtual void replay(DInst *target) { };// = 0;
+
+  // END VIRTUAL FUNCTIONS of GProcessor
+  
+  AddrType myAddr;
+  AddrType addrIncr;
+  int reqid;
+
+  GStatsCntr accReads;
+  GStatsCntr accWrites;
+
+  GStatsAvg  accReadLatency;
+  GStatsAvg  accWriteLatency;
+
+  void read_performed( uint32_t id, Time_t startTime);
+  void write_performed( uint32_t id, Time_t startTime);
+  typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::read_performed> read_performedCB;
+  typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::write_performed> write_performedCB;
+
+public:
+  AccProcessor(GMemorySystem *gm, CPU_t i);
+  virtual ~AccProcessor();
+};
+
+#endif

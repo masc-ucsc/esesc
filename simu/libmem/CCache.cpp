@@ -657,9 +657,9 @@ void CCache::doReq(MemRequest *mreq)
     return;
   }
 
-  if (retrying)
+  if (retrying) {
     s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
-  else {
+  }else{
     s_reqHit[mreq->getAction()]->inc(mreq->getStatsFlag());
   }
 

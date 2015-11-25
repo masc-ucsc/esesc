@@ -45,9 +45,8 @@
 GStatsCntr *GProcessor::wallClock=0;
 Time_t GProcessor::lastWallClock=0;
 
-  GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
+GProcessor::GProcessor(GMemorySystem *gm, CPU_t i)
   :cpu_id(i)
-   ,MaxFlows(numFlows)
    ,FetchWidth(SescConf->getInt("cpusimu", "fetchWidth",i))
    ,IssueWidth(SescConf->getInt("cpusimu", "issueWidth",i))
   ,RetireWidth(SescConf->getInt("cpusimu", "retireWidth",i))
@@ -55,9 +54,9 @@ Time_t GProcessor::lastWallClock=0;
   ,InstQueueSize(SescConf->getInt("cpusimu", "instQueueSize",i))
   ,MaxROBSize(SescConf->getInt("cpusimu", "robSize",i))
   ,memorySystem(gm)
-,storeset(i)
+  ,storeset(i)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
-,ROB(MaxROBSize)
+  ,ROB(MaxROBSize)
   ,rrobUsed("P(%d)_rrobUsed", i) // avg
   ,robUsed("P(%d)_robUsed", i) // avg
   ,nReplayInst("P(%d)_nReplayInst", i)
@@ -67,7 +66,17 @@ Time_t GProcessor::lastWallClock=0;
   ,nFreeze("P(%d):nFreeze",i)
   ,clockTicks("P(%d):clockTicks",i)
 {
-  active = true;
+  if (i ==0)
+    active = true;
+  else
+    active = false;
+
+  if (SescConf->checkInt("cpusimu","smtnum")) {
+   maxFlows = SescConf->getInt("cpusimu","smtnum");
+   SescConf->isBetween("cpusimu","smtnum",1,32);
+  }else{
+    maxFlows = 1;
+  }
 
   lastReplay = 0;
   if (wallClock ==0)
