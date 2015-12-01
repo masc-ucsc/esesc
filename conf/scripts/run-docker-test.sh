@@ -21,7 +21,7 @@ if [ ! -e ${ESESC_SRC}/CMakeLists.txt ]; then
 fi
 
 docker run  -t \
-  -v $ESESC_SRC:$DOCKER_ESESC_SRC:ro \
+  -v $ESESC_SRC:$DOCKER_ESESC_SRC \
   -e ESESC_SRC=${DOCKER_ESESC_SRC} \
   -e ESESC_BUILD_DIR=${BUILD_DIR} \
   -e ESESC_BUILD_TYPE=${BUILD_TYPE} \
