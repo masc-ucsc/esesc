@@ -36,12 +36,13 @@ GID=`id -rg`
 # is not an option in Docker yet to do this automatically, but there is
 # an open issue in GitHub: https://github.com/docker/docker/issues/7198
 # so there may be a better way in the future 
+docker pull $DOCKER_IMAGE
 
-docker run  -t \
+docker run  \
   -v $ESESC_BIN_DIR:$ESESC_BIN_DIR:ro \
   -v $RUN_DIR:$RUN_DIR \
-  -v $BENCH_REPO:$BENCH_REPO \
-  -v $CONF_DIR:$CONF_DIR \
+  -v $BENCH_REPO:$BENCH_REPO:ro \
+  -v $CONF_DIR:$CONF_DIR:ro \
   ${DOCKER_IMAGE} \
   bin/bash -c " \
   cd ${RUN_DIR} && \
