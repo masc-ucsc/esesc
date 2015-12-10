@@ -45,12 +45,14 @@ void Transporter::connect_to_server(char * h, int pn) {
   struct sockaddr_in serv_addr;
   struct hostent * server;
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if(sockfd < 0) 
+  if(sockfd < 0)  {
     perror("ERROR opening socket");
+    exit(-1);
+  }
   server = gethostbyname(host);
   if(server == NULL) {
     fprintf(stderr,"ERROR, no such host\n");
-    exit(0);
+    exit(-1);
   }
   bzero((char *) &serv_addr, sizeof(serv_addr));
   serv_addr.sin_family = AF_INET;

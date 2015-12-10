@@ -462,12 +462,14 @@ void TaskHandler::plugEnd()
   /*************************************************/
 
   running = new FlowID[allmaps.size()];
+  int running_pos = 0;
   for(size_t i = 0;i<allmaps.size();i++) {
     if (allmaps[i].emul)
       allmaps[i].emul->start();
     if (allmaps[i].active)
-      running[i] = i;
+      running[running_pos++] = i;
   }
+  I(running_pos == running_size);
 }
 /* }}} */
 

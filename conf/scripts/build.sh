@@ -17,14 +17,19 @@ if [ ! -e ${ESESC_SRC}/CMakeLists.txt ]; then
 fi
 
 if [ -d ${BUILD_DIR} ]; then
-  echo "BULID ERROR: '${BUILD_DIR}' already exists"
-  exit -2
+  if [ -e ${BUILD_DIR}/Makefile ]; then
+    cd ${BUILD_DIR}
+    make -j${ESESC_HOST_PROCS}
+  else
+    echo "BULID ERROR: '${BUILD_DIR}' already exists"
+    exit -2
+  fi
+else
+  mkdir -p ${BUILD_DIR}
+  cd ${BUILD_DIR}
+  cmake -DCMAKE_BUILD_TYPE=${ESESC_BUILD_TYPE} -DENABLE_LIVE=${ESESC_ENABLE_LIVE} ${ESESC_SRC}
+  make -j${ESESC_HOST_PROCS}
 fi
-
-mkdir -p ${BUILD_DIR}
-cd ${BUILD_DIR}
-cmake -DCMAKE_BUILD_TYPE=${ESESC_BUILD_TYPE} -DENABLE_LIVE=${ESESC_ENABLE_LIVE} ${ESESC_SRC}
-make -j${ESESC_HOST_PROCS}
 
 if [ ${ESESC_ENABLE_LIVE} -eq '1' ]; then
   make live

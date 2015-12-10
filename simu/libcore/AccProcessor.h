@@ -44,6 +44,7 @@
 #include "Pipeline.h"
 #include "FetchEngine.h"
 #include "FastQueue.h"
+#include "GStats.h"
 
 #define MAX_REMEMBERED_VALUES 16384
 
@@ -54,8 +55,6 @@ private:
 
   bool busy;
 
-  void performed(uint32_t id);
-  typedef CallbackMember1<AccProcessor, uint32_t, &AccProcessor::performed> performedCB;
 
 protected:
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
@@ -73,6 +72,22 @@ protected:
     virtual void replay(DInst *target) { };// = 0;
 
   // END VIRTUAL FUNCTIONS of GProcessor
+  
+  AddrType myAddr;
+  AddrType addrIncr;
+  int reqid;
+
+  GStatsCntr accReads;
+  GStatsCntr accWrites;
+
+  GStatsAvg  accReadLatency;
+  GStatsAvg  accWriteLatency;
+
+  void read_performed( uint32_t id, Time_t startTime);
+  void write_performed( uint32_t id, Time_t startTime);
+  typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::read_performed> read_performedCB;
+  typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::write_performed> write_performedCB;
+
 public:
   AccProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~AccProcessor();

@@ -45,7 +45,7 @@
 #include "ClusterManager.h"
 
 InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
-  :GProcessor(gm, i, 1)
+  :GProcessor(gm, i)
   ,IFID(i, gm)
   ,pipeQ(i)
   ,lsq(i,32768)
@@ -53,13 +53,12 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   ,clusterManager(gm, this)
 {/*{{{*/
 
-  uint32_t maxwarps = SescConf->getInt("cpuemul", "max_warps_sm", i);
-  IS(MSG("maxwarps = %d",maxwarps));
 
   spaceInInstQueue = InstQueueSize;
 
-  RAT = new DInst* [LREG_MAX * maxwarps * 128];
-  bzero(RAT,sizeof(DInst*)*LREG_MAX * maxwarps * 128);
+  uint32_t smtnum = getMaxFlows();
+  RAT = new DInst* [LREG_MAX * smtnum * 128];
+  bzero(RAT,sizeof(DInst*)*LREG_MAX * smtnum * 128);
 
   busy = false;/*}}}*/
 }/*}}}*/
@@ -155,10 +154,17 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
 
   const Instruction *inst = dinst->getInst();
 
+#if 0
+  // Simple in-order
   if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence) && (inst->getSrc1() != LREG_InvalidOutput)) ||
      ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence) && (inst->getSrc2() != LREG_InvalidOutput))||
      ((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
      ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))){
+#else
+    // scoreboard, no output dependence
+  if(((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
+     ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))){
+#endif
 #if 0
     //Useful for debug
     if (cpu_id == 1 ){
@@ -317,7 +323,16 @@ void InOrderProcessor::retire()
 
 #endif
 
-    dinst->destroy(eint);
+#ifdef DEBUG
+    if (!dinst->getInst()->isStore()) // Stores can perform after retirement
+      I(dinst->isPerformed());
+#endif
+
+   if (dinst->isPerformed()) // Stores can perform after retirement
+      dinst->destroy(eint);
+    else{
+      eint->reexecuteTail(dinst->getFlowId());
+    }
     rROB.pop();
   }
 

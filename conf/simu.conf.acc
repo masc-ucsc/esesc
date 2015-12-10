@@ -1,0 +1,14 @@
+# accelerator core
+[accCore]
+type          = "accel"
+addrIncr          = 4196
+
+DL1           = "PerCore_DTLB PTLB"
+IL1           = "PerCore_ITLB ITLB"
+retireWidth   = 0
+fetchWidth    = 0
+issueWidth    = 0
+instQueueSize = 0
+robSize       = 2
+StoreSetSize  = 0
+throttlingRatio = 1

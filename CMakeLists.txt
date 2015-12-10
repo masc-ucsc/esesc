@@ -158,7 +158,11 @@ ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 IF(ESESC_SYSTEM)
   SET(QEMU_TARGET --target-list=mips64el-softmmu)
 ELSE(ESESC_SYSTEM)
-  SET(QEMU_TARGET --target-list=mips64el-linux-user)
+  IF(ESESC_N32)
+    SET(QEMU_TARGET --target-list=mipsn32el-linux-user)
+  ELSE(ESESC_N32)
+    SET(QEMU_TARGET --target-list=mips64el-linux-user)
+  ENDIF(ESESC_N32)
 ENDIF(ESESC_SYSTEM)
 
 ExternalProject_Add(qemu
