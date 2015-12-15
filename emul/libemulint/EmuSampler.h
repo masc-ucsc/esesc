@@ -90,7 +90,6 @@ protected:
   GStatsCntr *tusage[EmuMax];
   GStatsCntr *iusage[EmuMax];
   GStatsCntr *globalClock_Timing;
-  GStatsCntr *deadClock;
 
   GStats *nCommitted;
   GStatsAvg *ipc;
@@ -221,6 +220,5 @@ public:
   }
   virtual int64_t getThreads2Simulate(){ return 0; }
   bool getStatsFlag() const { return mode == EmuTiming; }
-  virtual void dumpThreadProgressedTime(FlowID fid) {};
 };
 #endif

@@ -162,7 +162,7 @@ void GMemorySystem::buildMemorySystem() {
     vpc = declareMemoryObj(def_block, "VPC");
     vpc->getRouter()->fillRouteTables();
 
-    if (vpc && vpc == IL1) {
+    if (vpc == IL1) {
       MSG("ERROR: you can not set the VPC to the same cache as the IL1");
       SescConf->notCorrect();
     }
@@ -179,7 +179,7 @@ void GMemorySystem::buildMemorySystem() {
       DL1->getRouter()->getDownNode()->setCoreDL1(coreId);
   }
 
-  if (DL1 && DL1 == vpc) {
+  if (DL1 == vpc) {
     MSG("ERROR: you can not set the VPC to the same cache as the DL1");
     SescConf->notCorrect();
   }
@@ -249,6 +249,7 @@ MemObj *GMemorySystem::declareMemoryObj(const char *block, const char *field) {
   }
 
   MemObj *ret = finishDeclareMemoryObj(vPars);
+  I(ret); // Users of declareMemoryObj dereference without NULL check so pointer must be valid
   return ret;
 }
 
@@ -273,6 +274,7 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars, char* n
       int32_t sharedBy = atoi(vPars[3]);
       //delete[] vPars[3];
       GMSG(sharedBy <= 0, "ERROR: SharedBy should be bigger than zero (field %s)", device_name);
+      I(sharedBy > 0);
 
       int32_t nId = coreId / sharedBy;
       device_name = privatizeDeviceName(device_name, nId);

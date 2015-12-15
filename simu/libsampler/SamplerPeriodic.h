@@ -55,7 +55,6 @@ protected:
   FlowID winnerFid;
 
   GStatsCntr  *dsync;
-  GStatsMax  *threadProgressedTime;
 
   static int32_t PerfSampleLeftForTemp; 
 
@@ -87,7 +86,6 @@ public:
 
   uint64_t queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest, int dest2, void *dummy);
 
-  void dumpThreadProgressedTime(FlowID fid);
   float getSamplingRatio() {return static_cast<float>(nInstTiming)/static_cast<float>(nInstRabbit + nInstWarmup + nInstDetail + nInstTiming);};
 };
 

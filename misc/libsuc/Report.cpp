@@ -75,6 +75,10 @@ void Report::openFile(const char *name) {
     
     fname = strdup(name);
     fd = mkstemp(fname);
+    if(fd == -1) {
+      perror("Report::openFile could not assign file name:");
+      exit(-1);
+    }
 
     // FIXME: remember the fname so that getNameID
     

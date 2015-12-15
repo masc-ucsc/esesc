@@ -56,9 +56,14 @@ GStatsMax *SamplerBase::progressedTime = 0;
 
 SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : EmuSampler(iname, emu, fid)
+  , nextSwitch(0)
+  , nInstForcedDetail(0)
+  , gpuSampledRatio(0)
+  , validP(0)
+  , headPtr(0)
   /* SamplerBase constructor {{{1 */
 {
-  if (progressedTime==0)
+  if (progressedTime == NULL)
       progressedTime = new GStatsMax("progressedTime");
 
   nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkip"));
@@ -120,6 +125,9 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
   if(doPower) {
     doTherm = SescConf->getBool(pwrsection,"doTherm",0);
     pwr_updateInterval  = static_cast<uint64_t>(SescConf->getDouble("pwrmodel","updateInterval"));
+  } else {
+    doTherm = false;
+    pwr_updateInterval = 0;
   }
 
   estCPI           = 1.0;
