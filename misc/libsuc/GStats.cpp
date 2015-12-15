@@ -37,7 +37,8 @@
 
 GStats::Container GStats::store;
 
-GStats::GStats() 
+GStats::GStats()
+  :name(NULL)
 {
 
 }

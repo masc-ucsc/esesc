@@ -416,6 +416,7 @@ void Config::addVRecord(const char *block,
   const char *env=getEnvVar(block, name);
   if(env) {
     MSG("Config::addVRecord Not allowed to override vectors with environment variables");
+    I(0);  // halt here otherwise NULL ptr dereference in addRecord
 //        rec = new Record(env,X,Y);
 //        rec->setEnv();
     errorReading = true;
