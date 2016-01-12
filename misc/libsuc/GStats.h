@@ -47,7 +47,7 @@ class GStats {
 private:
   typedef HASH_MAP<const char *, GStats *, HASH<const char*>, GStats_strcasecmp > Container;
   typedef HASH_MAP<const char *, GStats *, HASH<const char*>, GStats_strcasecmp >::iterator ContainerIter;
-  static Container store;
+  static Container *store;
 
 protected:
   char *name;

@@ -108,24 +108,24 @@ private:
   FlowID fid;
 
   // BEGIN Boolean flags
+  Time_t fetched;
+  Time_t renamed;
+  Time_t issued;
+  Time_t executed;
+
+  bool  retired;
+
   bool loadForwarded;
-  bool renamed;
-  bool issued;
-  bool executed;
+  bool delayedDispatch;
+
   bool replay;
 
   bool performed;
-  bool retired;
 
   bool interCluster;
   bool keepStats;
 
   // END Boolean flags
-
-#ifdef ESESC_TRACE
-  Time_t wakeUpTime;
-#endif
-  Time_t executedTime;
 
   SSID_t       SSID;
   AddrType     conflictStorePC;
@@ -138,7 +138,6 @@ private:
   DInst      **RAT2Entry;
   DInst      **serializeEntry;
   FetchEngine *fetch;
-  Time_t fetchTime;
 
   char nDeps;              // 0, 1 or 2 for RISC processors
 
@@ -163,20 +162,19 @@ private:
     SSID            = -1;
     conflictStorePC = 0;
 
-    loadForwarded = false;
-    renamed       = false;
-    issued        = false;
-    executed      = false;
+    fetched       = 0;
+    renamed       = 0;
+    issued        = 0;
+    executed      = 0;
+    retired       = false;
+
+    delayedDispatch = false;
+    loadForwarded   = false;
+
     replay        = false;
     performed     = false;
-    retired       = false;
     interCluster  = false;
 
-    fetchTime = 0;
-#ifdef ESESC_TRACE
-    wakeUpTime    = 0;
-#endif
-    executedTime  = 0;
 #ifdef DINST_PARENT
     pend[0].setParentDInst(0);
     pend[1].setParentDInst(0);
@@ -205,7 +203,7 @@ public:
     i->inst      = *inst;
     i->pc        = pc;
     i->addr      = address;
-    i->fetchTime = 0;
+    i->fetched   = 0;
     i->keepStats = keepStats;
 
     i->setup();
@@ -272,19 +270,19 @@ public:
   void lockFetch(FetchEngine *fe) {
     I(fetch==0);
     fetch     = fe;
-    fetchTime = globalClock;
+    fetched = globalClock;
   }
 
   void setFetchTime() {
     I(fetch==0);
-    fetchTime = globalClock;
+    fetched = globalClock;
   }
 
   FetchEngine *getFetch() const {
     return fetch;
   }
   Time_t getFetchTime() const {
-    return fetchTime;
+    return fetched;
   }
 
   DInst *getNextPending() {
@@ -307,8 +305,8 @@ public:
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
 
-    I(!executed);
-    I(!d->executed);
+    I(executed==0);
+    I(d->executed==0);
     DInstNext *n = &d->pend[0];
     I(!n->isUsed);
     n->isUsed = true;
@@ -327,8 +325,8 @@ public:
   void addSrc2(DInst * d) {
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
-    I(!executed);
-    I(!d->executed);
+    I(executed==0);
+    I(d->executed==0);
 
     DInstNext *n = &d->pend[1];
     I(!n->isUsed);
@@ -348,8 +346,8 @@ public:
   void addSrc3(DInst * d) {
     I(d->nDeps < MAX_PENDING_SOURCES);
     d->nDeps++;
-    I(!executed);
-    I(!d->executed);
+    I(executed==0);
+    I(d->executed==0);
 
     DInstNext *n = &d->pend[2];
     I(!n->isUsed);
@@ -391,6 +389,15 @@ public:
   void dump(const char *id);
 
   // methods required for LDSTBuffer
+  bool isDelayedDispatch() const { return delayedDispatch; }
+  void clearDelayedDispatch() {
+    I(delayedDispatch);
+    delayedDispatch=false;
+  }
+  void setDelayedDispatch() {
+    I(!delayedDispatch);
+    delayedDispatch=true;
+  }
   bool isLoadForwarded() const { return loadForwarded; }
   void setLoadForwarded() {
     I(!loadForwarded);
@@ -405,23 +412,22 @@ public:
   bool isIssued() const { return issued; }
 
   void markRenamed() {
-    I(!renamed);
-    renamed = true;
+    I(renamed==0);
+    renamed = globalClock;
   }
-  bool isRenamed() const { return renamed; }
+  bool isRenamed() const { return renamed!=0; }
 
   void markIssued() {
-    I(!issued);
-    I(!executed);
-    issued = true;
+    I(issued==0);
+    I(executed==0);
+    issued = globalClock;
   }
 
   bool isExecuted() const { return executed; }
   void markExecuted() {
-    I(issued);
-    I(!executed);
-    executed = true;
-    executedTime = globalClock;
+    I(issued!=0);
+    I(executed==0);
+    executed = globalClock;
   }
 
   bool isReplay() const { return replay; }
@@ -437,7 +443,7 @@ public:
   bool isPerformed() const { return performed; }
   void markPerformed() {
     // Loads get performed first, and then executed
-    GI(!inst.isLoad(),executed);
+    GI(!inst.isLoad(),executed!=0);
     performed = true;
   }
 
@@ -447,17 +453,10 @@ public:
     retired = true;
   }
 
-#ifdef ESESC_TRACE
-  void setWakeUpTime(Time_t t)  {
-    //I(wakeUpTime <= t || t == 0);
-    wakeUpTime = t;
-  }
-
-  Time_t getWakeUpTime() const { return wakeUpTime; }
-#else
-  void setWakeUpTime(Time_t t)  { }
-#endif
-  Time_t getExecutedTime() const { return executedTime; }
+  Time_t getFetchedTime() const { return fetched; }
+  Time_t getRenamedTime() const { return renamed; }
+  Time_t getIssuedTime() const { return issued; }
+  Time_t getExecutedTime() const { return executed; }
 
   Time_t getID() const { return ID; }
 

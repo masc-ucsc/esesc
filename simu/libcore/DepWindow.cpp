@@ -85,7 +85,6 @@ void DepWindow::preSelect(DInst *dinst) {
   // At the end of the wakeUp, we can start to read the register file
   I(!dinst->hasDeps());
 
-  dinst->setWakeUpTime(globalClock);
   dinst->markIssued();
   I(dinst->getCluster());
 

@@ -74,6 +74,7 @@ protected:
   GStatsCntr writeHalfMiss; 
   GStatsCntr writeExclusive;
   GStatsCntr writeBack;
+  GStatsAvg  avgMemLat;
 
 public:
   NICECache(MemorySystem *gms, const char *section, const char *name = NULL);

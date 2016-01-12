@@ -224,7 +224,7 @@ typename CacheAssoc<State, Addr_t>::Line *CacheAssoc<State, Addr_t>::findLinePri
 
   // Check most typical case
   if ((*theSet)->getTag() == tag) {
-    I((*theSet)->isValid());  
+    // JustDirectory can break this I((*theSet)->isValid());  
     return *theSet;
   }
 

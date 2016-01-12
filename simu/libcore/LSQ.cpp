@@ -33,11 +33,13 @@ LSQFull::LSQFull(const int32_t id, int32_t size)
 }
 /* }}} */
 
-void LSQFull::insert(DInst *dinst)
+bool LSQFull::insert(DInst *dinst)
   /* Insert dinst in LSQ (in-order) {{{1 */
 {
   I(dinst->getAddr());
   instMap.insert(std::pair<AddrType, DInst *>(calcWord(dinst),dinst));
+
+  return true;
 }
 /* }}} */
 
@@ -127,18 +129,33 @@ void LSQFull::remove(DInst *dinst)
 LSQNone::LSQNone(const int32_t id, int32_t size)
   /* constructor {{{1 */
   :LSQ(size) {
+
+    for(int i=0;i<128;i++)
+      addrTable[i] = 0;
+
 }
 /* }}} */
 
-void LSQNone::insert(DInst *dinst)
+bool LSQNone::insert(DInst *dinst)
   /* Insert dinst in LSQ (in-order) {{{1 */
 {
+  int i = getEntry(dinst->getAddr());
+  if (addrTable[i])
+    return false;
+
+  addrTable[i] = dinst;
+
+  return true;
 }
 /* }}} */
 
 DInst *LSQNone::executing(DInst *dinst)
   /* dinst got executed (out-of-order) {{{1 */
 {
+  int i = getEntry(dinst->getAddr());
+  I(addrTable[i] == dinst);
+  addrTable[i] = 0;
+
   return 0;
 }
 /* }}} */
@@ -157,11 +174,13 @@ LSQVPC::LSQVPC(int32_t size)
 }
 /* }}} */
 
-void LSQVPC::insert(DInst *dinst)
+bool LSQVPC::insert(DInst *dinst)
   /* Insert dinst in LSQ (in-order) {{{1 */
 {
   I(dinst->getAddr());
   instMap.insert(std::pair<AddrType, DInst *>(calcWord(dinst),dinst));
+
+  return true;
 }
 /* }}} */
 

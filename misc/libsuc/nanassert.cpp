@@ -41,6 +41,7 @@ const char *NanassertID = "";
 
 #include <signal.h>
 
+// coverity[+kill]
 void nanassertexit(){
 #if (defined TLS)
   // Raising SIGUSR2 here helps debugging a lot

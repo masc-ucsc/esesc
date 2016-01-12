@@ -112,16 +112,13 @@ static void doread(MemObj *cache, AddrType addr)
   DInst *ldClone = ld->clone();
   ldClone->setAddr(addr);
 
-  while(cache->isBusy(addr,0))
+  while(cache->isBusy(addr))
     EventScheduler::advanceClock();
 
   rdDoneCB *cb = rdDoneCB::create(ldClone);
   printf("rd %x @%lld\n", (unsigned int)addr,(long long)globalClock);
 
-  ExtraParameters param;
-  param.configure(ldClone);
-
-  MemRequest::sendReqRead(cache, ldClone->getStatsFlag(), addr, cb, &param);
+  MemRequest::sendReqRead(cache, ldClone->getStatsFlag(), addr, cb);
   rd_pending++;
 }
 
@@ -131,16 +128,13 @@ static void dowrite(MemObj *cache, AddrType addr)
   DInst *stClone = st->clone();
   stClone->setAddr(addr);
 
-	while(cache->isBusy(addr,0))
+	while(cache->isBusy(addr))
 		EventScheduler::advanceClock();
 
   wrDoneCB *cb = wrDoneCB::create(stClone);
   printf("wr %x @%lld\n", (unsigned int)addr,(long long)globalClock);
 
-  ExtraParameters param;
-  param.configure(stClone);
-
-	MemRequest::sendReqWrite(cache, stClone->getStatsFlag(), addr, cb, &param);
+	MemRequest::sendReqWrite(cache, stClone->getStatsFlag(), addr, cb);
 	wr_pending++;
 }
 
@@ -268,7 +262,11 @@ TEST_F(CacheTest,l1miss_l2miss){
   waitAllMemOpsDone();
   EXPECT_EQ(Exclusive,getState(p0dl1,0x100));
   EXPECT_EQ(Invalid,getState(p1dl1,0x100));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x100));
+
+  if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x100));
+  else
+    EXPECT_EQ(Exclusive,getState(p0l2,0x100));
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x100));
 }
@@ -278,7 +276,10 @@ TEST_F(CacheTest,L1miss_l2hit){
   waitAllMemOpsDone();
   EXPECT_EQ(Invalid,getState(p0dl1,0x180));
   EXPECT_EQ(Invalid,getState(p1dl1,0x180));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x180));
+  if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x180));
+  else
+    EXPECT_EQ(Exclusive,getState(p0l2,0x180));
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x180));
 
@@ -286,7 +287,10 @@ TEST_F(CacheTest,L1miss_l2hit){
   waitAllMemOpsDone();
   EXPECT_EQ(Modified,getState(p0dl1,0x180));
   EXPECT_EQ(Invalid,getState(p1dl1,0x180));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x180));
+  if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x180));
+  else
+    EXPECT_EQ(Exclusive,getState(p0l2,0x180));
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x180));
 }
@@ -297,20 +301,36 @@ TEST_F(CacheTest,multiple_reqs){
   waitAllMemOpsDone();
   EXPECT_EQ(Invalid,getState(p0dl1,0xF000));
   EXPECT_EQ(Invalid,getState(p1dl1,0xF000));
-  EXPECT_EQ(Exclusive,getState(p0l2,0xF000));
+
+  if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0xF000));
+  else
+    EXPECT_EQ(Exclusive,getState(p0l2,0xF000));
+
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0xF000));
 
   doread(p0dl1,0xF000); // L1 miss, L2 hit
+  waitAllMemOpsDone();
+  EXPECT_EQ(Exclusive,getState(p0dl1,0xF000));
   doread(p1dl1,0xF000); // L1 miss, L2 hit
   waitAllMemOpsDone();
   EXPECT_EQ(Shared,getState(p0dl1,0xF000));
   EXPECT_EQ(Shared,getState(p1dl1,0xF000));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Exclusive,getState(p0l2,0xF000));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0xF000));
+    else
+      EXPECT_EQ(Exclusive,getState(p0l2,0xF000));
   }else{
-    EXPECT_EQ(Shared,getState(p0l2,0xF000));
-    EXPECT_EQ(Shared,getState(p1l2,0xF000));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0xF000));
+    else
+      EXPECT_EQ(Shared,getState(p0l2,0xF000));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0xF000));
+    else
+      EXPECT_EQ(Shared,getState(p1l2,0xF000));
   }
   if (l3) {
     EXPECT_EQ(Exclusive,getState(l3,0xF000));
@@ -328,10 +348,20 @@ TEST_F(CacheTest,Shared_second_test){
   EXPECT_EQ(Shared,getState(p0dl1,0x200));
   EXPECT_EQ(Shared,getState(p1dl1,0x200));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Exclusive,getState(p0l2,0x200));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x200));
+    else
+      EXPECT_EQ(Exclusive,getState(p0l2,0x200));
   }else{
-    EXPECT_EQ(Shared,getState(p0l2,0x200));
-    EXPECT_EQ(Shared,getState(p1l2,0x200));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x200));
+    else
+      EXPECT_EQ(Shared,getState(p0l2,0x200));
+
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0x200));
+    else
+      EXPECT_EQ(Shared,getState(p1l2,0x200));
   }
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x200));
@@ -344,7 +374,11 @@ TEST_F(CacheTest, Modified_third_test){
   dowrite(p0dl1,0x300);
   waitAllMemOpsDone();
   EXPECT_EQ(Modified,getState(p0dl1,0x300));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x300));
+
+  if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x300));
+  else
+    EXPECT_EQ(Exclusive,getState(p0l2,0x300));
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x300));
 }
@@ -360,7 +394,10 @@ TEST_F(CacheTest,Modified_fourth_test){
   dowrite(p0dl1,0x400);
   waitAllMemOpsDone();
   EXPECT_EQ(Modified,getState(p0dl1,0x400));
-  EXPECT_EQ(Exclusive,getState(p0l2,0x400));
+  if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x400));
+  else
+    EXPECT_EQ(Exclusive,getState(p0l2,0x400));
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x400));
 }
@@ -378,12 +415,21 @@ TEST_F(CacheTest,Owner_fifth_test){
   EXPECT_EQ(Shared, getState(p0dl1,0x500));
   EXPECT_EQ(Shared,getState(p1dl1,0x500));
   if (p0l2 == p1l2) { // Shared L2 conf
-		EXPECT_EQ(Modified,getState(p0l2,0x500));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x500));
+    else
+      EXPECT_EQ(Modified,getState(p0l2,0x500));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x500));
 	}else{
-		EXPECT_EQ(Shared,getState(p0l2,0x500));
-		EXPECT_EQ(Shared,getState(p1l2,0x500));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x500));
+    else
+      EXPECT_EQ(Shared,getState(p0l2,0x500));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Shared,getState(p1l2,0x500));
+    else
+      EXPECT_EQ(Shared,getState(p1l2,0x500));
     if (l3)
       EXPECT_EQ(Modified,getState(l3,0x500));
 	}
@@ -403,7 +449,10 @@ TEST_F(CacheTest, Invalid_sixth_test){
 
   EXPECT_EQ(Invalid,getState(p0dl1,0x600));
   EXPECT_EQ(Modified,getState(p1dl1,0x600));
-  EXPECT_EQ(Exclusive,getState(p1l2,0x600));
+  if (p1l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p1l2,0x600));
+  else
+    EXPECT_EQ(Exclusive,getState(p1l2,0x600));
   if (l3)
     EXPECT_EQ(Exclusive,getState(l3,0x600));
 
@@ -412,12 +461,18 @@ TEST_F(CacheTest, Invalid_sixth_test){
   EXPECT_EQ(Modified,getState(p0dl1,0x600));
   EXPECT_EQ(Invalid,getState(p1dl1,0x600));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Modified,getState(p0l2,0x600));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x600));
+    else
+      EXPECT_EQ(Modified,getState(p0l2,0x600));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x600));
 	}else{
     EXPECT_EQ(Invalid,getState(p1l2,0x600));
-    EXPECT_EQ(Exclusive,getState(p0l2,0x600));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x600));
+    else
+      EXPECT_EQ(Exclusive,getState(p0l2,0x600));
     if (l3)
       EXPECT_EQ(Modified,getState(l3,0x600));
 	}
@@ -438,11 +493,20 @@ TEST_F(CacheTest,Invalid_seventh_test){
   EXPECT_EQ(Shared,getState(p1dl1,0x700));
   if (l3) {
     if (p0l2 == p1l2) { // Shared L2 conf
-      EXPECT_EQ(Exclusive,getState(p1l2,0x700));
+      if (p1l2->isJustDirectory())
+        EXPECT_EQ(Invalid,getState(p1l2,0x700));
+      else
+        EXPECT_EQ(Exclusive,getState(p1l2,0x700));
       EXPECT_EQ(Exclusive,getState(l3,0x700));
     }else{
-      EXPECT_EQ(Shared,getState(p0l2,0x700));
-      EXPECT_EQ(Shared,getState(p1l2,0x700));
+      if (p0l2->isJustDirectory())
+        EXPECT_EQ(Invalid,getState(p0l2,0x700));
+      else
+        EXPECT_EQ(Shared,getState(p0l2,0x700));
+      if (p1l2->isJustDirectory())
+        EXPECT_EQ(Invalid,getState(p1l2,0x700));
+      else
+        EXPECT_EQ(Shared,getState(p1l2,0x700));
       EXPECT_EQ(Exclusive,getState(l3,0x700));
     }
   }
@@ -451,7 +515,10 @@ TEST_F(CacheTest,Invalid_seventh_test){
 
   EXPECT_EQ(Invalid,getState(p0dl1,0x700));
   EXPECT_EQ(Modified,getState(p1dl1,0x700));
-  EXPECT_EQ(Exclusive,getState(p1l2,0x700)); 
+  if (p1l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p1l2,0x700)); 
+  else
+    EXPECT_EQ(Exclusive,getState(p1l2,0x700)); 
   if (l3) {
     EXPECT_EQ(Exclusive,getState(l3,0x700));
   }
@@ -477,11 +544,17 @@ TEST_F(CacheTest,Invalid_eighth_test){
   EXPECT_EQ(Invalid,getState(p1dl1,0x800));
   EXPECT_EQ(Modified,getState(p0dl1,0x800));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Modified,getState(p0l2,0x800));
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x800));
+    else
+      EXPECT_EQ(Modified,getState(p0l2,0x800));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x800));
   }else{
-    EXPECT_EQ(Shared,getState(p0l2,0x800)); 
+    if (p0l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p0l2,0x800)); 
+    else
+      EXPECT_EQ(Shared,getState(p0l2,0x800)); 
     if (l3)
       EXPECT_EQ(Modified,getState(l3,0x800));
   }
@@ -499,12 +572,18 @@ TEST_F(CacheTest,Invalid_ninth_test){
   EXPECT_EQ(Invalid,getState(p0dl1,0x900));
   EXPECT_EQ(Modified,getState(p1dl1,0x900));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
+      EXPECT_EQ(Exclusive,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x900));
   }else{
     EXPECT_EQ(Invalid,getState(p0l2,0x900));
-    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
+      EXPECT_EQ(Exclusive,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x900));
   }
@@ -514,12 +593,18 @@ TEST_F(CacheTest,Invalid_ninth_test){
   EXPECT_EQ(Invalid,getState(p0dl1,0x900));
   EXPECT_EQ(Modified,getState(p1dl1,0x900));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
+      EXPECT_EQ(Exclusive,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x900));
   }else{
     EXPECT_EQ(Invalid,getState(p0l2,0x900));
-    EXPECT_EQ(Exclusive,getState(p1l2,0x900));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
+      EXPECT_EQ(Exclusive,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x900));
   }
@@ -529,11 +614,20 @@ TEST_F(CacheTest,Invalid_ninth_test){
   EXPECT_EQ(Shared,getState(p0dl1,0x900));
   EXPECT_EQ(Shared,getState(p1dl1,0x900));
   if (p0l2 == p1l2) { // Shared L2 conf
+    if (p1l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
     EXPECT_EQ(Modified,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Exclusive,getState(l3,0x900));
   }else{
+    if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x900));
+    else
     EXPECT_EQ(Shared,getState(p0l2,0x900));
+    if (p1l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
     EXPECT_EQ(Shared,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Modified,getState(l3,0x900));
@@ -544,15 +638,31 @@ TEST_F(CacheTest,Invalid_ninth_test){
   EXPECT_EQ(Invalid,getState(p1dl1,0x900));
   EXPECT_EQ(Modified,getState(p0dl1,0x900));
   if (p0l2 == p1l2) { // Shared L2 conf
-    EXPECT_EQ(Modified,getState(p1l2,0x900));
-  if (l3)
-    EXPECT_EQ(Exclusive,getState(l3,0x900));
+    if (p1l2->isJustDirectory())
+      EXPECT_EQ(Invalid,getState(p1l2,0x900));
+    else
+      EXPECT_EQ(Modified,getState(p1l2,0x900));
+    if (l3)
+      EXPECT_EQ(Exclusive,getState(l3,0x900));
   }else{
+    if (p0l2->isJustDirectory())
+    EXPECT_EQ(Invalid,getState(p0l2,0x900)); // It could be E
+    else
     EXPECT_EQ(Shared,getState(p0l2,0x900)); // It could be E
     EXPECT_EQ(Invalid,getState(p1l2,0x900));
     if (l3)
       EXPECT_EQ(Modified,getState(l3,0x900));
   }
+}
+
+TEST_F(CacheTest,justDirectory){
+  printf("BEGIN L2 directory test\n");
+  doread(p0dl1,0x900);
+  waitAllMemOpsDone();
+  dowrite(p1dl1,0x900);
+  waitAllMemOpsDone();
+  EXPECT_EQ(Invalid,getState(p0dl1,0x900));
+  EXPECT_EQ(Modified,getState(p1dl1,0x900));
 }
 
 TEST_F(CacheTest,l2_bw){

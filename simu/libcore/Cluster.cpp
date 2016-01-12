@@ -75,6 +75,7 @@ Cluster::Cluster(const char *clusterName, GProcessor *gp)
   ,winNotUsed("P(%d)_%s_winNotUsed",gp->getID(), clusterName)
   ,rdRegPool("P(%d)_%s_rdRegPool",gp->getID(), clusterName)
   ,wrRegPool("P(%d)_%s_wrRegPool",gp->getID(), clusterName)
+  ,name(strdup(clusterName))
 {
   bzero(res,sizeof(Resource *)*iMAX);  
 }
@@ -129,12 +130,10 @@ void Cluster::buildUnit(const char *clusterName
   if (SescConf->checkBool("cpusimu", "scooreMemory",gproc->getID()))
     scooreMemory=SescConf->getBool("cpusimu", "scooreMemory",gproc->getID());
   
-  bool noMemSpec = SescConf->getBool("cpusimu", "noMemSpec",gproc->getID());
-
   switch(type) {
     case iOpInvalid: 
     case iRALU:
-      r = new FURALU(cluster, gen, lat, scooreMemory, gproc->getID());
+      r = new FURALU(type, cluster, gen, lat, scooreMemory, gproc->getID());
       break ;
     case iAALU:
     case iCALU_FPMULT:
@@ -142,7 +141,7 @@ void Cluster::buildUnit(const char *clusterName
     case iCALU_FPALU:
     case iCALU_MULT:
     case iCALU_DIV:
-      r = new FUGeneric(cluster, gen, lat);
+      r = new FUGeneric(type, cluster, gen, lat);
       break ;
     case iBALU_LBRANCH:
     case iBALU_LJUMP:
@@ -155,28 +154,21 @@ void Cluster::buildUnit(const char *clusterName
         int32_t MaxBranches = SescConf->getInt("cpusimu", "maxBranches", gproc->getID());
         if( MaxBranches == 0 )
           MaxBranches = INT_MAX;
+        bool drainOnMiss = SescConf->getBool("cpusimu", "drainOnMiss", gproc->getID());
 
-        r = new FUBranch(cluster, gen, lat, MaxBranches);
+        r = new FUBranch(type, cluster, gen, lat, MaxBranches, drainOnMiss);
       }
       break;
     case iLALU_LD: 
       {
-        if(scooreMemory){
-          r = new FUSCOORELoad(cluster, gen, gproc->getSS(), lat, ms, gproc->getID(), "scooreld");
-        }else{
-          TimeDelta_t ldstdelay=SescConf->getInt("cpusimu", "stForwardDelay",gproc->getID());
-          SescConf->isInt("cpusimu", "maxLoads",gproc->getID());
-          SescConf->isBetween("cpusimu", "maxLoads", 0, 256*1024, gproc->getID());
-          int32_t maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getID());
-          if( maxLoads == 0 )
-            maxLoads = 256*1024;
+        TimeDelta_t ldstdelay=SescConf->getInt("cpusimu", "stForwardDelay",gproc->getID());
+        SescConf->isInt("cpusimu", "maxLoads",gproc->getID());
+        SescConf->isBetween("cpusimu", "maxLoads", 0, 256*1024, gproc->getID());
+        int32_t maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getID());
+        if( maxLoads == 0 )
+          maxLoads = 256*1024;
 
-          if(noMemSpec){        
-            r = new FULoad_noMemSpec(cluster, gen, gproc->getLSQ(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "nonspecld");
-          }else{
-            r = new FULoad(cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "specld");
-          }
-        }
+        r = new FULoad(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "specld");
       }
       break;
     case iSALU_LL: 
@@ -184,21 +176,13 @@ void Cluster::buildUnit(const char *clusterName
     case iSALU_ST:
     case iSALU_ADDR:
       {
-        if(scooreMemory){
-          r = new FUSCOOREStore(cluster, gen, gproc->getSS(), lat, ms, gproc->getID(), "scoorest");
-        }else{
-          SescConf->isInt("cpusimu", "maxStores",gproc->getID());
-          SescConf->isBetween("cpusimu", "maxStores", 0, 256*1024, gproc->getID());
-          int32_t maxStores=SescConf->getInt("cpusimu", "maxStores",gproc->getID());
-          if( maxStores == 0 )
-            maxStores = 256*1024;
+        SescConf->isInt("cpusimu", "maxStores",gproc->getID());
+        SescConf->isBetween("cpusimu", "maxStores", 0, 256*1024, gproc->getID());
+        int32_t maxStores=SescConf->getInt("cpusimu", "maxStores",gproc->getID());
+        if( maxStores == 0 )
+          maxStores = 256*1024;
 
-          if(noMemSpec){
-            r = new FUStore_noMemSpec(cluster, gen, gproc->getLSQ(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
-          }else{
-            r = new FUStore(cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
-          }
-        }
+        r = new FUStore(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
       }
       break;
     default:

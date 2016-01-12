@@ -35,11 +35,13 @@
 
 /*********************** GStats */
 
-GStats::Container GStats::store;
+GStats::Container *GStats::store=0;
 
-GStats::GStats() 
+GStats::GStats()
+  :name(NULL)
 {
-
+  if (store==0)
+    store = new Container;
 }
 
 GStats::~GStats() 
@@ -62,21 +64,21 @@ void GStats::subscribe()
 
   I(strcmp(getName(),"")!=0);
 
-  if(store.find(getName()) != store.end()) {
+  if((*store).find(getName()) != (*store).end()) {
     MSG("ERROR: gstats is added twice with name [%s]. Use another name",getName());
     I(0);
   }
 
-  store[getName()] = this;
+  (*store)[getName()] = this;
 }
 
 void GStats::unsubscribe() 
 {
   I(name);
 
-  ContainerIter it = store.find(name);
-  if( it != store.end()) {
-    store.erase(it);
+  ContainerIter it = (*store).find(name);
+  if( it != (*store).end()) {
+    (*store).erase(it);
   }
 }
 
@@ -84,7 +86,7 @@ void GStats::report(const char *str)
 {
   Report::field("#BEGIN GStats::report %s", str);
 
-  for(ContainerIter it = store.begin(); it != store.end(); it++) {
+  for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
     it->second->reportValue();
   }
 
@@ -93,14 +95,14 @@ void GStats::report(const char *str)
 
 void GStats::reportBin()
 {
-  for(ContainerIter it = store.begin(); it != store.end(); it++) {
+  for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
     it->second->reportBinValue();
   }
 }
 
 void GStats::reportSchema()
 {
-  for(ContainerIter it = store.begin(); it != store.end(); it++) {
+  for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
     it->second->reportScheme();
   }
 }
@@ -112,15 +114,15 @@ void GStats::flushValue()
 
 void GStats::flush()
 {
-  for(ContainerIter it = store.begin(); it != store.end(); it++) {
+  for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
     it->second->flushValue();
   }
 }
 
 GStats *GStats::getRef(const char *str) {
 
-  ContainerIter it = store.find(str);
-  if( it != store.end())
+  ContainerIter it = (*store).find(str);
+  if( it != (*store).end())
     return it->second;
 
   return 0;

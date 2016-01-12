@@ -44,6 +44,8 @@
 
 class InOrderProcessor : public GProcessor {
 private:
+  const int32_t RetireDelay;
+
   FetchEngine IFID;
   PipeQueue   pipeQ;
   int32_t     spaceInInstQueue;

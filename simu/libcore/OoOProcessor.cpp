@@ -417,13 +417,11 @@ void OoOProcessor::retire()
   while(!ROB.empty()) {
     DInst *dinst = ROB.top();
 
-    if( !dinst->isExecuted() )
-      break;
-
     bool done = dinst->getClusterResource()->preretire(dinst, flushing);
-    GI(flushing, done);
-    if( !done )
+    GI(flushing && dinst->isExecuted(), done);
+    if( !done ) {
       break;
+    }
 
     rROB.push(dinst);
     ROB.pop();
@@ -452,6 +450,16 @@ void OoOProcessor::retire()
       //dinst->getInst()->dump("not ret");
       return;
     }
+#if 0
+    static int conta=0;
+    if ((globalClock-dinst->getExecutedTime())>500)
+      conta++;
+    if (conta > 1000) {
+      dinst->getInst()->dump("not ret");
+      conta = 0;
+      dumpROB();
+    }
+#endif
     
     FlowID fid = dinst->getFlowId();
     if( dinst->isReplay() ) {
@@ -484,6 +492,7 @@ void OoOProcessor::retire()
     if (dinst->getInst()->hasDstRegister())
       nTotalRegs++;
 
+
 #if 1 
     if (!dinst->getInst()->isStore()) // Stores can perform after retirement
       I(dinst->isPerformed());
@@ -501,6 +510,7 @@ void OoOProcessor::retire()
       last_serialized = 0;
     if (last_serializedST == dinst)
       last_serializedST = 0;
+
 
     rROB.pop();
   }
@@ -541,7 +551,7 @@ void OoOProcessor::replay(DInst *target)
 void OoOProcessor::dumpROB()
 {
   uint32_t size = ROB.size();
-  printf("ROB: (%d)\n",size);
+  fprintf(stderr,"ROB: (%d)\n",size);
 
   for(uint32_t i=0;i<size;i++) {
     uint32_t pos = ROB.getIDFromTop(i);
@@ -551,7 +561,7 @@ void OoOProcessor::dumpROB()
   }
 
   size = rROB.size();
-  printf("rROB: (%d)\n",size);
+  fprintf(stderr,"rROB: (%d)\n",size);
   for(uint32_t i=0;i<size;i++) {
     uint32_t pos = rROB.getIDFromTop(i);
 

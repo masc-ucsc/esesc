@@ -90,6 +90,7 @@ private:
   AddrType     addr;
   MsgType      mt;
   MsgAction    ma;
+  MsgAction    ma_orig;
 
   MemObj       *creatorObj;
   MemObj       *homeMemObj; // Starting home node
@@ -204,12 +205,14 @@ protected:
     MemRequest *mreq = create(m,addr,doStats, 0);
     mreq->mt         = mt_req;
     mreq->ma         = ma_VPCWU;
+    mreq->ma_orig    = mreq->ma;
 		m->req(mreq);
   }
   static MemRequest *createReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
+    mreq->ma_orig    = mreq->ma;
     return mreq;
   }
 
@@ -221,6 +224,7 @@ protected:
     MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
+    mreq->ma_orig    = mreq->ma;
 #ifdef ENABLE_NBSD
     mreq->param      = param;
 #endif
@@ -235,6 +239,7 @@ protected:
     MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
+    mreq->ma_orig    = mreq->ma;
 #ifdef ENABLE_NBSD
     mreq->param      = param;
 #endif
@@ -246,6 +251,7 @@ protected:
     MemRequest *mreq = create(m,addr, false, 0);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
+    mreq->ma_orig    = mreq->ma;
     mreq->warmup     = true;
 #ifdef ENABLE_NBSD
     mreq->param      = 0;
@@ -257,6 +263,7 @@ protected:
     MemRequest *mreq = create(m,addr,false, 0);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; // For writes, only MO are valid states
+    mreq->ma_orig    = mreq->ma;
     mreq->warmup     = true;
 #ifdef ENABLE_NBSD
     mreq->param      = 0;
@@ -272,6 +279,7 @@ protected:
     MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; // For writes, only MO are valid states
+    mreq->ma_orig    = mreq->ma;
 #ifdef ENABLE_NBSD
     mreq->param      = param;
 #endif
@@ -281,7 +289,12 @@ protected:
     MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty;
+    mreq->ma_orig    = mreq->ma;
 		m->req(mreq);
+  }
+
+  void forceReqAction(MsgAction _ma) {
+    ma = _ma;
   }
 
   void adjustReqAction(MsgAction _ma) {
@@ -319,6 +332,7 @@ protected:
     MemRequest *mreq = create(m,addr,doStats, 0);
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setDirty;
+    mreq->ma_orig    = mreq->ma;
     I(creator);
     mreq->creatorObj = creator;
 		m->disp(mreq);
@@ -327,6 +341,7 @@ protected:
     MemRequest *mreq = create(m,addr,doStats, 0);
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setValid;
+    mreq->ma_orig    = mreq->ma;
     I(creator);
     mreq->creatorObj = creator;
 		m->disp(mreq);
@@ -336,6 +351,7 @@ protected:
     MemRequest *mreq = create(m,naddr,doStats, 0);
     mreq->mt         = mt_setState;
     mreq->ma         = ma;
+    mreq->ma_orig    = mreq->ma;
     I(creator);
     mreq->creatorObj = creator;
     return mreq;
@@ -364,6 +380,7 @@ protected:
   MemObj *getPrevMem()  const  { return prevMemObj; }
   bool isHomeNode()     const  { return homeMemObj == currMemObj; }
 	MsgAction getAction() const  { return ma; }
+	MsgAction getOrigAction() const  { return ma_orig; }
 
   bool isMMU() const {return ma == ma_MMU; }
   bool isVPCWriteUpdate() const {return ma == ma_VPCWU; }

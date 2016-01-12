@@ -64,6 +64,7 @@ void CCache::trackAddress(MemRequest *mreq) {
 
 //#define MTRACE(a...)   do{ fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); }while(0)
 #define MTRACE(a...)
+//#define MTRACE(a...)   do{ if (mreq->getID()== 109428) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 
 CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   // Constructor {{{1
@@ -154,7 +155,6 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 
 #endif
 
-
   coreCoupledFreq = false;
   //if (coreCoupledFreq) {
   //  BootLoader::getPowerModelPtr()->addTurboCoupledMemory(this);
@@ -167,7 +167,10 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   cacheBank = CacheType::create(section, "", tmpName);
   lineSize  = cacheBank->getLineSize();
   lineSizeBits = log2i(lineSize);
-  mshr      = new MSHR(tmpName, 512, lineSize, 512);
+  uint32_t MaxRequests = SescConf->getInt(section, "maxRequests");
+  if (MaxRequests > 2000)
+    MaxRequests = 2000;
+  mshr      = new MSHR(tmpName, 16*MaxRequests, lineSize, MaxRequests);
 
   I(getLineSize() < 4096); // To avoid bank selection conflict (insane CCache line)
   I(gms);
@@ -182,6 +185,19 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 		MSG("ERROR: %s CCache can not have a 'directory' without being 'inclusive'",section);
 		SescConf->notCorrect();
 	}
+  if(SescConf->checkBool(section,"justDirectory")) {
+    justDirectory = SescConf->getBool(section,"justDirectory");
+  } else {
+    justDirectory = false;
+  }
+  if (justDirectory && !inclusive) {
+    MSG("ERROR: justDirectory option is only possible with inclusive=true");
+		SescConf->notCorrect();
+  }
+  if (justDirectory && !directory) {
+    MSG("ERROR: justDirectory option is only possible with directory=true");
+		SescConf->notCorrect();
+  }
 
   MemObj *lower_level = gms->declareMemoryObj(section, "lowerLevel");
   if(lower_level)
@@ -277,7 +293,7 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
 }
 // }}}
 
-void CCache::mustForwardReqDown(MemRequest *mreq, bool miss)
+void CCache::mustForwardReqDown(MemRequest *mreq, bool miss, Line *l)
   // pass a req down the hierarchy Check with MSR {{{1
 {
   s_reqMissLine[mreq->getAction()]->inc(miss && mreq->getStatsFlag());
@@ -288,6 +304,7 @@ void CCache::mustForwardReqDown(MemRequest *mreq, bool miss)
   }
 
   I(!mreq->isRetrying());
+
 
   router->scheduleReq(mreq, 1);
 }
@@ -463,20 +480,10 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
   GI(nSharers==0,shareState==I);
   GI(shareState==I, nSharers==0);
 
-  if (state == I) {
+  if (state == I && shareState == I) {
     invalidate();
     return;
   }
-
-#ifdef DEBUG_RABBIT
-  const char *name = mreq->getCurrMem()->getName();
-  if (strncasecmp(name,"L2",2)==0) {
-    I(state != S);
-  }
-  if (strncasecmp(name,"L3",2)==0) {
-    I(state != S);
-  }
-#endif
 
 }
 // }}}
@@ -484,7 +491,7 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
 bool CCache::notifyLowerLevels(Line *l, MemRequest *mreq)
   // {{{1
 {
-  if (!needsCoherence)
+  if (!needsCoherence && !justDirectory)
     return false;
 
   if (mreq->isReqAck())
@@ -512,7 +519,13 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
 
   int16_t portid = router->getCreatorPort(mreq);
   if (l->shouldNotifyHigherLevels(mreq, portid)) {
-    MsgAction ma = l->othersNeed(mreq->getAction());
+    MsgAction ma = l->othersNeed(mreq->getOrigAction());
+
+    if (ma == ma_setShared && mreq->isReqAck()) {
+      I(mreq->getAction() == ma_setShared || mreq->getAction() == ma_setExclusive);
+      if(mreq->getAction() == ma_setExclusive)
+        mreq->forceReqAction(ma_setShared);
+    }
 
     trackAddress(mreq);
     // TODO: check that it is the correct DL1 IL1 request source
@@ -621,13 +634,13 @@ void CCache::doReq(MemRequest *mreq)
   Line *l = cacheBank->readLine(addr);
   if (l == 0) {
     MTRACE("doReq cache miss");
-		mustForwardReqDown(mreq, true);
+		mustForwardReqDown(mreq, true, 0);
     return;
   }
 
   if (notifyLowerLevels(l,mreq)) {
     MTRACE("doReq change state down");
-    mustForwardReqDown(mreq, false);
+    mustForwardReqDown(mreq, false, l);
     return; // Done (no retrying), and wait for the ReqAck
   }
 
@@ -655,6 +668,12 @@ void CCache::doReq(MemRequest *mreq)
     mreq->setRetrying();
     mreq->restartReq();
     return;
+  }
+
+  if (justDirectory) {
+    if (l->needsDisp())
+      router->sendDirtyDisp(mreq->getAddr(), mreq->getStatsFlag(),1);
+    l->forceInvalid();
   }
 
   if (retrying) {
@@ -744,7 +763,11 @@ void CCache::doReqAck(MemRequest *mreq)
   GI(portid<0,mreq->isHomeNode());
 	l->adjustState(mreq, portid);
 
-  Time_t when = port->reqDone(mreq);
+  if (justDirectory) { // Directory info kept, invalid line to trigger misses
+    l->forceInvalid();
+  }
+
+  Time_t when = port->reqAckDone(mreq);
   if (when==0) {
     MTRACE("doReqAck restartReqAck");
     // Must restart request
@@ -756,13 +779,14 @@ void CCache::doReqAck(MemRequest *mreq)
   port->reqRetire(mreq);
   mshr->retire(addr,mreq);
 
-  avgMissLat.sample(mreq->getTimeDelay(when), mreq->getStatsFlag());
-  avgMemLat.sample(mreq->getTimeDelay(when), mreq->getStatsFlag());
   double lat = mreq->getTimeDelay(when);
+  avgMissLat.sample(lat, mreq->getStatsFlag());
+  avgMemLat.sample(lat, mreq->getStatsFlag());
 #if 0
-  if (mreq->getPC())
-    MSG("%s pc=%llx addr=%llx lat=%g @%lld", getName(), mreq->getPC(), mreq->getAddr(), lat, when);
+  if (lat>30 && strcmp(getName(),"L2(0)")==0)
+    MSG("%s id=%lld addr=%llx lat=%g @%lld when=%lld", getName(), mreq->getID(), mreq->getAddr(), lat, globalClock, when);
 #endif
+
 
   if(mreq->isHomeNode()) {
     MTRACE("doReqAck isHomeNode, calling ackAbs");
@@ -826,7 +850,7 @@ void CCache::doSetState(MemRequest *mreq)
     // We are done
 		bool needsDisp = l->needsDisp();
 		l->adjustState(mreq,portid);
-		GI(mreq->getAction() == ma_setInvalid, l->isInvalid());
+		GI(mreq->getAction() == ma_setInvalid, !l->isValid());
 		GI(mreq->getAction() == ma_setShared , l->isShared());
 
 		mreq->convert2SetStateAck(mreq->getAction(), needsDisp); // Keep shared or invalid
@@ -931,9 +955,6 @@ bool CCache::isBusy(AddrType addr) const
 /* check if CCache can accept more writes {{{1 */
 {
   if(port->isBusy(addr))
-    return true;
-
-  if (!mshr->canAccept(addr))
     return true;
 
   return false;

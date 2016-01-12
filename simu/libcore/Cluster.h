@@ -73,6 +73,7 @@ class Cluster {
 
   int32_t regPool;
 
+  const char *name;
 
  protected:
   void delEntry() {
@@ -101,6 +102,8 @@ class Cluster {
     I(type < iMAX);
     return res[type];
   }
+
+  const char *getName() const { return name; }
 
   StallCause canIssue(DInst *dinst) const;
   void addInst(DInst *dinst);

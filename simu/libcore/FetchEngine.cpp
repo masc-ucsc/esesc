@@ -52,12 +52,13 @@ FetchEngine::FetchEngine(FlowID id
   ,GMemorySystem *gms_
   ,FetchEngine *fe)
   :gms(gms_)
+  ,avgFetchLost("P(%d)_FetchEngine_avgFetchLost", id)
   ,avgBranchTime("P(%d)_FetchEngine_avgBranchTime", id)
   ,avgBranchTime2("P(%d)_FetchEngine_avgBranchTime2", id)
   ,avgFetchTime("P(%d)_FetchEngine_avgFetchTime", id)
   ,nDelayInst1("P(%d)_FetchEngine:nDelayInst1", id)
   ,nDelayInst2("P(%d)_FetchEngine:nDelayInst2", id) // Not enough BB/LVIDs per cycle
-  ,nDelayInst3("P(%d)_FetchEngine:nDelayInst3", id) // bpredDelay
+  ,nDelayInst3("P(%d)_FetchEngine:nDelayInst3", id) 
   ,nFetched("P(%d)_FetchEngine:nFetched", id)
   ,nBTAC("P(%d)_FetchEngine:nBTAC", id) // BTAC corrections to BTB
   //  ,szBB("FetchEngine(%d):szBB", id)
@@ -70,8 +71,12 @@ FetchEngine::FetchEngine(FlowID id
   SescConf->isInt("cpusimu", "fetchWidth",id);
   SescConf->isBetween("cpusimu", "fetchWidth", 1, 1024, id);
   SescConf->isPower2("cpusimu", "fetchWidth", id);
-  FetchWidth = SescConf->getInt("cpusimu", "fetchWidth", id);
+
+  FetchWidth     = SescConf->getInt("cpusimu", "fetchWidth", id);
   FetchWidthBits = log2i(FetchWidth);
+
+  Fetch2Width     = FetchWidth/2;
+  Fetch2WidthBits = log2i(Fetch2Width);
 
   AlignedFetch   = SescConf->getBool("cpusimu","alignedFetch", id);
 
@@ -80,64 +85,43 @@ FetchEngine::FetchEngine(FlowID id
   if( BB4Cycle == 0 )
     BB4Cycle = USHRT_MAX;
 
-  const char *bpredSection = SescConf->getCharPtr("cpusimu","bpred",id);
-
-  BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
-
-  if (BTACDelay)
-    SescConf->isBetween("cpusimu", "bpredDelay",1,BTACDelay,id);
-  else
-    SescConf->isBetween("cpusimu", "bpredDelay",1,1024,id);
-
-  bpredDelay = SescConf->getInt("cpusimu", "bpredDelay",id);
-
-
   if( fe )
-    bpred = new BPredictor(id, FetchWidth, bpredSection, "", fe->bpred);
+    bpred = new BPredictor(id, fe->bpred);
   else
-    bpred = new BPredictor(id, FetchWidth, bpredSection, "");
-
-  SescConf->isInt(bpredSection, "BTACDelay");
-  SescConf->isBetween(bpredSection, "BTACDelay", 0, 1024);
-
-
-  if (BTACDelay!=0) {
-    if (SescConf->checkCharPtr("cpusimu","bpred2",id)) {
-      bpredSection = SescConf->getCharPtr("cpusimu","bpred2",id);
-      if( fe )
-        bpred2 = new BPredictor(id, FetchWidth, bpredSection, "2", fe->bpred2);
-      else
-        bpred2 = new BPredictor(id, FetchWidth, bpredSection, "2");
-    }else{
-      bpred2 = 0;
-    }
-  }else{
-    bpred2 = 0;
-  }
+    bpred = new BPredictor(id);
 
   lastd     = 0;
   missInst  = false;
 
-  // Get some icache L1 parameters
-  enableICache = SescConf->getBool("cpusimu","enableICache", id);
-  if (enableICache) {
-    // If icache is enabled, do not overchage delay (go to memory cache)
-    IL1HitDelay = 0;
-  }else{
-    const char *iL1Section = SescConf->getCharPtr("cpusimu","IL1", id);
-    if (iL1Section) {
-      char *sec = strdup(iL1Section);
-      char *end = strchr(sec, ' ');
-      if (end)
-        *end=0; // Get only the first word
-      // Must be the i-cache
-      SescConf->isInList(sec,"deviceType","icache");
+  const char *isection = SescConf->getCharPtr("cpusimu","IL1", id);
+  const char *pos = strchr(isection,' ');
+  if (pos) {
+    char *pos = strdup(isection);
+    *strchr(pos,' ') = 0;
+    isection = pos;
+  }
 
-      IL1HitDelay = SescConf->getInt(sec,"hitDelay");
-    }else{
-      IL1HitDelay = 1; // 1 cycle if impossible to find the information required
+  const char *itype    = SescConf->getCharPtr(isection,"deviceType");
+  
+  if (strcasecmp(itype,"icache")!=0) {
+    isection = SescConf->getCharPtr(isection,"lowerLevel");
+    const char *pos = strchr(isection,' ');
+    if (pos) {
+      char *pos = strdup(isection);
+      *strchr(pos,' ') = 0;
+      isection = pos;
+    }
+    itype    = SescConf->getCharPtr(isection,"deviceType");
+    if (strcasecmp(itype,"icache")!=0) {
+      MSG("ERROR: the icache should be the first or second after IL1 in the core");
+      SescConf->notCorrect();
     }
   }
+  lineSize = SescConf->getInt(isection,"bsize");
+
+  // Get some icache L1 parameters
+  enableICache = SescConf->getBool("cpusimu","enableICache", id);
+  IL1HitDelay = SescConf->getInt(isection,"hitDelay");
 
   lastMissTime = 0;
 }
@@ -150,49 +134,30 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch, uint16_t* to_del
   const Instruction *inst = dinst->getInst();
 
   I(dinst->getInst()->isControl()); // getAddr is target only for br/jmp
-  PredType prediction     = bpred->predict(dinst, true);
 
-  if(prediction == CorrectPrediction) {
-    if( !dinst->isTaken() ) 
-      return false;
-
-    maxBB--;
-
-    // Only when the branch is taken check maxBB
-    if (bpredDelay > 1) {
-      // Block fetching (not really a miss, but the taken takes time).
-      setMissInst(dinst);
-      unBlockFetchBPredDelayCB::schedule(bpredDelay-1, this , dinst, globalClock);
-      return true;
-    }
-
-    if( maxBB < 1 ) {
-      // No instructions fetched (stall)
-      nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
-      return true;
+  bool fastfix;
+  TimeDelta_t  delay = bpred->predict(dinst, &fastfix);
+  if (delay==0) {
+    if (dinst->isTaken()) {
+      maxBB--;
+      if( maxBB < 1 ) {
+        nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
+        return true;
+      }
     }
 
     return false;
   }
 
-  //MSG("2: Dinst not taken Adding PC %x ID %llu\t  ",dinst->getPC(), dinst->getID());
   setMissInst(dinst);
+
   Time_t n = (globalClock-lastMissTime);
   avgFetchTime.sample(n, dinst->getStatsFlag());
 
-  if( inst->doesJump2Label() ) {
-    nBTAC.inc(dinst->getStatsFlag());
-    unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
-  }else if( bpred2) {
-    nBTAC.inc(dinst->getStatsFlag());
-    if (bpred2->predict2(dinst, true) == CorrectPrediction) {
-      unBlockFetchBPredDelayCB::schedule(BTACDelay,this, dinst,globalClock); // Do not add stats for it
-    }else{
-      dinst->lockFetch(this);
-    }
-  }else{
+  if (fastfix)
+    unBlockFetchBPredDelayCB::schedule(delay, this , dinst, globalClock);
+  else 
     dinst->lockFetch(this);
-  }
 
   return true;
 }
@@ -244,9 +209,22 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     }
 #endif
     if (lastpc == 0) {
+      uint16_t fetchLost;
+
       if (AlignedFetch) {
-        n2Fetch -= ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
+        fetchLost =  ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
+      }else{
+        uint16_t fetchMaxPos = ((dinst->getPC()>>2) & (lineSize-1)) + FetchWidth; // No alignment constrants
+        if (fetchMaxPos>lineSize) {
+          fetchLost = (fetchMaxPos-lineSize);
+        }else{
+          fetchLost =  ((dinst->getPC())>>(Fetch2WidthBits)) & (Fetch2Width-1);
+        }
       }
+
+      avgFetchLost.sample(fetchLost,dinst->getStatsFlag());
+
+      n2Fetch -= fetchLost;
       n2Fetch--;
       lastdiff = false;
     }else{

@@ -1,0 +1,18 @@
+r3kb1r/1bq2pR1/p4P2/3Pp2p/1p6/6QB/PPP4P/2KR4 b kq - bm Rd8 h4; id "CCC-ANAL-2";
+12
+r3kb1r/3n1pp1/p6p/2pPp2q/Pp2N3/3B2PP/1PQ2P2/R3K2R w KQkq - bm d6; id "LCT2-POS-01";
+13
+3r1bk1/p4ppp/Qp2p3/8/1P1B4/Pq2P1P1/2r2P1P/R3R1K1 b - - bm e5; id "LCT2-POS-06";
+13
+r1b2r1k/pp2q1pp/2p2p2/2p1n2N/4P3/1PNP2QP/1PP2RP1/5RK1 w - - bm Nd1; id "LCT2-POS-07";
+12
+5nk1/Q4bpp/5p2/8/P1n1PN2/q4P2/6PP/1R4K1 w - - bm Qd4; id "LCT2-POS-09";
+12
+8/3b4/5k2/2pPnp2/1pP4N/pP1B2P1/P3K3/8 b - - bm f4; id "LCT2-FIN-06";
+16
+r4r1k/pbnq1ppp/np3b2/3p1N2/5B2/2N3PB/PP3P1P/R2QR1K1 w - - bm Ne4; id "KASP-1";
+11
+1r2kb1r/2qbpppp/p7/1p1pP3/P1nP1B2/1Q3N1P/3N1PP1/R1R3K1 w k - bm e6; id "MISC-1";
+13
+8/1N6/1p1P1n2/p1p1p3/P1P5/1P2k3/2K5/8 w - - bm Nxc5; id "ENDG-1";
+18

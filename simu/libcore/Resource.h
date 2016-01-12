@@ -77,12 +77,18 @@ protected:
   PortGeneric *const gen;
   GProcessor  *const gproc;
 
+  GStatsAvg   avgRenameTime;
+  GStatsAvg   avgIssueTime;
+  GStatsAvg   avgExecuteTime;
+  GStatsAvg   avgRetireTime;
+
   const TimeDelta_t lat;
 
   Time_t       usedTime;
 
-  Resource(Cluster *cls, PortGeneric *gen, TimeDelta_t l);
+  Resource(uint8_t type, Cluster *cls, PortGeneric *gen, TimeDelta_t l);
 
+  void setStats(const DInst *dinst);
 
 public:
   virtual ~Resource();
@@ -137,7 +143,7 @@ protected:
   };
   FailType *lf;
 public:
-  MemReplay(Cluster *cls, PortGeneric *gen, StoreSet *ss, TimeDelta_t l);
+  MemReplay(uint8_t type, Cluster *cls, PortGeneric *gen, StoreSet *ss, TimeDelta_t l);
 
 };
 
@@ -150,82 +156,15 @@ protected:
 
   GStatsCntr    stldViolations;
 
-  MemResource(Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
+  MemResource(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
 public:
-};
-
-class MemResource_noMemSpec : public Resource {
-private:
-protected:
-  MemObj        *DL1;
-  GMemorySystem *memorySystem;
-  LSQ           *lsq;
-  MemResource_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *lsq, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
-public:
-};
-
-class SCOOREMem : public MemReplay {
-private:
-protected:
-  MemObj        *DL1;
-  MemObj        *vpc;
-  GMemorySystem *memorySystem;
-  //GStatsCntr    ScooreUpperHierReplays;
-  //std::map<AddrType,DInst> pendLoadBuff;
-
-  const bool enableDcache;
-
-  TimeDelta_t    vpcDelay;
-  TimeDelta_t    DL1Delay;
-  
-  SCOOREMem(Cluster *cls, PortGeneric *aGen, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
-
-public:
-};
-
-class FUSCOORELoad : public SCOOREMem {
-private:
-protected:
-  void retryvpc(DInst *dinst);
-  typedef CallbackMember1<FUSCOORELoad, DInst *, &FUSCOORELoad::retryvpc> retryvpcCB;
-public:
-  FUSCOORELoad(Cluster *cls, PortGeneric *aGen, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
-
-  StallCause canIssue(DInst  *dinst);
-  void       executing(DInst *dinst);
-  void       executed(DInst  *dinst);
-  bool       preretire(DInst  *dinst, bool flushing);
-  bool       retire(DInst    *dinst,  bool flushing);
-  void       performed(DInst *dinst);
-  int32_t    maxLoads;
-  int32_t    free_entries;
-
-};
-
-class FUSCOOREStore : public SCOOREMem {
-private:
-protected:
-  void retryvpc(DInst *dinst);
-  typedef CallbackMember1<FUSCOOREStore, DInst *, &FUSCOOREStore::retryvpc> retryvpcCB;
-
-public:
-  FUSCOOREStore(Cluster *cls, PortGeneric *aGen, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
-
-  StallCause canIssue(DInst  *dinst);
-  void       executing(DInst *dinst);
-  void       executed(DInst  *dinst);
-  bool       preretire(DInst  *dinst, bool flushing);
-  bool       retire(DInst    *dinst,  bool flushing);
-  void       performed(DInst *dinst);
-  int32_t    maxStores;
-  int32_t    free_entries;
-
-
 };
 
 class FULoad : public MemResource {
 private:
   const TimeDelta_t LSDelay;
+
+  Time_t pendingLoadID;
 
   int32_t freeEntries;
   bool enableDcache;
@@ -235,7 +174,7 @@ protected:
   typedef CallbackMember1<FULoad, DInst *, &FULoad::cacheDispatched> cacheDispatchedCB;
 
 public:
-  FULoad(Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
+  FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
@@ -257,7 +196,7 @@ private:
 	SCBQueueType scbQueue;
 
 public:
-  FUStore(Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
+  FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
@@ -272,22 +211,7 @@ private:
 
 protected:
 public:
-  FUGeneric(Cluster *cls, PortGeneric *aGen, TimeDelta_t l);
-
-  StallCause canIssue(DInst  *dinst);
-  void       executing(DInst *dinst);
-  void       executed(DInst  *dinst);
-  bool       preretire(DInst  *dinst, bool flushing);
-  bool       retire(DInst    *dinst,  bool flushing);
-  void       performed(DInst *dinst);
-};
-
-class FUFuze : public Resource {
-private:
-
-protected:
-public:
-  FUFuze(Cluster *cls, PortGeneric *aGen, TimeDelta_t l);
+  FUGeneric(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
@@ -300,10 +224,11 @@ public:
 class FUBranch : public Resource {
 private:
   int32_t freeBranches;
+  bool    drainOnMiss;
 
 protected:
 public:
-  FUBranch(Cluster *cls, PortGeneric *aGen, TimeDelta_t l, int32_t mb);
+  FUBranch(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l, int32_t mb, bool dom);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
@@ -322,52 +247,13 @@ private:
 
 protected:
 public:
-  FURALU(Cluster *cls, PortGeneric *aGen, TimeDelta_t l, bool scooreMemory, int32_t id);
+  FURALU(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l, bool scooreMemory, int32_t id);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
   void       executed(DInst  *dinst);
   bool       preretire(DInst *dinst, bool flushing);
   bool       retire(DInst    *dinst, bool flushing);
-  void       performed(DInst *dinst);
-};
-
-class FULoad_noMemSpec : public MemResource_noMemSpec {
-private:
-  const TimeDelta_t LSDelay;
-
-  int32_t freeEntries;
-  bool enableDcache;
-
-protected:
-  void cacheDispatched(DInst *dinst);
-  typedef CallbackMember1<FULoad_noMemSpec, DInst *, &FULoad_noMemSpec::cacheDispatched> cacheDispatchedCB;
-
-public:
-  FULoad_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
-
-  StallCause canIssue(DInst  *dinst);
-  void       executing(DInst *dinst);
-  void       executed(DInst  *dinst);
-  bool       preretire(DInst  *dinst, bool flushing);
-  bool       retire(DInst    *dinst,  bool flushing);
-  void       performed(DInst *dinst);
-};
-
-class FUStore_noMemSpec : public MemResource_noMemSpec {
-private:
-
-  int32_t freeEntries;
-  bool    enableDcache;
-
-public:
-  FUStore_noMemSpec(Cluster *cls, PortGeneric *aGen, LSQ *_lsq, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
-
-  StallCause canIssue(DInst  *dinst);
-  void       executing(DInst *dinst);
-  void       executed(DInst  *dinst);
-  bool       preretire(DInst  *dinst, bool flushing);
-  bool       retire(DInst    *dinst,  bool flushing);
   void       performed(DInst *dinst);
 };
 

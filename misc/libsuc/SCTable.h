@@ -44,8 +44,8 @@ private:
   void update(uint32_t cid, bool taken);
 
   bool predict(uint32_t cid)  const    { return table[cid & sizeMask] >= Saturate; }
-  bool isLowest(uint32_t cid) const    { return table[cid & sizeMask] == MaxValue; }
-  bool isHighest(uint32_t cid) const   { return table[cid & sizeMask] == 0; }
+  bool isLowest(uint32_t cid) const    { return table[cid & sizeMask] == 0; }
+  bool isHighest(uint32_t cid) const   { return table[cid & sizeMask] == MaxValue; }
   uint8_t getValue(uint32_t cid) const { return table[cid & sizeMask]; }
 };
 

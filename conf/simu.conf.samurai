@@ -14,30 +14,28 @@ areaFactor        = 2
 fetchWidth        = 2
 alignedFetch      = true
 fetchPorts        = 1
-instQueueSize     = 24
+instQueueSize     = 4
 throttlingRatio   = 1.0
 issueWidth        = 2
 retireWidth       = 2
-decodeDelay       = 4
-renameDelay       = 4
-retireDelay       = 3 # cycles between execute and retire
-maxBranches       = 32
+decodeDelay       = 5
+renameDelay       = 5
+retireDelay       = 4 # cycles between execute and retire
+maxBranches       = 4
 bb4Cycle          = 1
 bpredDelay        = 2 #
 maxIRequests      = 4 # +1 icache hit delay -> 1 outs miss
 interClusterLat   = 0 # P4 intra +1?
 clusterScheduler  = "RoundRobin"
 #clusterScheduler  = "Use"
-cluster[0]        = 'AUNIT'
-cluster[1]        = 'MUNIT'
-cluster[2]        = 'CUNIT'
+cluster[0]        = 'UNIT'
 bpred             = 'BPredIssueX'
 #bpred2            = 'BPredIssueX2'
 robSize           = 16
 stForwardDelay    = 4  # +1 clk from the instruction latency
 maxMemory         = 12
-maxLoads          = 24
-maxStores         = 24
+maxLoads          = 12
+maxStores         = 12
 #DL1              = "DL1_core DL1"
 #IL1              = "IL1_core IL1"
 DL1               = "PerCore_DTLB PTLB"
@@ -45,36 +43,27 @@ IL1               = "PerCore_ITLB ITLB"
 MemoryReplay      = false 
 enableICache      = true
 enableDCache      = true
-noMemSpec         = true
+noMemSpec         = false
 StoreSetSize      = 8192
 instWidth         = 32
 opcodeWidth       = 11
 nArchRegs         = 32
 nTotalRegs        = 16
-scbSize           = 10
+scbSize           = 2
 
 #########
-[AUNIT]
+[UNIT]
 blockName         = "AUNIT"
 nRegs             = 1024
-winSize           = 16
+winSize           = 6
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 1
+schedNumPorts     = 2
 schedPortOccp     = 1
 schedDelay        = 0
 iAALULat          = 1
 iAALUUnit         = 'AUNIT_AALU'
 iRALULat          = 1
 iRALUUnit         = 'AUNIT_AALU'
-
-[MUNIT]
-blockName         = "MUNIT"
-nRegs             = 1024
-winSize           = 16
-recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 3
-schedPortOccp     = 1
-schedDelay        = 0
 iBALU_LBRANCHLat  = 4
 iBALU_LBRANCHUnit = 'MUNIT_BALU'
 iBALU_LJUMPLat    = 4
@@ -89,8 +78,6 @@ iBALU_RCALLLat    = 4
 iBALU_RCALLUnit   = 'MUNIT_BALU'
 iBALU_RETLat      = 4
 iBALU_RETUnit     = 'MUNIT_BALU'
-iAALULat          = 1
-iAALUUnit         = 'MUNIT_AALU'
 iSALU_STLat       = 0
 iSALU_STUnit      = 'MUNIT_MALU'
 iSALU_LLLat       = 0
@@ -105,15 +92,6 @@ iCALU_MULTLat     = 5
 iCALU_MULTUnit    = 'MUNIT_CALU'
 iCALU_DIVLat      = 8
 iCALU_DIVUnit     = 'MUNIT_CALU'
-
-[CUNIT]
-blockName         = "CUNIT"
-nRegs             = 32
-winSize           = 32
-recycleAt         = 'retire'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 2
-schedPortOccp     = 1
-schedDelay        = 0 # Minimum latency like a intraClusterLat
 iCALU_FPMULTLat   = 7
 iCALU_FPMULTUnit  = 'CUNIT_CALU'
 iCALU_FPDIVLat    = 28
@@ -122,11 +100,7 @@ iCALU_FPALULat    = 4
 iCALU_FPALUUnit   = 'CUNIT_CALU'
 
 [AUNIT_AALU]
-Num               = 1
-Occ               = 1
-
-[MUNIT_AALU]
-Num               = 1
+Num               = 2
 Occ               = 1
 
 [MUNIT_BALU]
@@ -141,31 +115,27 @@ Occ               = 1
 Num               = 1
 Occ               = 1
 
-[MUNIT_SALU]
-Num               = 1
-Occ               = 1
-
 [CUNIT_CALU]
 Num               = 2
 Occ               = 1
 
 [BPredIssueX]
 type              = "2level"
-bpred4Cycle       = 1 # bpred for cycle
-BTACDelay         = 3 
+addrShift         = 1
+BTACDelay         = 2
 l1size            = 1
-l2size            = 4*256
-l2Bits            = 1
-historySize       = 9
-Metasize          = 4*256
-MetaBits          = 1
-localSize         = 4*256
-localBits         = 1
-btbSize           = 16
+l2size            = 256
+l2Bits            = 2
+historySize       = 8
+Metasize          = 256
+MetaBits          = 2
+localSize         = 256
+localBits         = 2
+btbSize           = 32 # 16 reality
 btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
-rasSize           = 0
+rasSize           = 4
 # Power Parameters
 tbits             = 2       # Bits for each table entry
 tsize             = 16*1024  # Size of each table
@@ -203,7 +173,7 @@ replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 2
-missDelay         = 2
+missDelay         = 1
 lowerLevel        = "PrivL2 L2 sharedby 1"
 pfetchBuffSize   = 16
 
@@ -255,9 +225,9 @@ skew              = false
 bsize             = 64
 replPolicy        = 'LRU'
 bkNumPorts        = 1
-bkPortOccp        = 0
-hitDelay          = 3
-missDelay         = 3
+bkPortOccp        = 1
+hitDelay          = 3 # + 1
+missDelay         = 2
 lowerLevel        = "PrivL2 L2 sharedby 2"  # I and D cache
 bankShift         = 4
 fillBuffSize      = 4
@@ -271,8 +241,8 @@ inclusive         = true
 directory         = true
 blockName         = "L2"
 numBanks          = 1
-sendFillNumPorts  = 0
-sendFillPortOccp  = 1
+sendFillNumPorts  = 1
+sendFillPortOccp  = 4
 maxRequests       = 24
 size              = 1*1024*1024
 assoc             = 16
@@ -281,7 +251,7 @@ replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 16-3 # 3 for L1 miss delay
-missDelay         = 16-3
+missDelay         = 16-4
 lowerLevel        = "$(memLevel)"
 #lowerLevel       = "L3Cache L3 shared"
 fillBuffSize      = 4

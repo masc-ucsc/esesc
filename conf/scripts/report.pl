@@ -1125,7 +1125,7 @@ sub showStatReport {
     my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
     next unless( $clockTicks > 1 );
 
-    printf "#table9a                            IPC : szFB : szBB : brMiss : brMissTime : wasteRatio : iMissRate\n";
+    printf "#table9a                            IPC : brMiss : szFB : szBB : brMissTime : wasteRatio : iMissRate\n";
     printf "table9a  %26s ", $name;
 
     $nInst = getProcnInst($i);
@@ -1133,17 +1133,18 @@ sub showStatReport {
     # IPC
     printf " %9.3f ", $nInst/$clockTicks;
 
+    # branchMissRate
+    my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
+    my $nMiss = $cf->getResultField("P(${i})_BPred","nMiss");
+    printf " %9.3f ", 100*$nMiss/($nBranches+1);
+
     # szFB
     my $nTaken    = $cf->getResultField("P(${i})_BPred","nTaken");
     printf " %9.2f ", $nInst/($nTaken+1);
 
     # szBB
-    my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
     printf " %9.2f ", $nInst/($nBranches+1);
 
-    # branchMissRate
-    my $nMiss = $cf->getResultField("P(${i})_BPred","nMiss");
-    printf " %9.2f ", 100*$nMiss/($nBranches+1);
 
     # brMissTime
     my $avgBranchTime = $cf->getResultField("P(${i})_FetchEngine_avgBranchTime","v");

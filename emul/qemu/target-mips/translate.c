@@ -4660,8 +4660,11 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
         /* Jump to immediate */
         btgt = ((ctx->pc + insn_bytes) & (int32_t)0xF0000000) | (uint32_t)offset;
         break;
-    case OPC_JR:
     case OPC_JALR:
+#ifdef CONFIG_ESESC
+        blink = 31;
+#endif
+    case OPC_JR:
         /* Jump to register */
         if (offset != 0 && offset != 16) {
             /* Hint = 0 is JR/JALR, hint 16 is JR.HB/JALR.HB, the
@@ -4680,34 +4683,8 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
         generate_exception(ctx, EXCP_RI);
         goto out;
     }
+
     if (bcond_compute == 0) {
-#ifdef CONFIG_ESESC
-      int link = 0;
-      int use_btarget = 0;
-
-      if (opc == OPC_JIALC || opc == OPC_BALC)
-        link = 1;
-
-      if (opc == OPC_JIC || opc == OPC_JIALC)
-        use_btarget = 1;
-
-      if (rs == 31 || rt == 31) {
-        if (use_btarget)
-          ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
-        else
-          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
-      }else if (link) {
-        if (use_btarget)
-          ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_LCALL, rs, rt<0?0:rt, 31);
-        else
-          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LCALL, rs, rt<0?0:rt, 31);
-      }else{
-        if (use_btarget)
-          ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_LJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
-        else
-          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
-      }
-#endif
         /* No condition to be computed */
         switch (opc) {
         case OPC_BEQ:     /* rx == rx        */
@@ -4880,9 +4857,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
         ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RCALL, rs, rt<0?0:rt, blink);
       else
         ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LCALL, rs, rt<0?0:rt, blink);
-    }else if (ctrl_reg && rs == 31) {
+    }else if (ctrl_reg && (rt == 31 || rs == 31)) {
       ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
-    }else if (rs == 31) {
+    }else if (rt == 31 || rs == 31) {
       ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
     }else if (bcond_compute == 0) {
       if (ctrl_reg)
@@ -11365,6 +11342,12 @@ static inline void clear_branch_hflags(DisasContext *ctx)
     }
 }
 
+#ifdef CONFIG_ESESC
+    int esesc_link = 0;
+    int esesc_ret  = 0;
+    int esesc_drop = 0;
+#endif
+
 static void gen_branch(DisasContext *ctx, int insn_bytes)
 {
     if (ctx->hflags & MIPS_HFLAG_BMASK) {
@@ -11376,6 +11359,10 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
         switch (proc_hflags & MIPS_HFLAG_BMASK_BASE) {
         case MIPS_HFLAG_FBNSLOT:
             MIPS_DEBUG("forbidden slot");
+            if (esesc_drop==0) {
+              ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+
             gen_goto_tb(ctx, 0, ctx->pc + insn_bytes);
             break;
         case MIPS_HFLAG_B:
@@ -11384,11 +11371,27 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
             if (proc_hflags & MIPS_HFLAG_BX) {
                 tcg_gen_xori_i32(hflags, hflags, MIPS_HFLAG_M16);
             }
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else
+                ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
             gen_goto_tb(ctx, 0, ctx->btarget);
             break;
         case MIPS_HFLAG_BL:
             /* blikely taken case */
             MIPS_DEBUG("blikely branch taken");
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else
+                ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
             gen_goto_tb(ctx, 0, ctx->btarget);
             break;
         case MIPS_HFLAG_BC:
@@ -11398,8 +11401,18 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
                 TCGLabel *l1 = gen_new_label();
 
                 tcg_gen_brcondi_tl(TCG_COND_NE, bcond, 0, l1);
+#ifdef CONFIG_ESESC
+                if (esesc_drop==0) {
+                  ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+                }
+#endif
                 gen_goto_tb(ctx, 1, ctx->pc + insn_bytes);
                 gen_set_label(l1);
+#ifdef CONFIG_ESESC
+                if (esesc_drop==0) {
+                  ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+                }
+#endif
                 gen_goto_tb(ctx, 0, ctx->btarget);
             }
             break;
@@ -11422,6 +11435,14 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
             } else {
                 tcg_gen_mov_tl(cpu_PC, btarget);
             }
+#ifdef CONFIG_ESESC
+    if (esesc_drop == 0) {
+      if (esesc_link)
+        ESESC_TRACE_LCTRL(ctx->pc-4,btarget,iBALU_LCALL, 0, 0, 31);
+      else
+        ESESC_TRACE_LCTRL(ctx->pc-4,btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+    }
+#endif
             if (ctx->singlestep_enabled) {
                 save_cpu_state(ctx, 0);
                 gen_helper_0e0i(raise_exception, EXCP_DEBUG);
@@ -11452,6 +11473,10 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         generate_exception(ctx, EXCP_RI);
         goto out;
     }
+#ifdef CONFIG_ESESC
+   esesc_link = 0;
+   esesc_ret  = 0;
+#endif
 
     /* Load needed operands and calculate btarget */
     switch (opc) {
@@ -11463,6 +11488,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->pc + 4, offset);
         if (rs <= rt && rs == 0) {
+#ifdef CONFIG_ESESC
+          esesc_link = 1;
+#endif
             /* OPC_BEQZALC, OPC_BNEZALC */
             tcg_gen_movi_tl(cpu_gpr[31], ctx->pc + 4 + m16_lowbit);
         }
@@ -11477,6 +11505,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
     case OPC_BLEZALC: /* OPC_BGEZALC, OPC_BGEUC */
     case OPC_BGTZALC: /* OPC_BLTZALC, OPC_BLTUC */
         if (rs == 0 || rs == rt) {
+#ifdef CONFIG_ESESC
+          esesc_link = 1;
+#endif
             /* OPC_BLEZALC, OPC_BGEZALC */
             /* OPC_BGTZALC, OPC_BLTZALC */
             tcg_gen_movi_tl(cpu_gpr[31], ctx->pc + 4 + m16_lowbit);
@@ -11514,17 +11545,27 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         generate_exception(ctx, EXCP_RI);
         goto out;
     }
+#ifdef CONFIG_ESESC
+        if (rt == 31 || rs == 31)
+          esesc_ret = 1;
+#endif
 
     if (bcond_compute == 0) {
         /* Uncoditional compact branch */
         switch (opc) {
         case OPC_JIALC:
+#ifdef CONFIG_ESESC
+            esesc_link = 1;
+#endif
             tcg_gen_movi_tl(cpu_gpr[31], ctx->pc + 4 + m16_lowbit);
             /* Fallthrough */
         case OPC_JIC:
             ctx->hflags |= MIPS_HFLAG_BR;
             break;
         case OPC_BALC:
+#ifdef CONFIG_ESESC
+            esesc_link = 1;
+#endif
             tcg_gen_movi_tl(cpu_gpr[31], ctx->pc + 4 + m16_lowbit);
             /* Fallthrough */
         case OPC_BC:
@@ -11538,6 +11579,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
 
         /* Generating branch here as compact branches don't have delay slot */
         gen_branch(ctx, 4);
+#ifdef CONFIG_ESESC
+        esesc_link = 0;
+#endif
     } else {
         /* Conditional compact branch */
         TCGLabel *fs = gen_new_label();
@@ -20750,7 +20794,13 @@ gen_intermediate_code_internal(MIPSCPU *cpu, TranslationBlock *tb,
             }
         }
         if (is_slot) {
+#ifdef CONFIG_ESESC
+          esesc_drop = 1;
+#endif
             gen_branch(&ctx, insn_bytes);
+#ifdef CONFIG_ESESC
+          esesc_drop = 0;
+#endif
         }
         ctx.pc += insn_bytes;
 

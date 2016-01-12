@@ -57,6 +57,9 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   : name(strdup(iname))
     ,sFid(fid)
     ,emul(emu)
+    ,lastPhasenInst(0)
+    ,meauCPI(0.0)
+    ,restartRabbit(false)
 {
   clock_gettime(CLOCK_REALTIME,&startTime);
 
@@ -78,6 +81,7 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
     syscall_file = 0;
 
   mode  = EmuInit; 
+  next_mode = EmuRabbit;
 
   phasenInst = 0;
   totalnInst = 0;
@@ -145,6 +149,7 @@ EmuSampler::~EmuSampler()
     fclose(syscall_file);
     syscall_file = 0;
   }
+  free((char *)name); // cast needed because name is const *
 }
 /*  */
 

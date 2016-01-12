@@ -58,18 +58,19 @@ private:
   GMemorySystem *const gms;
 
   BPredictor   *bpred;
-  BPredictor   *bpred2; // 2nd level predictor
 
   uint16_t      FetchWidth;
   uint16_t      FetchWidthBits;
+  uint16_t      Fetch2Width;
+  uint16_t      Fetch2WidthBits;
+
 	bool          AlignedFetch;
 
   uint16_t      BB4Cycle;
-  uint16_t      bpredDelay;
   uint16_t      maxBB;
 
-  TimeDelta_t   BTACDelay;
   TimeDelta_t   IL1HitDelay;
+  uint16_t      lineSize;
 
   // InstID of the address that generated a misprediction
  
@@ -86,6 +87,7 @@ protected:
   bool processBranch(DInst *dinst, uint16_t n2Fetchedi, uint16_t* maxbb);
 
   // ******************* Statistics section
+  GStatsAvg  avgFetchLost;
   GStatsAvg  avgBranchTime;
   GStatsAvg  avgBranchTime2;
   GStatsAvg  avgFetchTime;

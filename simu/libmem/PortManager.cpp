@@ -38,7 +38,7 @@ PortManagerBanked::PortManagerBanked(const char *section, MemObj *_mobj)
 
 	hitDelay  = SescConf->getInt(section, "hitDelay");
 	missDelay = SescConf->getInt(section, "missDelay");
-	SescConf->isBetween(section,"missDelay",0,hitDelay);
+	SescConf->isBetween(section,"missDelay",0,hitDelay-1);
 
 	tagDelay  = hitDelay-missDelay;
 	dataDelay = hitDelay-tagDelay;
@@ -119,10 +119,25 @@ Time_t PortManagerBanked::reqDone(MemRequest *mreq)
   if (mreq->isWarmup())
     return globalClock+1;
 
-  Time_t when=sendFillPort->nextSlot(mreq->getStatsFlag())+dataDelay;
+  Time_t when=sendFillPort->nextSlot(mreq->getStatsFlag())+tagDelay+dataDelay;
 
   // TRACE 
-  //MSG("%5lld @%lld %-8s done %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
+//  if (strcmp(mobj->getName(),"L2(0)")==0)
+//    MSG("%5lld @%lld %-8s Adone %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
+
+  return when;
+}
+
+Time_t PortManagerBanked::reqAckDone(MemRequest *mreq)
+{
+  if (mreq->isWarmup())
+    return globalClock+1;
+
+  Time_t when=sendFillPort->nextSlot(mreq->getStatsFlag())+tagDelay;
+
+  // TRACE 
+//  if (strcmp(mobj->getName(),"L2(0)")==0)
+//  MSG("%5lld @%lld %-8s  done %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
 
   return when;
 }
@@ -150,7 +165,8 @@ void PortManagerBanked::req(MemRequest *mreq)
     curRequests++;
 
   // TRACE 
-  //MSG("%5lld @%lld %-8s req  %12llx curReq=%d",mreq->getID(),globalClock,mobj->getName(),mreq->getAddr(),curRequests);
+//  if (strcmp(mobj->getName(),"L2(0)")==0)
+//  MSG("%5lld @%lld %-8s req   %12llx curReq=%d",mreq->getID(),globalClock,mobj->getName(),mreq->getAddr(),curRequests);
 
   if (mreq->isWarmup())
     mreq->redoReqAbs(globalClock+1);

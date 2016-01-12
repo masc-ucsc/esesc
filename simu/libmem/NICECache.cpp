@@ -55,6 +55,7 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   ,writeHalfMiss   ("%s:writeHalfMiss",   sName)
   ,writeExclusive  ("%s:writeExclusive",  sName)
   ,writeBack       ("%s:writeBack",       sName)
+  ,avgMemLat       ("%s_avgMemLat",       sName)
 {
 
 	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
@@ -126,6 +127,7 @@ void NICECache::doReq(MemRequest *mreq)
       hdelay = 1;
     }
   }
+  avgMemLat.sample(hdelay, mreq->getStatsFlag());  
   router->scheduleReqAck(mreq, hdelay);
 }
 /* }}} */

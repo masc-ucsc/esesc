@@ -135,6 +135,7 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 void DummyMemObj::doReq(MemRequest *req)    
   /* req {{{1 */
 { 
+  I(0);
   req->ack();
 }
 /* }}} */
@@ -149,6 +150,7 @@ void DummyMemObj::doReqAck(MemRequest *req)
 void DummyMemObj::doSetState(MemRequest *req)    
   /* setState {{{1 */
 { 
+  I(0);
   req->ack(); 
 }
 /* }}} */

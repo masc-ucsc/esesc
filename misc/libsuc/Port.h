@@ -94,7 +94,6 @@ public:
 
 class PortUnlimited : public PortGeneric {
 protected:
-  Time_t until;
 public:
   PortUnlimited(const char *name);
   

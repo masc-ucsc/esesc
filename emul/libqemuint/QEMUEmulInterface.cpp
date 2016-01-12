@@ -26,11 +26,12 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "QEMUInterface.h"
 #include "SescConf.h"
 
-  std::vector<FlowID> QEMUEmulInterface::fidFreePool; // 0 not available for this core type, 
-                                                      // 1 free
-                                                      // 2 taken
-  std::map<FlowID, FlowID> QEMUEmulInterface::fidMap;
-  QEMUEmulInterface::QEMUEmulInterface(const char *section) 
+std::vector<FlowID> QEMUEmulInterface::fidFreePool; // 0 not available for this core type, 
+                                                    // 1 free
+                                                    // 2 taken
+std::map<FlowID, FlowID> QEMUEmulInterface::fidMap;
+
+QEMUEmulInterface::QEMUEmulInterface(const char *section) 
 : EmulInterface(section) 
 {
   
@@ -62,20 +63,22 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
       }
     }
   }
-  
-  QEMUArgs *qargs = (QEMUArgs *) malloc(sizeof(QEMUArgs));
-  int qargpos = 0;
-  int qargc = 1;
+
   bool dorun = SescConf->getBool(section,"dorun");
   if (!dorun) {
     nFlows = 0;
+    reader = NULL;
     return;
   }
 
+  QEMUArgs *qargs = (QEMUArgs *) malloc(sizeof(QEMUArgs));
+  int qargpos = 0;
+  int qargc = 1;
   int paramcount = SescConf->getRecordSize(section,"params");
 
   for(int j = 0; j < paramcount; j++) {
     char *s = strdup(SescConf->getCharPtr(section,"params",j));
+    char *s_start = s;
     qargc++;
     while(*s) {
       if(isspace(*s))
@@ -84,6 +87,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
         s++;
       s++;
     }
+    free(s_start);
   }
 
   qargs->qargc = qargc;
@@ -91,11 +95,13 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
   qargs->qargv[qargpos++] = (char *) "qemu";
   for(int j = 0; j < paramcount; j++) {
     char *param = strdup(SescConf->getCharPtr(section,"params",j));
+    char *param_start = param;
     char *splitparam = strtok(param, " ");
     while(splitparam != NULL) {
       qargs->qargv[qargpos++] = strdup(splitparam);
       splitparam = strtok(NULL," ");
     }
+    free(param_start);
   }
 
   firstassign = 1; // zero is already assigned as FID

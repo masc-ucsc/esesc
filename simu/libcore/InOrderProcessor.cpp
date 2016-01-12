@@ -46,6 +46,7 @@
 
 InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   :GProcessor(gm, i)
+  ,RetireDelay(SescConf->getInt("cpusimu", "RetireDelay",i))
   ,IFID(i, gm)
   ,pipeQ(i)
   ,lsq(i,32768)
@@ -258,9 +259,6 @@ void InOrderProcessor::retire()
     DInst *dinst = ROB.top();
     stats = dinst->getStatsFlag();
 
-    if( !dinst->isExecuted() )
-      break;
-
     bool done = dinst->getClusterResource()->preretire(dinst, false);
     if( !done )
       break;
@@ -290,6 +288,9 @@ void InOrderProcessor::retire()
     DInst *dinst = rROB.top();
 
     if (!dinst->isExecuted())
+      break;
+
+    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock)
       break;
 
     I(dinst->getCluster());
