@@ -152,13 +152,17 @@ Occ               = 1
 
 [BPredIssueX]
 type              = "2level"
+#type              = "2bit"
 addrShift         = 1
+#useDolc           = true
 bpred4Cycle       = 1 # bpred for cycle
 BTACDelay         = 4 # no BTAC
 l1size            = 1
 l2size            = 2*1024
 l2Bits            = 2
-historySize       = 11
+size            = 2*1024
+Bits            = 2
+historySize       = 9
 Metasize          = 2*1024
 MetaBits          = 2
 localSize         = 2*1024
@@ -167,17 +171,20 @@ btbSize           = 32
 btbBsize          = 1
 btbAssoc          = 32
 btbReplPolicy     = 'LRU'
+btbHistorySize    = 0
 rasSize           = 8
+rasPrefetch       = 0
 
 [BPredIssueX2]
 type              = "2level"
 addrShift         = 1
+useDolc           = true
 bpred4Cycle       = 1 # bpred for cycle
 BTACDelay         = 1 # no BTAC
 l1size            = 1
 l2size            = 2*1024
 l2Bits            = 2
-historySize       = 11
+historySize       = 9
 Metasize          = 2*1024
 MetaBits          = 2
 localSize         = 2*1024
@@ -186,7 +193,10 @@ btbSize           = 512
 btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
+btbicache         = true
+btbHistorySize    = 9
 rasSize           = 0
+rasPrefetch       = 0
 # Power Parameters
 tbits             = 2       # Bits for each table entry
 tsize             = 16*1024  # Size of each table
@@ -213,6 +223,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 
@@ -230,6 +241,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 ###############################
@@ -333,6 +345,7 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0061637333/2 #0.0184912 #Cacti6.5
+nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

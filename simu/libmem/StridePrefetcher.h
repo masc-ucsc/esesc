@@ -187,6 +187,7 @@ public:
 	void ifMiss(MemRequest *mreq);
 	void learnMiss(AddrType addr);
 
+  void tryPrefetch(AddrType addr, bool doStats);
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 

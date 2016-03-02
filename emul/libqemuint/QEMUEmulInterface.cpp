@@ -185,6 +185,13 @@ void QEMUEmulInterface::freeFid(FlowID fid)
   //pthread_mutex_unlock(&mutex);
 }
 
+DInst *QEMUEmulInterface::peekHead(FlowID fid) 
+{
+  I(nFlows);
+
+  return reader->peekHead(fid);
+}
+
 DInst *QEMUEmulInterface::executeHead(FlowID fid) 
 {
   I(nFlows);

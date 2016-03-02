@@ -211,17 +211,7 @@ uint32_t QEMUReader::wait_until_FIFO_full(FlowID fid)
 }
 // }}}
 
-DInst *QEMUReader::executeHead(FlowID fid)
-/* speculative advance of execution {{{1 */
-{
-  if (!ruffer[fid].empty()) {
-    DInst *dinst = ruffer[fid].getHead();
-    ruffer[fid].popHead();
-    I(dinst); // We just added, there should be one or more
-    return dinst;
-  }
-
-
+void QEMUReader::populate(FlowID fid) {
   int conta = 0;
   while(!tsfifo[fid].full()) {
     
@@ -249,12 +239,12 @@ DInst *QEMUReader::executeHead(FlowID fid)
 
     if (qsamplerlist[fid]->isActive(fid) == false) {
       MSG("DOWN");
-      return 0;
+      return;
     }
 
     if (conta++>100) {
       //printf("+%d",fid);
-      return 0;
+      return;
     }
   }
 
@@ -274,14 +264,42 @@ DInst *QEMUReader::executeHead(FlowID fid)
     pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
   }
   pthread_mutex_unlock(&mutex_ctrl); // END
+}
 
-  if (ruffer[fid].empty())
-    return 0;
+DInst *QEMUReader::peekHead(FlowID fid) {
 
-  DInst *dinst = ruffer[fid].getHead();
-  ruffer[fid].popHead();
-  I(dinst); // We just added, there should be one or more
-  return dinst;
+  do{
+
+    if (!ruffer[fid].empty()) {
+      DInst *dinst = ruffer[fid].getHead();
+      I(dinst); // We just added, there should be one or more
+      return dinst;
+    }
+
+    populate(fid);
+
+  }while(!ruffer[fid].empty());
+
+  return 0;
+}
+
+DInst *QEMUReader::executeHead(FlowID fid)
+/* speculative advance of execution {{{1 */
+{
+  do{
+
+    if (!ruffer[fid].empty()) {
+      DInst *dinst = ruffer[fid].getHead();
+      ruffer[fid].popHead();
+      I(dinst); // We just added, there should be one or more
+      return dinst;
+    }
+
+    populate(fid);
+
+  }while(!ruffer[fid].empty());
+
+  return 0;
 }
 /* }}} */
 

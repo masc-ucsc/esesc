@@ -42,7 +42,9 @@
 
 #include "Report.h"
 #include "BPred.h"
+#include "MemObj.h"
 #include "SescConf.h"
+#include "IMLIBest.h"
 
 /*****************************************
  * BPred
@@ -64,12 +66,18 @@ BPred::BPred(int32_t i, const char *sec, const char *sname, const char *name)
 BPred::~BPred() {
 }
 
+void BPred::fetchBoundary(DInst *dinst) {
+  // No fetch boundary implemented (must be specialized per predictor if supported)
+
+}
+
 /*****************************************
  * RAS
  */
 BPRas::BPRas(int32_t i, const char *section, const char *sname)
   :BPred(i, section, sname, "RAS")
    ,RasSize(SescConf->getInt(section,"rasSize"))
+   ,rasPrefetch(SescConf->getInt(section,"rasPrefetch"))
 {
   // Constraints
   SescConf->isInt(section, "rasSize");
@@ -91,8 +99,22 @@ BPRas::~BPRas()
   delete stack;
 }
 
-PredType BPRas::predict(DInst *dinst, bool doUpdate)
-{
+void BPRas::tryPrefetch(MemObj *il1, bool doStats) {
+
+  if (rasPrefetch == 0)
+    return;
+
+  for(int j=0;j<rasPrefetch;j++) {
+    int i = index-j-1;
+    while (i<0)
+      i = RasSize - 1;
+
+    il1->tryPrefetch(stack[i], doStats);
+  }
+}
+
+PredType BPRas::predict(DInst *dinst, bool doUpdate, bool doStats) {
+
   // RAS is a little bit different than other predictors because it can update
   // the state without knowing the oracleNextPC. All the other predictors update the
   // statistics when the branch is resolved. RAS automatically updates the
@@ -138,7 +160,23 @@ PredType BPRas::predict(DInst *dinst, bool doUpdate)
  */
 BPBTB::BPBTB(int32_t i, const char *section, const char *sname, const char *name)
   :BPred(i, section, sname, name ? name : "BTB")
+  ,nHitLabel("P(%d)_BPred%s_%s:nHitLabel",i,sname, name?name:"BTB")
 {
+  if (SescConf->checkInt(section,"btbHistorySize"))
+    btbHistorySize=SescConf->getInt(section,"btbHistorySize");
+  else
+    btbHistorySize=0;
+
+  if (btbHistorySize)
+    dolc = new DOLC(btbHistorySize+1,5,2,2);
+  else
+    dolc = 0;
+
+  if (SescConf->checkBool(section,"btbicache"))
+    btbicache = SescConf->getBool(section,"btbicache");
+  else
+    btbicache = false;
+
   if( SescConf->getInt(section,"btbSize") == 0 ) {
     // Oracle
     data = 0;
@@ -168,13 +206,16 @@ void BPBTB::updateOnly(DInst *dinst)
   cl->inst = dinst->getAddr();
 }
 
-PredType BPBTB::predict(DInst *dinst, bool doUpdate)
+PredType BPBTB::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   bool ntaken = !dinst->isTaken();
 
   if (data == 0) {
     // required when BPOracle
-    nHit.inc(doUpdate && dinst->getStatsFlag());
+    if (dinst->getInst()->doesCtrl2Label()) 
+      nHitLabel.inc(doUpdate && dinst->getStatsFlag() && doStats);
+    else
+      nHit.inc(doUpdate && dinst->getStatsFlag() && doStats);
 
     if (ntaken) {
       // Trash result because it shouldn't have reach BTB. Otherwise, the
@@ -186,27 +227,47 @@ PredType BPBTB::predict(DInst *dinst, bool doUpdate)
 
   uint32_t key = calcHist(dinst->getPC());
 
+  if (dolc) {
+    if (doUpdate)
+      dolc->update(dinst->getPC(),false);
+
+    key ^= dolc->getSign(btbHistorySize,btbHistorySize);
+  }
+
   if ( ntaken || !doUpdate ) {
     // The branch is not taken. Do not update the cache
+    if (dinst->getInst()->doesCtrl2Label())  {
+      nHitLabel.inc(doStats && doUpdate && dinst->getStatsFlag());
+      return NoBTBPrediction;
+    }
+
     BTBCache::CacheLine *cl = data->readLine(key);
 
     if( cl == 0 ) {
-      nMiss.inc(doUpdate && dinst->getStatsFlag());
+      nHit.inc(doStats && doUpdate && dinst->getStatsFlag());
       return NoBTBPrediction; // NoBTBPrediction because BTAC would hide the prediction
     }
 
     if( cl->inst == dinst->getAddr() ) {
-      nHit.inc(doUpdate && dinst->getStatsFlag());
+      nHit.inc(doStats && doUpdate && dinst->getStatsFlag());
       return CorrectPrediction;
     }
 
-    nMiss.inc(doUpdate && dinst->getStatsFlag());
+    nMiss.inc(doStats && doUpdate && dinst->getStatsFlag());
     return MissPrediction;
   }
 
   I(doUpdate);
 
   // The branch is taken. Update the cache
+
+  if (btbicache) {
+    // i-cache results visible, possible to fix all the branch and jumps to label BTB misses
+    if (dinst->getInst()->doesCtrl2Label())  {
+      nHitLabel.inc(doStats && doUpdate && dinst->getStatsFlag());
+      return CorrectPrediction;
+    }
+  }
 
   BTBCache::CacheLine *cl = data->fillLine(key);
   I( cl );
@@ -215,13 +276,13 @@ PredType BPBTB::predict(DInst *dinst, bool doUpdate)
   cl->inst = dinst->getAddr();
 
   if( predictID == dinst->getAddr() ) {
-    nHit.inc(dinst->getStatsFlag());
+    nHit.inc(doStats && doUpdate && dinst->getStatsFlag());
     //MSG("hit :%llx -> %llx",dinst->getPC(), dinst->getAddr());
     return CorrectPrediction;
   }
 
   //MSG("miss:%llx -> %llx (%llx)",dinst->getPC(), dinst->getAddr(), predictID);
-  nMiss.inc(dinst->getStatsFlag());
+  nMiss.inc(doStats && doUpdate && dinst->getStatsFlag());
   return NoBTBPrediction;
 }
 
@@ -229,22 +290,22 @@ PredType BPBTB::predict(DInst *dinst, bool doUpdate)
  * BPOracle
  */
 
-PredType BPOracle::predict(DInst *dinst, bool doUpdate) {
+PredType BPOracle::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if( !dinst->isTaken() )
     return CorrectPrediction; //NT
   
-  return btb.predict(dinst, doUpdate);
+  return btb.predict(dinst, doUpdate, doStats);
 }
 
 /*****************************************
  * BPTaken
  */
 
-PredType BPTaken::predict(DInst *dinst, bool doUpdate) {
+PredType BPTaken::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if( dinst->getInst()->isJump() || dinst->isTaken())
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
-  PredType p = btb.predict(dinst,false);
+  PredType p = btb.predict(dinst,false, doStats);
  
  if (p == CorrectPrediction)
     return CorrectPrediction; // NotTaken and BTB empty
@@ -256,9 +317,9 @@ PredType BPTaken::predict(DInst *dinst, bool doUpdate) {
  * BPNotTaken
  */
 
-PredType  BPNotTaken::predict(DInst *dinst, bool doUpdate) {
+PredType  BPNotTaken::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   return dinst->isTaken() ? MissPrediction : CorrectPrediction;
 }
@@ -267,14 +328,14 @@ PredType  BPNotTaken::predict(DInst *dinst, bool doUpdate) {
  * BPNotTakenEnhaced
  */
 
-PredType  BPNotTakenEnhanced::predict(DInst *dinst, bool doUpdate) {
+PredType  BPNotTakenEnhanced::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate); // backward branches predicted as taken (loops)
+    return btb.predict(dinst, doUpdate, doStats); // backward branches predicted as taken (loops)
 
   if (dinst->isTaken()) {
     AddrType dest = dinst->getAddr();
     if (dest < dinst->getPC())
-      return btb.predict(dinst, doUpdate); // backward branches predicted as taken (loops)
+      return btb.predict(dinst, doUpdate, doStats); // backward branches predicted as taken (loops)
 
     return MissPrediction; // Forward branches predicted as not-taken, but it was taken 
   }
@@ -303,10 +364,10 @@ BP2bit::BP2bit(int32_t i, const char *section, const char *sname)
   // Done
 }
 
-PredType BP2bit::predict(DInst *dinst, bool doUpdate)
+PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   bool taken = dinst->isTaken();
 
@@ -322,7 +383,51 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate)
     return MissPrediction;
   }
 
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
+}
+
+/*****************************************
+ * BPIMLI: SC-TAGE-L with IMLI from Seznec Micro paper
+ */
+
+BPIMLI::BPIMLI(int32_t i, const char *section, const char *sname)
+  :BPred(i, section, sname, "imli")
+  ,btb(  i, section, sname)
+  ,FetchPredict(SescConf->getBool(section,"FetchPredict"))
+{
+  imli = new IMLIBest;
+}
+
+void BPIMLI::fetchBoundary(DInst *dinst) {
+  if (FetchPredict)
+    imli->fetchBoundary(dinst->getPC());
+}
+
+PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
+
+  if( dinst->getInst()->isJump() ) {
+    imli->TrackOtherInst(dinst->getPC(), dinst->getInst()->getOpcode(), dinst->getAddr());
+    return btb.predict(dinst, doUpdate, doStats);
+  }
+
+  bool taken = dinst->isTaken();
+
+  if (!FetchPredict)
+    imli->fetchBoundary(dinst->getPC());
+
+  bool ptaken = imli->getPrediction(dinst->getPC());
+
+  if (doUpdate) {
+    imli->updatePredictor(dinst->getPC(), taken, ptaken, dinst->getAddr());
+  }
+
+  if( taken != ptaken ) {
+    if (doUpdate)
+      btb.updateOnly(dinst);
+    return MissPrediction;
+  }
+
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 /*****************************************
@@ -339,6 +444,7 @@ BP2level::BP2level(int32_t i, const char *section, const char *sname)
    ,globalTable(section
                 ,SescConf->getInt(section,"l2Size")
                 ,SescConf->getInt(section,"l2Bits"))
+   ,dolc(SescConf->getInt(section,"historySize"),5,2,2)
 {
   // Constraints
   SescConf->isInt(section, "l1Size");
@@ -352,6 +458,12 @@ BP2level::BP2level(int32_t i, const char *section, const char *sname)
   SescConf->isPower2(section, "l2Size");
   SescConf->isBetween(section, "l2Bits", 1, 7);
 
+  if (SescConf->checkBool(section,"useDolc")) {
+    useDolc = SescConf->checkBool(section,"useDolc");
+  }else{
+    useDolc = false;
+  }
+
   I((l1Size & (l1Size - 1)) == 0); 
 
   historyTable = new HistoryType[l1Size];
@@ -363,22 +475,37 @@ BP2level::~BP2level()
   delete historyTable;
 }
 
-PredType BP2level::predict(DInst *dinst, bool doUpdate)
+PredType BP2level::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
-  if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+  if( dinst->getInst()->isJump() ) {
+    if (useDolc)
+      dolc.update(dinst->getPC(),false);
+    return btb.predict(dinst, doUpdate, doStats);
+  }
 
   bool taken = dinst->isTaken();
   HistoryType iID     = calcHist(dinst->getPC());
   uint16_t    l1Index = iID & l1SizeMask;
   HistoryType l2Index = historyTable[l1Index];
 
+  if (useDolc)
+    dolc.update(dinst->getPC(),false);
+
   // update historyTable statistics
-  if (doUpdate)
-    historyTable[l1Index] = ((l2Index << 1) | ((iID>>2 & 1)^(taken?1:0))) & historyMask;
+  if (doUpdate) {
+    HistoryType nhist = 0;
+    if (useDolc)
+      nhist = dolc.getSign(historySize,historySize);
+    else
+      nhist = ((l2Index << 1) | ((iID>>2 & 1)^(taken?1:0))) & historyMask;
+    historyTable[l1Index] = nhist;
+  }
   
   // calculate Table possition
   l2Index = ((l2Index ^ iID) & historyMask ) | (iID<<historySize);
+
+  if (useDolc && taken)
+    dolc.update(dinst->getAddr(),false);
 
   bool ptaken;
   if (doUpdate)
@@ -392,7 +519,7 @@ PredType BP2level::predict(DInst *dinst, bool doUpdate)
     return MissPrediction;
   }
 
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 /*****************************************
@@ -437,10 +564,10 @@ BPHybrid::~BPHybrid()
 {
 }
 
-PredType BPHybrid::predict(DInst *dinst, bool doUpdate)
+PredType BPHybrid::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   bool taken = dinst->isTaken();
   HistoryType iID     = calcHist(dinst->getPC());
@@ -485,7 +612,7 @@ PredType BPHybrid::predict(DInst *dinst, bool doUpdate)
     return MissPrediction;
   }
 
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 /*****************************************
@@ -548,10 +675,10 @@ BP2BcgSkew::~BP2BcgSkew()
 }
 
 
-PredType BP2BcgSkew::predict(DInst *dinst, bool doUpdate)
+PredType BP2BcgSkew::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   if (dinst->getInst()->isJump())
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   HistoryType iID = calcHist(dinst->getPC());
   
@@ -616,7 +743,7 @@ PredType BP2BcgSkew::predict(DInst *dinst, bool doUpdate)
     history = history<<1 | ((iID>>2 & 1)^(taken?1:0));
   }
 
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 /*****************************************
@@ -700,10 +827,10 @@ BPyags::~BPyags()
 
 }
 
-PredType BPyags::predict(DInst *dinst,bool doUpdate)
+PredType BPyags::predict(DInst *dinst,bool doUpdate, bool doStats)
 {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   bool taken = dinst->isTaken();
   HistoryType iID      = calcHist(dinst->getPC());
@@ -768,7 +895,7 @@ PredType BPyags::predict(DInst *dinst,bool doUpdate)
     return MissPrediction;
   }
   
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 /*****************************************
@@ -838,10 +965,10 @@ BPOgehl::~BPOgehl()
 {
 }
 
-PredType BPOgehl::predict(DInst *dinst, bool doUpdate)
+PredType BPOgehl::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   bool taken = dinst->isTaken();
   bool ptaken = false;
@@ -962,7 +1089,7 @@ PredType BPOgehl::predict(DInst *dinst, bool doUpdate)
     return MissPrediction;
   }
   
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 
@@ -1036,192 +1163,6 @@ int32_t BPOgehl::geoidx(uint64_t Add, int64_t *histo, int32_t m, int32_t funct)
  * Extending OGEHL with TAGE ideas and LGW 
  *
  */
-
-DOLC::DOLC(int d, int o, int l, int c)
-: depth(d)
-, olderBits(o)
-, lastBits(l)
-, currBits(c) 
-{
-  if (o>63 || l>63 || c>63) {
-    MSG("ERROR: DOLC out of limits 64bits per entry");
-    exit(-1);
-  }
-
-  uint64_t olderMask = (((uint64_t)1)<<o)-1;
-  uint64_t lastMask  = (((uint64_t)1)<<l)-1;
-  uint64_t currMask  = (((uint64_t)1)<<c)-1;
-
-  hist      = new uint64_t[depth];
-  histBits  = new uint64_t[depth];
-  histMask  = new uint64_t[depth];
-  bias      = new bool[depth];
-
-  uint64_t obits = olderBits;
-  for(int i=0;i<depth;i++) {
-    bias[0] = false;
-    hist[i] = 0;
-    if ((i==128)
-        || (i==64)
-        || (i==32)
-        || (i==16) ) {
-      obits--;
-    }
-    if (obits<2)
-      obits = 2;
-
-    histBits[i] = obits;
-    histMask[i] = ((uint64_t)1<<obits)-1;
-  }
-  histBits[1] = lastBits;
-  histMask[1] = lastMask;
-
-  histBits[0] = currBits;
-  histMask[0] = currMask;
-}
-
-void DOLC::update(AddrType addr, bool b) {
-
-  for(int i=depth-1;i>0;i--) {
-    hist[i] = hist[i-1];
-    bias[i] = bias[i-1];
-  }
-
-  hist[0] = addr & histMask[0];
-  bias[0] = b;
-
-#if 0
-  int conta[32] = {0,};
-  for(int i=0;i<depth;i++) {
-    conta[hist[i]%31]++;
-  }
-  printf("sign %llx: ",addr);
-  for(int i=0;i<31;i++) {
-    printf("%3d ",conta[i]);
-  }
-  printf("\n");
-#endif
-}
-
-uint64_t DOLC::getSign2(int16_t bits, uint16_t m) const {
-  //return getSign(bits,m);
-
-  m = depth;
-  int nbits     = 0;
-  uint64_t sign = 0;
-
-  int i = m;
-  int ntrad= 1;
-  int n = m;
-  if (n>depth)
-    n = depth;
-
-  int nbackets = 11;
-
-  if (i>ntrad) {
-
-    int conta[nbackets+1] = {0,};
-    for(int j=ntrad;j<n;j++) {
-      conta[hist[j]%nbackets]++;
-    }
-
-    for(int j=0;j<nbackets;j++) {
-      uint64_t oBits = bits/nbackets;
-      oBits = 6;
-      if (oBits<1)
-        oBits = 1;
-
-      // Rotate
-      uint64_t drop = sign>>(64-oBits);
-      sign          = sign ^ drop;
-      sign          = (sign<<oBits) + ((j^conta[j]) & (((uint64_t) 1)<<oBits)-1);
-
-      nbits += oBits;
-    }
-  }
-  i = ntrad;
-
-  do {
-    uint64_t oBits = histBits[i];
-
-    // Rotate
-    uint64_t drop = sign>>(64-oBits);
-    sign          = sign ^ drop;
-    sign          = (sign<<oBits) + (hist[i] & histMask[i]);
-
-    nbits += oBits;
-
-    i--;
-  }while(i>=0);
-
-  if (bits>nbits) {
-    int nfolds = bits/nbits;
-    for(int i=0;i<nfolds;i++) {
-      sign = sign + (sign<<(i*bits));
-    }
-
-  }else{
-    int nfolds = nbits/bits;
-
-    for(int i=0;i<nfolds;i++) {
-      sign = sign + (sign>>(i*bits));
-    }
-  }
-
-  return sign;
-}
-
-
-uint64_t DOLC::getSign(int16_t bits, uint16_t m) const {
-
-  int nbits     = 0;
-  uint64_t sign = 0;
-
-  int i = m;
-  if (i>(depth))
-    i = depth;
-
-  if (bits==0)
-    return 0; // No bits, means no tag
-
-  do {
-    uint64_t oBits = histBits[i];
-
-    // Rotate
-    uint64_t drop = sign>>(64-oBits);
-    sign          = sign ^ drop;
-    sign          = (sign<<oBits) + (hist[i] & histMask[i]);
-
-    nbits += oBits;
-
-    i--;
-  }while(i>=0);
-
-  if (bits>nbits) {
-    int nfolds = bits/nbits;
-    for(int i=0;i<nfolds;i++) {
-      sign = sign + (sign<<(i*bits));
-    }
-
-  }else{
-    int nfolds = nbits/bits;
-
-    for(int i=0;i<nfolds;i++) {
-      sign = sign + (sign>>(i*bits));
-    }
-  }
-
-  return sign;
-}
-
-void DOLC::reset(uint64_t sign) {
-
-  for(int i=0;i<depth;i++) {
-    hist[i] = sign & histMask[i];
-    bias[i] = true;
-  }
-
-}
 
 LoopPredictor::LoopPredictor(int n)
  :nentries(n) {
@@ -1331,7 +1272,7 @@ uint32_t LoopPredictor::getLoopIter(uint64_t key, uint64_t tag) const {
 BPDGP::BPDGP(int32_t i,const char *section, const char *sname)
   :BPred(i, section, sname, "dgp")
   ,btb(  i, section, sname)
-  ,dolc(SescConf->getInt(section,"glength"),3,9,18)
+  ,dolc(SescConf->getInt(section,"glength"),3,9,16)
   ,lp(82833) // Prime number, way too large until the 2way + learn is built
   ,ahead_local(section,SescConf->getInt(section,"tableSize"),4)
   ,ahead_global(section,SescConf->getInt(section,"tableSize"),2)
@@ -1342,20 +1283,14 @@ BPDGP::BPDGP(int32_t i,const char *section, const char *sname)
   ,nentry(3)
   ,addwidth(8)
   ,CorrSize(SescConf->getInt(section,"corrSize"))
-  ,TableSizeBits(log2i(SescConf->getInt(section,"tableSize")))
-  ,TableSizeMask((SescConf->getInt(section,"tableSize"))-1)
   ,MaxVal((1 << (SescConf->getInt(section,"tableValBits") - 1))-1)
   ,TableValBits(SescConf->getInt(section,"tableValBits"))
   ,TableTagBits(SescConf->getInt(section,"tableTagBits"))
   ,TableTagMask((1<<SescConf->getInt(section,"tableTagBits"))-1)
-  ,TC(0)
 {
   alength = glength;
   if (alength>48)
     alength = 48;
-
-  SescConf->isInt(section, "corrSize");
-  //SescConf->isPower2(section, "corrSize");
 
   SescConf->isInt(section, "tableSize");
   SescConf->isPower2(section, "tableSize");
@@ -1363,6 +1298,20 @@ BPDGP::BPDGP(int32_t i,const char *section, const char *sname)
   SescConf->isBetween(section, "tableValBits", 1, 30);
   SescConf->isBetween(section, "tableTagBits", 0, 30);
   SescConf->isBetween(section, "ntables", 3, 32);
+  SescConf->isInt(section, "corrSize");
+  //SescConf->isPower2(section, "corrSize");
+
+  TableSizeBits = new int32_t[ntables];
+  TableSizeMask = new uint32_t[ntables];
+  int nbits     = log2i(SescConf->getInt(section,"tableSize"));
+
+  TableSizeBits[0] = nbits+2;
+  for(int i=1;i<ntables;i++) {
+    TableSizeBits[i] = nbits;
+  }
+  for(int i=0;i<ntables;i++) {
+    TableSizeMask[i] = (1<<TableSizeBits[i])-1;
+  }
 
   ldolc = new DOLC*[nlocal];
   for (int32_t i = 0; i < nlocal; i++) {
@@ -1371,8 +1320,8 @@ BPDGP::BPDGP(int32_t i,const char *section, const char *sname)
 
   table = new PredEntry*[ntables];
   for (int32_t i = 0; i < ntables; i++) {
-    table[i] = new PredEntry[1 << TableSizeBits];
-    for (int32_t j = 0; j < (1 << TableSizeBits); j++) {
+    table[i] = new PredEntry[1 << TableSizeBits[i]];
+    for (int32_t j = 0; j < (1 << TableSizeBits[i]); j++) {
       table[i][j].val = 0;
       table[i][j].tag = 0;
     }
@@ -1393,52 +1342,30 @@ BPDGP::BPDGP(int32_t i,const char *section, const char *sname)
     }
   }
 
-  T = new int[nentry * (TableSizeBits+TableTagBits) + 1];
   ahist = new int64_t[(alength >> 6) + 1];
   
   for (int32_t i = 0; i < (alength >> 6) + 1; i++) {
     ahist[i] = 0;
   }
 
-  double tt = ((double)glength);
+  double tt = ((double)glength*3/2);
   double Pow = pow(tt, 1.0/(ntables));
   
   histLength = new int[ntables];
   histLength[0] = 0;
-  histLength[1] = 1;
+  histLength[1] = 3; // better? 1;
   for (int32_t i = 2; i < ntables; i++) {
     histLength[i] = histLength[1] + i + (int) ((pow(Pow, (double) (i))) + 0.5);
-    MSG("table[%d] length=%d",i,histLength[i]);
+  }
+
+  for (int32_t i = 0; i < ntables; i++) {
+    MSG("table[%d] size=%d histlength=%d taglength=%d",i,TableSizeBits[i], histLength[i],(i+2));
   }
 
   lp_last_iter = 0;
 }
 
 BPDGP::~BPDGP() {
-}
-
-uint32_t BPDGP::genWavelet(const int64_t *histo, int32_t indexSize) const {
-
-
-  uint32_t wave = 0;
-
-  uint64_t start_mask = alength&63;
-  if (start_mask==0)
-    start_mask = 63;
-  start_mask = ((uint64_t) 1)<<start_mask;
-
-  for (int32_t i = (alength >> 6)+1; i > 0; i--) {
-    int nones = 0;
-    for (uint64_t j=start_mask;j!=0;j=j>>1) {
-      if(ahist[i] & j) {
-        nones++;
-      }
-    }
-    wave = wave<<5 | (nones & 0x1F);
-    start_mask=((uint64_t) 1)<<63;
-  }
-
-  return wave;
 }
 
 // Sorted by impact
@@ -1465,9 +1392,8 @@ uint32_t BPDGP::genWavelet(const int64_t *histo, int32_t indexSize) const {
 // None of the following seem to do much (at least in my traces)
 //#define DGP_LOCAL
 //#define DGP_AHIST
-//#define DGP_AHEAD
 
-PredType BPDGP::predict(DInst *dinst, bool doUpdate) {
+PredType BPDGP::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
   bool dolc_updated = false;
   if (dinst->getPC()>loop_end_pc && loop_end_pc!=0) {
@@ -1501,13 +1427,10 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate) {
     for (int32_t i = (alength >> 6)+1; i > 0; i--)
       ahist[i] = (ahist[i] << 1) + (ahist[i - 1] < 0);
     ahist[0] = ahist[0] << 1;
-#ifndef DGP_AHEAD
     ahist[0]++;
 #endif
 
-#endif
-
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
   }
   if (!dolc_updated)
     dolc.update(calcHist(dinst->getPC()), false);
@@ -1517,33 +1440,6 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate) {
   if (loop_counter>0)
     ldolc[loop_counter % nlocal]->update(calcHist(dinst->getPC()), false);
 #endif
-
-#ifdef DGP_AHEAD
-  uint64_t sign_local  = dolc.getSign(TableSizeBits,0);
-  bool pred_local  = ahead_local.predict(sign_local,taken);
-  // better? bool pred_local  = last_taken;
-
-  uint64_t sign_global = dolc.getSign(TableSizeBits,5);
-  bool pred_global = ahead_global.predict(sign_global,taken);
-#if 0
-  // More complicated (but accurate) predictor for ahead
-  bool metaOut;
-  if (!doUpdate) {
-    metaOut = ahead_meta.predict(sign_global); // do not update meta
-  }else if( pred_global == taken && pred_local != taken) {
-    metaOut = ahead_meta.predict(sign_global, false);
-  }else if( pred_global != taken && pred_local == taken) {
-    metaOut = ahead_meta.predict(sign_global, true);
-  }else{
-    metaOut = ahead_meta.predict(sign_global); // do not update meta
-  }
-
-  bool ataken = metaOut ? pred_local : pred_global;
-#else
-  bool ataken = pred_local;
-#endif
-#endif
-
 
   int32_t S    = 0; // ntables/2
   int32_t preS = 0; // ntables/2
@@ -1560,8 +1456,8 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate) {
   for (int32_t i  = 0; i < ntables; i++) {
     int32_t tableid = i;
 
-    HistoryType idx = geoidx(calcHist(dinst->getPC()), ahist, TableSizeBits, histLength[tableid], (tableid & 3) + 1, tableid);
-    iID[tableid]          = idx & TableSizeMask;
+    HistoryType idx = geoidx(calcHist(dinst->getPC()), ahist, TableSizeBits[tableid], histLength[tableid], (tableid & 3) + 1, tableid);
+    iID[tableid]          = idx & TableSizeMask[tableid];
 
     idx          = dolc.getSign(TableTagBits,  histLength[tableid]);
     tID[tableid] = idx & TableTagMask; 
@@ -1705,7 +1601,7 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate) {
     t_ngoodc += ngoodc;
     t_nbaadc += nbaadc;
 
-#if 1
+#if 0
     MSG("NC mp=%5.1f C mp=%5.1f all mp=%5.1f %%C=%5.1f: NC mp=%5.1f C mp=%5.1f all mp=%5.1f %%C=%5.1f"
         ,(double)100*nbaad/(ngood+nbaad+1)
         ,(double)100*nbaadc/(ngoodc+nbaadc+1)
@@ -1949,7 +1845,7 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate) {
     return MissPrediction;
   }
   
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 uint64_t BPDGP::goodHash(uint64_t key) const {
@@ -1974,96 +1870,6 @@ int32_t BPDGP::geoidx(uint64_t Add, int64_t *histo, int32_t sizeBits, int32_t m,
   uint64_t Res=0;
 
   int m_orig = m; // For DOLC
-#ifdef DGP_AHIST2
-
-  // Just a few bits of branch history to extra hash the DOLC
-  if (m>alength)
-    m=alength;
-
-  int32_t MinAdd = nentry * sizeBits - m;
-  if (MinAdd > 20)
-    MinAdd = 20;
-
-#if 1
-  if (m==0) {
-    Res = goodHash(Add);
-    return Res & ((1 << sizeBits) - 1);
-  }else if (m<12 && false) {
-    uint64_t hash_pc   = goodHash(Add);
-    uint64_t hash_bits = (histo[0] & ((1<<m)-1));
-    uint64_t inter = hash_bits ^ hash_pc;
-    //Res            = goodHash(inter);
-    //MSG("m=%d MinAdd=%d inter=%llx hpc=%llx hkey=%llx",m,sizeBits,inter,hash_pc,hash_bits);
-    return Res;
-    //return Res & ((1 << sizeBits) - 1);
-  }
-#endif
-
-  uint64_t inter;
-  uint64_t Hh;
-  int32_t x, i, shift;
-  int32_t PT;
-  int32_t FUNCT;
-
-  if (MinAdd >= 8) {
-    inter =
-      ((histo[0] & ((1 << m) - 1)) << (MinAdd)) +
-      ((Add & ((1 << MinAdd) - 1)));
-  }else{
-    for (x = 0; x < nentry * sizeBits; x++) {
-      T[x] = ((x * (addwidth + m - 1)) / (nentry * sizeBits - 1));
-    }
-
-    T[nentry * sizeBits] = addwidth + m;
-    inter = 0;
-
-    Hh = histo[0];
-    Hh >>= T[0];
-    inter = (Hh & 1);
-    PT = 1;
-
-    for (i = 1; T[i] < m; i++) {
-      if ((T[i] & 0xffc0) == (T[i - 1] & 0xffc0)) {
-        shift = T[i] - T[i - 1];
-      }else{
-        Hh = histo[PT];
-        PT++;
-        shift = T[i] & 63;
-      }
-      
-      inter = (inter << 1);
-      Hh = Hh >> shift;
-      inter ^= (Hh & 1);
-    }
-
-    Hh = Add;
-    for (; T[i] < m + addwidth; i++) {
-      shift = T[i] - m;
-      inter = (inter << 1);
-      inter ^= ((Hh >> shift) & 1);
-    }
-  }
-
-  FUNCT = funct;
-  Res = inter & ((1 << sizeBits) - 1);
-  //MSG("1.res=%llx minAdd=%d sizeBits=%d funct=%d m=%d",Res,MinAdd,sizeBits,funct,m);
-  for (i = 1; i < nentry; i++) {
-    inter = inter >> sizeBits;
-    Res ^=
-      ((inter & ((1 << sizeBits) - 1)) >> FUNCT) ^
-      ((inter & ((1 << FUNCT) - 1)) << ((sizeBits - FUNCT)));
-    FUNCT = (FUNCT + 1) % sizeBits;
-  }
-  //MSG("2.res=%llx minAdd=%d sizeBits=%d funct=%d m=%d",Res,MinAdd,sizeBits,funct,m);
-
-
-  // For BPRED Championship better to use some extra history bits (not clear the effort in reality)
-  //Res = Res ^ dolc.getSign(sizeBits,m_orig);
-  //
-#if 0
-  Res = goodHash(Res); // no impact, good
-#endif
-#endif
 
   // Not bad for not having branch hostpr
 #ifdef DGP_LOCAL
@@ -2139,10 +1945,10 @@ BPSOgehl::~BPSOgehl()
 {
 }
 
-PredType BPSOgehl::predict(DInst *dinst, bool doUpdate)
+PredType BPSOgehl::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   if( dinst->getInst()->isJump() )
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   bool taken  = dinst->isTaken();
   bool ptaken = false;
@@ -2232,7 +2038,7 @@ PredType BPSOgehl::predict(DInst *dinst, bool doUpdate)
   if (taken != ptaken)
     return MissPrediction;
   
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
 uint32_t BPSOgehl::geoidx2(uint64_t Add, int32_t m)
@@ -2813,10 +2619,10 @@ void BPTage::squashRecovery(void *bph) {
   delete his;
 }
 
-PredType BPTage::predict(DInst *dinst, bool doUpdate) {
+PredType BPTage::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
   if(dinst->getInst()->isJump())
-    return btb.predict(dinst, doUpdate);
+    return btb.predict(dinst, doUpdate, doStats);
 
   void *bph=0;  
   bool taken  = dinst->isTaken();
@@ -2834,7 +2640,7 @@ PredType BPTage::predict(DInst *dinst, bool doUpdate) {
 
   updateBranchPredictor(dinst, taken, bph, false);
 
-  return ptaken ? btb.predict(dinst, doUpdate) : CorrectPrediction;
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 
 }
 
@@ -2875,6 +2681,8 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname)
     pred = new BPDGP(id, sec, sname);
   } else if (strcasecmp(type, "TAGE") == 0) {
     pred = new BPTage(id, sec, sname);
+  } else if (strcasecmp(type, "imli") == 0) {
+    pred = new BPIMLI(id, sec, sname);
   } else if (strcasecmp(type, "sogehl") == 0) {
     pred = new BPSOgehl(id, sec, sname);
   } else {
@@ -2887,9 +2695,10 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname)
   return pred;
 }
 
-BPredictor::BPredictor(int32_t i, BPredictor *bpred)
+BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
   :id(i)
   ,SMTcopy(bpred != 0)
+  ,il1(iobj)
   ,nBTAC("P(%d)_BPred:nBTAC", id)
   ,nBranches("P(%d)_BPred:nBranches", id)
   ,nTaken("P(%d)_BPred:nTaken", id)
@@ -2939,6 +2748,12 @@ BPredictor::~BPredictor()
   }
 }
 
+void BPredictor::fetchBoundary(DInst *dinst) {
+  pred1->fetchBoundary(dinst);
+  if (pred2)
+    pred2->fetchBoundary(dinst);
+}
+
 PredType BPredictor::predict1(DInst *dinst, bool doUpdate) {
   I(dinst->getInst()->isControl());
 
@@ -2947,18 +2762,12 @@ PredType BPredictor::predict1(DInst *dinst, bool doUpdate) {
   printf(" fun call: %d, ", dinst->getInst()->isFuncCall()); printf("fun ret: %d, ", dinst->getInst()->isFuncRet());printf("taken: %d, ", dinst->isTaken());  printf("target addr: 0x%x\n", dinst->getAddr());
 #endif
 
-  nBranches.inc(doUpdate);
-  nTaken.inc(dinst->isTaken() && doUpdate);
+  nBranches.inc(doUpdate && dinst->getStatsFlag());
+  nTaken.inc(dinst->isTaken() && doUpdate && dinst->getStatsFlag());
 
-  PredType p= ras->doPredict(dinst, doUpdate);
-  if( p != NoPrediction ) {
-    nMiss.inc(p != CorrectPrediction && doUpdate);
-    return p;
-  }
+  PredType p = pred1->doPredict(dinst, doUpdate);
 
-  p = pred1->doPredict(dinst, doUpdate);
-
-  nMiss.inc(p != CorrectPrediction && doUpdate);
+  nMiss.inc(p != CorrectPrediction && doUpdate && dinst->getStatsFlag());
 
   return p;
 }
@@ -2966,13 +2775,13 @@ PredType BPredictor::predict1(DInst *dinst, bool doUpdate) {
 PredType BPredictor::predict2(DInst *dinst, bool doUpdate) {
   I(dinst->getInst()->isControl());
 
-  nBranches2.inc(doUpdate);
-  nTaken2.inc(dinst->isTaken());
+  nBranches2.inc(doUpdate && dinst->getStatsFlag());
+  nTaken2.inc(dinst->isTaken() && doUpdate && dinst->getStatsFlag());
   // No RAS in L2
 
   PredType p = pred2->doPredict(dinst, doUpdate);
 
-  nMiss2.inc(p != CorrectPrediction && doUpdate);
+  nMiss2.inc(p != CorrectPrediction && doUpdate && dinst->getStatsFlag());
 
   return p;
 }
@@ -2981,34 +2790,41 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   *fastfix = true;
 
-  PredType  outcome = predict1(dinst, true);
-  if (outcome == CorrectPrediction) {
+  PredType outcome1;
+  PredType outcome2;
+
+  outcome1 = ras->doPredict(dinst, true);
+  if( outcome1 == NoPrediction ) {
+    outcome1 = predict1(dinst,true);
+    outcome2 = outcome1;
     if (pred2)
-      pred2->update(dinst); // Parallel update
+      outcome2 = predict2(dinst,true);
+  }else{
+    outcome2 = outcome1;
+  }
+  if(dinst->getInst()->isFuncRet() || dinst->getInst()->isFuncCall())
+    ras->tryPrefetch(il1,dinst->getStatsFlag());
+
+  if (outcome1 == CorrectPrediction && outcome2 == CorrectPrediction) {
+    // Both agree, and they are right
     if (dinst->isTaken()) {
       return bpredDelay-1;
     }
     return 0;
   }
+  if (outcome1 != CorrectPrediction && outcome2 == CorrectPrediction) {
+    // Fast wrong, slow right
+    return BTACDelay-1;
+  }
 
   if( dinst->getInst()->doesJump2Label() ) {
     nBTAC.inc(dinst->getStatsFlag());
-
-    if (pred2)
-      pred2->update(dinst); // Parallel update
-  }else if(pred2) {
-    nBTAC.inc(dinst->getStatsFlag());
-
-    PredType outcome2 = predict2(dinst,true);
-    if (outcome2 != CorrectPrediction) {
-      *fastfix = false;
-    }
-  }else{
-    I(pred2==0);
-    *fastfix = false;
+    return BTACDelay-1;
   }
 
-  return BTACDelay;
+  *fastfix = false;
+
+  return 1; // Anything but zero
 }
 
 void BPredictor::dump(const char *str) const

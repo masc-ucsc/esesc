@@ -59,6 +59,7 @@ public:
   virtual ~Reader() {
   };
 
+  virtual DInst *peekHead(FlowID fid)      = 0;
   virtual DInst *executeHead(FlowID fid)   = 0;
   virtual void   reexecuteTail(FlowID fid) = 0;
   virtual void   syncHeadTail(FlowID fid)  = 0;

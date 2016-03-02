@@ -373,6 +373,8 @@ int64_t GStatsHist::getSamples() const
 
 void GStatsHist::flushValue()
 {
+  H.clear();
+
   numSample  = 0;
   cumulative = 0;
 }

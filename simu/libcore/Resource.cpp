@@ -53,6 +53,7 @@
 #include "LSQ.h"
 
 //#define MEM_TSO 1
+//#define USE_PNR
 
 /* }}} */
 
@@ -337,7 +338,15 @@ void FULoad::executed(DInst* dinst) {
 bool FULoad::preretire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
-  return dinst->isExecuted();
+  bool done =  dinst->isExecuted();
+  if (!done)
+    return false;
+
+#ifdef USE_PNR
+  freeEntries++;
+#endif
+
+  return true;
 }
 /* }}} */
 
@@ -348,7 +357,9 @@ bool FULoad::retire(DInst *dinst, bool flushing)
     return false;
 
   lsq->incFreeEntries();
+#ifndef USE_PNR
   freeEntries++;
+#endif
 
   lsq->remove(dinst);
 
@@ -484,6 +495,7 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
   }
 #endif
 
+  freeEntries++;
   scbEntries--;
   scbQueue.push_back(dinst);
   MemRequest::sendReqWrite(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst));
@@ -556,7 +568,7 @@ bool FUStore::retire(DInst *dinst, bool flushing) {
 
   lsq->remove(dinst);
   lsq->incFreeEntries();
-  freeEntries++;
+  //freeEntries++;
 
   return true;
 }

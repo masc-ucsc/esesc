@@ -74,6 +74,7 @@ class EmulInterface {
   //  - Other  : addr == 0
 
   // Advance the PC of the head
+  virtual DInst *peekHead(FlowID fid) = 0;
   virtual DInst *executeHead(FlowID fid) = 0;
   // Advance the PC of the tail
   virtual void reexecuteTail(FlowID fid) = 0;

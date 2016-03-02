@@ -150,6 +150,9 @@ bool InOrderProcessor::advance_clock(FlowID fid)
   return true;
 }/*}}}*/
 
+void InOrderProcessor::executing(DInst *dinst) {
+}
+
 StallCause InOrderProcessor::addInst(DInst *dinst)
 {/*{{{*/
 

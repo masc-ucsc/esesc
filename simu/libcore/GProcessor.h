@@ -135,9 +135,9 @@ class GProcessor {
     int32_t issue(PipeQueue &pipeQ);
 
     virtual void retire();
-    virtual StallCause addInst(DInst *dinst) = 0;
 
     virtual void fetch(FlowID fid) = 0;
+    virtual StallCause addInst(DInst *dinst) = 0;
   public:
 
     virtual ~GProcessor();
@@ -145,6 +145,7 @@ class GProcessor {
     GStatsCntr *getnCommitted() { return &nCommitted;}
 
     GMemorySystem *getMemorySystem() const { return memorySystem; }
+    virtual void executing(DInst *dinst) = 0;
     virtual LSQ *getLSQ() = 0;
     virtual bool isFlushing() = 0;
     virtual bool isReplayRecovering() = 0;

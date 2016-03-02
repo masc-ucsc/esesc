@@ -47,6 +47,7 @@
 #include "Pipeline.h"
 extern bool MIMDmode;
 
+#define ENABLE_FAST_WARMUP
 
 FetchEngine::FetchEngine(FlowID id
   ,GMemorySystem *gms_
@@ -79,6 +80,11 @@ FetchEngine::FetchEngine(FlowID id
   Fetch2WidthBits = log2i(Fetch2Width);
 
   AlignedFetch   = SescConf->getBool("cpusimu","alignedFetch", id);
+  if ( SescConf->checkBool("cpusimu","traceAlign", id)) {
+    TraceAlign = SescConf->getBool("cpusimu","TraceAlign", id);
+  }else{
+    TraceAlign = false;
+  }
 
   SescConf->isBetween("cpusimu", "bb4Cycle",0,1024,id);
   BB4Cycle = SescConf->getInt("cpusimu", "bb4Cycle",id);
@@ -86,9 +92,9 @@ FetchEngine::FetchEngine(FlowID id
     BB4Cycle = USHRT_MAX;
 
   if( fe )
-    bpred = new BPredictor(id, fe->bpred);
+    bpred = new BPredictor(id, gms->getIL1(), fe->bpred);
   else
-    bpred = new BPredictor(id);
+    bpred = new BPredictor(id, gms->getIL1());
 
   lastd     = 0;
   missInst  = false;
@@ -130,24 +136,15 @@ FetchEngine::~FetchEngine() {
   delete bpred;
 }
 
-bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch, uint16_t* to_delete_maxbb) {
+bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
   const Instruction *inst = dinst->getInst();
 
   I(dinst->getInst()->isControl()); // getAddr is target only for br/jmp
 
   bool fastfix;
   TimeDelta_t  delay = bpred->predict(dinst, &fastfix);
-  if (delay==0) {
-    if (dinst->isTaken()) {
-      maxBB--;
-      if( maxBB < 1 ) {
-        nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
-        return true;
-      }
-    }
-
+  if (delay==0)
     return false;
-  }
 
   setMissInst(dinst);
 
@@ -162,14 +159,9 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch, uint16_t* to_del
   return true;
 }
 
-// #define USE_FUSE
-
-void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch, uint16_t maxbb) {
-
-  uint16_t tempmaxbb = maxbb; // FIXME: delete me
+void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch) {
 
   AddrType lastpc = 0;
-  bool     lastdiff = false;
 
 #ifdef USE_FUSE
   RegType  last_dest = LREG_R0;
@@ -179,15 +171,18 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
   do {
     DInst *dinst = 0;
-    dinst = eint->executeHead(fid);
-    if (dinst == 0) {
-      //if (fid)
-      //I(0);
+    dinst = eint->peekHead(fid);
+    if (dinst == 0)
       break;
-    }
 
 #ifdef ENABLE_FAST_WARMUP
-    if (/*!dinst->getStatsFlag() && */dinst->getPC() == 0) {
+    if (dinst->getPC() == 0) {
+      eint->executeHead(fid); // Consume it for sure! (warmup mode)
+
+      do{
+        EventScheduler::advanceClock();
+      }while(gms->getDL1()->isBusy(dinst->getAddr()));
+
       if (dinst->getInst()->isLoad()) {
         MemRequest::sendReqReadWarmup(gms->getDL1(), dinst->getAddr());
         dinst->scrap(eint);
@@ -196,53 +191,53 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         MemRequest::sendReqWriteWarmup(gms->getDL1(), dinst->getAddr());
         dinst->scrap(eint);
         dinst = 0;
+      }else{
+        I(0);
+        dinst->scrap(eint);
+        dinst = 0;
       }
-    }
-    if (dinst == 0) { // Drain cache (mostly) during warmup. FIXME: add a drain cache method?
-      EventScheduler::advanceClock();
-      EventScheduler::advanceClock();
-      EventScheduler::advanceClock();
-      EventScheduler::advanceClock();
-      EventScheduler::advanceClock();
-      EventScheduler::advanceClock();
       continue;
     }
 #endif
     if (lastpc == 0) {
-      uint16_t fetchLost;
+      bpred->fetchBoundary(dinst);
+      if (!TraceAlign) {
+        uint16_t fetchLost;
 
-      if (AlignedFetch) {
-        fetchLost =  ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
-      }else{
-        uint16_t fetchMaxPos = ((dinst->getPC()>>2) & (lineSize-1)) + FetchWidth; // No alignment constrants
-        if (fetchMaxPos>lineSize) {
-          fetchLost = (fetchMaxPos-lineSize);
+        if (AlignedFetch) {
+          fetchLost =  ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
         }else{
-          fetchLost =  ((dinst->getPC())>>(Fetch2WidthBits)) & (Fetch2Width-1);
+          uint16_t fetchMaxPos = ((dinst->getPC()>>2) & (lineSize-1)) + FetchWidth; // No alignment constrants
+          if (fetchMaxPos>lineSize) {
+            fetchLost = (fetchMaxPos-lineSize);
+          }else{
+            fetchLost =  ((dinst->getPC())>>(Fetch2WidthBits)) & (Fetch2Width-1);
+          }
         }
+
+        avgFetchLost.sample(fetchLost,dinst->getStatsFlag());
+
+        n2Fetch -= fetchLost;
       }
-
-      avgFetchLost.sample(fetchLost,dinst->getStatsFlag());
-
-      n2Fetch -= fetchLost;
       n2Fetch--;
-      lastdiff = false;
     }else{
-      if ((lastpc+4) != dinst->getPC()) {
-        //        n2Fetch -= (dinst->getPC()-lastpc)>>2;
+      if ((lastpc+4) == dinst->getPC()) {
         n2Fetch--;
-        if (lastdiff) {
-          n2Fetch--; // Missed NOP
+      }else if ((lastpc+8) != dinst->getPC()) {
+        maxBB--;
+        if( maxBB < 1 ) {
+          nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
+          break;
         }
-        lastdiff = true;
+        n2Fetch--; // There may be a NOP in the delay slot, do not count it
       }else{
-        n2Fetch--;
-        lastdiff = false;
+        n2Fetch-=2; // NOP still consumes delay slot
       }
     }
     lastpc  = dinst->getPC();
 
     I(!missInst);
+    eint->executeHead(fid); // Consume for sure
 
     dinst->setFetchTime();
     bucket->push(dinst);
@@ -260,15 +255,20 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
         
     if(dinst->getInst()->isControl()) {
-      bool stall_fetch = processBranch(dinst, n2Fetch,&tempmaxbb);
+      bool stall_fetch = processBranch(dinst, n2Fetch);
       if (stall_fetch) {
-        //bucket->push(dinst);
+        DInst *dinstn = eint->peekHead(fid);
+        if (dinstn && dinst->getAddr() && n2Fetch) { // Taken branch and next inst is delay slot
+          if (dinstn->getPC() == (lastpc+4)) {
+            bucket->push(eint->executeHead(fid));
+            n2Fetch--;
+          }
+        }
         break;
       }
       I(!missInst);
-    }else{
-      //bucket->push(dinst);
     }
+
 #ifdef USE_FUSE
     last_dest = dinst->getInst()->getDst1();
     last_src1 = dinst->getInst()->getSrc1();
@@ -304,7 +304,7 @@ void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
 
   // You pass maxBB because there may be many fetches calls to realfetch in one cycle
   // (thanks to the callbacks)
-  realfetch(bucket, eint, fid, FetchWidth,maxBB);
+  realfetch(bucket, eint, fid, FetchWidth);
 
 }
 

@@ -49,6 +49,8 @@
  *
  */
 
+#include <iostream>
+
 #include "nanassert.h"
 #include "estl.h"
 
@@ -56,7 +58,7 @@
 #include "DInst.h"
 #include "CacheCore.h"
 #include "SCTable.h"
-#include "iostream"
+#include "DOLC.h"
 
 #define RAP_T_NT_ONLY   1
 
@@ -66,6 +68,8 @@ enum PredType {
   NoBTBPrediction,
   MissPrediction
 };
+
+class MemObj;
 
 class BPred {
 public:
@@ -102,24 +106,25 @@ public:
   BPred(int32_t i, const char *section, const char *sname, const char *name);
   virtual ~BPred();
 
-  virtual PredType predict(DInst *dinst, bool doUpdate) = 0;
+  virtual PredType predict(DInst *dinst, bool doUpdate, bool doStats) = 0;
+  virtual void fetchBoundary(DInst *dinst); // If the branch predictor support fetch boundary model, do it
 
-  PredType doPredict(DInst *dinst, bool doUpdate) {
-    PredType pred = predict(dinst, doUpdate);
+  PredType doPredict(DInst *dinst, bool doUpdate, bool doStats=true) {
+    PredType pred = predict(dinst, doUpdate, doStats);
     if (!doUpdate || pred == NoPrediction)
       return pred;
 
     if (dinst->getInst()->isJump())
       return pred;
 
-    nHit.inc(pred == CorrectPrediction);
-    nMiss.inc(pred == MissPrediction);
+    nHit.inc(pred == CorrectPrediction && dinst->getStatsFlag() && doStats);
+    nMiss.inc(pred == MissPrediction && dinst->getStatsFlag() && doStats);
 
     return pred;
   }
 
   void update(DInst *dinst) {
-    predict(dinst,true);
+    predict(dinst,true, false);
   }
   
 };
@@ -128,6 +133,7 @@ public:
 class BPRas : public BPred {
 private:
   const uint16_t RasSize;
+  const uint16_t rasPrefetch;
 
   AddrType *stack;
   int32_t index;
@@ -135,12 +141,18 @@ protected:
 public:
   BPRas(int32_t i, const char *section, const char *sname);
   ~BPRas();
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
+  void tryPrefetch(MemObj *il1, bool doStats);
 };
 
 class BPBTB : public BPred {
 private:
+
+  GStatsCntr nHitLabel;  // hits to the icache label (ibtb)
+  DOLC *dolc;
+  bool btbicache;
+  uint64_t btbHistorySize;
 
   class BTBState : public StateGeneric<AddrType> {
   public:
@@ -164,7 +176,7 @@ public:
   BPBTB(int32_t i, const char *section, const char *sname, const char *name=0);
   ~BPBTB();
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
   void updateOnly(DInst *dinst);
 
 };
@@ -180,7 +192,7 @@ public:
     ,btb(i, section, sname) {
   }
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -196,7 +208,7 @@ public:
     // Done
   }
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -212,7 +224,7 @@ public:
     // Done
   }
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -228,7 +240,7 @@ public:
     // Done
   }
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -241,8 +253,26 @@ protected:
 public:
   BP2bit(int32_t i, const char *section, const char *sname);
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
+};
+
+class IMLIBest;
+
+class BPIMLI:public BPred {
+private:
+  BPBTB btb;
+
+  IMLIBest *imli;
+
+  const bool FetchPredict;
+
+protected:
+public:
+  BPIMLI(int32_t i, const char *section, const char *sname);
+
+  void fetchBoundary(DInst *dinst);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 };
 
 class BP2level:public BPred {
@@ -257,13 +287,16 @@ private:
 
   SCTable globalTable;
 
+  DOLC dolc;
   HistoryType *historyTable; // LHR
+  bool useDolc;
+
 protected:
 public:
   BP2level(int32_t i, const char *section, const char *sname);
   ~BP2level();
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -286,7 +319,7 @@ public:
   BPHybrid(int32_t i, const char *section, const char *sname);
   ~BPHybrid();
 
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -314,7 +347,7 @@ public:
   BP2BcgSkew(int32_t i, const char *section, const char *sname);
   ~BP2BcgSkew();
   
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -344,7 +377,7 @@ public:
   BPyags(int32_t i, const char *section, const char *sname);
   ~BPyags();
   
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -385,29 +418,7 @@ public:
   BPOgehl(int32_t i, const char *section, const char *sname);
   ~BPOgehl();
   
-  PredType predict(DInst *dinst, bool doUpdate);
-};
-
-class DOLC {
-private:
-  const uint64_t depth;
-  const uint64_t olderBits;
-  const uint64_t lastBits;
-  const uint64_t currBits;
-
-  uint64_t *hist;
-  uint64_t *histMask;
-  uint64_t *histBits;
-
-  bool     *bias;
-
-public:
-  DOLC(int d, int o, int l, int c);
-
-  void update(AddrType addr, bool b);
-  uint64_t getSign(int16_t bits, uint16_t m) const;
-  uint64_t getSign2(int16_t bits, uint16_t m) const;
-  void reset(uint64_t addr);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 };
 
 class LoopPredictor {
@@ -461,8 +472,8 @@ private:
   const int32_t nentry;
   const int32_t addwidth;
 
-  int32_t TableSizeBits;
-  uint32_t TableSizeMask;
+  int32_t  *TableSizeBits;
+  uint32_t *TableSizeMask;
 
   int32_t CorrSize;
 
@@ -472,11 +483,8 @@ private:
   uint32_t TableTagMask;
 
   int64_t *ahist;  // All bit history
-  int64_t phist;  // path bit history
   int32_t *histLength;
   
-  int32_t *T;
-
   struct PredEntry {
     int32_t  val;
     uint32_t tag;
@@ -492,16 +500,14 @@ private:
 
   CorrEntry *corr;
 
-  int32_t TC;
 protected:
-  uint32_t genWavelet(const int64_t *histo, int32_t indexSize) const;
   int32_t geoidx(uint64_t Add, int64_t *histo, int32_t indexSize, int32_t m, int32_t funct, int tableid);
   uint64_t goodHash(uint64_t key) const;
 public:
   BPDGP(int32_t i, const char *section, const char *sname);
   ~BPDGP();
   
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
 };
 
@@ -542,7 +548,7 @@ public:
   BPSOgehl(int32_t i, const char *section, const char *sname);
   ~BPSOgehl();
   
-  PredType predict(DInst *dinst, bool doUpdate);
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 };
 #endif
 
@@ -610,7 +616,7 @@ class BPTage : public BPred {
       ++randomSeed;
       return randomSeed & 3;
     }
-    PredType predict(DInst *dinst, bool doUpdate);
+    PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
     bool lookup (DInst *dinst, void * &bph);                   
     void unconditionalBranch (DInst *dinst, void * &bph);      
@@ -714,6 +720,7 @@ class BPredictor {
 private:
   const int32_t id;
   const bool SMTcopy;
+  MemObj  *il1; // For prefetch
 
   BPRas *ras;
   BPred *pred1;
@@ -737,11 +744,12 @@ protected:
   PredType predict2(DInst *dinst, bool doUpdate);
 
 public:
-  BPredictor(int32_t i, BPredictor *bpred=0);
+  BPredictor(int32_t i, MemObj *il1, BPredictor *bpred=0);
   ~BPredictor();
 
   static BPred *getBPred(int32_t id, const char *sname, const char *sec);
 
+  void fetchBoundary(DInst *dinst);
   TimeDelta_t predict(DInst *dinst, bool *fastfix);
 
   void dump(const char *str) const;

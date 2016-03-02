@@ -15,7 +15,7 @@ DOCKER_IMAGE=${6:-mascucsc/esescbase}
 ESESC_BIN=${ESESC_BIN_DIR}/esesc
 
 if [ ! -e ${ESESC_BIN} ]; then
-  echo "ERROR: '${ESESC_SRC}/esesc' does not exist"
+  echo "ERROR: '${ESESC_BIN}' does not exist"
   exit -1
 fi
 
@@ -38,13 +38,18 @@ GID=`id -rg`
 # so there may be a better way in the future 
 docker pull $DOCKER_IMAGE
 
-docker run  \
+# Keep local version of run directory 
+#  -v $RUN_DIR:$RUN_DIR \
+
+docker run \
+  --detach \
+  --net=host \
   -v $ESESC_BIN_DIR:$ESESC_BIN_DIR:ro \
-  -v $RUN_DIR:$RUN_DIR \
   -v $BENCH_REPO:$BENCH_REPO:ro \
   -v $CONF_DIR:$CONF_DIR:ro \
   ${DOCKER_IMAGE} \
   bin/bash -c " \
+  mkdir -p ${RUN_DIR} && \
   cd ${RUN_DIR} && \
   cp ${CONF_DIR}/*conf* . && \
   ln -s ${BENCH_REPO}/bins bins && \

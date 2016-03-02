@@ -151,6 +151,13 @@ bool MemController::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void MemController::tryPrefetch(AddrType addr, bool doStats)
+  /* try to prefetch to openpage {{{1 */
+{ 
+  // FIXME:
+}
+/* }}} */
+
 TimeDelta_t MemController::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 

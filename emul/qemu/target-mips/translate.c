@@ -4587,6 +4587,12 @@ static inline void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
     }
 }
 
+#ifdef CONFIG_ESESC
+    int esesc_link = 0;
+    int esesc_ret  = 0;
+    int esesc_drop = 0;
+#endif
+
 /* Branches (before delay slot) */
 static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
                                 int insn_bytes,
@@ -4609,6 +4615,10 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
     }
 #ifdef CONFIG_ESESC
     bool ctrl_reg = false;
+    esesc_ret = 0;
+    if (rt == 31 || rs == 31) {
+      esesc_ret = 1; // Set to false again if control flow instruction has an offset
+    }
 #endif
 
     /* Load needed operands */
@@ -4624,6 +4634,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             bcond_compute = 1;
         }
         btgt = ctx->pc + insn_bytes + offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BGEZ:
     case OPC_BGEZAL:
@@ -4643,6 +4656,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             bcond_compute = 1;
         }
         btgt = ctx->pc + insn_bytes + offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BPOSGE32:
 #if defined(TARGET_MIPS64)
@@ -4653,12 +4669,18 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
 #endif
         bcond_compute = 1;
         btgt = ctx->pc + insn_bytes + offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_J:
     case OPC_JAL:
     case OPC_JALX:
         /* Jump to immediate */
         btgt = ((ctx->pc + insn_bytes) & (int32_t)0xF0000000) | (uint32_t)offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_JALR:
 #ifdef CONFIG_ESESC
@@ -4857,9 +4879,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
         ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RCALL, rs, rt<0?0:rt, blink);
       else
         ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_LCALL, rs, rt<0?0:rt, blink);
-    }else if (ctrl_reg && (rt == 31 || rs == 31)) {
+    }else if (ctrl_reg && esesc_ret) {
       ESESC_TRACE_RCTRL(ctx->pc,btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
-    }else if (rt == 31 || rs == 31) {
+    }else if (esesc_ret) {
       ESESC_TRACE_LCTRL(ctx->pc,btgt,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
     }else if (bcond_compute == 0) {
       if (ctrl_reg)
@@ -4886,6 +4908,7 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
 
       gen_set_label(l2);
     }
+    esesc_ret = 0;
 #endif
     MIPS_DEBUG("enter ds: link %d cond %02x target " TARGET_FMT_lx,
                blink, ctx->hflags, btgt);
@@ -11342,11 +11365,6 @@ static inline void clear_branch_hflags(DisasContext *ctx)
     }
 }
 
-#ifdef CONFIG_ESESC
-    int esesc_link = 0;
-    int esesc_ret  = 0;
-    int esesc_drop = 0;
-#endif
 
 static void gen_branch(DisasContext *ctx, int insn_bytes)
 {
@@ -11359,9 +11377,14 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
         switch (proc_hflags & MIPS_HFLAG_BMASK_BASE) {
         case MIPS_HFLAG_FBNSLOT:
             MIPS_DEBUG("forbidden slot");
+#ifdef CONFIG_ESESC
             if (esesc_drop==0) {
-              ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+              if (esesc_ret)
+                ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
             }
+#endif
 
             gen_goto_tb(ctx, 0, ctx->pc + insn_bytes);
             break;
@@ -11375,6 +11398,8 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
             if (esesc_drop==0) {
               if (esesc_link)
                 ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
               else
                 ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
             }
@@ -11388,6 +11413,8 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
             if (esesc_drop==0) {
               if (esesc_link)
                 ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
               else
                 ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
             }
@@ -11403,14 +11430,20 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
                 tcg_gen_brcondi_tl(TCG_COND_NE, bcond, 0, l1);
 #ifdef CONFIG_ESESC
                 if (esesc_drop==0) {
-                  ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+                  if (esesc_ret)
+                    ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+                  else
+                    ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
                 }
 #endif
                 gen_goto_tb(ctx, 1, ctx->pc + insn_bytes);
                 gen_set_label(l1);
 #ifdef CONFIG_ESESC
                 if (esesc_drop==0) {
-                  ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+                  if (esesc_ret)
+                    ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_RET, 0, 0, LREG_InvalidOutput);
+                  else
+                    ESESC_TRACE_RCTRL(ctx->pc,0,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
                 }
 #endif
                 gen_goto_tb(ctx, 0, ctx->btarget);
@@ -11419,6 +11452,16 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
         case MIPS_HFLAG_BR:
             /* unconditional branch to register */
             MIPS_DEBUG("branch to register");
+#ifdef CONFIG_ESESC
+    if (esesc_drop == 0) {
+      if (esesc_link)
+        ESESC_TRACE_RCTRL(ctx->pc-4,btarget,iBALU_LCALL, 0, 0, 31);
+      else if (esesc_ret)
+        ESESC_TRACE_RCTRL(ctx->pc-4,btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+      else
+        ESESC_TRACE_RCTRL(ctx->pc-4,btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+    }
+#endif
             if (ctx->insn_flags & (ASE_MIPS16 | ASE_MICROMIPS)) {
                 TCGv t0 = tcg_temp_new();
                 TCGv_i32 t1 = tcg_temp_new_i32();
@@ -11435,14 +11478,6 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
             } else {
                 tcg_gen_mov_tl(cpu_PC, btarget);
             }
-#ifdef CONFIG_ESESC
-    if (esesc_drop == 0) {
-      if (esesc_link)
-        ESESC_TRACE_LCTRL(ctx->pc-4,btarget,iBALU_LCALL, 0, 0, 31);
-      else
-        ESESC_TRACE_LCTRL(ctx->pc-4,btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
-    }
-#endif
             if (ctx->singlestep_enabled) {
                 save_cpu_state(ctx, 0);
                 gen_helper_0e0i(raise_exception, EXCP_DEBUG);
@@ -11476,6 +11511,8 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
 #ifdef CONFIG_ESESC
    esesc_link = 0;
    esesc_ret  = 0;
+   if (rt == 31 || rs == 31)
+     esesc_ret = 1; // Clear if offset in branch
 #endif
 
     /* Load needed operands and calculate btarget */
@@ -11487,6 +11524,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         gen_load_gpr(t1, rt);
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->pc + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         if (rs <= rt && rs == 0) {
 #ifdef CONFIG_ESESC
           esesc_link = 1;
@@ -11501,6 +11541,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         gen_load_gpr(t1, rt);
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->pc + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BLEZALC: /* OPC_BGEZALC, OPC_BGEUC */
     case OPC_BGTZALC: /* OPC_BLTZALC, OPC_BLTUC */
@@ -11516,10 +11559,16 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         gen_load_gpr(t1, rt);
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->pc + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BC:
     case OPC_BALC:
         ctx->btarget = addr_add(ctx, ctx->pc + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BEQZC:
     case OPC_BNEZC:
@@ -11539,16 +11588,15 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
             tcg_temp_free(tbase);
             tcg_temp_free(toffset);
         }
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     default:
         MIPS_INVAL("Compact branch/jump");
         generate_exception(ctx, EXCP_RI);
         goto out;
     }
-#ifdef CONFIG_ESESC
-        if (rt == 31 || rs == 31)
-          esesc_ret = 1;
-#endif
 
     if (bcond_compute == 0) {
         /* Uncoditional compact branch */
@@ -11702,12 +11750,18 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
             generate_exception(ctx, EXCP_RI);
             goto out;
         }
-        ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+        if (rt == 31 || rs == 31)
+          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+        else
+          ESESC_TRACE_LCTRL(ctx->pc,ctx->btarget,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
 
         /* Generating branch here as compact branches don't have delay slot */
         gen_goto_tb(ctx, 1, ctx->btarget);
         gen_set_label(fs);
-        ESESC_TRACE_LCTRL(ctx->pc,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+        if (rt==31 || rs == 31)
+          ESESC_TRACE_LCTRL(ctx->pc,0,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+        else
+          ESESC_TRACE_LCTRL(ctx->pc,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
 
         ctx->hflags |= MIPS_HFLAG_FBNSLOT;
         MIPS_DEBUG("Compact conditional branch");

@@ -49,6 +49,7 @@ private:
   static bool       started;
   QEMUArgs         *qemuargs;
 
+  void populate(FlowID  fid);
 public:
 	static void setStarted() {
 		started = true;
@@ -56,6 +57,7 @@ public:
   QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint);
   virtual ~QEMUReader();
 
+  DInst *peekHead(FlowID  fid);
   DInst *executeHead(FlowID  fid);
   void  reexecuteTail(FlowID fid);
   void  syncHeadTail(FlowID  fid);

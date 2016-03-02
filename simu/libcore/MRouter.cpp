@@ -302,11 +302,11 @@ void MRouter::sendDirtyDisp(AddrType addr, bool doStats, TimeDelta_t lat)
   MemRequest::sendDirtyDisp(down_node[0], self_mobj, addr, doStats);
 }
 /* }}} */
-void MRouter::sendCleanDisp(AddrType addr, bool doStats, TimeDelta_t lat)
+void MRouter::sendCleanDisp(AddrType addr, bool prefetch, bool doStats, TimeDelta_t lat)
   /* schedule Displace (down) {{{1 */
 {
   I(down_node.size()==1);
-  MemRequest::sendCleanDisp(down_node[0], self_mobj, addr, doStats);
+  MemRequest::sendCleanDisp(down_node[0], self_mobj, addr, prefetch, doStats);
 }
 /* }}} */
 
@@ -394,6 +394,21 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
   }
 
   return conta;
+}
+/* }}} */
+
+void MRouter::tryPrefetch(AddrType addr, bool doStats)
+  /* propagate the prefetch to the lower level {{{1 */
+{
+  down_node[0]->tryPrefetch(addr, doStats);
+}
+/* }}} */
+
+void MRouter::tryPrefetchPos(uint32_t pos, AddrType addr, bool doStats)
+  /* propagate the prefetch to the lower level {{{1 */
+{
+  I(pos<down_node.size());
+  down_node[pos]->tryPrefetch(addr, doStats);
 }
 /* }}} */
 

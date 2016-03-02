@@ -58,6 +58,7 @@ protected:
   static const char *opcode2Name(InstOpcode type);
   void set(InstOpcode op, RegType src1, RegType src2, RegType dst1, RegType dst2);
   bool doesJump2Label() const  { return opcode == iBALU_LJUMP || opcode == iBALU_LCALL; } // No branch label, just unconditional instructions
+  bool doesCtrl2Label() const  { return opcode == iBALU_LJUMP || opcode == iBALU_LCALL || opcode == iBALU_LBRANCH; }
   InstOpcode getOpcode() const { return opcode; }
   void forcemult() {opcode = iCALU_FPMULT; }
 

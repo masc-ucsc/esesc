@@ -91,6 +91,7 @@ protected:
 public:
   AccProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~AccProcessor();
+  void executing(DInst *dinst);
 };
 
 #endif

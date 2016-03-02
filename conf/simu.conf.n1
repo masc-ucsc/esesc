@@ -1,5 +1,5 @@
 # SCOORE Constants
-memLatency        = 60  # 60 - 30 for L2
+memLatency        = 80  # 60 - 30 for L2
 memLevel         = "BigMem Memory" # No BW model
 #memLevel         = "AdvMem MemBus" # No Pref
 #memLevel          = "MemCtrl MemBus" # No Pref
@@ -8,7 +8,7 @@ l3size            = 2*1024*1024
 memBW             = 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GBytes/s (23.2)
 
 xtradelay = 0
-n = 1
+n = 4
 
 # MIPS64R6 apache-like configuration
 [tradCORE]
@@ -16,6 +16,7 @@ type              = "ooo"
 areaFactor        = 2
 fetchWidth        = 4*$(n)
 alignedFetch      = false  # KEY
+traceAlign        = true
 instQueueSize     = 8*$(n)
 throttlingRatio   = 1.0
 issueWidth        = 2*$(n)  # FIXME: large issueWidth degrades IPC!!! (priority inversion?)
@@ -23,25 +24,26 @@ retireWidth       = 2*$(n)
 decodeDelay       = 3
 renameDelay       = 3
 retireDelay       = 2 # cycles between execute and retire
-maxBranches       = 1024
-bb4Cycle          = 1
+drainonmiss       = false
+maxBranches       = 2048+1024
+bb4Cycle          = 80
 bpredDelay        = 1 #
-maxIRequests      = 4 # +1 icache hit delay -> 1 outs miss
+maxIRequests      = 12 # +1 icache hit delay -> 1 outs miss
 interClusterLat   = 1 # P4 intra +1?
 clusterScheduler  = "RoundRobin"
 #clusterScheduler  = "Use"
 #cluster[0:$(n)]        = 'SUNIT'
 cluster[0]        = 'SUNIT'
-bpred             = 'BPredIssueX_alt'
-robSize           = 64+48*$(n) # FIXME: priority inversion even with a single cluster
+bpred             = 'BPredIssueX2'
+robSize           = 2048+96*$(n) # FIXME: priority inversion even with a single cluster
 stForwardDelay    = 4  # +1 clk from the instruction latency
-maxMemory         = 24*$(n)  # 12 to 16 real entries per cluster
-maxLoads          = 2400
-maxStores         = 2400
-#DL1              = "DL1_core DL1"
-#IL1              = "IL1_core IL1"
-DL1               = "PerCore_DTLB PTLB"
-IL1               = "PerCore_ITLB ITLB"
+maxMemory         = 2048+32*$(n)  # 12 to 16 real entries per cluster
+maxLoads          = 2048+2400
+maxStores         = 2048+2400
+DL1              = "DL1_core DL1"
+IL1              = "IL1_core IL1"
+#DL1               = "PerCore_DTLB PTLB"
+#IL1               = "PerCore_ITLB ITLB"
 MemoryReplay      = false 
 enableICache      = true
 enableDCache      = true
@@ -50,14 +52,14 @@ StoreSetSize      = 8192
 instWidth         = 32
 opcodeWidth       = 11
 nArchRegs         = 32
-nTotalRegs        = 64*$(n)
-scbSize           = 8*$(n)
+nTotalRegs        = 2048+64*$(n)
+scbSize           = 2048+8*$(n)
 
 #########
 [SUNIT]
 blockName         = "AUNIT"
-nRegs             = 1024
-winSize           = 24*$(n)
+nRegs             = 2048+1024
+winSize           = 2048+42*$(n)
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
 schedNumPorts     = 3*$(n)
 schedPortOccp     = 1
@@ -121,11 +123,30 @@ Occ               = 0
 Num               = $(n)
 Occ               = 1
 
+[BPredIssueX2]
+#type              = "oracle"
+type              = "imli"
+addrShift         = 0
+BTACDelay         = 3
+glength           = 256
+ntables           = 20        # Number of tables (M)
+nlocal            = 127
+corrSize          = 31
+tableSize         = 16*2*1024  # Size of each table
+tableValBits      = 4       # Bits for each table entry
+tableTagBits      = 24      # Max Bits for each entry tag
+btbSize           = 4096
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+numBanks            = 1
 
 [BPredIssueX_alt]
-type              = "ogehl"
-#type             = "oracle"
-bpred4Cycle       = 2*$(n) # bpred for cycle
+#type              = "ogehl"
+type             = "oracle"
+addrShift         = 0
+bpred4Cycle       = 4*$(n) # bpred for cycle
 BTACDelay         = 3
 mtables           = 10       # Number of tables (M)
 glength           = 200
@@ -141,7 +162,7 @@ numBanks            = 1
 
 ###############################
 [IL1_core]
-deviceType        = 'cache'
+deviceType        = 'icache'
 blockName         = "Icache"
 coldWarmup        = false
 coreCoupledFreq   = true
@@ -156,8 +177,9 @@ replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 2
-missDelay         = 2
+missDelay         = 1
 lowerLevel        = "PrivL2 L2 sharedby 1"
+#lowerLevel         = "BigMem Memory" # No BW model
 pfetchBuffSize   = 16
 
 [PerCore_DTLB]
@@ -170,7 +192,7 @@ numBanks          = 1
 size              = 64*4096
 assoc             = 64
 bsize             = 4096
-maxRequests       = 8
+maxRequests       = 2048+12*$(n)
 replPolicy        = 'LRU'
 lowerLevel        = "DL1_core DL1"
 lowerTLB          = "Shared_TLB STLB shared"
@@ -185,7 +207,7 @@ hitDelay          = 0
 numBanks          = 1
 size              = 64*4096
 assoc             = 64
-maxRequests       = 4
+maxRequests       = 8
 bsize             = 4096
 replPolicy        = 'LRU'
 lowerLevel        = "IL1_core IL1"
@@ -197,12 +219,12 @@ deviceType        = 'cache'
 coldWarmup        = false
 coreCoupledFreq   = true
 inclusive         = true
-directory         = false
+directory         = true
 blockName         = "dcache"
 numBanks          = 1
 sendFillPortOccp  = 0
 sendFillNumPorts  = 1
-maxRequests       = 8*$(n)
+maxRequests       = 2048+12*$(n)
 size              = $(n)*16*1024
 assoc             = 4
 skew              = false
@@ -211,8 +233,9 @@ replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 0
 hitDelay          = 4
-missDelay         = 4
+missDelay         = 3
 lowerLevel        = "PrivL2 L2 sharedby 2"  # I and D cache
+#lowerLevel         = "BigMem Memory" # No BW model
 bankShift         = 4
 fillBuffSize      = 4
 pfetchBuffSize    = 16
@@ -221,27 +244,28 @@ wbBuffSize        = 16
 [PrivL2]
 deviceType        = 'cache'
 coreCoupledFreq   = false
-inclusive         = true
-directory         = true
+inclusive         = false
+directory         = false
 blockName         = "L2"
 numBanks          = 1
 sendFillNumPorts  = 0
 sendFillPortOccp  = 2
-maxRequests       = 32
+maxRequests       = 2048+12*$(n)
 size              = 1*1024*1024
 assoc             = 8
 bsize             = 64
 replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 0
-hitDelay          = 20-4 # 4 for L1 miss delay
-missDelay         = 20-4
+hitDelay          = 8-4 # 4 for L1 miss delay
+missDelay         = 8-5
 lowerLevel        = "$(memLevel)"
 #lowerLevel       = "L3Cache L3 shared"
 fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0061637333/2 #0.0184912 #Cacti6.5
+nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

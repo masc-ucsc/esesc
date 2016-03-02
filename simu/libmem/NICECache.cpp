@@ -167,6 +167,13 @@ bool NICECache::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void NICECache::tryPrefetch(AddrType addr, bool doStats)
+  /* trop prefetch {{{1 */
+{
+
+}
+/* }}} */
+
 TimeDelta_t NICECache::ffread(AddrType addr)
   /* warmup fast forward read {{{1 */
 {

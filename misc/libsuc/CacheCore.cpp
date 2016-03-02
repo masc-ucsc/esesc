@@ -216,6 +216,40 @@ CacheAssoc<State, Addr_t>::CacheAssoc(int32_t size, int32_t assoc, int32_t blksi
 }
 
 template<class State, class Addr_t>
+typename CacheAssoc<State, Addr_t>::Line *CacheAssoc<State, Addr_t>::findLineNoEffectPrivate(Addr_t addr)
+{
+  Addr_t tag = this->calcTag(addr);
+
+  Line **theSet = &content[this->calcIndex4Tag(tag)];
+
+  // Check most typical case
+  if ((*theSet)->getTag() == tag) {
+    // JustDirectory can break this I((*theSet)->isValid());  
+    return *theSet;
+  }
+
+  Line **lineHit=0;
+  Line **setEnd = theSet + assoc;
+
+  // For sure that position 0 is not (short-cut)
+  {
+    Line **l = theSet + 1;
+    while(l < setEnd) {
+      if ((*l)->getTag() == tag) {
+        lineHit = l;
+        break;
+      }
+      l++;
+    }
+  }
+
+  if (lineHit == 0)
+    return 0;
+
+  return *lineHit;
+}
+
+template<class State, class Addr_t>
 typename CacheAssoc<State, Addr_t>::Line *CacheAssoc<State, Addr_t>::findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)
 {
   Addr_t tag = this->calcTag(addr);
@@ -374,7 +408,7 @@ CacheDM<State, Addr_t>::CacheDM(int32_t size, int32_t blksize, int32_t addrUnit,
 }
 
 template<class State, class Addr_t>
-typename CacheDM<State, Addr_t>::Line *CacheDM<State, Addr_t>::findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)
+typename CacheDM<State, Addr_t>::Line *CacheDM<State, Addr_t>::findLineNoEffectPrivate(Addr_t addr)
 {
   Addr_t tag = this->calcTag(addr);
   I(tag);
@@ -387,6 +421,12 @@ typename CacheDM<State, Addr_t>::Line *CacheDM<State, Addr_t>::findLinePrivate(A
   }
 
   return 0;
+}
+
+template<class State, class Addr_t>
+typename CacheDM<State, Addr_t>::Line *CacheDM<State, Addr_t>::findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)
+{
+  return findLineNoEffectPrivate(addr);
 }
 
 template<class State, class Addr_t>
@@ -423,7 +463,7 @@ CacheDMSkew<State, Addr_t>::CacheDMSkew(int32_t size, int32_t blksize, int32_t a
 }
 
 template<class State, class Addr_t>
-typename CacheDMSkew<State, Addr_t>::Line *CacheDMSkew<State, Addr_t>::findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)
+typename CacheDMSkew<State, Addr_t>::Line *CacheDMSkew<State, Addr_t>::findLineNoEffectPrivate(Addr_t addr)
 {
   Addr_t tag1 = this->calcTag(addr);
   I(tag1);
@@ -471,6 +511,12 @@ typename CacheDMSkew<State, Addr_t>::Line *CacheDMSkew<State, Addr_t>::findLineP
   line0->recent = false;
 
   return 0;
+}
+
+template<class State, class Addr_t>
+typename CacheDMSkew<State, Addr_t>::Line *CacheDMSkew<State, Addr_t>::findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)
+{
+  return findLineNoEffectPrivate(addr);
 }
 
 template<class State, class Addr_t>
@@ -592,6 +638,28 @@ CacheSHIP<State, Addr_t>::CacheSHIP(int32_t size, int32_t assoc, int32_t blksize
   }
   
   irand = 0;
+}
+
+template<class State, class Addr_t>
+typename CacheSHIP<State, Addr_t>::Line *CacheSHIP<State, Addr_t>::findLineNoEffectPrivate(Addr_t addr)
+{
+  Addr_t tag = this->calcTag(addr);
+  Line **theSet = &content[this->calcIndex4Tag(tag)];
+  Line **setEnd = theSet + assoc;
+  Line **lineHit=0;
+
+  {
+    Line **l = theSet;
+    while(l < setEnd) {
+      if ((*l)->getTag() == tag) {
+        lineHit = l;
+        break;
+      }
+      l++;
+    }
+  }
+
+  return *lineHit;
 }
 
 template<class State, class Addr_t>

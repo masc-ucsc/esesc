@@ -311,6 +311,7 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
+nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

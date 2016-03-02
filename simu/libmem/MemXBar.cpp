@@ -177,6 +177,14 @@ bool MemXBar::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void MemXBar::tryPrefetch(AddrType addr, bool doStats)
+  /* fast forward reads {{{1 */
+{ 
+  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
+  router->tryPrefetchPos(pos, addr, doStats);
+}
+/* }}} */
+
 TimeDelta_t MemXBar::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 

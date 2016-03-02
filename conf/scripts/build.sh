@@ -33,5 +33,6 @@ fi
 
 if [ ${ESESC_ENABLE_LIVE} -eq '1' ]; then
   make live
+  make livecriu
 fi
 

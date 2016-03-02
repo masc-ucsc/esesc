@@ -57,6 +57,8 @@
 #include "DrawArch.h"
 #include "Transporter.h"
 
+#define DEBUG_LIVE
+
 extern DrawArch arch;
 
 extern "C" void signalCatcher(int32_t sig);
@@ -210,6 +212,10 @@ void BootLoader::reportSample() {
     schema_sent = true;
   }
 
+#ifdef DEBUG_LIVE
+  GStats::report("reportSample");
+  sleep(1); //TODO: remove debugging HACK
+#endif
   Report::setBinField(sample_count);
   GStats::reportBin();
   Report::binFlush();
@@ -217,10 +223,19 @@ void BootLoader::reportSample() {
 
   //Wait for resume or kill
 #ifdef ESESC_LIVE
+
+
+  // TODO: actually listen for a message and possibly take a different
+  // action.
   int k, skp;
   Transporter::receive_fast("continue", "%d,%d", &k, &skp);
-  if(k == 1)
-    kill(getpid(),SIGTERM);
+  if(k == 1) {
+    MSG("LiveSim sample done. Exiting");
+    exit(0);
+  } else {
+    MSG("LiveSim: start simulating another sample");
+    return;
+  }
 #endif
 
   return;

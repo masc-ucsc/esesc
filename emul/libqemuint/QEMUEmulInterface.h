@@ -49,6 +49,7 @@ class QEMUEmulInterface : public EmulInterface {
   QEMUEmulInterface(const char *section);
   ~QEMUEmulInterface();
 
+  DInst  *peekHead(FlowID   fid);
   DInst  *executeHead(FlowID   fid);
   void    reexecuteTail(FlowID fid);
   void    syncHeadTail(FlowID  fid);

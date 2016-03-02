@@ -165,6 +165,13 @@ bool Bus::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void Bus::tryPrefetch(AddrType addr, bool doStats)
+  /* forward tryPrefetch {{{1 */
+{ 
+  router->tryPrefetch(addr,doStats);
+}
+/* }}} */
+
 TimeDelta_t Bus::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 

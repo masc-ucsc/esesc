@@ -73,6 +73,7 @@ public:
   InOrderProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~InOrderProcessor();
 
+  void       executing(DInst *dinst);
   LSQ *getLSQ() { return &lsq; }
   void replay(DInst *dinst);
   bool isFlushing() {

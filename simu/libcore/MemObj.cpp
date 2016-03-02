@@ -176,6 +176,12 @@ bool DummyMemObj::isBusy(AddrType addr) const
 }
 // }}}
 
+void DummyMemObj::tryPrefetch(AddrType addr, bool doStats)
+  /* drop the try prefetch {{{1 */
+{ 
+}
+/* }}} */
+
 TimeDelta_t DummyMemObj::ffread(AddrType addr)
   /* fast forward read {{{1 */
 { 

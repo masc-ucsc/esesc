@@ -122,6 +122,22 @@ static void doread(MemObj *cache, AddrType addr)
   rd_pending++;
 }
 
+static void doprefetch(MemObj *cache, AddrType addr)
+{
+  num_operations++;
+  DInst *ldClone = ld->clone();
+  ldClone->setAddr(addr);
+
+  while(cache->isBusy(addr))
+    EventScheduler::advanceClock();
+
+  rdDoneCB *cb = rdDoneCB::create(ldClone);
+  printf("rd %x @%lld\n", (unsigned int)addr,(long long)globalClock);
+
+  MemRequest::sendReqReadPrefetch(cache, ldClone->getStatsFlag(), addr, cb);
+  rd_pending++;
+}
+
 static void dowrite(MemObj *cache, AddrType addr)
 {
   num_operations++;
@@ -146,10 +162,10 @@ void initialize(){
   if(!pluggedin){
     int arg1          = 1;
     const char *arg2[] = {"cachetest", 0};
-    setenv("ESESC_tradCORE_DL1","DL1_core DL1",1);
+    //setenv("ESESC_tradCORE_DL1","DL1_core DL1",1);
 
     SescConf = new SConfig(arg1, arg2);
-    unsetenv("ESESC_tradCore_DL1");
+    //unsetenv("ESESC_tradCore_DL1");
     gms_p0 = new MemorySystem(0);
     gms_p0->buildMemorySystem();
     gms_p1 = new MemorySystem(1);
@@ -171,30 +187,23 @@ void initialize(){
 }
 
 
-CCache *p0getDL1(){
-#if 0
-  GProcessor *gproc0 = TaskHandler::getSimu(0);
-  MemObj *P0DL1=gproc0->getMemorySystem()->getDL1();
-#else
-  MemObj *P0DL1=gms_p0->getDL1();
-#endif
-  CCache *p0cl1=static_cast<CCache*>(P0DL1);
-  //p0cl1->setNeedsCoherence();
-  return p0cl1;
+CCache *getDL1(GMemorySystem *gms){
+  MemObj *dl1=gms->getDL1();
+  if (strcasecmp(dl1->getDeviceType(),"cache")!=0) {
+    printf("going down from %s\n",dl1->getDeviceType());
+    MRouter *router= dl1->getRouter();
+    dl1=router->getDownNode();
+    if (strcasecmp(dl1->getDeviceType(),"cache")!=0) {
+      printf("ERROR: Neither first or second level is a cache %s\n",dl1->getDeviceType());
+      exit(-1);
+    }
+  }
+
+  CCache *cdl1=static_cast<CCache*>(dl1);
+  return cdl1;
 }
 
-CCache *p0getL2(){
-	MemObj *P0DL1=gms_p0->getDL1();
-	MRouter *router=P0DL1->getRouter();
-	MemObj *L2=router->getDownNode();
-	 CCache *l2c=static_cast<CCache*>(L2);
-	//l2c->setNeedsCoherence();
-   return l2c;
-}
-CCache *p0getL3(){
-	MemObj *P0DL1=gms_p0->getDL1();
-	MRouter *router=P0DL1->getRouter();
-	MemObj *L2=router->getDownNode();
+CCache *getL3(MemObj *L2) {
 	MRouter *router2= L2->getRouter();
   MemObj *L3=router2->getDownNode();
   if (strncasecmp(L3->getName(),"L3",2)!=0)
@@ -206,31 +215,12 @@ CCache *p0getL3(){
   return l3c;
 }
 
-
-CCache *p1getDL1(){
-#if 0
-	GProcessor *gproc1 = TaskHandler::getSimu(1);
-	MemObj *P1DL1=gproc1->getMemorySystem()->getDL1();
-#else
-	MemObj *P1DL1=gms_p1->getDL1();
-#endif
-  CCache *p1d1=static_cast<CCache*>(P1DL1);
-  //p1d1->setNeedsCoherence();
-	return p1d1;
-}
-
-CCache *p1getL2() {
-#if 0
-	GProcessor *gproc1 = TaskHandler::getSimu(1);
-	MemObj *P1DL1=gproc1->getMemorySystem()->getDL1();
-#else
-	MemObj *P1DL1=gms_p1->getDL1();
-#endif
-	MRouter *router=P1DL1->getRouter();
+CCache *getL2(MemObj *P0DL1) {
+	MRouter *router=P0DL1->getRouter();
 	MemObj *L2=router->getDownNode();
-  CCache *cL2=static_cast<CCache*>(L2);
-  //cL2->setNeedsCoherence();
-  return cL2;
+	 CCache *l2c=static_cast<CCache*>(L2);
+	//l2c->setNeedsCoherence();
+   return l2c;
 }
 
 
@@ -243,12 +233,15 @@ protected:
   CCache *p1dl1;
   virtual void SetUp() {
     initialize();
-    p0dl1=p0getDL1();
-    p0l2 =p0getL2();
+    p0dl1=getDL1(gms_p0);
+
+    p0l2 =getL2(p0dl1);
     p0l2->setCoreDL1(0); // to allow fake L2 direct accesses
-    p1l2 =p1getL2();
-    l3   =p0getL3();
-    p1dl1=p1getDL1();
+
+    p1dl1=getDL1(gms_p1);
+    p1l2 =getL2(p1dl1);
+
+    l3   =getL3(p0l2);
   }
   virtual void TearDown() {
   }
@@ -664,6 +657,134 @@ TEST_F(CacheTest,justDirectory){
   EXPECT_EQ(Invalid,getState(p0dl1,0x900));
   EXPECT_EQ(Modified,getState(p1dl1,0x900));
 }
+
+#if 0
+TEST_F(CacheTest,prefetch1){
+  printf("BEGIN prefetch is not in the way\n");
+  waitAllMemOpsDone();
+
+  Time_t start;
+  Time_t pref1;
+  Time_t pref2;
+
+  // Calibration
+  start = globalClock;
+  doread(p0dl1,0xa00);
+  waitAllMemOpsDone();
+  Time_t nopref = globalClock - start;
+
+  // Prefetch ahead 2 cycles
+  start = globalClock;
+  doprefetch(p0dl1,0xb00);
+  EventScheduler::advanceClock();
+  EventScheduler::advanceClock();
+  doread(p0dl1,0xb00);
+  waitAllMemOpsDone();
+  pref2 = globalClock - start;
+  EXPECT_EQ(nopref,pref2); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 1 cycles
+  start = globalClock;
+  doprefetch(p0dl1,0xc00);
+  EventScheduler::advanceClock();
+  doread(p0dl1,0xc00);
+  waitAllMemOpsDone();
+  pref1 = globalClock - start;
+  EXPECT_EQ(nopref,pref1); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 2 cycles
+  start = globalClock;
+  doread(p0dl1,0xd00);
+  EventScheduler::advanceClock();
+  EventScheduler::advanceClock();
+  doprefetch(p0dl1,0xd00);
+  waitAllMemOpsDone();
+  pref2 = globalClock - start;
+  EXPECT_EQ(nopref,pref2); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 1 cycles
+  start = globalClock;
+  doread(p0dl1,0xe00);
+  EventScheduler::advanceClock();
+  doprefetch(p0dl1,0xe00);
+  waitAllMemOpsDone();
+  pref1 = globalClock - start;
+  EXPECT_EQ(nopref,pref1); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 0 cycles
+  start = globalClock;
+  doprefetch(p0dl1,0xf00);
+  doread(p0dl1,0xf00);
+  waitAllMemOpsDone();
+  pref1 = globalClock - start;
+  EXPECT_EQ(nopref,pref1); // prefetch started ahead 2 cycles
+
+  printf("nopred=%d pref2=%d\n",nopref, pref2);
+}
+
+TEST_F(CacheTest,prefetch2) {
+  printf("BEGIN prefetch L1/L2 mix\n");
+  waitAllMemOpsDone();
+
+  Time_t start;
+  Time_t pref1;
+  Time_t pref2;
+
+  // Calibration
+  start = globalClock;
+  doread(p0dl1,0x100a00);
+  waitAllMemOpsDone();
+  Time_t nopref = globalClock - start;
+
+  // Prefetch ahead 2 cycles
+  start = globalClock;
+  doprefetch(p0l2,0x100b00);
+  EventScheduler::advanceClock();
+  EventScheduler::advanceClock();
+  doread(p0dl1,0x100b00);
+  waitAllMemOpsDone();
+  pref2 = globalClock - start;
+  EXPECT_EQ(nopref,pref2); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 1 cycles
+  start = globalClock;
+  doprefetch(p0l2,0x100c00);
+  EventScheduler::advanceClock();
+  doread(p0dl1,0x100c00);
+  waitAllMemOpsDone();
+  pref1 = globalClock - start;
+  EXPECT_EQ(nopref,pref1); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 2 cycles
+  start = globalClock;
+  doread(p0dl1,0x100d00);
+  EventScheduler::advanceClock();
+  EventScheduler::advanceClock();
+  doprefetch(p0l2,0x100d00);
+  waitAllMemOpsDone();
+  pref2 = globalClock - start;
+  EXPECT_EQ(nopref,pref2); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 1 cycles
+  start = globalClock;
+  doread(p0dl1,0x100e00);
+  EventScheduler::advanceClock();
+  doprefetch(p0l2,0x100e00);
+  waitAllMemOpsDone();
+  pref1 = globalClock - start;
+  EXPECT_EQ(nopref,pref1); // prefetch started ahead 2 cycles
+
+  // Prefetch ahead 0 cycles
+  start = globalClock;
+  doprefetch(p0l2,0x100f00);
+  doread(p0dl1,0x100f00);
+  waitAllMemOpsDone();
+  pref1 = globalClock - start;
+  EXPECT_EQ(nopref,pref1); // prefetch started ahead 2 cycles
+
+  printf("nopred=%d pref2=%d\n",nopref, pref2);
+}
+#endif
 
 TEST_F(CacheTest,l2_bw){
 

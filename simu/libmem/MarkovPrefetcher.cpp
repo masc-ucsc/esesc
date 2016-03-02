@@ -154,6 +154,12 @@ bool MarkovPrefetcher::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void MarkovPrefetcher::tryPrefetch(AddrType addr, bool doStats)
+  /* drop prefetch {{{1 */
+{ 
+}
+/* }}} */
+
 TimeDelta_t MarkovPrefetcher::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 

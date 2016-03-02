@@ -274,6 +274,8 @@ void Cluster::addInst(DInst *dinst) {
 
 void ExecutingCluster::executing(DInst *dinst) {
 
+  gproc->executing(dinst);
+
   delEntry();
 }
 
@@ -303,6 +305,8 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 
 void ExecutedCluster::executing(DInst *dinst) {
 
+  gproc->executing(dinst);
+
 }
 
 void ExecutedCluster::executed(DInst *dinst) {
@@ -331,6 +335,8 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
 //************ RetiredCluster
 
 void RetiredCluster::executing(DInst *dinst) {
+
+  gproc->executing(dinst);
 
 }
 

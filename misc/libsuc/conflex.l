@@ -19,6 +19,7 @@ fileStack_t  fileStack[MAXFILESTACK];
 int fileStackPos=0;
 
 const char *currentFile=0;
+char *confDir=0;
 
 %}
 
@@ -124,14 +125,10 @@ QString {QString1}|{QString2}
 		    /* The name is a full path, just use it as file name */
 		    nextFile=strdup(inclFile);
 		  }else{
-		    /* The name is a relative path, get the directory of the current file */
-                    char *currFile = strdup(currentFile);
-                    char *currDir  = strdup(dirname(currFile));
-		    free(currFile);
+		    /* The name is a relative path assume that this is relative to the base conf file*/
 		    /* The actual file name is a concatenation of that path, a slash, and the parsed name */
-		    nextFile = (char *)malloc(strlen(currDir)+1+strlen(inclFile)+1);
-		    strcpy(nextFile,currDir);
-		    free(currDir);
+		    nextFile = (char *)malloc(strlen(confDir)+1+strlen(inclFile)+1);
+		    strcpy(nextFile,confDir);
 		    strcat(nextFile,"/");
 		    strcat(nextFile,inclFile);
 		  }

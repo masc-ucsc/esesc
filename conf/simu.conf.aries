@@ -1,7 +1,7 @@
 # SCOORE Constants
-memLatency        = 120 # 110ns chromebook
-#memLevel         = "BigMem Memory" # No BW model
-memLevel          = "AdvMem MemBus" # No Pref
+memLatency        = 60 # 110ns chromebook
+memLevel         = "BigMem Memory" # No BW model
+#memLevel          = "AdvMem MemBus" # No Pref
 #memLevel          = "MemCtrl MemBus" # No Pref
 #memLevel         = "PBuff PBuff"  # Prefetching, Not ready yet.
 #memLevel         = "GHBuffer Prefetcher" # No Pref
@@ -161,7 +161,7 @@ Occ               = 1
 [BPredIssueX] 
 type              = "2bit"
 addrShift         = 1
-size              = 256
+size              = 1024
 bits              = 2
 bpred4Cycle       = 1 
 BTACDelay         = 3
@@ -175,17 +175,17 @@ numBanks            = 1
 
 [BPredIssueX2]
 #type              = "oracle"
-type              = "dgp"
+type              = "imli"
 addrShift         = 0
 BTACDelay         = 3
-glength           = 512
-ntables           = 30        # Number of tables (M)
+glength           = 128
+ntables           = 11        # Number of tables (M)
 nlocal            = 7
 corrSize          = 31
-tableSize         = 32*4*1024  # Size of each table
+tableSize         = 2*1024  # Size of each table
 tableValBits      = 4       # Bits for each table entry
 tableTagBits      = 24      # Max Bits for each entry tag
-btbSize           = 0
+btbSize           = 2048
 btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
@@ -378,6 +378,7 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
+nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

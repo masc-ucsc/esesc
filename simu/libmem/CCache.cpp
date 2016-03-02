@@ -62,13 +62,16 @@ void CCache::trackAddress(MemRequest *mreq) {
 }
 #endif
 
-//#define MTRACE(a...)   do{ fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); }while(0)
+//#define MTRACE(a...)   do{ if (strcasecmp(getName(),"IL1V(0)") == 0) { fprintf(stderr,"@%lld %s %d 0x%x %s :",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr(), mreq->isPrefetch()?"pref":""); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 #define MTRACE(a...)
 //#define MTRACE(a...)   do{ if (mreq->getID()== 109428) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
+//#define MTRACE(a...)   do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 
 CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   // Constructor {{{1
   :MemObj(section, name)
+	 ,nTryPrefetch    ("%s:nTryPrefetch",        name)
+	 ,nSendPrefetch   ("%s:nSendPrefetch",       name)
 	 ,displacedSend   ("%s:displacedSend",       name)
 	 ,displacedRecv   ("%s:displacedRecv",       name)
 	 ,invAll          ("%s:invAll",          name)
@@ -78,6 +81,7 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 	 ,lineFill        ("%s:lineFill",        name)
 	 ,avgMissLat      ("%s_avgMissLat",      name)
 	 ,avgMemLat       ("%s_avgMemLat",       name)
+	 ,avgHalfMemLat   ("%s_avgHalfMemLat",   name)
 	 ,avgSnoopLat     ("%s_avgSnoopLat",     name)
 	 ,capInvalidateHit   ("%s_capInvalidateHit",   name)
 	 ,capInvalidateMiss  ("%s_capInvalidateMiss",  name)
@@ -138,9 +142,15 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
     //MSG("WARNING: coreCoupledFreq does not work yet");
   //}
 
+  if(SescConf->checkInt(section,"nlprefetch")) {
+    nlprefetch = SescConf->getInt(section,"nlprefetch");
+  } else {
+    nlprefetch = 0;
+  }
+
 #if 1
   if(SescConf->checkBool(section,"incoherent")) {
-    incoherent = SescConf->checkBool(section,"incoherent");
+    incoherent = SescConf->getBool(section,"incoherent");
     //MSG("WARNING: coreCoupledFreq does not work yet");
   } else {
     incoherent = false;
@@ -152,8 +162,13 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
       clearNeedsCoherence();
     }
   }
-
 #endif
+
+  if(SescConf->checkBool(section,"victim")) {
+    victim = SescConf->getBool(section,"victim");
+  }else{
+    victim = false;
+  }
 
   coreCoupledFreq = false;
   //if (coreCoupledFreq) {
@@ -161,7 +176,6 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   //}
 
   char tmpName[512];
-
   sprintf(tmpName, "%s", name);
 
   cacheBank = CacheType::create(section, "", tmpName);
@@ -170,7 +184,9 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   uint32_t MaxRequests = SescConf->getInt(section, "maxRequests");
   if (MaxRequests > 2000)
     MaxRequests = 2000;
-  mshr      = new MSHR(tmpName, 16*MaxRequests, lineSize, MaxRequests);
+  mshr  = new MSHR(tmpName, 128*MaxRequests, lineSize, MaxRequests);
+  sprintf(tmpName, "%sp", name);
+  pmshr = new MSHR(tmpName, 128*MaxRequests, lineSize, MaxRequests);
 
   I(getLineSize() < 4096); // To avoid bank selection conflict (insane CCache line)
   I(gms);
@@ -196,6 +212,10 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   }
   if (justDirectory && !directory) {
     MSG("ERROR: justDirectory option is only possible with directory=true");
+		SescConf->notCorrect();
+  }
+  if (justDirectory && victim) {
+    MSG("ERROR: justDirectory option is only possible with directory=true and no victim");
 		SescConf->notCorrect();
   }
 
@@ -262,10 +282,12 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
   displacedSend.inc(doStats);
 
   if (l->needsDisp()) {
-    router->sendDirtyDisp(naddr, mreq->getStatsFlag(),1);
+    MTRACE("displace 0x%llx dirty", naddr);
+    router->sendDirtyDisp(naddr, mreq->getStatsFlag(), 1);
 		writeBack.inc();
   }else{
-    router->sendCleanDisp(naddr, mreq->getStatsFlag(),1);
+    MTRACE("displace 0x%llx clean", naddr);
+    router->sendCleanDisp(naddr, l->isPrefetch(), mreq->getStatsFlag(), 1);
   }
 
   l->clearSharing();
@@ -276,6 +298,7 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
 /* find a new CCacheline for addr (it can return 0) {{{1 */
 {
   AddrType rpl_addr=0;
+  I(mreq->getAddr() == addr);
 
   I(cacheBank->findLineDebug(addr) == 0);
   Line *l = cacheBank->fillLine(addr, rpl_addr);
@@ -287,6 +310,12 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
 		// TODO: add a port for evictions. Schedule the displaceLine accordingly
     displaceLine(rpl_addr, mreq, l);
   }
+
+  if (mreq->isPrefetch())
+    l->setPrefetch();
+  else
+    l->clearPrefetch();
+
   I(l->getSharingCount()==0);
 
   return l;
@@ -305,8 +334,7 @@ void CCache::mustForwardReqDown(MemRequest *mreq, bool miss, Line *l)
 
   I(!mreq->isRetrying());
 
-
-  router->scheduleReq(mreq, 1);
+  router->scheduleReq(mreq, 0); // miss latency already charged
 }
 // }}}
 
@@ -439,11 +467,11 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
   }else{
     I(state != I);
     I(mreq->isReq() || mreq->isReqAck());
-    if (ostate != I && portid>=0) {
+    if (ostate != I && !mreq->isTopCoherentNode()) {
       //I(!mreq->isHomeNode());
       state = ostate;
     }
-    if (mreq->isReqAck() && !mreq->isHomeNode()) {
+    if (mreq->isReqAck() && !mreq->isTopCoherentNode()) {
       switch(mreq->getAction()) {
         case ma_setDirty:
           if (ostate == I)
@@ -513,8 +541,13 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
   I(l);
   I(!notifyLowerLevels(l,mreq));
 
-  if (mreq->isHomeNode())
+  if (mreq->isTopCoherentNode())
     return false;
+
+  if (victim)
+    return false;
+
+  I(!mreq->isHomeNode());
   I(!router->isTopLevel());
 
   int16_t portid = router->getCreatorPort(mreq);
@@ -619,23 +652,44 @@ void CCache::doReq(MemRequest *mreq)
 
   if (retrying) { // reissued operation
 		mreq->clearRetrying();
-    I(!mshr->canIssue(addr)); // the req is already queued if retrying
+    //GI(mreq->isPrefetch() , !pmshr->canIssue(addr)); // the req is already queued if retrying
+    GI(!mreq->isPrefetch(), !mshr->canIssue(addr)); // the req is already queued if retrying
   }else{
     if(!mshr->canIssue(addr)) {
-      s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
+      MTRACE("doReq queued");
+#if 0
+      if (mreq->isPrefetch()) {
+        // merge prefetch
+        MSG("%s @%lld merge preq 0x%llx (%d)",getName(), globalClock, mreq->getAddr(), mreq->getID());
+      }
+#endif
+      //s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
 
       mreq->setRetrying();
-      mshr->addEntry(addr, &mreq->startReqCB,mreq);
+      mshr->addEntry(addr, &mreq->redoReqCB,mreq);
       return;
     }
     mshr->blockEntry(addr,mreq);
   }
 
   Line *l = cacheBank->readLine(addr);
+  if (nlprefetch!=0 && !retrying && !mreq->isPrefetch()) {
+    for(int i=0;i<nlprefetch;i++) {
+      tryPrefetch(addr + (i+1)*lineSize, mreq->getStatsFlag());
+    }
+  }
+
   if (l == 0) {
+    //if (nlprefetch)
+      //MSG("%s @%lld miss req 0x%llx (%d)",getName(), globalClock, mreq->getAddr(), mreq->getID());
     MTRACE("doReq cache miss");
 		mustForwardReqDown(mreq, true, 0);
     return;
+  }
+
+  if (l->isPrefetch() && !mreq->isPrefetch()) {
+    l->clearPrefetch();
+    I(!victim); // Victim should not have prefetch lines
   }
 
   if (notifyLowerLevels(l,mreq)) {
@@ -657,10 +711,10 @@ void CCache::doReq(MemRequest *mreq)
 	I(l->isValid());
 
   int16_t portid = router->getCreatorPort(mreq);
-  GI(portid<0,mreq->isHomeNode());
+  GI(portid<0,mreq->isTopCoherentNode());
 	l->adjustState(mreq, portid);
 
-  Time_t when = port->reqDone(mreq);
+  Time_t when = port->reqDone(mreq,retrying);
   if (when == 0) {
     //I(0);
     MTRACE("doReq restartReq");
@@ -682,13 +736,18 @@ void CCache::doReq(MemRequest *mreq)
     s_reqHit[mreq->getAction()]->inc(mreq->getStatsFlag());
   }
 
-  double lat = mreq->getTimeDelay()+(when-globalClock);
-#if 0
-  if (mreq->getPC())
-    MSG("%s pc=%llx addr=%llx lat=%g @%lld", getName(), mreq->getPC(), mreq->getAddr(), lat, when);
-#endif
+  if (!mreq->isPrefetch()) {
+    double lat = mreq->getTimeDelay()+(when-globalClock);
+    avgMemLat.sample(lat, mreq->getStatsFlag());
+    if (retrying) 
+      avgHalfMemLat.sample(lat, mreq->getStatsFlag());
 
-  avgMemLat.sample(lat, mreq->getStatsFlag());
+#if 0
+    if (mreq->getPC())
+      MSG("%s pc=%llx addr=%llx lat=%g @%lld", getName(), mreq->getPC(), mreq->getAddr(), lat, when);
+#endif
+  }
+
 	I(when>=globalClock);
   if(mreq->isHomeNode()) {
 		mreq->ackAbs(when);
@@ -705,7 +764,7 @@ void CCache::doReq(MemRequest *mreq)
 		router->scheduleReqAckAbs(mreq,when);
 	}
 
-  MTRACE("doReq done");
+  MTRACE("doReq done %lld", when);
 
   port->reqRetire(mreq);
   mshr->retire(addr,mreq);
@@ -719,7 +778,11 @@ void CCache::doDisp(MemRequest *mreq)
 
   AddrType addr = mreq->getAddr();
 
-  Line *l=cacheBank->readLine(addr);
+  Line *l=cacheBank->findLineNoEffect(addr);
+  if (l==0 && victim && !mreq->isPrefetch()) {
+    MTRACE("doDisp allocateLine");
+    l = allocateLine(addr,mreq);
+  }
   if (l) {
     int16_t portid = router->getCreatorPort(mreq);
     l->adjustState(mreq,portid);
@@ -746,9 +809,14 @@ void CCache::doReqAck(MemRequest *mreq)
   Line *l = cacheBank->readLine(addr);
   // It could be l!=0 if we requested a check in the lower levels to change state.
   if (l == 0) {
-    MTRACE("doReqAck allocatingline");
-    l = allocateLine(addr, mreq);
+    if (!victim) {
+      MTRACE("doReqAck allocateLine");
+      l = allocateLine(addr, mreq);
+    }
   }else{
+    if (!mreq->isPrefetch())
+      l->clearPrefetch();
+
     if (notifyHigherLevels(l,mreq)) {
       // FIXME I(0);
       MTRACE("doReqAck Notifying Higher Levels");
@@ -760,11 +828,15 @@ void CCache::doReqAck(MemRequest *mreq)
   s_reqSetState[mreq->getAction()]->inc(mreq->getStatsFlag());
 
   int16_t portid = router->getCreatorPort(mreq);
-  GI(portid<0,mreq->isHomeNode());
-	l->adjustState(mreq, portid);
+  GI(portid<0,mreq->isTopCoherentNode());
+  if (l) {
+    l->adjustState(mreq, portid);
 
-  if (justDirectory) { // Directory info kept, invalid line to trigger misses
-    l->forceInvalid();
+    if (justDirectory) { // Directory info kept, invalid line to trigger misses
+      l->forceInvalid();
+    }
+  }else{
+    I(victim); // Only victim can pass through 
   }
 
   Time_t when = port->reqAckDone(mreq);
@@ -772,31 +844,36 @@ void CCache::doReqAck(MemRequest *mreq)
     MTRACE("doReqAck restartReqAck");
     // Must restart request
     mreq->setRetrying();
-    mreq->restartReqAckAbs(globalClock+1);
+    mreq->restartReqAckAbs(globalClock+3);
     return;
   }
 
   port->reqRetire(mreq);
-  mshr->retire(addr,mreq);
 
-  double lat = mreq->getTimeDelay(when);
-  avgMissLat.sample(lat, mreq->getStatsFlag());
-  avgMemLat.sample(lat, mreq->getStatsFlag());
+  if (!mreq->isPrefetch()) {
+    double lat = mreq->getTimeDelay(when);
+    avgMissLat.sample(lat, mreq->getStatsFlag());
+    avgMemLat.sample(lat, mreq->getStatsFlag());
 #if 0
-  if (lat>30 && strcmp(getName(),"L2(0)")==0)
-    MSG("%s id=%lld addr=%llx lat=%g @%lld when=%lld", getName(), mreq->getID(), mreq->getAddr(), lat, globalClock, when);
+    if (lat>30 && strcmp(getName(),"L2(0)")==0)
+      MSG("%s id=%lld addr=%llx lat=%g @%lld when=%lld", getName(), mreq->getID(), mreq->getAddr(), lat, globalClock, when);
 #endif
-
+  }
 
   if(mreq->isHomeNode()) {
-    MTRACE("doReqAck isHomeNode, calling ackAbs");
-		mreq->ackAbs(when);
+    MTRACE("doReqAck isHomeNode, calling ackAbs %lld",when);
+    if (when==globalClock)
+      mreq->ack();
+    else
+      mreq->ackAbs(when);
   }else {
     MTRACE("doReqAck is Not HomeNode, calling ackAbsCB %u", when);
     if (!mreq->isWarmup())
       when = inOrderUpMessageAbs(when);
     router->scheduleReqAckAbs(mreq,when);
   }
+
+  mshr->retire(addr,mreq);
 }
 // }}}
 
@@ -805,6 +882,9 @@ void CCache::doSetState(MemRequest *mreq)
 {
   trackAddress(mreq);
   I(!mreq->isHomeNode());
+
+  GI(victim, needsCoherence);
+
   if (!inclusive || !needsCoherence) {
 		// If not inclusive, do whatever we want
     I(mreq->getCurrMem() == this);
@@ -815,7 +895,17 @@ void CCache::doSetState(MemRequest *mreq)
     return;
   }
 
-  Line *l = cacheBank->readLine(mreq->getAddr());
+  Line *l = cacheBank->findLineNoEffect(mreq->getAddr());
+  if (victim) {
+    I(needsCoherence);
+    invAll.inc(mreq->getStatsFlag());
+    int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage(1));
+    if (l)
+      l->invalidate();
+    I(nmsg);
+    return;
+  }
+
   if (l==0) {
 		// Done!
 		mreq->convert2SetStateAck(ma_setInvalid, false);
@@ -866,7 +956,7 @@ void CCache::doSetStateAck(MemRequest *mreq)
 {
   trackAddress(mreq);
 
-  Line *l = cacheBank->readLine(mreq->getAddr());
+  Line *l = cacheBank->findLineNoEffect(mreq->getAddr());
   if (l) {
     bool needsDisp = l->needsDisp();
     int16_t portid = router->getCreatorPort(mreq);
@@ -896,6 +986,9 @@ void CCache::req(MemRequest *mreq)
     mreq->ack(1);
     return;
   }
+  if (!incoherent)
+    mreq->trySetTopCoherentNode(this);
+
 	//I(!mreq->isRetrying());
   port->req(mreq);
 }
@@ -948,6 +1041,31 @@ void CCache::disp(MemRequest *mreq)
   displacedRecv.inc(mreq->getStatsFlag());
 	I(!mreq->isRetrying());
   port->disp(mreq);
+}
+// }}}
+
+void CCache::tryPrefetch(AddrType paddr, bool doStats)
+/* Try to prefetch this address (no guarantees) {{{1 */
+{
+  if ((paddr>>8)==0)
+    return;
+
+  nTryPrefetch.inc(doStats);
+
+  if (cacheBank->findLineNoEffect(paddr))
+    return;
+
+  if (!mshr->canIssue(paddr))
+    return;
+
+  if (port->isBusy(paddr))
+    return;
+
+  nSendPrefetch.inc(doStats);
+  MemRequest *preq = MemRequest::createReqReadPrefetch(this, doStats, paddr);
+  //MSG("%s @%lld try 0x%llx (%d)",getName(), globalClock, preq->getAddr(), preq->getID());
+  router->scheduleReq(preq, 1);
+  mshr->blockEntry(paddr,preq);
 }
 // }}}
 

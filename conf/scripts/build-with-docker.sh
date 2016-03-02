@@ -30,7 +30,7 @@ GID=`id -rg`
 # so there may be a better way in the future 
 
 docker run  -t \
-  -v $ESESC_SRC:$DOCKER_ESESC_SRC:ro \
+  -v $ESESC_SRC:$DOCKER_ESESC_SRC \
   -v $HOST_BUILD_DIR:$DOCKER_BUILD_DIR \
   -e ESESC_SRC=${DOCKER_ESESC_SRC} \
   -e ESESC_BUILD_DIR=${DOCKER_BUILD_DIR} \

@@ -11,7 +11,7 @@ memBW    =   11 #chromebook 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GB
 type              = "ooo"
 areaFactor        = 2
 #issueWrongPath    = false not in new simu.conf
-fetchWidth        = 4
+fetchWidth        = 8
 alignedFetch      = false
 fetchPorts        = 1
 instQueueSize     = 16
@@ -161,7 +161,7 @@ Occ               = 1
 [BPredIssueX] 
 type              = "2bit"
 addrShift         = 2
-size              = 64
+size              = 256
 bits              = 1
 bpred4Cycle       = 1 
 BTACDelay         = 3
@@ -173,8 +173,8 @@ rasSize           = 16
 numBanks            = 1
 
 [BPredIssueX2]
-type              = "ogehl"
-#type             = "oracle"
+#type              = "ogehl"
+type             = "imli"
 addrShift         = 1
 BTACDelay         = 3
 mtables           = 10       # Number of tables (M)
@@ -316,6 +316,7 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
+nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

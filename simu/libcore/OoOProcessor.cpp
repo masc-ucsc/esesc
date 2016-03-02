@@ -49,6 +49,9 @@
 #include "EmuSampler.h"
 
 /* }}} */
+//#define ESESC_CODEPROFILE
+// FIXME: to avoid deadlock, prealloc n to the n oldest instructions
+//#define LATE_ALLOC_REGISTER
 
 OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   /* constructor {{{1 */
@@ -61,11 +64,14 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   ,retire_lock_checkCB(this)
   ,clusterManager(gm, this)
   ,avgFetchWidth("P(%d)_avgFetchWidth",i)
+  ,codeProfile("P(%d)_prof",i)
 {
   bzero(RAT,sizeof(DInst*)*LREG_MAX);
   bzero(serializeRAT,sizeof(DInst*)*LREG_MAX);
 
   spaceInInstQueue = InstQueueSize;
+
+  codeProfile_trigger = 0;
 
   nTotalRegs = SescConf->getInt("cpusimu","nTotalRegs", gm->getCoreId());
   if (nTotalRegs == 0)
@@ -225,6 +231,13 @@ bool OoOProcessor::advance_clock(FlowID fid)
   return true;
 }
 /* }}} */
+
+void OoOProcessor::executing(DInst *dinst) {
+#ifdef LATE_ALLOC_REGISTER
+    if (dinst->getInst()->hasDstRegister())
+      nTotalRegs++;
+#endif
+}
 
 StallCause OoOProcessor::addInst(DInst *dinst)
   /* rename (or addInst) a new instruction {{{1 */
@@ -431,14 +444,33 @@ void OoOProcessor::retire()
   if(!ROB.empty())
     robUsed.sample(ROB.size(), ROB.top()->getStatsFlag());
 
-  if(!rROB.empty())
+  if(!rROB.empty()) {
     rrobUsed.sample(rROB.size(), rROB.top()->getStatsFlag());
+
+#ifdef ESESC_CODEPROFILE
+    if (rROB.top()->getStatsFlag()) {
+      if (codeProfile_trigger<=clockTicks.getDouble()) {
+        DInst *dinst = rROB.top();
+
+        codeProfile_trigger = clockTicks.getDouble() + 121;
+
+        double wt = dinst->getIssuedTime() - dinst->getRenamedTime();
+        double et = dinst->getExecutedTime() - dinst->getIssuedTime();
+        bool   flush = dinst->getFetch()!=0?1:0;
+
+        codeProfile.sample(rROB.top()->getPC(),nCommitted.getDouble(), clockTicks.getDouble(), wt, et, flush);
+      }
+    }
+#endif
+  }
+
 
   for(uint16_t i=0 ; i<RetireWidth && !rROB.empty() ; i++) {
     DInst *dinst = rROB.top();
 
-    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock)
+    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock) {
       break;
+    }
 
     I(dinst->isExecuted());
     
@@ -450,6 +482,7 @@ void OoOProcessor::retire()
       //dinst->getInst()->dump("not ret");
       return;
     }
+
 #if 0
     static int conta=0;
     if ((globalClock-dinst->getExecutedTime())>500)
@@ -471,7 +504,7 @@ void OoOProcessor::retire()
     }
 
 #ifdef ESESC_TRACE
-    MSG("TR %8lld %8llx R%-2d,R%-2d=R%-2d op=%-2d R%-2d   %lld %lld %lld %lld"
+    MSG("TR %8lld %8llx R%-2d,R%-2d=R%-2d op=%-2d R%-2d   %lld %lld %lld %lld %lld"
         ,dinst->getID()
         ,dinst->getPC()
         ,dinst->getInst()->getDst1()
@@ -479,19 +512,23 @@ void OoOProcessor::retire()
         ,dinst->getInst()->getSrc1()
         ,dinst->getInst()->getOpcode()
         ,dinst->getInst()->getSrc2()
-        ,dinst->getFetchTime()
-        ,dinst->getWakeUpTime()
+        ,dinst->getFetchedTime()
+        ,dinst->getRenamedTime()
+        ,dinst->getIssuedTime()
         ,dinst->getExecutedTime()
         ,globalClock);
 #endif
+
 
 #if 0
     dinst->dump("RT ");
     fprintf(stderr,"\n");
 #endif
+
+#ifndef LATE_ALLOC_REGISTER
     if (dinst->getInst()->hasDstRegister())
       nTotalRegs++;
-
+#endif
 
 #if 1 
     if (!dinst->getInst()->isStore()) // Stores can perform after retirement
