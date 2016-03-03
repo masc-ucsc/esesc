@@ -46,6 +46,8 @@
 #include "SescConf.h"
 #include "IMLIBest.h"
 
+#define CLOSE_TARGET_OPTIMIZATION 1
+
 /*****************************************
  * BPred
  */
@@ -229,7 +231,7 @@ PredType BPBTB::predict(DInst *dinst, bool doUpdate, bool doStats)
 
   if (dolc) {
     if (doUpdate)
-      dolc->update(dinst->getPC(),false);
+      dolc->update(dinst->getPC());
 
     key ^= dolc->getSign(btbHistorySize,btbHistorySize);
   }
@@ -479,7 +481,7 @@ PredType BP2level::predict(DInst *dinst, bool doUpdate, bool doStats)
 {
   if( dinst->getInst()->isJump() ) {
     if (useDolc)
-      dolc.update(dinst->getPC(),false);
+      dolc.update(dinst->getPC());
     return btb.predict(dinst, doUpdate, doStats);
   }
 
@@ -489,7 +491,7 @@ PredType BP2level::predict(DInst *dinst, bool doUpdate, bool doStats)
   HistoryType l2Index = historyTable[l1Index];
 
   if (useDolc)
-    dolc.update(dinst->getPC(),false);
+    dolc.update(dinst->getPC());
 
   // update historyTable statistics
   if (doUpdate) {
@@ -505,7 +507,7 @@ PredType BP2level::predict(DInst *dinst, bool doUpdate, bool doStats)
   l2Index = ((l2Index ^ iID) & historyMask ) | (iID<<historySize);
 
   if (useDolc && taken)
-    dolc.update(dinst->getAddr(),false);
+    dolc.update(dinst->getAddr());
 
   bool ptaken;
   if (doUpdate)
@@ -1398,7 +1400,7 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate, bool doStats) {
   bool dolc_updated = false;
   if (dinst->getPC()>loop_end_pc && loop_end_pc!=0) {
     //printf("clr  jmp %llx to %llx\n",dinst->getPC(),dinst->getAddr());
-    dolc.update(calcHist(loop_end_pc), true);
+    dolc.update(calcHist(loop_end_pc));
     dolc_updated = true;
     loop_end_pc  = 0;
     loop_counter = 0;
@@ -1421,7 +1423,7 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
   if( dinst->getInst()->isJump() ) {
     if (!dolc_updated)
-      dolc.update(calcHist(dinst->getPC()), true);
+      dolc.update(calcHist(dinst->getPC()));
 
 #ifdef DGP_AHIST
     for (int32_t i = (alength >> 6)+1; i > 0; i--)
@@ -1433,12 +1435,12 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return btb.predict(dinst, doUpdate, doStats);
   }
   if (!dolc_updated)
-    dolc.update(calcHist(dinst->getPC()), false);
+    dolc.update(calcHist(dinst->getPC()));
 
   bool taken = dinst->isTaken();
 #ifdef DGP_LOCAL
   if (loop_counter>0)
-    ldolc[loop_counter % nlocal]->update(calcHist(dinst->getPC()), false);
+    ldolc[loop_counter % nlocal]->update(calcHist(dinst->getPC()));
 #endif
 
   int32_t S    = 0; // ntables/2
@@ -1830,11 +1832,11 @@ PredType BPDGP::predict(DInst *dinst, bool doUpdate, bool doStats) {
         ldolc[i]->reset(dinst->getPC());
 #ifdef DGP_LOCAL
     if (taken && loop_counter>0) {
-      ldolc[loop_counter % nlocal]->update(calcHist(dinst->getAddr()), false);
+      ldolc[loop_counter % nlocal]->update(calcHist(dinst->getAddr()));
     }
 #endif
     if (taken) {
-      dolc.update(calcHist(dinst->getAddr()), false);
+      dolc.update(calcHist(dinst->getAddr()));
     }
 #endif
   }
@@ -2100,7 +2102,6 @@ BPTage::BPTage(int32_t i, const char *section, const char *sname)
   SescConf->isBetween(section, "tcbits", 1, 15);
   SescConf->isBetween(section, "taggedPredictors", 3, 32);
 
-  //bpred4CycleAddrShift = log2i(fetchWidth/bpred4Cycle); 
   tagWidth = new unsigned[numberOfTaggedPredictors + 1];
   tagWidth[0] = 9;
   tagWidth[1] = 9;
@@ -2712,7 +2713,8 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
   if (SescConf->checkCharPtr("cpusimu","bpred2",id)) 
     bpredSection2 = SescConf->getCharPtr("cpusimu","bpred2",id);
 
-  BTACDelay = SescConf->getInt(bpredSection, "BTACDelay");
+  BTACDelay  = SescConf->getInt(bpredSection, "BTACDelay");
+  FetchWidth = SescConf->getInt("cpusimu", "fetchWidth", id);
 
   if (BTACDelay)
     SescConf->isBetween("cpusimu", "bpredDelay",1,BTACDelay,id);
@@ -2807,13 +2809,32 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   if (outcome1 == CorrectPrediction && outcome2 == CorrectPrediction) {
     // Both agree, and they are right
+    
     if (dinst->isTaken()) {
+#ifdef CLOSE_TARGET_OPTIMIZATION
+      int distance = dinst->getAddr()-dinst->getPC();
+
+      uint32_t delta= distance/FetchWidth+1;
+      if (delta<bpredDelay && distance>0)
+        return delta-1;
+#endif
+      
       return bpredDelay-1;
     }
     return 0;
   }
   if (outcome1 != CorrectPrediction && outcome2 == CorrectPrediction) {
     // Fast wrong, slow right
+#ifdef CLOSE_TARGET_OPTIMIZATION
+    if (dinst->isTaken()) { // outcome1 was not taken
+
+      int distance = dinst->getAddr()-dinst->getPC();
+
+      uint32_t delta= distance/FetchWidth+1;
+      if (delta<BTACDelay && distance>0)
+        return delta-1;
+    }
+#endif
     return BTACDelay-1;
   }
 

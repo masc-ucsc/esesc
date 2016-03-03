@@ -56,7 +56,6 @@ FetchEngine::FetchEngine(FlowID id
   ,avgFetchLost("P(%d)_FetchEngine_avgFetchLost", id)
   ,avgBranchTime("P(%d)_FetchEngine_avgBranchTime", id)
   ,avgBranchTime2("P(%d)_FetchEngine_avgBranchTime2", id)
-  ,avgFetchTime("P(%d)_FetchEngine_avgFetchTime", id)
   ,nDelayInst1("P(%d)_FetchEngine:nDelayInst1", id)
   ,nDelayInst2("P(%d)_FetchEngine:nDelayInst2", id) // Not enough BB/LVIDs per cycle
   ,nDelayInst3("P(%d)_FetchEngine:nDelayInst3", id) 
@@ -128,8 +127,6 @@ FetchEngine::FetchEngine(FlowID id
   // Get some icache L1 parameters
   enableICache = SescConf->getBool("cpusimu","enableICache", id);
   IL1HitDelay = SescConf->getInt(isection,"hitDelay");
-
-  lastMissTime = 0;
 }
 
 FetchEngine::~FetchEngine() {
@@ -147,9 +144,6 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
     return false;
 
   setMissInst(dinst);
-
-  Time_t n = (globalClock-lastMissTime);
-  avgFetchTime.sample(n, dinst->getStatsFlag());
 
   if (fastfix)
     unBlockFetchBPredDelayCB::schedule(delay, this , dinst, globalClock);
@@ -337,7 +331,6 @@ void FetchEngine::unBlockFetch(DInst* dinst, Time_t missFetchTime) {
   n *= 1; //FOR GPU and for MIMD
   nDelayInst1.add(n, dinst->getStatsFlag());
 
-  lastMissTime = globalClock;
 }
 
 

@@ -4,40 +4,25 @@
 
 class DOLC {
 private:
-  const uint64_t depth;
-  const uint64_t olderBits;
-  const uint64_t lastBits;
-  const uint64_t currBits;
+  uint64_t depth;
+  uint64_t olderBits;
+  uint64_t lastBits;
+  uint64_t currBits;
 
   uint64_t *hist;
   uint64_t *histMask;
   uint64_t *histBits;
 
-  bool     *bias;
-
-public:
-  DOLC(int d, int o, int l, int c)
-    : depth(d)
-      , olderBits(o)
-      , lastBits(l)
-      , currBits(c) {
-
-    if (o>63 || l>63 || c>63) {
-      printf("ERROR: DOLC out of limits 64bits per entry\n");
-      exit(-1);
-    }
-
-    uint64_t lastMask  = (((uint64_t)1)<<l)-1;
-    uint64_t currMask  = (((uint64_t)1)<<c)-1;
+  void allocate() {
+    uint64_t lastMask  = (((uint64_t)1)<<lastBits)-1;
+    uint64_t currMask  = (((uint64_t)1)<<currBits)-1;
 
     hist      = new uint64_t[depth];
     histBits  = new uint64_t[depth];
     histMask  = new uint64_t[depth];
-    bias      = new bool[depth];
 
     uint64_t obits = olderBits;
     for(uint64_t i=0;i<depth;i++) {
-      bias[i] = false;
       hist[i] = 0;
       if ((i==128)
           || (i==256)
@@ -59,115 +44,61 @@ public:
     histBits[0] = currBits;
     histMask[0] = currMask;
   }
+public:
+  DOLC(int d, int o, int l, int c)
+    : depth(d)
+      , olderBits(o)
+      , lastBits(l)
+      , currBits(c) {
 
-  uint64_t randomize(uint64_t key, int counter) const {
+    if (o>63 || l>63 || c>63) {
+      printf("ERROR: DOLC out of limits 64bits per entry\n");
+      exit(-1);
+    }
 
-    key ^= counter;
-    key += (key << 12);
-    key ^= (key >> 22);
-    key += (key << 4);
-    key ^= (key >> 9);
-    key += (key << 10);
-    key ^= (key >> 2);
-    key += (key << 7);
-    key ^= (key >> 12);
+    allocate();
 
-    return key;
+    for(uint64_t i=0;i<depth;i++) {
+      hist[i] = 0; // Just for being deterministic :)
+    }
   }
 
-  void update(uint64_t addr, bool b) {
+  DOLC(const DOLC &other) {
+    if (depth != other.depth || olderBits != other.olderBits || lastBits != other.lastBits || currBits != other.currBits ) {
+      delete hist;
+      delete histBits;
+      delete histMask;
 
-#if 0
-    static uint64_t last_addr = 0;
-    static uint64_t prev_addr = 0;
-    static uint64_t last_addr_cntr = 0;
-    static uint64_t prev_addr_cntr = 0;
+      depth = other.depth;
+      olderBits = other.olderBits;
+      lastBits  = other.lastBits;
+      currBits  = other.currBits;
 
-    if (last_addr == addr) {
-      last_addr_cntr++;
-      printf("+");
-      //hist[0] = prev_addr ^ randomize(last_addr,last_addr_cntr);
-      return;
-    }else if (prev_addr == addr) {
-      prev_addr_cntr++;
-      printf("-");
-      //hist[1] = last_addr ^ randomize(prev_addr,prev_addr_cntr);
-      //return;
-    }else{
-      printf("_");
-      last_addr_cntr = 0;
-      prev_addr_cntr = 0;
+      allocate();
     }
 
-    prev_addr = last_addr;
-    last_addr = addr;
-#endif
+    for(uint64_t i=0;i<depth;i++) {
+      hist[i] = other.hist[i];
+    }
+  }
+
+  void mix(uint64_t addr) {
+
+    uint32_t drop  = hist[0]>>10;
+    uint32_t sign1 = hist[0] ^ drop ^ (drop<<(5));
+    uint32_t sign2 = (sign1<<(5)) + addr;
+
+    hist[0] = sign2;
+  }
+
+  void update(uint64_t addr) {
 
     int duplicate = depth-1; // Start full depth, if no duplicate
-#if 0
-    // Worse average, but new kind of history (but always worse!)
-    for(int i=depth-1;i>0;i--) {
-      if (hist[i] == addr && bias[i] == b) {
-        duplicate = i;
-        break;
-      }
-    }
-#endif
-#if 1
-    // No difference for analyzed benchmarks (super long may benefit more)
-    if (b && bias[0]) {
-      // Combine continuous bias jumps to a single signature
-      hist[0] = hist[0] ^ (addr>>1);
-      return;
-    }
-#endif
-
     for(int i=duplicate;i>0;i--) {
       hist[i] = hist[i-1];
-      bias[i] = bias[i-1];
     }
 
     hist[0] = addr;
-    bias[0] = b;
-
-#if 0
-    int conta[32] = {0,};
-    for(int i=0;i<depth;i++) {
-      conta[hist[i]%31]++;
-    }
-    printf("sign %llx: ",addr);
-    for(int i=0;i<31;i++) {
-      printf("%3d ",conta[i]);
-    }
-    printf("\n");
-#endif
-  }
-  uint64_t getSignInt(uint64_t hPC, uint16_t bits, uint16_t m) const {
-#if 0
-    // Half Signature helps alias, and reduces footprint to checkpoint branch predictor
-#if 1
-    int sa= m;
-    if (sa>(bits+3))
-      sa = bits-3;
-    else 
-      sa = sa/2;
-
-    if (sa<3)
-      sa = 3;
-#else
-    int sa = bits/2+2;
-#endif
-
-    //printf("bits=%d m=%d sa=%d\n",bits,m,sa);
-    uint64_t sign = getSign(sa,m);
-
-    uint64_t s = (hPC<<sa) + (sign & ((1<<sa)-1) );
-    sign       = s;
-#else
-    uint64_t sign = getSign(bits,m);
-#endif
-
-    return sign & ((1<<bits)-1);
   }
 
   uint64_t getSign(uint16_t bits, uint16_t m) const {
@@ -182,11 +113,6 @@ public:
     for(int i=0;i<i_max;i++) {
       uint64_t oBits = histBits[i];
       uint64_t h = hist[i] & histMask[i];
-#if 0
-      // A bit worse
-      oBits++;
-      h = (h<<1) + bias[i]?1:0;
-#endif
 
       // Rotate
       uint64_t drop = sign>>(64-oBits);
@@ -201,7 +127,6 @@ public:
       for(int i=0;i<nfolds;i++) {
         sign = sign + (sign<<(i*bits));
       }
-
     }else{
       int nfolds = nbits/bits;
 
@@ -209,6 +134,7 @@ public:
         sign = sign + (sign>>(i*bits));
       }
     }
+
 #if 0
     uint64_t key = sign;
     key         += (key << 12);
@@ -222,15 +148,12 @@ public:
     sign         = key;
 #endif
 
-
     return sign & ((1<<(bits))-1); 
   }
 
   void reset(uint64_t sign) {
-
     for(uint64_t i=0;i<depth;i++) {
       hist[i] = sign & histMask[i];
-      bias[i] = true;
     }
 
   }

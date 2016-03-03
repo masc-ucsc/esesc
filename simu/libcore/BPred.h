@@ -727,6 +727,7 @@ private:
   BPred *pred2;
   
   int32_t BTACDelay;
+  int32_t FetchWidth;
   int32_t bpredDelay;
 
   GStatsCntr nBTAC;
