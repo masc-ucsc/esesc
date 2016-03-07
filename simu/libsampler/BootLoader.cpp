@@ -57,7 +57,7 @@
 #include "DrawArch.h"
 #include "Transporter.h"
 
-#define DEBUG_LIVE
+//#define DEBUG_LIVE
 
 extern DrawArch arch;
 

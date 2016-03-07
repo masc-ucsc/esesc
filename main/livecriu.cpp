@@ -123,7 +123,7 @@ void get_docker_id(char *buf) {
   // Shell command to read the docker ID of the running container. The
   // docker ID is 64 characters long. An additional character is needed to
   // store the `\0` at the end of the string
-  static const char *cmd = "cat /proc/self/cgroup | sed 's/^.*\\///' | head -n1";
+  static const char *cmd = "cat /proc/self/cgroup | grep docker | sed 's/^.*\\///' | head -n1";
 
   FILE *p = popen(cmd, "r");
   char *rv = fgets(buf, DOCKER_ID_LEN, p);
