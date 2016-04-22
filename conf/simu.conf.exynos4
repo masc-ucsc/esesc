@@ -227,7 +227,7 @@ replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 2
-missDelay         = 1
+missDelay         = 2
 lowerLevel        = "PrivL2 L2 sharedby 4"
 pfetchBuffSize   = 16
 
