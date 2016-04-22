@@ -181,6 +181,7 @@ public:
   void doSetState(MemRequest *mreq);
   void doSetStateAck(MemRequest *mreq);
   bool isBusy(AddrType addr) const;
+  void tryPrefetch(AddrType addr, bool doStats);
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
   void prefetch(AddrType prefAddr, Time_t lat);

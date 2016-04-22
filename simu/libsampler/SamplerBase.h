@@ -88,7 +88,6 @@ protected:
   static bool     finished[128];
 
 	double   dt_ratio;
-  double   estIPC;
   double   estCPI;
   double   freq;
   bool     first;
@@ -100,9 +99,6 @@ protected:
   size_t   validP;
   size_t   headPtr;
   std::vector<float> cpiHist;
-
-  uint64_t SamplInterval;     // can be removed?
-  uint64_t rabbitPwrSkip;
 
   bool     allDone();
   void     markThisDone(FlowID fid);

@@ -8,14 +8,13 @@ memLevel          = "MemCtrl MemBus" # No Pref
 memBW    =   11 #chromebook 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GBytes/s (23.2)
 #memBW    =   32   # 4GHz :  64 (L2)/32 ~ 2 bytes per cycle ~ 8GBytes/s (23.2)
 [tradCORE]
-scooreCore        = false
+type              = "ooo"
 areaFactor        = 2
 #issueWrongPath    = false not in new simu.conf
 fetchWidth        = 4
 alignedFetch      = false
 fetchPorts        = 1
 instQueueSize     = 4
-inorder           = false
 throttlingRatio   = 1.0
 issueWidth        = 3 
 retireWidth       = 3 
@@ -228,7 +227,7 @@ replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 2
-missDelay         = 2
+missDelay         = 1
 lowerLevel        = "PrivL2 L2 sharedby 4"
 pfetchBuffSize   = 16
 
@@ -312,6 +311,7 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
+nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

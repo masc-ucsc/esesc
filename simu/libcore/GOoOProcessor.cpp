@@ -44,7 +44,7 @@
 #include "GMemorySystem.h"
 
 GOoOProcessor::GOoOProcessor(GMemorySystem *gm, CPU_t i)
-  :GProcessor(gm, i, 1) {
+  :GProcessor(gm, i) {
 }
 
 //GOoOProcessor::~GOoOProcessor() {

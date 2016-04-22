@@ -140,6 +140,7 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
   r->creatorObj  = mobj;
   r->currMemObj  = mobj;
 	r->firstCache  = 0;
+  r->topCoherentNode = 0;
   static uint64_t current_id = 0;
   r->id          = current_id++;
 #ifdef DEBUG_CALLPATH
@@ -149,6 +150,7 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
 #endif
   r->cb          = cb;
   r->startClock  = globalClock;
+  r->prefetch    = false;
 	r->retrying    = false;
   r->needsDisp   = false;
 	r->doStats     = doStats;

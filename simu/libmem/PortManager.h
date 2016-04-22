@@ -20,7 +20,8 @@ public:
 	virtual void  blockFill(MemRequest *mreq)=0;
 
   virtual void req(MemRequest *mreq        ) = 0;
-  virtual Time_t reqDone(MemRequest *mreq) = 0;
+  virtual Time_t reqDone(MemRequest *mreq, bool retrying) = 0;
+  virtual Time_t reqAckDone(MemRequest *mreq) = 0;
   virtual void reqRetire(MemRequest *mreq) = 0;
 
   virtual void reqAck(MemRequest *mreq     ) = 0;
@@ -72,7 +73,8 @@ public:
 
 	void  blockFill(MemRequest *mreq);
   void req(MemRequest *mreq        );
-  Time_t reqDone(MemRequest *mreq);
+  Time_t reqDone(MemRequest *mreq, bool retrying);
+  Time_t reqAckDone(MemRequest *mreq);
   void  reqRetire(MemRequest *mreq);
 
   void reqAck(MemRequest *mreq     );

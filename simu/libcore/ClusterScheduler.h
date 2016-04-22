@@ -80,8 +80,12 @@ class LRUClusterScheduler : public ClusterScheduler {
 };
 
 class UseClusterScheduler : public ClusterScheduler {
- private:
- public:
+private:
+  std::vector<unsigned int> nres;
+  std::vector<unsigned int> pos;
+  Cluster *cused[LREG_MAX];
+
+public:
   UseClusterScheduler(const ResourcesPoolType res);
   ~UseClusterScheduler();
 

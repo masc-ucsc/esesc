@@ -30,10 +30,12 @@ SCTable::SCTable(const char *str, size_t size, uint8_t bits)
 {
   if((size & (size - 1)) != 0) {
     MSG("SCTable (%s) size [%d] a power of two", str, (int)size);
+    I(0);
     return;
   }
   if( bits > 7 || bits < 1 ) {
     MSG("SCTable (%s) bits [%d] should be between 1 and 7", str, bits);
+    I(0);
     return;
   }
 

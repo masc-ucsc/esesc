@@ -241,12 +241,12 @@ sub newtradMemStats {
   printf "********************************************************************************************************\n";
 
   if ($op_enPower eq "true") {
-    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s   %12s %12s\n",
+    printf ("%-15s %-4s %-9s %-9s %9s     %-7s,%6s,%6s   %12s %12s\n",
       "Cache",
       "Occ",
       "AvgMemLat",
       "MemAccesses",
-      " MissRate",
+      "   MissRate",
       " (  RD",
       "WR",
       "    BUS)",
@@ -254,12 +254,12 @@ sub newtradMemStats {
       "Lkg_Pow (mW)"
     );
   } else {
-    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s \n",
+    printf ("%-15s %-4s %-9s %-9s %9s     %-7s,%6s,%6s \n",
       "Cache",
       "Occ",
       "AvgMemLat",
       "MemAccesses",
-      " MissRate",
+      "   MissRate",
       " (  RD",
       "WR",
       "    BUS)"
@@ -321,10 +321,13 @@ sub newMemStat {
     my $miss = $cf->getResultField("${cache}","readMiss")
     + $cf->getResultField("${cache}","writeMiss")
     + $cf->getResultField("${cache}","busReadMiss");
+    my $miss2 = $cf->getResultField("${cache}","readHalfMiss")
+    + $cf->getResultField("${cache}","writeHalfMiss")
+    + $cf->getResultField("${cache}","busReadHalfMiss");
 
     my $tmp  = $cf->getResultField("${cache}_avgMemLat","v");
     my $tmp1  = $cf->getResultField("${cache}_avgMemLat","n");
-    printf "%-9.1f %-9d %8.2f%    ", $tmp,$tmp1,100*($miss)/$total;
+    printf "%-9.1f %-9d %6.1f%% %6.1f%%    ", $tmp,$tmp1,100*($miss)/$total, 100*($miss+$miss2)/$total;
 
     my $tmp  = $cf->getResultField("${cache}","readHit");
     my $tmp2 = $cf->getResultField("${cache}","readMiss")
@@ -1125,7 +1128,7 @@ sub showStatReport {
     my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
     next unless( $clockTicks > 1 );
 
-    printf "#table9a                            IPC : szFB : szBB : brMiss : brMissTime : wasteRatio : iMissRate\n";
+    printf "#table9a                            IPC : brMiss : szFB : szBB : brMissTime : wasteRatio : iMissRate\n";
     printf "table9a  %26s ", $name;
 
     $nInst = getProcnInst($i);
@@ -1133,17 +1136,18 @@ sub showStatReport {
     # IPC
     printf " %9.3f ", $nInst/$clockTicks;
 
+    # branchMissRate
+    my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
+    my $nMiss = $cf->getResultField("P(${i})_BPred","nMiss");
+    printf " %9.3f ", 100*$nMiss/($nBranches+1);
+
     # szFB
     my $nTaken    = $cf->getResultField("P(${i})_BPred","nTaken");
     printf " %9.2f ", $nInst/($nTaken+1);
 
     # szBB
-    my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
     printf " %9.2f ", $nInst/($nBranches+1);
 
-    # branchMissRate
-    my $nMiss = $cf->getResultField("P(${i})_BPred","nMiss");
-    printf " %9.2f ", 100*$nMiss/($nBranches+1);
 
     # brMissTime
     my $avgBranchTime = $cf->getResultField("P(${i})_FetchEngine_avgBranchTime","v");
@@ -1590,7 +1594,7 @@ sub instStats {
 sub branchStats {
   my $file = shift;
 
-  print "Proc : Avg.Time :  BPType           :  Total  :          RAS        :  BPred  :         BTB         :  BTAC   : WasteRatio";
+  print "Proc : Delay : Avg.Time :  BPType           :  Total  :        RAS        :       BPred       :        BTB        :  iBTB    :  BTAC   : WasteRatio";
   my $preType = $cf->getConfigEntry(key=>"preType");
   if( $preType > 0 ) {
     print "         " . $preType;
@@ -1601,6 +1605,7 @@ sub branchStats {
     next unless( $cf->getResultField("P(${i})","clockTicks")>0 );
 
     my $cpuType    = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
+    my $bpreddelay = $cf->getConfigEntry(key=>"bpredDelay", section=>$cpuType);
 
     my $branchSect  = $cf->getConfigEntry(key=>"bpred", section=>$cpuType);
     my $type        = $cf->getConfigEntry(key=>"type" , section=>$branchSect);
@@ -1608,6 +1613,8 @@ sub branchStats {
     $smtContexts++ if( $smtContexts == 0 );
 
     printf " %3d : ",$i;
+
+    printf "  %3d : ",$bpreddelay;
 
 ################
     my $nBranches = 0;
@@ -1644,7 +1651,7 @@ sub branchStats {
 
     my $rasRatio = ($rasMiss+$rasHit) <= 0 ? 0 : ($rasHit/($rasMiss+$rasHit));
 
-    printf " (%6.2f%% of %4.2f%%) :",100*$rasRatio ,100*($rasHit+$rasMiss)/$nBranches;
+    printf " %6.2f%% of %5.2f%% :",100*$rasRatio ,100*($rasHit+$rasMiss)/$nBranches;
 
 ################
     my $predHit  = $cf->getResultField("P(${i})_BPred_${type}","nHit");
@@ -1652,7 +1659,7 @@ sub branchStats {
 
     my $predRatio = ($predMiss+$predHit) <= 0 ? 0 : ($predHit/($predMiss+$predHit));
 
-    printf " %6.2f%% :",100*$predRatio;
+    printf " %6.2f%% of %5.2f%% :",100*$predRatio, 100*($predHit+$predMiss)/$nBranches;
 
 ################
     my $btbHit  = $cf->getResultField("P(${i})_BPred_BTB","nHit");
@@ -1660,7 +1667,10 @@ sub branchStats {
 
     my $btbRatio = ($btbMiss+$btbHit) <= 0 ? 0 : ($btbHit/($btbMiss+$btbHit));
 
-    printf " (%6.2f%% of %4.2f%%) :",100*$btbRatio ,100*($btbHit+$btbMiss)/$nBranches;
+    printf " %6.2f%% of %5.2f%% :",100*$btbRatio ,100*($btbHit+$btbMiss)/$nBranches;
+
+    my $btbHitLabel  = $cf->getResultField("P(${i})_BPred_BTB","nHitLabel");
+    printf " %6.2f%% :",100*($btbHitLabel)/$nBranches;
 
     my $nBTAC = 0;
     for(my $j=0;$j<$smtContexts;$j++) {
@@ -1681,10 +1691,46 @@ sub branchStats {
 
       my $rapRatio = ($rapMiss+$rapHit) <= 0 ? 0 : ($rapHit/($rapMiss+$rapHit));
 
-      printf "(%6.2f%% of %6.2f%%) ",100*$rapRatio ,100*($rapHit+$rapMiss)/$nBranches;
+      printf "%6.2f%% of %6.2f%% ",100*$rapRatio ,100*($rapHit+$rapMiss)/$nBranches;
     }
 
     print "\n";
+    my $branchSect2 = $cf->getConfigEntry(key=>"bpred2", section=>$cpuType);
+    if ($branchSect2) {
+      my $type2       = $cf->getConfigEntry(key=>"type" , section=>$branchSect2);
+      my $bpreddelay2 = $cf->getConfigEntry(key=>"BTACDelay" , section=>$branchSect);
+
+      printf " %3d : ",$i;
+      printf "  %3d : ",$bpreddelay2;
+      printf "%8.3f :  ",$avgBranchTime;
+      printf "%-16s :",$type2;
+
+      my $nBranches2= $cf->getResultField("P(${i})_BPred","nBranches2");
+      my $nMiss2    = $cf->getResultField("P(${i})_BPred","nMiss2");
+
+      printf "%7.2f%% :",100*($nBranches-$nMiss2)/($nBranches);
+      printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
+
+      my $predHit2  = $cf->getResultField("P(${i})_BPred2_${type2}","nHit");
+      my $predMiss2 = $cf->getResultField("P(${i})_BPred2_${type2}","nMiss");
+
+      my $predRatio2 = ($predMiss2+$predHit2) <= 0 ? 0 : ($predHit2/($predMiss2+$predHit2)); # also the 1st level hits
+
+      printf " %6.2f%% of %5.2f%% :",100*$predRatio2, 100*($predHit2+$predMiss2)/$nBranches;
+
+      my $btbHit2  = $cf->getResultField("P(${i})_BPred2_BTB","nHit");
+      my $btbMiss2 = $cf->getResultField("P(${i})_BPred2_BTB","nMiss");
+
+      my $btbRatio2 = ($btbMiss2+$btbHit2) <= 0 ? 0 : ($btbHit2/($btbMiss2+$btbHit2+1));
+
+      printf " %6.2f%% of %5.2f%% :",100*$btbRatio2 ,100*($btbHit2+$btbMiss2)/($nBranches2+1);
+
+      my $btbHitLabel2  = $cf->getResultField("P(${i})_BPred2_BTB","nHitLabel");
+      printf " %6.2f%% :",100*($btbHitLabel2)/$nBranches;
+
+      printf "\n";
+    }
+
   }
 }
 
@@ -1874,7 +1920,7 @@ sub tradCPUStats {
 
     $nInst = 1 if( $nInst < 1 );
 
-    my $idealInst = $issue*$clockTicks;
+    my $idealInst = $issue*$clockTicks+1;
     $temp = 100*$nInst/($idealInst);
 
     printf " %04.1f ",$temp;

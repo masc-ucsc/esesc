@@ -21,6 +21,13 @@ ELSE(ENABLE_LIVE)
   MESSAGE("  -DESESC_LIVE=0                Disable esesc live compilation (default)")
 ENDIF(ENABLE_LIVE)
 
+IF(ENABLE_LIVECRIU)
+  MESSAGE("  -DESESC_LIVECRIU=1                Enable CRIU checkpoints with live sampling support")
+ELSE(ENABLE_LIVECRIU)
+  MESSAGE("  -DESESC_LIVECRIU=0                Disable CRIU checkpoints with live compilation (default)")
+ENDIF(ENABLE_LIVECRIU)
+
+
 #############
 MESSAGE("  -DCMAKE_HOST_MARCH=${CMAKE_HOST_MARCH} compilation")
 
@@ -50,7 +57,8 @@ endif(COMMAND cmake_policy)
 
 # OS X Does not need SDL to run QEMU
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-  FIND_LIBRARY(SDL_LIBRARIES NAMES SDL)
+  INCLUDE(FindPkgConfig)
+  PKG_SEARCH_MODULE(SDL2_REQUIRED sdl2)
   FIND_LIBRARY(RT_LIBRARIES NAMES rt)
 ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 
@@ -157,12 +165,16 @@ ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 IF(ESESC_SYSTEM)
   SET(QEMU_TARGET --target-list=mips64el-softmmu)
 ELSE(ESESC_SYSTEM)
-  SET(QEMU_TARGET --target-list=mips64el-linux-user)
+  IF(ESESC_N32)
+    SET(QEMU_TARGET --target-list=mipsn32el-linux-user)
+  ELSE(ESESC_N32)
+    SET(QEMU_TARGET --target-list=mips64el-linux-user)
+  ENDIF(ESESC_N32)
 ENDIF(ESESC_SYSTEM)
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-docs --enable-esesc --python=python2 --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard-nss --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
+  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-docs --enable-esesc --python=python2 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard-nss --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0

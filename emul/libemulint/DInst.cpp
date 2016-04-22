@@ -51,7 +51,33 @@ DInst::DInst()
 }
 
 void DInst::dump(const char *str) {
-  fprintf(stderr,"%s:%p (%d) %lld %c DInst: pc=0x%x, addr=0x%x src1=%d (%d) src2 = %d dest1 =%d dest2 = %d",str, this, fid, (long long)ID, keepStats? 't': 'd', (int)pc,(int)addr,(int)(inst.getSrc1()), inst.getOpcode(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
+  fprintf(stderr,"%s:%p (%d) %lld %c DInst: pc=0x%llx, addr=0x%llx src1=%d (%s) src2 = %d dest1 =%d dest2 = %d",str, this, fid, (long long)ID, keepStats? 't': 'd', (long long)pc,(long long)addr,(int)(inst.getSrc1()), inst.getOpcodeName(),inst.getSrc2(),inst.getDst1(), inst.getDst2());
+
+  Time_t t;
+
+  t =getRenamedTime() - getFetchTime();
+  if (getRenamedTime())
+    fprintf(stderr," %5d",(int)t);
+  else
+    fprintf(stderr,"    na");
+
+  t =getIssuedTime() - getRenamedTime();
+  if (getIssuedTime())
+    fprintf(stderr," %5d",(int)t);
+  else
+    fprintf(stderr,"    na");
+
+  t =getExecutedTime() - getIssuedTime();
+  if (getExecutedTime())
+    fprintf(stderr," %5d",(int)t);
+  else
+    fprintf(stderr,"    na");
+
+  t =globalClock-getExecutedTime();
+  if (getExecutedTime())
+    fprintf(stderr," %5d",(int)t);
+  else
+    fprintf(stderr,"    na");
 
   if (performed) {
     fprintf(stderr," performed");

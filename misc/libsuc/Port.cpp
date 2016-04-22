@@ -87,30 +87,21 @@ void PortGeneric::occupyUntil(Time_t u)
 PortUnlimited::PortUnlimited(const char *name)
   : PortGeneric(name) 
 {
-  until = 0;
 }
 
 Time_t PortUnlimited::nextSlot(bool en) {
-  if (until<globalClock)
-    until = globalClock;
 
-  avgTime.sample(until-globalClock, en); // Just to keep usage statistics
-  return until;
+  avgTime.sample(0, en); // Just to keep usage statistics
+  return globalClock;
 }
 
 void PortUnlimited::occupyUntil(Time_t u) 
 {
-  if (u>globalClock && u>until)
-    until = u;
 }
 
 Time_t PortUnlimited::calcNextSlot() const
 {
-  Time_t t = until;
-  if (t<globalClock)
-    t = globalClock;
-
-  return t;
+  return globalClock;
 }
 
 PortFullyPipe::PortFullyPipe(const char *name) 

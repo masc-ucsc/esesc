@@ -1,0 +1,438 @@
+# SCOORE Constants
+memLatency        = 60 # 110ns chromebook
+memLevel         = "BigMem Memory" # No BW model
+#memLevel          = "AdvMem MemBus" # No Pref
+#memLevel          = "MemCtrl MemBus" # No Pref
+#memLevel         = "PBuff PBuff"  # Prefetching, Not ready yet.
+#memLevel         = "GHBuffer Prefetcher" # No Pref
+memBW    =   11 #chromebook 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GBytes/s (23.2)
+#memBW    =   32   # 4GHz :  64 (L2)/32 ~ 2 bytes per cycle ~ 8GBytes/s (23.2)
+[tradCORE]
+type              = "ooo"
+areaFactor        = 2
+#issueWrongPath    = false not in new simu.conf
+fetchWidth        = 8
+alignedFetch      = false
+fetchPorts        = 1
+instQueueSize     = 16
+throttlingRatio   = 1.0
+issueWidth        = 4 
+retireWidth       = 5 
+decodeDelay       = 3 
+renameDelay       = 2 
+retireDelay       = 3 
+drainOnMiss       = false
+maxBranches       = 1024
+bb4Cycle          = 1 #1
+bpredDelay        = 1 #
+maxIRequests      = 4 # +1 icache hit delay -> 1 outs miss
+interClusterLat   = 0 
+clusterScheduler  = "RoundRobin"
+cluster[0]        = 'AUNIT'
+cluster[1]        = 'BUNIT'
+cluster[2]        = 'CUNIT'
+cluster[3]        = 'LSUNIT' 
+#bpred             = 'BPredIssueX' 
+bpred            = 'BPredIssueX2'
+robSize           = 196 
+stForwardDelay    = 3  # +1 clk from the instruction latency
+maxLoads          = 48
+maxStores         = 32
+#LSQBanks          = 2 not in new simu.conf
+#DL1              = "DL1_core DL1"
+DL1               = "PerCore_DTLB PTLB"
+#IL1               = "IL1_core IL1"
+IL1               = "PerCore_ITLB ITLB"
+MemoryReplay      =  false
+enableICache      = true
+enableDCache      = true
+noMemSpec         = false 
+StoreSetSize      = 8192
+#LFSTSize          = 512 not in new simu.conf
+instWidth         = 32
+opcodeWidth       = 11
+nArchRegs         = 32
+nTotalRegs        = 164
+scbSize           = 16
+
+#########
+[AUNIT]
+blockName         = "AUNIT"
+nRegs             = 128
+winSize           = 1*20 
+recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
+schedNumPorts     = 2
+schedPortOccp     = 1
+schedDelay        = 0
+iAALULat          = 1
+iAALUUnit         = 'AUNIT_AALU'
+iRALULat          = 1
+iRALUUnit         = 'AUNIT_AALU'
+
+[BUNIT]
+blockName         = "BUNIT"
+nRegs             = 128
+winSize           = 1*16
+recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
+schedNumPorts     = 1
+schedPortOccp     = 1
+schedDelay        = 0
+iBALU_LBRANCHLat  = 1
+iBALU_LBRANCHUnit = 'BUNIT_BALU'
+iBALU_LJUMPLat    = 1
+iBALU_LJUMPUnit   = 'BUNIT_BALU'
+iBALU_LCALLLat    = 1
+iBALU_LCALLUnit   = 'BUNIT_BALU'
+iBALU_RBRANCHLat  = 1
+iBALU_RBRANCHUnit = 'BUNIT_BALU'
+iBALU_RJUMPLat    = 1
+iBALU_RJUMPUnit   = 'BUNIT_BALU'
+iBALU_RCALLLat    = 1
+iBALU_RCALLUnit   = 'BUNIT_BALU'
+iBALU_RETLat      = 1
+iBALU_RETUnit     = 'BUNIT_BALU'
+
+[CUNIT]
+blockName         = "CUNIT"
+nRegs             = 128
+winSize           = 1*32 
+recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
+schedNumPorts     = 2
+schedPortOccp     = 1
+schedDelay        = 0 # Minimum latency like a intraClusterLat
+iCALU_FPMULTLat   = 2 
+iCALU_FPMULTUnit  = 'CUNIT_CALU'
+iCALU_FPDIVLat    = 2 
+iCALU_FPDIVUnit   = 'CUNIT_CALU'
+iCALU_FPALULat    = 2 
+iCALU_FPALUUnit   = 'CUNIT_CALU'
+iCALU_MULTLat     = 2 
+iCALU_MULTUnit    = 'CUNIT_CALU'
+iCALU_DIVLat      = 2
+iCALU_DIVUnit     = 'CUNIT_CALU'
+
+[LSUNIT]
+blockName         = "LSUNIT"
+nRegs             = 128
+winSize           = 2*32
+recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
+schedNumPorts     = 2  
+schedPortOccp     = 1  
+schedDelay        = 0
+iLALU_LDLat       = 0
+iLALU_LDUnit      = 'LUNIT_LALU'
+iSALU_STLat       = 0
+iSALU_STUnit      = 'SUNIT_SALU'
+iSALU_LLLat       = 0
+iSALU_LLUnit      = 'SUNIT_SALU'
+iSALU_SCLat       = 0
+iSALU_SCUnit      = 'SUNIT_SALU'
+iSALU_ADDRLat     = 0
+iSALU_ADDRUnit    = 'SUNIT_AALU'
+
+[AUNIT_AALU]
+Num               = 2
+Occ               = 1
+
+[BUNIT_AALU]
+Num               = 1
+Occ               = 1
+
+[BUNIT_BALU]
+Num               = 1
+Occ               = 1
+
+[CUNIT_CALU]
+Num               = 1
+Occ               = 1
+
+[LUNIT_LALU]
+Num               = 2
+Occ               = 1
+
+[SUNIT_AALU]
+Num               = 1
+Occ               = 1
+
+[SUNIT_SALU]
+Num               = 1
+Occ               = 1
+
+[BPredIssueX] 
+type              = "2bit"
+addrShift         = 1
+size              = 1024
+bits              = 2
+bpred4Cycle       = 1 
+BTACDelay         = 3
+btbSize           = 64
+btbBsize          = 1
+btbAssoc          = 64
+btbReplPolicy     = 'LRU'
+rasSize           = 16
+numBanks            = 1
+
+
+[BPredIssueX2]
+#type              = "oracle"
+type              = "imli"
+addrShift         = 0
+BTACDelay         = 3
+glength           = 128
+ntables           = 11        # Number of tables (M)
+nlocal            = 7
+corrSize          = 31
+tableSize         = 2*1024  # Size of each table
+tableValBits      = 4       # Bits for each table entry
+tableTagBits      = 24      # Max Bits for each entry tag
+btbSize           = 2048
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+numBanks            = 1
+
+[BPredIssueX3]
+type              = "ogehl"
+#type             = "oracle"
+addrShift         = 0
+BTACDelay         = 3
+mtables           = 10       # Number of tables (M)
+glength           = 512
+tsize             = 2*1024  # Size of each table
+tbits             = 9       # Bits for each table entry
+tcbits            = 11      # Bits for theta updates
+btbSize           = 0
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+numBanks            = 1
+
+[BPredIssueX4]
+type              = "yags"
+#type             = "oracle"
+addrShift         = 0
+BTACDelay         = 3
+size              = 1024*1024
+bits              = 2
+l1size            = 1024*1024
+l1bits            = 2
+l2size            = 1024*1024
+l2bits            = 2
+tagbits           = 7
+btbSize           = 0
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+numBanks            = 1
+
+[BPredIssueTAGE]
+type              = "TAGE"
+addrShift         = 0
+cyclicShift       = 64
+BTACDelay         = 3
+taggedPredictors  = 8       # Number of tagged tables (does not include the base predictor table)
+glength           = 200
+bimodalEntries    = 512
+taggedEntries     = 512      #number of entries in each tagged table
+maxHistLength     = 128      #maximum history length range: 50 to 500
+minHistLength     = 5
+hystBits          = 2
+ctrCounterWidth   = 3
+tsize             = 2*1024  # Size of each table
+tbits             = 7       # Bits for each table entry
+tcbits            = 11      # Bits for theta updates
+btbSize           = 0
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+numBanks            = 1
+
+[BPredIssueTAGE2]
+type              = "TAGE"
+addrShift         = 1
+cyclicShift       = 64
+BTACDelay         = 3
+taggedPredictors  = 8       # Number of tagged tables (does not include the base predictor table)
+glength           = 200
+bimodalEntries    = 512
+taggedEntries     = 512      #number of entries in each tagged table
+maxHistLength     = 128      #maximum history length range: 50 to 500
+minHistLength     = 5
+hystBits          = 2
+ctrCounterWidth   = 3
+tsize             = 2*1024  # Size of each table
+tbits             = 7       # Bits for each table entry
+tcbits            = 11      # Bits for theta updates
+btbSize           = 2048
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+numBanks            = 1
+
+
+###############################
+[IL1_core]
+deviceType        = 'icache'
+blockName         = "Icache"
+coreCoupledFreq   = true
+inclusive         = true
+directory         = false
+numBanks          = 1
+maxRequests       = 32
+size              = 32*1024
+assoc             = 2 
+bsize             = 64
+replPolicy        = 'LRU'
+bkNumPorts        = 1
+bkPortOccp        = 1
+hitDelay          = 2
+missDelay         = 1
+lowerLevel        = "PrivL2 L2 sharedby 4"
+pfetchBuffSize   = 16
+
+[PerCore_DTLB]
+deviceType        = 'tlb'
+blockName         = "PTLB"
+coreCoupledFreq = false
+numPorts          = 0
+hitDelay          = 0
+size              = 32 * 4096 # 64*4096
+assoc             = 32 #  64
+bsize             = 4*1024
+maxRequests       = 16
+replPolicy        = 'LRU'
+lowerLevel        = "DL1_core DL1"
+lowerTLB          = "Shared_TLB STLB shared"
+lowerTLB_delay    = 12 # 20
+# Power metrics
+numBanks          = 1
+
+[PerCore_ITLB]
+deviceType        = 'tlb'
+blockName         = "PTLB"
+coreCoupledFreq = false
+numPorts          = 0
+hitDelay          = 0 # delay charged in L1
+size              = 32 * 4096 # 64*4096
+assoc             = 32 #  64
+bsize             = 4*1024
+maxRequests       = 4
+replPolicy        = 'LRU'
+lowerLevel        = "IL1_core IL1"
+lowerTLB          = "Shared_TLB STLB sharedby 2"
+lowerTLB_delay    = 20
+# Power
+numBanks          = 1
+
+[DL1_core]
+deviceType        = 'cache'
+coreCoupledFreq   = true
+inclusive         = true
+directory         = false
+blockName         = "dcache"
+size              = 64*1024
+assoc             = 4 
+skew              = false
+bsize             = 64 
+replPolicy        = 'LRU'
+hitDelay          = 3 #+1 from the ALU
+missDelay         = 1 
+lowerLevel        = "PrivL2 L2 sharedby 4"
+fillBuffSize      = 4
+pfetchBuffSize    = 16
+wbBuffSize        = 16
+numBanks          = 8
+bkNumPorts        = 1
+bkPortOccp        = 0
+maxRequests       = 10 
+bankShift         = 4
+coldwarmup        = false
+sendFillPortOccp  = 0
+sendFillNumPorts  = 1
+
+[PrivL2]
+deviceType        = 'cache'
+coreCoupledFreq   = false
+inclusive         = true
+directory         = false
+blockName         = "L2"
+numBanks          = 2
+maxRequests       = 16 
+size              = 2*1024*1024 
+assoc             = 16
+bsize             = 64
+replPolicy        = 'LRU'
+bkNumPorts        = 1
+bkPortOccp        = 2 
+hitDelay          = 12 
+missDelay         = 1 
+#lowerLevel        = "Shared_TLB STLB shared"
+#lowerLevel       = "L3Cache L3 shared"
+lowerLevel        = "$(memLevel)"
+fillBuffSize      = 4
+pfetchBuffSize    = 16
+wbBuffSize        = 16
+forceLkg          = 0.0712786/6 #Cacti6.5
+nlprefetch        = 2
+
+[Shared_TLB]
+deviceType        = 'tlb'
+blockName         = "STLB"
+numPorts          = 0
+hitDelay          = 30 # 1
+size              = 512*4096
+assoc             = 4
+maxRequests       = 4
+bsize             = 4*1024
+replPolicy        = 'LRU'
+lowerLevel        = "voidDevice"
+
+[MemCtrl]
+deviceType  = 'memcontroller'
+coreCoupledFreq = false
+blockName         = "memctrl"
+busWidth    =   64
+numPorts    =    1
+portOccp    =   $(memBW)
+delay       =    3
+NumBanks    =  256 # 512
+NumRows     = 8192
+NumColumns  = 1024
+ColumnSize  =  256
+PreChargeLatency     = 52
+RowAccessLatency     = 52
+ColumnAccessLatency  = 52  #Column access of 1 is not supported
+memRequestBufferSize = 32
+lowerLevel           = "voidDevice"
+# Power Metrics
+dramPageSize = 1024
+
+[AdvMem]
+deviceType        = 'bus'
+blockName         = 'MemBus'
+coreCoupledFreq   = true
+busWidth          = 64
+numPorts          = 1
+portOccp          = $(memBW) 
+delay             = 1
+isMemoryBus       = false
+dramPageSize      = 8 
+lowerLevel        = "BigMem"
+
+[BigMem]
+deviceType        = 'niceCache'
+blockName         = 'mainmem'
+bsize             = 64
+hitDelay          = $(memLatency)
+lowerLevel        = "voidDevice"
+coldWarmup        = false
+
+[voidDevice]
+deviceType        = 'void'
+
+

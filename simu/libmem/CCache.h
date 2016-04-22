@@ -66,12 +66,23 @@ protected:
     StateType state;
     StateType shareState;
 
+    bool prefetch; // Line brought for prefetch, not used otherwise
+
     int16_t nSharers;
     int16_t share[8]; // Max number of shares to remember. If nshares >=8, then broadcast
   public:
     CState(int32_t lineSize) {
-      state  = I;
+      state    = I;
+      prefetch = false;
       clearTag();
+    }
+
+    bool isPrefetch() const  { return prefetch;   }
+    void clearPrefetch() {
+      prefetch = false;
+    }
+    void setPrefetch() {
+      prefetch = true;
     }
 
     bool isModified() const  { return state == M; }
@@ -86,8 +97,12 @@ protected:
     void setShared() {
       state = S;
     }
-    bool isValid()   const   { return state != I; }
-    bool isInvalid() const   { return state == I; }
+    bool isValid()   const   { return state != I || shareState != I; }
+    bool isLocalInvalid() const   { return state == I; }
+
+    void forceInvalid() {
+      state = I;
+    }
 
     // If SNOOPS displaces E too 
     //bool needsDisp() const { return state == M || state == E; }
@@ -102,10 +117,7 @@ protected:
     static MsgAction othersNeed(MsgAction ma) {
 			switch(ma) {
 				case ma_setValid:     return ma_setShared;
-				case ma_setInvalid:   return ma_setInvalid;
 				case ma_setDirty:     return ma_setInvalid;
-				case ma_setShared:    return ma_setShared;
-				case ma_setExclusive: return ma_setInvalid;
         default:          I(0);
 			}
       I(0);
@@ -157,6 +169,7 @@ protected:
   PortManager *port;
   CacheType   *cacheBank;
   MSHR        *mshr;
+  MSHR        *pmshr;
 
   Time_t      lastUpMsg; // can not bypass up messages (races)
   Time_t inOrderUpMessageAbs(Time_t when) {
@@ -176,14 +189,20 @@ protected:
 
   int32_t     lineSize;
   int32_t     lineSizeBits;
+  int32_t     nlprefetch;   // next line prefetch degree (0 == off)
 
   bool        coreCoupledFreq;
   bool        inclusive;
   bool        directory;
   bool        needsCoherence;
   bool        incoherent;
+  bool        victim;
+  bool        justDirectory;
 
   // BEGIN Statistics
+  GStatsCntr  nTryPrefetch;
+  GStatsCntr  nSendPrefetch;
+
   GStatsCntr  displacedSend;
   GStatsCntr  displacedRecv;
 
@@ -197,6 +216,7 @@ protected:
 
   GStatsAvg   avgMissLat;
   GStatsAvg   avgMemLat;
+  GStatsAvg   avgHalfMemLat;
   GStatsAvg   avgSnoopLat;
 
 	GStatsCntr  capInvalidateHit;
@@ -218,7 +238,7 @@ protected:
   // END Statistics
 	void displaceLine(AddrType addr, MemRequest *mreq, Line *l);
   Line *allocateLine(AddrType addr, MemRequest *mreq);
-  void mustForwardReqDown(MemRequest *mreq, bool miss);
+  void mustForwardReqDown(MemRequest *mreq, bool miss, Line *l);
 
   bool notifyLowerLevels(Line *l, MemRequest *mreq);
   bool notifyHigherLevels(Line *l, MemRequest *mreq);
@@ -237,6 +257,8 @@ public:
 	void setStateAck(MemRequest *req);
 	void disp(MemRequest *req);
 
+  void tryPrefetch(AddrType paddr, bool doStats);
+
 	// This do the real work
 	void doReq(MemRequest *req);
 	void doReqAck(MemRequest *req);
@@ -254,6 +276,8 @@ public:
 
 	void setNeedsCoherence();
 	void clearNeedsCoherence();
+
+  bool isJustDirectory() const { return justDirectory; }
 
  	bool Modified(AddrType addr) const {
 		Line *cl = cacheBank->readLine(addr);
@@ -282,7 +306,7 @@ public:
 		Line *cl = cacheBank->readLine(addr);
     if (cl==0)
       return true;
-    return cl->isInvalid();
+    return cl->isLocalInvalid();
   }
 
 #ifdef DEBUG

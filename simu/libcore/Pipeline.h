@@ -77,7 +77,6 @@ private:
 
   typedef std::vector<IBucket *> IBucketCont;
   IBucketCont bucketPool;
-  IBucketCont cleanBucketPool;
 
   //typedef boost::heap::priority_queue<IBucket *,boost::heap::compare<PipeIBucketLess> > ReceivedType;
   typedef std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> ReceivedType;

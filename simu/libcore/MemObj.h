@@ -83,6 +83,8 @@ public:
 
   MRouter *getRouter()           { return router;  }
   
+  virtual void tryPrefetch(AddrType addr, bool doStats) = 0;
+
   // Interface for fast-forward (no BW, just warmup caches)
   virtual TimeDelta_t ffread(AddrType addr) = 0;
   virtual TimeDelta_t ffwrite(AddrType addr) = 0;
@@ -143,6 +145,7 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
+  void tryPrefetch(AddrType addr, bool doStats);
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 

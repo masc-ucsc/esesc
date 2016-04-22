@@ -97,8 +97,8 @@ protected:
 
   public:
     Record(const Record & rec) {
-      I(type!=RCCharPtr);
       I(rec.type!=RCCharPtr);
+      env  = false;
       type = rec.type;
       used = rec.used;
       printed = rec.printed;

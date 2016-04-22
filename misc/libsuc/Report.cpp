@@ -40,6 +40,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "SescConf.h"
 #include "Transporter.h"
 
+#define DEBUG_LIVE
+
 FILE *Report::rfd[MAXREPORTSTACK];
 const char *Report::fns[MAXREPORTSTACK];
 int32_t Report::tos=0;
@@ -75,6 +77,10 @@ void Report::openFile(const char *name) {
     
     fname = strdup(name);
     fd = mkstemp(fname);
+    if(fd == -1) {
+      perror("Report::openFile could not assign file name:");
+      exit(-1);
+    }
 
     // FIXME: remember the fname so that getNameID
     
@@ -118,16 +124,22 @@ void Report::field(int32_t fn, const char *format,...) {
 }
 
 void Report::field(const char *format, ...) {
-  if(is_live)
+  FILE *ffd = NULL;
+
+  if(is_live) {
+#ifdef DEBUG_LIVE
+    ffd = stdout;
+#else
     return;
+#endif
+  } else {
+    I( tos );
+    ffd = rfd[tos-1];  
+  }
 
   va_list ap;
-  I( tos );
-  FILE *ffd = rfd[tos-1];  
   va_start(ap, format);
-
   vfprintf(ffd, format, ap);
-
   va_end(ap);
 
   fprintf(ffd, "\n");

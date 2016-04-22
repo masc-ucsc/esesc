@@ -51,6 +51,8 @@ int32_t SamplerPeriodic::PerfSampleLeftForTemp = 0;
 
 SamplerPeriodic::SamplerPeriodic(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : SamplerBase(iname,section,  emu, fid)
+  ,totalnInstForcedDetail(0)
+  ,winnerFid(999999)
   /* SamplerPeriodic constructor {{{1 */
 {
   dsync      = new GStatsCntr("S(%u):dsync", fid);
@@ -393,13 +395,5 @@ void SamplerPeriodic::dumpTime() {
   }
 
   fprintf(log, "\n");
-}
-
-
-void SamplerPeriodic::dumpThreadProgressedTime(FlowID fid) {
-  if (getStatsFlag()) {
-    threadProgressedTime = new GStatsMax("P(%d)_progressedTime", fid);
-    threadProgressedTime->sample(getTime(), true);
-  }
 }
 

@@ -29,7 +29,10 @@ File name:      Transporter.h
 #define MAX_BUFFER_SIZE 1024
 #define KEY_CHANGE_INTERVAL 10
 #define MAX_DATA 70000
-#define MAX_REPORT_BUFFER 40960
+
+
+//#define MAX_REPORT_BUFFER 40960
+#define MAX_REPORT_BUFFER 81920
 
 #include <stdint.h>
 #include <string.h>

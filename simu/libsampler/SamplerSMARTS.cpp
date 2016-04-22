@@ -197,7 +197,6 @@ void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
       setMode(next_mode, fid);
     }
 
-    I(mode == next_mode);
     if (next_mode == EmuRabbit){
       setModeNativeRabbit();
     }

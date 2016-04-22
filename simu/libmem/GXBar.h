@@ -56,14 +56,6 @@ class GXBar: public MemObj {
       uint32_t numLineBits = log2i(LineSize);
 
       addr = addr >> numLineBits;
-#if 0
-      addr = addr % Modfactor;   
-#else
-      uint32_t addr1 = addr % 7;   
-      uint32_t addr2 = addr % 1023;   
-      addr = addr1 ^ addr2;
-#endif
-      MSG("Calling this function...");
 
       return(addr&(numLowerBanks-1));
     }

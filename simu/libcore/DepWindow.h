@@ -62,7 +62,7 @@ protected:
 
 public:
   ~DepWindow();
-  DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName);
+  DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName, uint32_t pos);
 
   void select(DInst *dinst);
 

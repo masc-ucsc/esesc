@@ -264,6 +264,13 @@ void TLB::readPage3(MemRequest *mreq)
   wakeupNext();
 }
 
+void TLB::tryPrefetch(AddrType addr, bool doStats) {
+  if (!tlbBank->readLine(addr))
+    return;   // no prefetch if TLB miss
+
+  router->tryPrefetch(addr, doStats);
+}
+
 TimeDelta_t TLB::ffread(AddrType addr)
   // {{{1 rabbit read
 { 

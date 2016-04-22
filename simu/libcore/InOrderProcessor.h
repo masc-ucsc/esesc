@@ -44,6 +44,8 @@
 
 class InOrderProcessor : public GProcessor {
 private:
+  const int32_t RetireDelay;
+
   FetchEngine IFID;
   PipeQueue   pipeQ;
   int32_t     spaceInInstQueue;
@@ -71,6 +73,7 @@ public:
   InOrderProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~InOrderProcessor();
 
+  void       executing(DInst *dinst);
   LSQ *getLSQ() { return &lsq; }
   void replay(DInst *dinst);
   bool isFlushing() {
@@ -86,13 +89,6 @@ public:
     I(0);
     return false;
   }
-
-#ifdef SCOORE_CORE  
-  void set_StoreValueTable(AddrType addr, DataType value){ };
-  void set_StoreAddrTable(AddrType addr){ };
-  DataType get_StoreValueTable(AddrType addr){I(0); return 0; };
-  AddrType get_StoreAddrTable(AddrType addr){I(0); return 0; };
-#endif
 
 };
 

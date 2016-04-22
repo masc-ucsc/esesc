@@ -102,12 +102,14 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
   } else if (!strcasecmp(device_type, "tlb")) {
     devtype = 9;
     mdev = new TLB(this, dev_section, dev_name);
-  } 
-  else if (!strcasecmp(device_type, "memcontroller")) {
+  } else if (!strcasecmp(device_type, "memxbar")) {
+    mdev = new MemXBar(this, dev_section, dev_name);
+    devtype = 11;
+  } else if (!strcasecmp(device_type, "memcontroller")) {
     mdev = new MemController(this, dev_section, dev_name);
     devtype = 13;
   } else if (!strcasecmp(device_type, "void")) {
-    return NULL;
+    return new DummyMemObj(dev_section,dev_name);
   } else {
     // Check the lower level because it may have it
     return GMemorySystem::buildMemoryObj(device_type, dev_section, dev_name);

@@ -135,6 +135,7 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 void DummyMemObj::doReq(MemRequest *req)    
   /* req {{{1 */
 { 
+  I(0);
   req->ack();
 }
 /* }}} */
@@ -149,6 +150,7 @@ void DummyMemObj::doReqAck(MemRequest *req)
 void DummyMemObj::doSetState(MemRequest *req)    
   /* setState {{{1 */
 { 
+  I(0);
   req->ack(); 
 }
 /* }}} */
@@ -173,6 +175,12 @@ bool DummyMemObj::isBusy(AddrType addr) const
 	return false;
 }
 // }}}
+
+void DummyMemObj::tryPrefetch(AddrType addr, bool doStats)
+  /* drop the try prefetch {{{1 */
+{ 
+}
+/* }}} */
 
 TimeDelta_t DummyMemObj::ffread(AddrType addr)
   /* fast forward read {{{1 */

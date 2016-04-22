@@ -180,6 +180,12 @@ bool StridePrefetcher::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void StridePrefetcher::tryPrefetch(AddrType addr, bool doStats)
+  /* drop prefetch {{{1 */
+{ 
+}
+/* }}} */
+
 TimeDelta_t StridePrefetcher::ffread(AddrType addr)
   /* fast forward reads {{{1 */
 { 

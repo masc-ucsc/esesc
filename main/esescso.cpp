@@ -62,27 +62,43 @@ static void *simu_thread(void *) {
   Transporter::send_fast("cp_done", "");
 #endif
 
-  printf("Live: Sim prcess done (killing itself %ld, %d)\n", checkpoint_id, getpid());
-  kill(getpid(),SIGTERM); // suicide time
+  // Not necessary to kill anymore process, just exit normally
+  //printf("Live: Sim prcess done (killing itself %ld, %d)\n", checkpoint_id, getpid());
+  //kill(getpid(),SIGTERM); // suicide time
 
   return 0;
 }
 
-extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_warmup, int genwarm, uint64_t * live_warmup_addr, bool * live_warmup_st, uint64_t live_warmup_cnt, int dlc) {
+extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_warmup, int genwarm, 
+                            uint64_t * live_warmup_addr, bool * live_warmup_st, uint64_t live_warmup_cnt,
+                            int dlc, const char *conf_file) {
   checkpoint_id = cpid;
   
 #ifdef ESESC_LIVE
+<<<<<<< HEAD
+
+#ifndef ESESC_LIVECRIU
+  // When using CRIU there is no fork so reconnecting is not necessary
   Transporter::connect_to_server(host_adr, portno);
+#endif
+=======
+  // Reconnecting is not necessary because there is no longer a fork so same connection
+  // can be reused.
+  //Transporter::connect_to_server(host_adr, portno);
+>>>>>>> github_master
+
   Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
   printf("LiveSim Checkpoint thread starting CPID:%d PID:%d\n", cpid, getpid());
+
 #endif
   // TODO: call a method (new) to set QEMUReader::started = true
   //
   // TODO: Create fake arguments using the esescfile
-  int argc = 1;
+  int argc = 3;
   const char *argv[3];
   argv[0] = "esesc";
-  argv[1] = 0;
+  argv[1] = "-c";
+  argv[2] = conf_file;
 
   QEMUReader::setStarted();
 

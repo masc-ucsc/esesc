@@ -78,11 +78,12 @@ MemXBar::MemXBar(MemorySystem* current ,const char *section ,const char *name)
     XBar_rw_req[i]   = new GStatsCntr("%s_to_%s:rw_req",name,lower_level_banks[i]->getName());
   }
 
+#if 0
   if(Xbar_unXbar_balance !=0){
     printf("ERROR: Crossbars and UnCrossbars are unbalanced: %d\n",Xbar_unXbar_balance);
     exit(1);
   }
-    
+#endif
   //free(tmp);
 
 }
@@ -108,6 +109,12 @@ void MemXBar::setParam(const char *section, const char *name)
     exit(1);
   }
 }/*}}}*/
+
+uint32_t MemXBar::addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const {
+  uint32_t numLineBits = log2i(LineSize);
+  addr = addr >> (numLineBits);
+  return(addr&(numLowerBanks-1));
+}
 
 void MemXBar::doReq(MemRequest *mreq)
   /* read if splitter above L1 (down) {{{1 */
@@ -167,6 +174,14 @@ bool MemXBar::isBusy(AddrType addr) const
 {
   uint32_t pos = addrHash(addr,LineSize,Modfactor,numLowerLevelBanks);
   return router->isBusyPos(pos, addr);
+}
+/* }}} */
+
+void MemXBar::tryPrefetch(AddrType addr, bool doStats)
+  /* fast forward reads {{{1 */
+{ 
+  uint32_t pos = addrHash(addr,LineSize, Modfactor,numLowerLevelBanks);
+  router->tryPrefetchPos(pos, addr, doStats);
 }
 /* }}} */
 

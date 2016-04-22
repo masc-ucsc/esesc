@@ -45,12 +45,15 @@ void Transporter::connect_to_server(char * h, int pn) {
   struct sockaddr_in serv_addr;
   struct hostent * server;
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if(sockfd < 0) 
+  fprintf(stderr,"Connect to %s %d\n",h,pn);
+  if(sockfd < 0)  {
     perror("ERROR opening socket");
+    exit(-1);
+  }
   server = gethostbyname(host);
   if(server == NULL) {
     fprintf(stderr,"ERROR, no such host\n");
-    exit(0);
+    exit(-1);
   }
   bzero((char *) &serv_addr, sizeof(serv_addr));
   serv_addr.sin_family = AF_INET;
@@ -95,9 +98,11 @@ void Transporter::send(unsigned char * buf, int length) {
     blen[3 - i] = (len >> (i * 8));
   blen[4] = toggle;
   int n = write(sockfd, blen, 5);
+  fprintf(stderr,"Transporter::send write1 socket %d bytes %d\n", sockfd, n);
   if (n < 0)
     perror("ERROR writing to socket"); 
   n = write(sockfd, ciphertext.c_str(), len);
+  fprintf(stderr,"Transporter::send write2 socket %d bytes %d len %d\n", sockfd, n, len);
   if (n < 0)
     perror("ERROR writing to socket");
   key_valid--;
@@ -116,6 +121,8 @@ void Transporter::send_schema(string name, string schema) {
   memcpy(buf + 21, name_arr, 20);
   for (int i = 0; i < 4; i++)
     buf[44 - i] = (len >> (i * 8));
+
+  //TODO: add bounds checking to prevent stack overflow 
   memcpy(buf + 45, data_arr, len);
   send(buf, length);
   string ack = receive('s', name);

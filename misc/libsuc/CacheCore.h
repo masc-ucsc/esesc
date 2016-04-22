@@ -97,6 +97,7 @@ template<class State, class Addr_t>
   };
 
   // findLine returns a cache line that has tag == addr, NULL otherwise
+  virtual CacheLine *findLineNoEffectPrivate(Addr_t addr)=0;
   virtual CacheLine *findLinePrivate(Addr_t addr, bool updateSHIP, Addr_t SHIP_signature)=0;
   protected:
 
@@ -155,7 +156,7 @@ template<class State, class Addr_t>
 
   CacheLine *findLineNoEffect(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0) {
     IS(goodInterface=true);
-    CacheLine *line = findLine(addr); //SHIP stats will not be updated
+    CacheLine *line = findLineNoEffectPrivate(addr); //SHIP stats will not be updated
     IS(goodInterface=false);
     return line;
   }
@@ -228,7 +229,8 @@ template<class State, class Addr_t>
   Addr_t calcIndex4Tag(Addr_t tag) const { 
     Addr_t set;
     if (xorIndex) {
-      tag        = tag ^ (tag>>log2Sets);
+      //tag        = tag ^ (tag>>log2Sets);
+      tag        = tag ^ (tag>>5) ^ (tag>>log2Sets);
       //Addr_t odd = (tag&1) | ((tag>>2) & 1) | ((tag>>4)&1) | ((tag>>6)&1) | ((tag>>8)&1) | ((tag>>10)&1) | ((tag>>12)&1) | ((tag>>14)&1) | ((tag>>16)&1) | ((tag>>18)&1) | ((tag>>20)&1); // over 20 bit index???
       set   = tag & maskSets;
     }else{
@@ -262,6 +264,7 @@ protected:
   friend class CacheGeneric<State, Addr_t>;
   CacheAssoc(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
+  Line *findLineNoEffectPrivate(Addr_t addr);
   Line *findLinePrivate(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0 );
 public:
   virtual ~CacheAssoc() {
@@ -296,6 +299,7 @@ protected:
   friend class CacheGeneric<State, Addr_t>;
   CacheDM(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
+  Line *findLineNoEffectPrivate(Addr_t addr);
   Line *findLinePrivate(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0 );
 public:
   virtual ~CacheDM() {
@@ -330,6 +334,7 @@ protected:
   friend class CacheGeneric<State, Addr_t>;
   CacheDMSkew(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr);
 
+  Line *findLineNoEffectPrivate(Addr_t addr);
   Line *findLinePrivate(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0 );
 public:
   virtual ~CacheDMSkew() {
@@ -373,6 +378,7 @@ protected:
   friend class CacheGeneric<State, Addr_t>;
   CacheSHIP(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, uint32_t shct_size = 13); //13 was the optimal size in the paper
 
+  Line *findLineNoEffectPrivate(Addr_t addr);
   Line *findLinePrivate(Addr_t addr, bool updateSHIP = false, Addr_t SHIP_signature = 0 );
 public:
   virtual ~CacheSHIP() {

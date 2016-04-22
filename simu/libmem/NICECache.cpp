@@ -55,6 +55,7 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
   ,writeHalfMiss   ("%s:writeHalfMiss",   sName)
   ,writeExclusive  ("%s:writeExclusive",  sName)
   ,writeBack       ("%s:writeBack",       sName)
+  ,avgMemLat       ("%s_avgMemLat",       sName)
 {
 
 	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
@@ -126,6 +127,8 @@ void NICECache::doReq(MemRequest *mreq)
       hdelay = 1;
     }
   }
+  avgMemLat.sample(hdelay, mreq->getStatsFlag());  
+  readHit.inc(mreq->getStatsFlag());  
   router->scheduleReqAck(mreq, hdelay);
 }
 /* }}} */
@@ -151,10 +154,11 @@ void NICECache::doSetStateAck(MemRequest *req)
 }
 /* }}} */
 
-void NICECache::doDisp(MemRequest *req)
+void NICECache::doDisp(MemRequest *mreq)
   /* push (up) {{{1 */
 {
-  req->ack(hitDelay);
+  writeHit.inc(mreq->getStatsFlag());  
+  mreq->ack(hitDelay);
 }
 /* }}} */
 
@@ -162,6 +166,13 @@ bool NICECache::isBusy(AddrType addr) const
   /* can accept reads? {{{1 */
 {
   return false;
+}
+/* }}} */
+
+void NICECache::tryPrefetch(AddrType addr, bool doStats)
+  /* trop prefetch {{{1 */
+{
+
 }
 /* }}} */
 

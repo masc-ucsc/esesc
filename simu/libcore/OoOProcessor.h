@@ -44,6 +44,7 @@
 #include "Pipeline.h"
 #include "FetchEngine.h"
 #include "FastQueue.h"
+#include "CodeProfile.h"
 
 #define MAX_REMEMBERED_VALUES 16384
 
@@ -109,6 +110,8 @@ protected:
   ClusterManager clusterManager;
 
   GStatsAvg avgFetchWidth;
+  CodeProfile codeProfile;
+  double      codeProfile_trigger;
 
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
   bool advance_clock(FlowID fid);
@@ -120,6 +123,7 @@ public:
   OoOProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~OoOProcessor();
 
+  void executing(DInst *dinst);
   LSQ *getLSQ() { return &lsq; }
   void replay(DInst *target);
   bool isFlushing() {return flushing;}

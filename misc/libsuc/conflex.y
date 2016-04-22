@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libgen.h>
 
 #ifdef CYGWIN
 // This assumes that the build directory is located is a subdirectory of esesc
@@ -194,6 +195,7 @@ dexp:      CFDOUBLE        { $$ = $1; }
 /* Used by flex "conflex.l" */
 extern FILE *yyConfin, *yyConfout;
 extern const char *currentFile;
+extern char *confDir;
 
 void yyConferror(const char *txt) {
 
@@ -209,8 +211,12 @@ bool readConfigFile(Config *ptr, FILE *fp, const char *fpname) {
   errorFound = false;
   
   currentFile = fpname;
+  char *confFile = strdup(currentFile);
+  confDir = strdup(dirname(confFile));
+  free(confFile);
   
   yyConfparse();
-  
+ 
+  free(confDir);
   return !errorFound;
 }

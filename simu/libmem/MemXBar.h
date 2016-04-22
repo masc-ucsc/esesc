@@ -73,10 +73,15 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
+  void tryPrefetch(AddrType addr, bool doStats);
+
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 
 	bool isBusy(AddrType addr) const;
+
+	uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const;
+
 };
 
 #endif

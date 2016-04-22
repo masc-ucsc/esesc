@@ -74,6 +74,7 @@ protected:
   GStatsCntr writeHalfMiss; 
   GStatsCntr writeExclusive;
   GStatsCntr writeBack;
+  GStatsAvg  avgMemLat;
 
 public:
   NICECache(MemorySystem *gms, const char *section, const char *name = NULL);
@@ -91,6 +92,8 @@ public:
 	void doSetState(MemRequest *req);
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
+
+  void tryPrefetch(AddrType addr, bool doStats);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);

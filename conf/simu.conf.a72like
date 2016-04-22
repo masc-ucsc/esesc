@@ -1,5 +1,5 @@
 # SCOORE Constants
-memLatency        = 100 # 110ns chromebook
+memLatency        = 60 # 110ns chromebook
 #memLevel         = "BigMem Memory" # No BW model
 memLevel          = "AdvMem MemBus" # No Pref
 #memLevel          = "MemCtrl MemBus" # No Pref
@@ -8,23 +8,23 @@ memLevel          = "AdvMem MemBus" # No Pref
 memBW    =   11 #chromebook 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GBytes/s (23.2)
 #memBW    =   32   # 4GHz :  64 (L2)/32 ~ 2 bytes per cycle ~ 8GBytes/s (23.2)
 [tradCORE]
-scooreCore        = false
+type              = "ooo"
 areaFactor        = 2
 #issueWrongPath    = false not in new simu.conf
 fetchWidth        = 4
 alignedFetch      = false
 fetchPorts        = 1
-instQueueSize     = 8
-inorder           = false
+instQueueSize     = 16
 throttlingRatio   = 1.0
 issueWidth        = 3 
 retireWidth       = 3 
 decodeDelay       = 3 
 renameDelay       = 2 
 retireDelay       = 3 
+drainOnMiss       = false
 maxBranches       = 1024
 bb4Cycle          = 1 #1
-bpredDelay        = 2 #
+bpredDelay        = 1 #
 maxIRequests      = 4 # +1 icache hit delay -> 1 outs miss
 interClusterLat   = 0 
 clusterScheduler  = "RoundRobin"
@@ -32,8 +32,8 @@ cluster[0]        = 'AUNIT'
 cluster[1]        = 'BUNIT'
 cluster[2]        = 'CUNIT'
 cluster[3]        = 'LSUNIT' 
-bpred             = 'BPredIssueX2' 
-bpred2            = 'BPredIssueX2delay'
+bpred             = 'BPredIssueX' 
+bpred2            = 'BPredIssueX2'
 robSize           = 128 
 stForwardDelay    = 3  # +1 clk from the instruction latency
 maxLoads          = 32
@@ -52,7 +52,7 @@ StoreSetSize      = 8192
 instWidth         = 32
 opcodeWidth       = 11
 nArchRegs         = 32
-nTotalRegs        = 96
+nTotalRegs        = 128
 scbSize           = 16
 
 #########
@@ -158,52 +158,63 @@ Occ               = 1
 Num               = 1
 Occ               = 1
 
-[BPredIssueX2] 
-type              = "hybrid"
-#type              = "oracle"
-bpred4Cycle       = 2 # bpred for cycle
-BTACDelay         = 3 # no BTAC
-l2size            = 16*1024
-l2Bits            = 2 
-historySize       = 12 
-Metasize          = 16*1024 
-MetaBits          = 2
-localSize         = 16*1024
-localBits         = 2
-btbSize           = 128 
+[BPredIssueX] 
+type              = "2bit"
+addrShift         = 1
+size              = 256
+bits              = 1
+bpred4Cycle       = 1 
+BTACDelay         = 3
+btbSize           = 64
 btbBsize          = 1
-btbAssoc          = 128 
+btbAssoc          = 64
 btbReplPolicy     = 'LRU'
-rasSize           = 0 
-# Power Constants
-tbits             = 2
-tsize             = 16*1024
-numBanks          = 1
+rasSize           = 16
+rasPrefetch       = 0
+numBanks            = 1
 
-[BPredIssueX2delay]
-type              = "taken" #2nd level, just BTB in apache
-#bpred4Cycle       = 2 # bpred for cycle
-#BTACDelay         = 2 # no BTAC
-btbSize           = 4096
-btbBsize          = 1
-btbAssoc          = 4
-btbReplPolicy     = 'LRU'
-rasSize           = 0
-
-[BPredIssueX]
-type              = "ogehl"
-#type             = "oracle"
+[BPredIssueX2]
+#type              = "ogehl"
+type             = "imli"
+FetchPredict      = true
+addrShift         = 1
 BTACDelay         = 3
 mtables           = 10       # Number of tables (M)
 glength           = 200
 tsize             = 2*1024  # Size of each table
 tbits             = 7       # Bits for each table entry
 tcbits            = 11      # Bits for theta updates
-btbSize           = 4096
+btbSize           = 2048
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 32
+rasPrefetch       = 0
+numBanks            = 1
+
+
+[BPredIssueX2b]
+type              = "TAGE"
+addrShift         = 2
+cyclicShift       = 64
+BTACDelay         = 3
+taggedPredictors  = 8       # Number of tagged tables (does not include the base predictor table)
+glength           = 200
+bimodalEntries    = 512
+taggedEntries     = 512      #number of entries in each tagged table
+maxHistLength     = 128      #maximum history length range: 50 to 500
+minHistLength     = 5
+hystBits          = 2
+ctrCounterWidth   = 3
+tsize             = 2*1024  # Size of each table
+tbits             = 7       # Bits for each table entry
+tcbits            = 11      # Bits for theta updates
+btbSize           = 2048
 btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 ###############################
@@ -218,11 +229,12 @@ maxRequests       = 32
 size              = 32*1024
 assoc             = 2 
 bsize             = 64
+nlprefetch        = 1
 replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
 hitDelay          = 2
-missDelay         = 2
+missDelay         = 1
 lowerLevel        = "PrivL2 L2 sharedby 4"
 pfetchBuffSize   = 16
 
@@ -266,8 +278,9 @@ coreCoupledFreq   = true
 inclusive         = true
 directory         = false
 blockName         = "dcache"
-size              = 32*32*1024
+size              = 32*1024
 assoc             = 4 
+nlprefetch        = 1
 skew              = false
 bsize             = 64 
 replPolicy        = 'LRU'
@@ -296,6 +309,7 @@ numBanks          = 2
 maxRequests       = 16 
 size              = 2*1024*1024 
 assoc             = 16
+nlprefetch        = 4
 bsize             = 64
 replPolicy        = 'LRU'
 bkNumPorts        = 1

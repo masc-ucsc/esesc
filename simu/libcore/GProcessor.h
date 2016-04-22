@@ -36,8 +36,6 @@
 #ifndef GPROCESSOR_H
 #define GPROCESSOR_H
 
-#define SCOORE_CORE 1//0
-
 #include "estl.h"
 
 #include <stdint.h>
@@ -75,7 +73,6 @@ class GProcessor {
   protected:
     // Per instance data
     const uint32_t cpu_id;
-    const FlowID   MaxFlows;
 
     const int32_t FetchWidth;
     const int32_t IssueWidth;
@@ -84,6 +81,7 @@ class GProcessor {
     const int32_t InstQueueSize;
     const size_t  MaxROBSize;
 
+    FlowID   maxFlows;
     EmulInterface   *eint;
     GMemorySystem   *memorySystem;
 
@@ -133,13 +131,13 @@ class GProcessor {
     void buildCluster(const char *clusterName, GMemorySystem * ms);
     void buildClusters(GMemorySystem *ms);
 
-    GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows);
+    GProcessor(GMemorySystem *gm, CPU_t i);
     int32_t issue(PipeQueue &pipeQ);
 
     virtual void retire();
-    virtual StallCause addInst(DInst *dinst) = 0;
 
     virtual void fetch(FlowID fid) = 0;
+    virtual StallCause addInst(DInst *dinst) = 0;
   public:
 
     virtual ~GProcessor();
@@ -147,19 +145,18 @@ class GProcessor {
     GStatsCntr *getnCommitted() { return &nCommitted;}
 
     GMemorySystem *getMemorySystem() const { return memorySystem; }
+    virtual void executing(DInst *dinst) = 0;
     virtual LSQ *getLSQ() = 0;
     virtual bool isFlushing() = 0;
     virtual bool isReplayRecovering() = 0;
     virtual Time_t getReplayID() = 0;
 
-    // Notify the fetch that an exception/replay happen. Stall the rename until
-    // the rob replay is retired.
     virtual void replay(DInst *target) { };// = 0;
 
     bool isROBEmpty() const { return ROB.empty() && rROB.empty(); }
 
     // Returns the maximum number of flows this processor can support
-    FlowID getMaxFlows(void) const { return MaxFlows; }
+    FlowID getMaxFlows(void) const { return maxFlows; }
 
     void report(const char *str);
 
@@ -182,6 +179,7 @@ class GProcessor {
     void clearActive() {
       active = false;
     }
+    bool isActive() const { return active; }
 
     void setWallClock(bool en=true) {
 

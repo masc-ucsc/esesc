@@ -77,9 +77,6 @@ Pipeline::Pipeline(size_t s, size_t fetch, int32_t maxReqs)
   for(size_t i=0;i<bucketPoolMaxSize;i++) {
     IBucket *ib = new IBucket(fetch+1, this); // +1 instructions
     bucketPool.push_back(ib);
-
-    ib = new IBucket(4, this, true);
-    cleanBucketPool.push_back(ib);
   }
 
   I(bucketPool.size() == bucketPoolMaxSize);
@@ -89,10 +86,6 @@ Pipeline::~Pipeline() {
   while(!bucketPool.empty()) {
     delete bucketPool.back();
     bucketPool.pop_back();
-  }
-  while(!cleanBucketPool.empty()){
-    delete cleanBucketPool.back();
-    cleanBucketPool.pop_back();
   }
   while(!buffer.empty()) {
     delete buffer.top();
@@ -148,6 +141,7 @@ void Pipeline::clearItems() {
 void Pipeline::doneItem(IBucket *b) {
   I(b->getPipelineId() < minItemCntr);
   I(b->empty());
+  b->clock = 0;
 
   bucketPool.push_back(b);
 }
@@ -167,7 +161,7 @@ IBucket *Pipeline::nextItem() {
 
     if( ((buffer.top())->getClock() + PipeLength) > globalClock ) {
 #if 0
-      fprintf(stderr,"@%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
+      fprintf(stderr,"1 @%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
           ,(long long int) globalClock
           ,buffer.top()
           ,(int) ((buffer.top())->top())->getID()
@@ -178,7 +172,7 @@ IBucket *Pipeline::nextItem() {
       return 0;
     } else {
 #if 0
-      fprintf(stderr,"@%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
+      fprintf(stderr,"2 @%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
           ,(long long int) globalClock
           ,buffer.top()
           ,(int) ((buffer.top())->top())->getID()
@@ -191,20 +185,13 @@ IBucket *Pipeline::nextItem() {
     buffer.pop();
     //fprintf(stderr,"@%lld: Popping Bucket[%p]\n",(long long int)globalClock ,b);
     I(!b->empty());
-    if (!b->cleanItem) {
-      I(!b->empty());
-      I(b->top() != 0);
+    I(!b->cleanItem);
 
-
-      return b;
-    }
-
-    I(b->cleanItem);
     I(!b->empty());
-    I(b->top() == 0);
-    b->pop();
-    I(b->empty());
-    cleanBucketPool.push_back(b);
+    I(b->top() != 0);
+
+
+    return b;
   }
 
   I(0);

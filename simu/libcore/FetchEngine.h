@@ -58,18 +58,20 @@ private:
   GMemorySystem *const gms;
 
   BPredictor   *bpred;
-  BPredictor   *bpred2; // 2nd level predictor
 
   uint16_t      FetchWidth;
   uint16_t      FetchWidthBits;
+  uint16_t      Fetch2Width;
+  uint16_t      Fetch2WidthBits;
+
 	bool          AlignedFetch;
+	bool          TraceAlign;
 
   uint16_t      BB4Cycle;
-  uint16_t      bpredDelay;
   uint16_t      maxBB;
 
-  TimeDelta_t   BTACDelay;
   TimeDelta_t   IL1HitDelay;
+  uint16_t      lineSize;
 
   // InstID of the address that generated a misprediction
  
@@ -77,18 +79,16 @@ private:
   DInst     *lastd;
   CallbackContainer cbPending;
 
-  Time_t    lastMissTime; // FIXME: maybe we need an array
-
   bool      enableICache;
  
 protected:
   //bool processBranch(DInst *dinst, uint16_t n2Fetched);
-  bool processBranch(DInst *dinst, uint16_t n2Fetchedi, uint16_t* maxbb);
+  bool processBranch(DInst *dinst, uint16_t n2Fetchedi);
 
   // ******************* Statistics section
+  GStatsAvg  avgFetchLost;
   GStatsAvg  avgBranchTime;
   GStatsAvg  avgBranchTime2;
-  GStatsAvg  avgFetchTime;
   GStatsCntr nDelayInst1;
   GStatsCntr nDelayInst2;
   GStatsCntr nDelayInst3;
@@ -106,8 +106,8 @@ public:
   void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
   typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface* , FlowID, &FetchEngine::fetch>  fetchCB;
 
-  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched, uint16_t maxbb);
-  typedef CallbackMember5<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, uint16_t, &FetchEngine::realfetch>  realfetchCB;
+  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
+  //typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, &FetchEngine::realfetch>  realfetchCB;
 
   void unBlockFetch(DInst* dinst, Time_t missFetchTime);
   typedef CallbackMember2<FetchEngine, DInst*, Time_t,  &FetchEngine::unBlockFetch> unBlockFetchCB;

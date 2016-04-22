@@ -42,16 +42,16 @@
 #include "SescConf.h"
 #include "GProcessor.h"
 
-DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName)
+DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName, uint32_t pos)
   :srcCluster(aCluster)
   ,Id(gp->getID())
   ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getID()))
   ,SchedDelay(SescConf->getInt(clusterName, "schedDelay"))
-  ,wrForwardBus("P(%d)_%s_wrForwardBus",Id, clusterName)
+  ,wrForwardBus("P(%d)_%s%d_wrForwardBus",Id, clusterName,pos)
 {
   char cadena[100];
 
-  sprintf(cadena,"P(%d)_%s_sched", Id, clusterName);
+  sprintf(cadena,"P(%d)_%s%d_sched", Id, clusterName,pos);
   schedPort = PortGeneric::create(cadena
                                   ,SescConf->getInt(clusterName, "SchedNumPorts")
                                   ,SescConf->getInt(clusterName, "SchedPortOccp"));
@@ -85,7 +85,6 @@ void DepWindow::preSelect(DInst *dinst) {
   // At the end of the wakeUp, we can start to read the register file
   I(!dinst->hasDeps());
 
-  dinst->setWakeUpTime(globalClock);
   dinst->markIssued();
   I(dinst->getCluster());
 
@@ -138,8 +137,8 @@ void DepWindow::executed(DInst *dinst) {
       I(dstCluster);
 
       if (dstCluster != srcCluster) {
-        wrForwardBus.inc(dinst->getStatsFlag());
-        dinst->markInterCluster();
+        wrForwardBus.inc(dstReady->getStatsFlag());
+        dstReady->markInterCluster();
       }
 
       preSelect(dstReady);

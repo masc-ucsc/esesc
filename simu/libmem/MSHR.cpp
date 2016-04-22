@@ -54,7 +54,7 @@ MSHR::MSHR(const char *n, int32_t size, int16_t lineSize, int16_t nsub)
   ,MSHRSize(roundUpPower2(size)*4)
   ,MSHRMask(MSHRSize-1)
 {
-  I(size>0 && size<1024*32);
+  I(size>0 && size<1024*32*32);
 
   nFreeEntries = size;
 

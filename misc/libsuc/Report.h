@@ -22,7 +22,11 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #ifndef REPORT_H
 #define REPORT_H
-#define MAX_REPORT_BUFFER 40960
+
+
+// TODO: check about proper error handling for buffer
+//#define MAX_REPORT_BUFFER 40960
+#define MAX_REPORT_BUFFER 81920
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
@@ -52,8 +56,6 @@ public:
   static void field(const char *format,...);
   static void close();
   static void flush();
-  static void openSocket(int64_t cpid);
-  static void flushSocket(int64_t sample_count);
   static void binField(double val);
   static void binField(double nData, double data);
   static void binField(double d1, double d2, double d3);
