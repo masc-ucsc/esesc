@@ -181,6 +181,7 @@ char *wait_fifo(char *readbuf, int bufsize) {
   FILE *fp;
   fp = fopen(fifo_file,"r");
   if(fp == NULL) {
+<<<<<<< HEAD
     int rc = mkfifo(fifo_file, 0666);
     if(rc) {
       perror("Could not create fifo");
@@ -192,6 +193,10 @@ char *wait_fifo(char *readbuf, int bufsize) {
         perror("Could not open fifo");
       }
     }
+=======
+    fprintf(stderr, "Error: could not open fifo: %s", fifo_file);
+    exit(-1);
+>>>>>>> 28c9b3c0c606b85ce72ee35aad727ca02e612ede
   }
   char *rv = NULL;
   do {
