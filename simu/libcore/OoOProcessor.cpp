@@ -232,12 +232,15 @@ bool OoOProcessor::advance_clock(FlowID fid)
 }
 /* }}} */
 
-void OoOProcessor::executing(DInst *dinst) {
+void OoOProcessor::executing(DInst *dinst) 
+  // {{{1 Called when the instruction starts to execute
+{
 #ifdef LATE_ALLOC_REGISTER
     if (dinst->getInst()->hasDstRegister())
       nTotalRegs++;
 #endif
 }
+// 1}}}
 
 StallCause OoOProcessor::addInst(DInst *dinst)
   /* rename (or addInst) a new instruction {{{1 */
@@ -262,9 +265,9 @@ StallCause OoOProcessor::addInst(DInst *dinst)
   }
 
   StallCause sc = cluster->canIssue(dinst);
-  if (sc != NoStall)
+  if (sc != NoStall) {
     return sc;
-
+  }
 
   // BEGIN INSERTION (note that cluster already inserted in the window)
   // dinst->dump("");
@@ -438,7 +441,6 @@ void OoOProcessor::retire()
 
     rROB.push(dinst);
     ROB.pop();
-
   }
 
   if(!ROB.empty())
@@ -464,13 +466,11 @@ void OoOProcessor::retire()
 #endif
   }
 
-
   for(uint16_t i=0 ; i<RetireWidth && !rROB.empty() ; i++) {
     DInst *dinst = rROB.top();
 
-    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock) {
+    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock) 
       break;
-    }
 
     I(dinst->isExecuted());
     
@@ -499,9 +499,8 @@ void OoOProcessor::retire()
       flushing = true;
       flushing_fid = fid;
     }
-    if (!flushing) {
-      nCommitted.inc(dinst->getStatsFlag());
-    }
+
+    nCommitted.inc(!flushing && dinst->getStatsFlag());
 
 #ifdef ESESC_TRACE
     MSG("TR %8lld %8llx R%-2d,R%-2d=R%-2d op=%-2d R%-2d   %lld %lld %lld %lld %lld"
@@ -518,7 +517,6 @@ void OoOProcessor::retire()
         ,dinst->getExecutedTime()
         ,globalClock);
 #endif
-
 
 #if 0
     dinst->dump("RT ");
@@ -547,7 +545,6 @@ void OoOProcessor::retire()
       last_serialized = 0;
     if (last_serializedST == dinst)
       last_serializedST = 0;
-
 
     rROB.pop();
   }
@@ -586,6 +583,7 @@ void OoOProcessor::replay(DInst *target)
 /* }}} */
 
 void OoOProcessor::dumpROB()
+  // {{{1 Dump rob statistics
 {
   uint32_t size = ROB.size();
   fprintf(stderr,"ROB: (%d)\n",size);
@@ -608,3 +606,5 @@ void OoOProcessor::dumpROB()
     dinst->dump("");
   }
 }
+// 1}}}
+

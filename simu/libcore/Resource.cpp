@@ -51,8 +51,9 @@
 #include "MemRequest.h"
 #include "Port.h"
 #include "LSQ.h"
+#include "TaskHandler.h"
 
-//#define MEM_TSO 1
+#define MEM_TSO 1
 //#define USE_PNR
 
 /* }}} */
@@ -68,6 +69,7 @@ Resource::Resource(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l)
   ,avgRetireTime  ("P(%d)_%s_%d_avgRetireTime" ,cls->getGProcessor()->getID(), cls->getName(),type )
   ,lat(l)
   ,usedTime(0)
+  ,coreid(cls->getGProcessor()->getID())
 {
   I(cls);
   if(gen)
@@ -111,11 +113,21 @@ Resource::~Resource()
 MemResource::MemResource(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad)
   /* constructor {{{1 */
   : MemReplay(type, cls, aGen, ss, l)
-  ,DL1(ms->getDL1())
+  ,firstLevelMemObj(ms->getDL1())
   ,memorySystem(ms)
   ,lsq(_lsq)
-  ,stldViolations("P(%d)_%s:stldViolations", id, cad)
+  ,stldViolations("P(%d)_%s_%s:stldViolations", id, cls->getName(), cad)
 {
+  if (strcasecmp(firstLevelMemObj->getDeviceType(),"cache")==0) {
+    DL1 = firstLevelMemObj;
+  }else{
+    MRouter *router= firstLevelMemObj->getRouter();
+    DL1=router->getDownNode();
+    if (strcasecmp(DL1->getDeviceType(),"cache")!=0) {
+      printf("ERROR: Neither first or second level is a cache %s\n",DL1->getDeviceType());
+      exit(-1);
+    }
+  }
 }
 /* }}} */
 
@@ -246,7 +258,7 @@ FULoad::FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSe
   ,LSDelay(lsdelay)
   ,freeEntries(size) {
   char cadena[1000];
-  sprintf(cadena,"P(%d)_%s", id, cad);
+  sprintf(cadena,"P(%d)_%s_%s", id, cls->getName(), cad);
   enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
   I(ms);
 
@@ -311,7 +323,7 @@ void FULoad::cacheDispatched(DInst *dinst) {
 #if 0
   if (dinst->isDelayedDispatch()) {
     dinst->clearDelayedDispatch();
-  }else if(DL1->isBusy(dinst->getAddr()) && pendingLoadID > dinst->getID()) {
+  }else if(firstLevelMemObj->isBusy(dinst->getAddr()) && pendingLoadID > dinst->getID()) {
     dinst->setDelayedDispatch();
     Time_t when = gen->nextSlot(dinst->getStatsFlag());
     cacheDispatchedCB::scheduleAbs(when+7, this, dinst); //try again later
@@ -322,7 +334,7 @@ void FULoad::cacheDispatched(DInst *dinst) {
   pendingLoadID = dinst->getID();
 
   //MSG("FULoad 0x%x 0x%x",dinst->getAddr(), dinst->getPC());
-  MemRequest::sendReqRead(DL1, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC(), performedCB::create(this,dinst));
+  MemRequest::sendReqRead(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC(), performedCB::create(this,dinst));
 }
 /* }}} */
 
@@ -359,6 +371,17 @@ bool FULoad::retire(DInst *dinst, bool flushing)
   lsq->incFreeEntries();
 #ifndef USE_PNR
   freeEntries++;
+#endif
+
+#ifdef MEM_TSO2
+  if (DL1->Invalid(dinst->getAddr())) {
+    MSG("Sync head/tail @%lld",globalClock);
+    gproc->replay(dinst);
+#if 0
+    EmulInterface *eint = TaskHandler::getEmul(coreid);
+    eint->syncHeadTail( coreid );
+#endif
+  }
 #endif
 
   lsq->remove(dinst);
@@ -442,8 +465,8 @@ void FUStore::executing(DInst *dinst) {
 
   if (dinst->getInst()->isStoreAddress()) {
 #if 0
-    if (enableDcache && !DL1->isBusy(dinst->getAddr()) ){
-      MemRequest::sendReqWritePrefetch(DL1, dinst->getStatsFlag(), dinst->getAddr(), 0); // executedCB::create(this,dinst));
+    if (enableDcache && !firstLevelMemObj->isBusy(dinst->getAddr()) ){
+      MemRequest::sendReqWritePrefetch(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), 0); // executedCB::create(this,dinst));
     }
     executed(dinst);
 #else
@@ -490,7 +513,7 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
     return false;
 
 #if 0
-  if(DL1->isBusy(dinst->getAddr())){
+  if(firstLevelMemObj->isBusy(dinst->getAddr())){
     return false;
   }
 #endif
@@ -498,7 +521,7 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
   freeEntries++;
   scbEntries--;
   scbQueue.push_back(dinst);
-  MemRequest::sendReqWrite(DL1, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst));
+  MemRequest::sendReqWrite(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst));
 
   return true;
 }
@@ -720,8 +743,8 @@ void FUBranch::performed(DInst *dinst) {
 FURALU::FURALU(uint8_t type, Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, bool scooreMemory_, int32_t id)
   /* constructor {{{1 */
   :Resource(type, cls, aGen, l)
-  ,dmemoryBarrier("P(%d)_dmemoryBarrier",id)
-  ,imemoryBarrier("P(%d)_imemoryBarrier",id)
+  ,dmemoryBarrier("P(%d)_%s_dmemoryBarrier",id,cls->getName())
+  ,imemoryBarrier("P(%d)_%s_imemoryBarrier",id,cls->getName())
 {
   blockUntil = 0;
   scooreMemory = scooreMemory_;
@@ -759,7 +782,7 @@ StallCause FURALU::canIssue(DInst *dinst)
       imemoryBarrier.inc(dinst->getStatsFlag());
     else
       dmemoryBarrier.inc(dinst->getStatsFlag());
-    return SyscallStall;
+    // FIXME return SyscallStall;
   }
 
   return NoStall;

@@ -124,6 +124,7 @@ private:
 
   bool interCluster;
   bool keepStats;
+  bool biasBranch;
 
   // END Boolean flags
 
@@ -215,6 +216,11 @@ public:
   void scrap(EmulInterface *eint); // Destroys the instruction without any other effects
   void destroy(EmulInterface *eint);
   void recycle();
+
+  void clearCluster() {
+    cluster  = 0;
+    resource = 0;
+  }
 
   void setCluster(Cluster *cls, Resource *res) {
     cluster  = cls;
@@ -434,6 +440,9 @@ public:
   void markReplay() {
     replay= true;
   }
+
+  void setBiasBranch(bool b) { biasBranch = b; }
+  bool isBiasBranch() const { return biasBranch; }
 
   bool isTaken()    const {
     I(getInst()->isControl());

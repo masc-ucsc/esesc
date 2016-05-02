@@ -75,9 +75,11 @@ extern "C" void start_esesc(char * host_adr, int portno, int cpid, int force_war
   checkpoint_id = cpid;
   
 #ifdef ESESC_LIVE
-  // Reconnecting is not necessary because there is no longer a fork so same connection
-  // can be reused.
-  //Transporter::connect_to_server(host_adr, portno);
+
+#ifndef ESESC_LIVECRIU
+  // When using CRIU there is no fork so reconnecting is not necessary
+  Transporter::connect_to_server(host_adr, portno);
+#endif
 
   Transporter::send_fast("cp_start", "%d,%d", cpid, getpid());
   printf("LiveSim Checkpoint thread starting CPID:%d PID:%d\n", cpid, getpid());

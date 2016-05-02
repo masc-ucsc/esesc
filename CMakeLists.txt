@@ -21,6 +21,13 @@ ELSE(ENABLE_LIVE)
   MESSAGE("  -DESESC_LIVE=0                Disable esesc live compilation (default)")
 ENDIF(ENABLE_LIVE)
 
+IF(ENABLE_LIVECRIU)
+  MESSAGE("  -DESESC_LIVECRIU=1                Enable CRIU checkpoints with live sampling support")
+ELSE(ENABLE_LIVECRIU)
+  MESSAGE("  -DESESC_LIVECRIU=0                Disable CRIU checkpoints with live compilation (default)")
+ENDIF(ENABLE_LIVECRIU)
+
+
 #############
 MESSAGE("  -DCMAKE_HOST_MARCH=${CMAKE_HOST_MARCH} compilation")
 

@@ -107,7 +107,8 @@ public:
   virtual ~BPred();
 
   virtual PredType predict(DInst *dinst, bool doUpdate, bool doStats) = 0;
-  virtual void fetchBoundary(DInst *dinst); // If the branch predictor support fetch boundary model, do it
+  virtual void fetchBoundaryBegin(DInst *dinst); // If the branch predictor support fetch boundary model, do it
+  virtual void fetchBoundaryEnd(); // If the branch predictor support fetch boundary model, do it
 
   PredType doPredict(DInst *dinst, bool doUpdate, bool doStats=true) {
     PredType pred = predict(dinst, doUpdate, doStats);
@@ -271,7 +272,8 @@ protected:
 public:
   BPIMLI(int32_t i, const char *section, const char *sname);
 
-  void fetchBoundary(DInst *dinst);
+  void fetchBoundaryBegin(DInst *dinst);
+  void fetchBoundaryEnd();
   PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 };
 
@@ -750,7 +752,8 @@ public:
 
   static BPred *getBPred(int32_t id, const char *sname, const char *sec);
 
-  void fetchBoundary(DInst *dinst);
+  void fetchBoundaryBegin(DInst *dinst);
+  void fetchBoundaryEnd();
   TimeDelta_t predict(DInst *dinst, bool *fastfix);
 
   void dump(const char *str) const;

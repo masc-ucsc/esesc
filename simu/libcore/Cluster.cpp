@@ -67,20 +67,25 @@ Cluster::~Cluster() {
     // Nothing to do
 }
 
-Cluster::Cluster(const char *clusterName, GProcessor *gp)
-  : window(gp,this,clusterName)
+Cluster::Cluster(const char *clusterName, uint32_t pos, GProcessor *gp)
+  : window(gp,this,clusterName, pos)
   ,MaxWinSize(SescConf->getInt(clusterName,"winSize"))
   ,windowSize(SescConf->getInt(clusterName,"winSize")) 
   ,gproc(gp)
-  ,winNotUsed("P(%d)_%s_winNotUsed",gp->getID(), clusterName)
-  ,rdRegPool("P(%d)_%s_rdRegPool",gp->getID(), clusterName)
-  ,wrRegPool("P(%d)_%s_wrRegPool",gp->getID(), clusterName)
-  ,name(strdup(clusterName))
+  ,winNotUsed("P(%d)_%s%d_winNotUsed",gp->getID(), clusterName, pos)
+  ,rdRegPool("P(%d)_%s%d_rdRegPool",gp->getID(), clusterName, pos)
+  ,wrRegPool("P(%d)_%s%d_wrRegPool",gp->getID(), clusterName, pos)
 {
+  name = (char *)malloc(strlen(clusterName)+32);
+  sprintf(name,"%s%d",clusterName,pos);
+
   bzero(res,sizeof(Resource *)*iMAX);  
+
+  nready = 0;
 }
 
 void Cluster::buildUnit(const char *clusterName
+      ,uint32_t pos
       ,GMemorySystem *ms
       ,Cluster *cluster
       ,InstOpcode type)
@@ -95,7 +100,9 @@ void Cluster::buildUnit(const char *clusterName
   if( !SescConf->checkCharPtr(clusterName,utUnit) )
     return;
 
-  const char *unitName = SescConf->getCharPtr(clusterName,utUnit);
+  const char *sUnitName = SescConf->getCharPtr(clusterName,utUnit);
+  char unitName[1024];
+  sprintf(unitName,"P(%d)_%s%d_%s",(int)gproc->getID(),clusterName,pos,sUnitName);
   
   TimeDelta_t lat = SescConf->getInt(clusterName,utLat);
   PortGeneric *gen;
@@ -107,15 +114,13 @@ void Cluster::buildUnit(const char *clusterName
     gen = it->second.gen;
   }else{
     UnitEntry e;
-    e.num = SescConf->getInt(unitName,"Num");
-    SescConf->isLT(unitName,"Num",1024);
+    e.num = SescConf->getInt(sUnitName,"Num");
+    SescConf->isLT(sUnitName,"Num",1024);
       
-    e.occ = SescConf->getInt(unitName,"occ");
-    SescConf->isBetween(unitName,"occ",0,1024);
+    e.occ = SescConf->getInt(sUnitName,"occ");
+    SescConf->isBetween(sUnitName,"occ",0,1024);
       
-    char name[1024];
-    sprintf(name,"%s(%d)", unitName, (int)gproc->getID());
-    e.gen = PortGeneric::create(name,e.num,e.occ);
+    e.gen = PortGeneric::create(unitName,e.num,e.occ);
 
     unitMap[unitName] = e;
     gen = e.gen;
@@ -194,7 +199,7 @@ void Cluster::buildUnit(const char *clusterName
   res[type] = r;
 }
 
-Cluster *Cluster::create(const char *clusterName, GMemorySystem *ms, GProcessor *gproc) {
+Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *ms, GProcessor *gproc) {
   // Note: Clusters do NOT share functional units. This breaks the cluster
   // principle. If someone were interested in doing that, the UnitMap sould be
   // cleared (unitMap.clear()) by the PendingWindow instead of buildCluster. If
@@ -213,12 +218,12 @@ Cluster *Cluster::create(const char *clusterName, GMemorySystem *ms, GProcessor 
   
   Cluster *cluster;
   if( strcasecmp(recycleAt,"retire") == 0) {
-    cluster = new RetiredCluster(clusterName, gproc);
+    cluster = new RetiredCluster(clusterName, pos, gproc);
   }else if( strcasecmp(recycleAt,"executing") == 0) {
-    cluster = new ExecutingCluster(clusterName, gproc);
+    cluster = new ExecutingCluster(clusterName, pos, gproc);
   }else{
     I( strcasecmp(recycleAt,"execute") == 0);
-    cluster = new ExecutedCluster(clusterName, gproc);
+    cluster = new ExecutedCluster(clusterName, pos, gproc);
   }
 
   cluster->regPool = SescConf->getInt(clusterName, "nRegs");
@@ -227,7 +232,7 @@ Cluster *Cluster::create(const char *clusterName, GMemorySystem *ms, GProcessor 
   SescConf->isBetween(clusterName , "nRegs", 16, 262144);
 
   for(int32_t t = 0; t < iMAX; t++) {
-    cluster->buildUnit(clusterName,ms,cluster,static_cast<InstOpcode>(t));
+    cluster->buildUnit(clusterName,pos, ms,cluster,static_cast<InstOpcode>(t));
   }
 
  // Do not leave useless garbage
@@ -238,6 +243,8 @@ Cluster *Cluster::create(const char *clusterName, GMemorySystem *ms, GProcessor 
 
 
 void Cluster::select(DInst *dinst) {
+  I(nready>=0);
+  nready++;
   window.select(dinst);
 }
 
@@ -273,6 +280,7 @@ void Cluster::addInst(DInst *dinst) {
 //************ Executing Cluster
 
 void ExecutingCluster::executing(DInst *dinst) {
+  nready--;
 
   gproc->executing(dinst);
 
@@ -304,6 +312,7 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 //************ Executed Cluster
 
 void ExecutedCluster::executing(DInst *dinst) {
+  nready--;
 
   gproc->executing(dinst);
 
@@ -335,6 +344,7 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
 //************ RetiredCluster
 
 void RetiredCluster::executing(DInst *dinst) {
+  nready--;
 
   gproc->executing(dinst);
 

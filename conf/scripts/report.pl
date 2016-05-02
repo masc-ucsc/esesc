@@ -241,12 +241,12 @@ sub newtradMemStats {
   printf "********************************************************************************************************\n";
 
   if ($op_enPower eq "true") {
-    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s   %12s %12s\n",
+    printf ("%-15s %-4s %-9s %-9s %9s     %-7s,%6s,%6s   %12s %12s\n",
       "Cache",
       "Occ",
       "AvgMemLat",
       "MemAccesses",
-      " MissRate",
+      "   MissRate",
       " (  RD",
       "WR",
       "    BUS)",
@@ -254,12 +254,12 @@ sub newtradMemStats {
       "Lkg_Pow (mW)"
     );
   } else {
-    printf ("%-15s %-4s %-9s %-9s %9s %-7s,%6s,%6s \n",
+    printf ("%-15s %-4s %-9s %-9s %9s     %-7s,%6s,%6s \n",
       "Cache",
       "Occ",
       "AvgMemLat",
       "MemAccesses",
-      " MissRate",
+      "   MissRate",
       " (  RD",
       "WR",
       "    BUS)"
@@ -321,10 +321,13 @@ sub newMemStat {
     my $miss = $cf->getResultField("${cache}","readMiss")
     + $cf->getResultField("${cache}","writeMiss")
     + $cf->getResultField("${cache}","busReadMiss");
+    my $miss2 = $cf->getResultField("${cache}","readHalfMiss")
+    + $cf->getResultField("${cache}","writeHalfMiss")
+    + $cf->getResultField("${cache}","busReadHalfMiss");
 
     my $tmp  = $cf->getResultField("${cache}_avgMemLat","v");
     my $tmp1  = $cf->getResultField("${cache}_avgMemLat","n");
-    printf "%-9.1f %-9d %8.2f%    ", $tmp,$tmp1,100*($miss)/$total;
+    printf "%-9.1f %-9d %6.1f%% %6.1f%%    ", $tmp,$tmp1,100*($miss)/$total, 100*($miss+$miss2)/$total;
 
     my $tmp  = $cf->getResultField("${cache}","readHit");
     my $tmp2 = $cf->getResultField("${cache}","readMiss")

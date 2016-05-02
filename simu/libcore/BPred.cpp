@@ -68,9 +68,12 @@ BPred::BPred(int32_t i, const char *sec, const char *sname, const char *name)
 BPred::~BPred() {
 }
 
-void BPred::fetchBoundary(DInst *dinst) {
+void BPred::fetchBoundaryBegin(DInst *dinst) {
   // No fetch boundary implemented (must be specialized per predictor if supported)
 
+}
+
+void BPred::fetchBoundaryEnd() {
 }
 
 /*****************************************
@@ -400,28 +403,39 @@ BPIMLI::BPIMLI(int32_t i, const char *section, const char *sname)
   imli = new IMLIBest;
 }
 
-void BPIMLI::fetchBoundary(DInst *dinst) {
+void BPIMLI::fetchBoundaryBegin(DInst *dinst) {
   if (FetchPredict)
-    imli->fetchBoundary(dinst->getPC());
+    imli->fetchBoundaryBegin(dinst->getPC());
+}
+
+void BPIMLI::fetchBoundaryEnd() {
+  if (FetchPredict)
+    imli->fetchBoundaryEnd();
 }
 
 PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
   if( dinst->getInst()->isJump() ) {
     imli->TrackOtherInst(dinst->getPC(), dinst->getInst()->getOpcode(), dinst->getAddr());
+    dinst->setBiasBranch(true);
     return btb.predict(dinst, doUpdate, doStats);
   }
 
   bool taken = dinst->isTaken();
 
   if (!FetchPredict)
-    imli->fetchBoundary(dinst->getPC());
+    imli->fetchBoundaryBegin(dinst->getPC());
 
-  bool ptaken = imli->getPrediction(dinst->getPC());
+  bool bias;
+  bool ptaken = imli->getPrediction(dinst->getPC(), bias);
+  dinst->setBiasBranch(bias);
 
   if (doUpdate) {
     imli->updatePredictor(dinst->getPC(), taken, ptaken, dinst->getAddr());
   }
+
+  if (!FetchPredict)
+    imli->fetchBoundaryEnd();
 
   if( taken != ptaken ) {
     if (doUpdate)
@@ -2750,10 +2764,16 @@ BPredictor::~BPredictor()
   }
 }
 
-void BPredictor::fetchBoundary(DInst *dinst) {
-  pred1->fetchBoundary(dinst);
+void BPredictor::fetchBoundaryBegin(DInst *dinst) {
+  pred1->fetchBoundaryBegin(dinst);
   if (pred2)
-    pred2->fetchBoundary(dinst);
+    pred2->fetchBoundaryBegin(dinst);
+}
+
+void BPredictor::fetchBoundaryEnd() {
+  pred1->fetchBoundaryEnd();
+  if (pred2)
+    pred2->fetchBoundaryEnd();
 }
 
 PredType BPredictor::predict1(DInst *dinst, bool doUpdate) {
@@ -2794,6 +2814,7 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   PredType outcome1;
   PredType outcome2;
+  dinst->setBiasBranch(false);
 
   outcome1 = ras->doPredict(dinst, true);
   if( outcome1 == NoPrediction ) {
@@ -2804,8 +2825,10 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
   }else{
     outcome2 = outcome1;
   }
-  if(dinst->getInst()->isFuncRet() || dinst->getInst()->isFuncCall())
+  if(dinst->getInst()->isFuncRet() || dinst->getInst()->isFuncCall()) {
+    dinst->setBiasBranch(true);
     ras->tryPrefetch(il1,dinst->getStatsFlag());
+  }
 
   if (outcome1 == CorrectPrediction && outcome2 == CorrectPrediction) {
     // Both agree, and they are right

@@ -47,7 +47,8 @@
 #include "Pipeline.h"
 extern bool MIMDmode;
 
-#define ENABLE_FAST_WARMUP
+#define ENABLE_FAST_WARMUP 1
+//#define FETCH_TRACE 1
 
 FetchEngine::FetchEngine(FlowID id
   ,GMemorySystem *gms_
@@ -56,6 +57,7 @@ FetchEngine::FetchEngine(FlowID id
   ,avgFetchLost("P(%d)_FetchEngine_avgFetchLost", id)
   ,avgBranchTime("P(%d)_FetchEngine_avgBranchTime", id)
   ,avgBranchTime2("P(%d)_FetchEngine_avgBranchTime2", id)
+  ,avgFetchTime("P(%d)_FetchEngine_avgFetchTime", id)
   ,nDelayInst1("P(%d)_FetchEngine:nDelayInst1", id)
   ,nDelayInst2("P(%d)_FetchEngine:nDelayInst2", id) // Not enough BB/LVIDs per cycle
   ,nDelayInst3("P(%d)_FetchEngine:nDelayInst3", id) 
@@ -127,6 +129,8 @@ FetchEngine::FetchEngine(FlowID id
   // Get some icache L1 parameters
   enableICache = SescConf->getBool("cpusimu","enableICache", id);
   IL1HitDelay = SescConf->getInt(isection,"hitDelay");
+
+  lastMissTime = 0;
 }
 
 FetchEngine::~FetchEngine() {
@@ -144,6 +148,9 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
     return false;
 
   setMissInst(dinst);
+
+  Time_t n = (globalClock-lastMissTime);
+  avgFetchTime.sample(n, dinst->getStatsFlag());
 
   if (fastfix)
     unBlockFetchBPredDelayCB::schedule(delay, this , dinst, globalClock);
@@ -194,25 +201,30 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     }
 #endif
     if (lastpc == 0) {
-      bpred->fetchBoundary(dinst);
+      bpred->fetchBoundaryBegin(dinst);
       if (!TraceAlign) {
+
+        uint64_t entryPC=dinst->getPC()>>2;
+
         uint16_t fetchLost;
 
         if (AlignedFetch) {
-          fetchLost =  ((dinst->getPC())>>FetchWidthBits) & (FetchWidth-1);
+          fetchLost =  (entryPC) & (FetchWidth-1);
         }else{
-          uint16_t fetchMaxPos = ((dinst->getPC()>>2) & (lineSize-1)) + FetchWidth; // No alignment constrants
-          if (fetchMaxPos>lineSize) {
-            fetchLost = (fetchMaxPos-lineSize);
-          }else{
-            fetchLost =  ((dinst->getPC())>>(Fetch2WidthBits)) & (Fetch2Width-1);
-          }
+          fetchLost =  (entryPC) & (Fetch2Width-1);
+        }
+
+        // No matter what, do not pass cache line boundary
+        uint16_t fetchMaxPos = (entryPC & (lineSize/4-1)) + FetchWidth; 
+        if (fetchMaxPos>lineSize/4) {
+          fetchLost += (fetchMaxPos-lineSize/4);
         }
 
         avgFetchLost.sample(fetchLost,dinst->getStatsFlag());
 
         n2Fetch -= fetchLost;
       }
+
       n2Fetch--;
     }else{
       if ((lastpc+4) == dinst->getPC()) {
@@ -247,6 +259,16 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       }
     }
 #endif
+
+#ifdef FETCH_TRACE
+    static int bias_ninst   = 0;
+    static int bias_firstPC = 0;
+    bias_ninst++;
+#endif
+
+#ifdef FETCH_TRACE
+    dinst->dump("FECHT");
+#endif
         
     if(dinst->getInst()->isControl()) {
       bool stall_fetch = processBranch(dinst, n2Fetch);
@@ -258,9 +280,43 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
             n2Fetch--;
           }
         }
+#ifdef FETCH_TRACE
+        if (dinst->isBiasBranch() && dinst->getFetch()) {
+          // OOPS. Thought that it was bias and it is a long misspredict
+          MSG("ABORT first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
+          bias_firstPC = dinst->getAddr();
+          bias_ninst   = 0;
+        }
+        if (bias_ninst>256) {
+          MSG("1ENDS first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
+          bias_firstPC = dinst->getAddr();
+          bias_ninst   = 0;
+        }
+#endif
         break;
       }
       I(!missInst);
+#ifdef FETCH_TRACE
+      if (bias_ninst>256) {
+        MSG("2ENDS first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
+        bias_firstPC = dinst->getAddr();
+        bias_ninst   = 0;
+      }else if (!dinst->isBiasBranch() ) {
+
+        if ( dinst->isTaken() && (dinst->getAddr() > dinst->getPC() && (dinst->getAddr() + 8<<2) <= dinst->getPC())) {
+          // Move instructions to predicated (up to 8)
+          MSG("PRED  first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
+        }else{
+          if (bias_ninst<16) {
+            MSG("NOTRA first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
+          }else{
+            MSG("3ENDS first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
+          }
+          bias_firstPC = dinst->getAddr();
+          bias_ninst   = 0;
+        }
+      }
+#endif
     }
 
 #ifdef USE_FUSE
@@ -271,6 +327,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
     // Fetch uses getHead, ROB retires getTail
   } while(n2Fetch>0);
+
+  bpred->fetchBoundaryEnd();
 
   if(enableICache && !bucket->empty()) {
     nFetched.add(FetchWidth - n2Fetch, bucket->top()->getStatsFlag());
@@ -325,12 +383,13 @@ void FetchEngine::unBlockFetch(DInst* dinst, Time_t missFetchTime) {
   clearMissInst(dinst, missFetchTime);
 
   I(missFetchTime != 0);
-  Time_t n = (globalClock-missFetchTime);
+  Time_t n = (globalClock-missFetchTime)-1;
   avgBranchTime.sample(n, dinst->getStatsFlag()); // Not short branches
   //n *= FetchWidth;  //FOR CPU
   n *= 1; //FOR GPU and for MIMD
   nDelayInst1.add(n, dinst->getStatsFlag());
 
+  lastMissTime = globalClock;
 }
 
 

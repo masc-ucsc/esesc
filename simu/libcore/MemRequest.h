@@ -320,6 +320,10 @@ protected:
 		m->req(mreq);
   }
 
+  bool isDemandCritical() const {
+    return (mt == mt_req || mt == mt_reqAck) && !prefetch;
+  }
+
   void forceReqAction(MsgAction _ma) {
     ma = _ma;
   }
@@ -355,8 +359,8 @@ protected:
     needsDisp = _needsDisp;
   }
 
-  static void sendDirtyDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats) {
-    MemRequest *mreq = create(m,addr,doStats, 0);
+  static void sendDirtyDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats, CallbackBase *cb=0) {
+    MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setDirty;
     mreq->ma_orig    = mreq->ma;

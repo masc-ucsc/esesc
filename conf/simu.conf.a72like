@@ -11,7 +11,7 @@ memBW    =   11 #chromebook 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GB
 type              = "ooo"
 areaFactor        = 2
 #issueWrongPath    = false not in new simu.conf
-fetchWidth        = 8
+fetchWidth        = 4
 alignedFetch      = false
 fetchPorts        = 1
 instQueueSize     = 16
@@ -160,7 +160,7 @@ Occ               = 1
 
 [BPredIssueX] 
 type              = "2bit"
-addrShift         = 2
+addrShift         = 1
 size              = 256
 bits              = 1
 bpred4Cycle       = 1 
@@ -170,11 +170,13 @@ btbBsize          = 1
 btbAssoc          = 64
 btbReplPolicy     = 'LRU'
 rasSize           = 16
+rasPrefetch       = 0
 numBanks            = 1
 
 [BPredIssueX2]
 #type              = "ogehl"
 type             = "imli"
+FetchPredict      = true
 addrShift         = 1
 BTACDelay         = 3
 mtables           = 10       # Number of tables (M)
@@ -187,6 +189,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 32
+rasPrefetch       = 0
 numBanks            = 1
 
 
@@ -211,6 +214,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 ###############################
@@ -225,6 +229,7 @@ maxRequests       = 32
 size              = 32*1024
 assoc             = 2 
 bsize             = 64
+nlprefetch        = 1
 replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 1
@@ -275,6 +280,7 @@ directory         = false
 blockName         = "dcache"
 size              = 32*1024
 assoc             = 4 
+nlprefetch        = 1
 skew              = false
 bsize             = 64 
 replPolicy        = 'LRU'
@@ -303,6 +309,7 @@ numBanks          = 2
 maxRequests       = 16 
 size              = 2*1024*1024 
 assoc             = 16
+nlprefetch        = 4
 bsize             = 64
 replPolicy        = 'LRU'
 bkNumPorts        = 1
@@ -316,7 +323,6 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
-nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

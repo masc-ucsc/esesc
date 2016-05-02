@@ -736,7 +736,7 @@ void CCache::doReq(MemRequest *mreq)
     s_reqHit[mreq->getAction()]->inc(mreq->getStatsFlag());
   }
 
-  if (!mreq->isPrefetch()) {
+  if (mreq->isDemandCritical() ) {
     double lat = mreq->getTimeDelay()+(when-globalClock);
     avgMemLat.sample(lat, mreq->getStatsFlag());
     if (retrying) 
@@ -787,8 +787,17 @@ void CCache::doDisp(MemRequest *mreq)
     int16_t portid = router->getCreatorPort(mreq);
     l->adjustState(mreq,portid);
   }
-
-  mreq->ack();
+  if (justDirectory) { // Directory info kept, invalid line to trigger misses
+    //router->sendDirtyDisp(addr, mreq->getStatsFlag(), 1);
+    if (l) {
+      if (l->getSharingCount() == 0)
+        l->invalidate();
+    }
+    router->scheduleDisp(mreq, 1);
+    writeBack.inc();
+  }else{
+    mreq->ack();
+  }
 }
 // }}}
 
@@ -850,7 +859,7 @@ void CCache::doReqAck(MemRequest *mreq)
 
   port->reqRetire(mreq);
 
-  if (!mreq->isPrefetch()) {
+  if (mreq->isDemandCritical()) {
     double lat = mreq->getTimeDelay(when);
     avgMissLat.sample(lat, mreq->getStatsFlag());
     avgMemLat.sample(lat, mreq->getStatsFlag());
@@ -914,6 +923,8 @@ void CCache::doSetState(MemRequest *mreq)
 		MTRACE("scheduleSetStateAck without disp (local miss)");
     return;
   }
+
+  // FIXME: add hit/mixx delay
 
   int16_t portid = router->getCreatorPort(mreq);
 	if (l->getSharingCount()) {

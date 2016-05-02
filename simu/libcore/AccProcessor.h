@@ -68,14 +68,17 @@ protected:
   bool isFlushing();
   bool isReplayRecovering();
   Time_t getReplayID();
+  void executing(DInst *dinst);
 
-    virtual void replay(DInst *target) { };// = 0;
+  virtual void replay(DInst *target) { };// = 0;
 
   // END VIRTUAL FUNCTIONS of GProcessor
   
   AddrType myAddr;
   AddrType addrIncr;
   int reqid;
+  int total_accesses;
+  int outstanding_accesses;
 
   GStatsCntr accReads;
   GStatsCntr accWrites;
@@ -91,7 +94,6 @@ protected:
 public:
   AccProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~AccProcessor();
-  void executing(DInst *dinst);
 };
 
 #endif

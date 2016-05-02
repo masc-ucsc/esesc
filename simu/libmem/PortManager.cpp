@@ -196,6 +196,7 @@ Time_t PortManagerBanked::snoopFillBankUse(MemRequest *mreq) {
     }
   }
 
+#if 0
   // Make sure that all the banks are busy until the max time
   Time_t cur_fc = 0;
   for(int fc = 0; fc<lineSize ;  fc += recvFillWidth) {
@@ -204,6 +205,7 @@ Time_t PortManagerBanked::snoopFillBankUse(MemRequest *mreq) {
       nextBankSlotUntil(mreq->getAddr()+fc+i,max-max_fc+cur_fc, mreq->getStatsFlag());
     }
   }
+#endif
 
   return max;
 }

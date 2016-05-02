@@ -59,7 +59,7 @@ ClusterManager::ClusterManager(GMemorySystem *ms, GProcessor *gproc) {
     const char *clusterName = SescConf->getCharPtr(coreSection,"cluster",i);
     SescConf->isCharPtr(coreSection,"cluster",i);
     
-    Cluster *cluster = Cluster::create(clusterName, ms, gproc);
+    Cluster *cluster = Cluster::create(clusterName, i, ms, gproc);
 
     for(int32_t t = 0; t < iMAX; t++) {
       Resource *r = cluster->getResource(static_cast<InstOpcode>(t));

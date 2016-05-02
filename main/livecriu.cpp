@@ -43,8 +43,10 @@ typedef uint32_t FlowID; // from RAWDInst.h
 
 #define MAX_HOST_ADDR_LEN 100
 #define MAX_CONF_NAME_LEN 100
+#define MAX_BENCH_NAME_LEN 100
+#define MAX_FIFO_BASE_PATH_LEN 256
 
-#define DOCKER_ID_LEN 65
+//#define DOCKER_ID_LEN 65
 
 
 struct LiveSetupState {
@@ -54,6 +56,9 @@ struct LiveSetupState {
   void *handle;
   int cpid, portno;
   char host_adr[MAX_HOST_ADDR_LEN];
+
+  char bench_id[MAX_BENCH_NAME_LEN];
+  char fifo_base_path[MAX_FIFO_BASE_PATH_LEN];
 
   int64_t nrabbit;
   int nchecks;
@@ -118,22 +123,6 @@ typedef void (*dyn_QEMUReader_setFlowCmd_t)(bool*);
 dyn_QEMUReader_setFlowCmd_t dyn_QEMUReader_setFlowCmd=0;
 
 
-void get_docker_id(char *buf) {
- 
-  // Shell command to read the docker ID of the running container. The
-  // docker ID is 64 characters long. An additional character is needed to
-  // store the `\0` at the end of the string
-  static const char *cmd = "cat /proc/self/cgroup | sed 's/^.*\\///' | head -n1";
-
-  FILE *p = popen(cmd, "r");
-  char *rv = fgets(buf, DOCKER_ID_LEN, p);
-  int rc = pclose(p);
-
-  I(rv);
-  I(rc == 0);
-}
-
-
 // Send message to criu controller on localhost
 void msg_criucont(const char *buf, size_t bytes, const char *host, const char *port) {
   struct addrinfo hints;
@@ -185,15 +174,30 @@ void msg_criucont(const char *buf, size_t bytes, const char *host, const char *p
 }
 
 char *wait_fifo(char *readbuf, int bufsize) {
-  const char *FIFO_FILE = "/run/controller_fifo";
+  char fifo_file[MAX_FIFO_BASE_PATH_LEN+MAX_BENCH_NAME_LEN+16];
+
+  sprintf(fifo_file, "%s/%s/cp%d", gs.fifo_base_path, gs.bench_id, gs.cpid);
 
   FILE *fp;
-  fp = fopen(FIFO_FILE,"r");
+  fp = fopen(fifo_file,"r");
+  if(fp == NULL) {
+    int rc = mkfifo(fifo_file, 0666);
+    if(rc) {
+      perror("Could not create fifo");
+      exit(-1);
+    }
+    else {
+      fp = fopen(fifo_file,"r");
+      if(fp == NULL) {
+        perror("Could not open fifo");
+      }
+    }
+  }
   char *rv = NULL;
   do {
     rv = fgets(readbuf, bufsize, fp);
     if(rv == NULL) {
-      fprintf(stderr, "WARNING reading: '%s' returned NULL\n", FIFO_FILE);
+      fprintf(stderr, "WARNING reading: '%s' returned NULL\n", fifo_file);
     }
   } while(rv == NULL); 
   
@@ -244,10 +248,13 @@ void start_simulation() {
   uint64_t live_warmup_cnt;
   live_warmup_cnt = gs.live_warmup_cache->traverse(gs.live_warmup_addr, gs.live_warmup_st);
 
-  //raise(SIGSTOP);
+  pid_t pid = getpid();
+
   fprintf(stderr,"Connecting to: %s:%d\n",gs.host_adr, gs.portno);
   Transporter::connect_to_server(gs.host_adr, gs.portno);
+  Transporter::send_fast("pid", "%d", pid);
 
+   
   dlclose(gs.handle);
   gs.handle = dlopen("libesescso.so", RTLD_NOW);
   if (!gs.handle) {
@@ -274,10 +281,6 @@ void start_simulation() {
   genwarm = 0;
   dlc = 1;
   
-  // Note: Sending SIGSTOP can be used to help debug ESESC in docker. Possibly make
-  // this a command line parameter for debugging in the future.
-  //raise(SIGSTOP);
-  
   (*dyn_start_esesc)(gs.host_adr,
                      gs.portno,
                      gs.cpid,
@@ -297,14 +300,10 @@ void fork_checkpoint() {
   fprintf(stderr,"Calling fork_checkpoint()\n");
   I(gs.cont_host);
   I(gs.cont_port);
- 
-  char docker_id[DOCKER_ID_LEN];
-  get_docker_id(docker_id);
 
+  char msgbuf[MAX_BENCH_NAME_LEN+100];
 
-  char msgbuf[DOCKER_ID_LEN+100];
-
-  int len = sprintf(msgbuf,"%s:READY",docker_id);
+  int len = sprintf(msgbuf,"%s:READY",gs.bench_id);
 
   msg_criucont(msgbuf, len, gs.cont_host, gs.cont_port);
    
@@ -402,8 +401,9 @@ extern "C" void QEMUReader_setFlowCmd (bool* flowStatus) {
 
 
 int main (int argc, char **argv) {
-  const int NUM_LIVE_ARGS = 9;
+  const int NUM_LIVE_ARGS = 11;
 
+  fprintf(stderr,"Starting ESESC Livecriu test1\n");
   //raise(SIGSTOP);
 
   // TODO: Note that benchmark arguments are specified in two places.  Here on the command line
@@ -411,7 +411,7 @@ int main (int argc, char **argv) {
   // duplication 
   if(argc < NUM_LIVE_ARGS + 1) { 
     printf("Usage: live <id> <controller host> <controller port> <host_adr> <server port_number> <num_cp> <cp_interval> "
-        "<esesc_conf_file> <benchmark> [benchmark_args] \n");
+        "<esesc_conf_file> <benchmark name> <fifo base path> <benchmark binary> [benchmark_args] \n");
     exit(-1);
   }
 
@@ -423,6 +423,8 @@ int main (int argc, char **argv) {
   gs.nchecks = atoi(argv[6]);
   gs.nrabbit = atoi(argv[7]);
   strncpy(gs.esesc_conf, argv[8], MAX_CONF_NAME_LEN);
+  strncpy(gs.bench_id, argv[9], MAX_BENCH_NAME_LEN);
+  strncpy(gs.fifo_base_path, argv[10], MAX_FIFO_BASE_PATH_LEN);
   gs.cpid = 0;
   gs.simulating = false;
 
@@ -432,6 +434,7 @@ int main (int argc, char **argv) {
   for(int i = NUM_LIVE_ARGS; i < argc; i++) {
     qargv[i - (NUM_LIVE_ARGS - 1)] = strdup(argv[i]);
   }
+  fprintf(stderr,"Starting ESESC Livecriu test2\n");
 
   load_rabbit();
   qemuesesc_main(qargc,qargv,0);

@@ -23,7 +23,7 @@ INCLUDE_DIRECTORIES(${migdb_SOURCE_DIR})
 INCLUDE_DIRECTORIES(${gtest_SOURCE_DIR}/include)
 link_directories(${gtest_BINARY_DIR}/src)
 
-SET(ALLTESTS cachetest)
+SET(ALLTESTS cachetest bwtest)
 FOREACH(TEST ${ALLTESTS})
   add_executable(${TEST} ${TEST}.cpp)
   target_link_libraries(${TEST} gtest_main sampler mem core pwrmodel mcpat sesctherm peq emulint suc gtest) 

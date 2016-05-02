@@ -56,10 +56,10 @@ private:
 protected:
   const char    *name;
   const uint32_t Log2LineSize;
-  const int16_t  nEntries;
-  const int16_t  nSubEntries;
+  const int32_t  nEntries;
+  const int32_t  nSubEntries;
 
-  int16_t        nFreeEntries;
+  int32_t        nFreeEntries;
 
   GStatsAvg      avgUse;
   GStatsAvg      avgSubUse;

@@ -128,6 +128,7 @@ void NICECache::doReq(MemRequest *mreq)
     }
   }
   avgMemLat.sample(hdelay, mreq->getStatsFlag());  
+  readHit.inc(mreq->getStatsFlag());  
   router->scheduleReqAck(mreq, hdelay);
 }
 /* }}} */
@@ -153,10 +154,11 @@ void NICECache::doSetStateAck(MemRequest *req)
 }
 /* }}} */
 
-void NICECache::doDisp(MemRequest *req)
+void NICECache::doDisp(MemRequest *mreq)
   /* push (up) {{{1 */
 {
-  req->ack(hitDelay);
+  writeHit.inc(mreq->getStatsFlag());  
+  mreq->ack(hitDelay);
 }
 /* }}} */
 
