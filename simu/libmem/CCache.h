@@ -180,9 +180,11 @@ protected:
 
     return when;
   }
-  Time_t inOrderUpMessage(TimeDelta_t lat) {
+  TimeDelta_t inOrderUpMessage(TimeDelta_t lat=0) {
     if (lastUpMsg>globalClock)
-      return lastUpMsg-globalClock+lat;
+      lat += (lastUpMsg-globalClock);
+
+    lastUpMsg = globalClock + lat;
 
     return lat;
   }

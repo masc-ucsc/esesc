@@ -270,11 +270,13 @@ public:
     l3   =getL3(p0l2);
   }
 
-  void test1(bool rd, int id, int wait);
+  void testbw(bool rd, int id, int wait);
+  void testsnoop(int id, int wait);
+  void testlat(int id);
 };
 
 
-void MemInterface::test1(bool rd, int id, int wait) {
+void MemInterface::testbw(bool rd, int id, int wait) {
 
   CCache *cache = 0;
 
@@ -331,7 +333,7 @@ void MemInterface::test1(bool rd, int id, int wait) {
     last_globalClock = globalClock;
 
     if (!one_finished) {
-      start = globalClock;
+      // start = globalClock;
       printf("HERE %lld\n", start);
     }
   }
@@ -343,12 +345,182 @@ void MemInterface::test1(bool rd, int id, int wait) {
   printf("L2 BW miss test wait=%d %lld (%g cycles/l2_miss) %g GB/s\n", wait, l2filltime, t,mb);
 }
 
+void MemInterface::testsnoop(int id, int wait) {
+
+  CCache *ncache = 0;
+  CCache *cache = 0;
+
+  if (id==0 || id==2) {
+    cache = p0l2;
+    ncache = p4l2;
+  }else if (id==1) {
+    cache = p1l2;
+    ncache = p4l2;
+  }else if (id==4) {
+    cache = p4l2;
+    ncache = p0l2;
+  }
+
+  if (cache == 0) {
+    fprintf(stderr,"ERROR: Invalid cache source selection %d\n",id);
+    exit(-1);
+  }
+
+  printf("BEGIN L2 snoop test\n");
+
+  Time_t start;
+  int conta;
+  double t;
+
+  one_finished = false;
+
+  int max_reqs_cycle      = 4;
+
+  for(int i=0;i<32768;i+=64) {
+    doread(ncache,0x1000 + i);
+    waitAllMemOpsDone();
+  }
+
+  conta = 0;
+  start = globalClock;
+  Time_t last_globalClock = globalClock;
+  for(int i=0;i<32768;i+=64) {
+    conta++;
+    dowrite(cache,0x1000 + i);
+    for(int j=0;j<wait;j++)
+      EventScheduler::advanceClock();
+
+    if (last_globalClock == globalClock) {
+      max_reqs_cycle--;
+      if (max_reqs_cycle<0) {
+        max_reqs_cycle = 4;
+        EventScheduler::advanceClock();
+      }
+    }
+    last_globalClock = globalClock;
+
+    if (!one_finished) {
+      start = globalClock;
+      printf("HERE %lld\n", start);
+    }
+  }
+  waitAllMemOpsDone();
+  Time_t l2filltime = globalClock - start;
+  t = ((double)l2filltime)/conta;
+  double mb = 64.0/t;
+
+  printf("L2 snoop test wait=%d %lld (%g cycles/l2_miss) %g GB/s\n", wait, l2filltime, t,mb);
+}
+
+void MemInterface::testlat(int id) {
+
+  CCache *cache = 0;
+
+  if (id==0 || id==2)
+    cache = p0l2;
+  else if (id==1)
+    cache = p1l2;
+  else if (id==4)
+    cache = p4l2;
+
+  if (cache == 0) {
+    fprintf(stderr,"ERROR: Invalid cache source selection %d\n",id);
+    exit(-1);
+  }
+
+  printf("BEGIN L2 latency tests\n");
+
+  Time_t start;
+  Time_t l2filltime;
+
+  one_finished = false;
+
+#if 1
+  // -------------------
+  start = globalClock;
+  doread(cache,0x1000);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT rd dir miss: %lld\n", l2filltime);
+
+  // -------------------
+  start = globalClock;
+  doread(cache,0x1000);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT rd l2 hit: %lld\n", l2filltime);
+
+  // -------------------
+  start = globalClock;
+  dowrite(cache,0x11000);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT wr dir miss: %lld\n", l2filltime);
+
+  // -------------------
+  start = globalClock;
+  dowrite(cache,0x11000);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT wr l2 hit: %lld\n", l2filltime);
+
+  // -------------------
+  if (id<4)
+    doread(p4l2,0x2000);
+  else
+    doread(p0l2,0x2000);
+  waitAllMemOpsDone();
+  start = globalClock;
+  doread(cache,0x2000);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT rd/rd dir hit, l2 miss: %lld\n", l2filltime);
+
+
+  // -------------------
+  if (id<4)
+    dowrite(p4l2,0x12000);
+  else
+    dowrite(p0l2,0x12000);
+  waitAllMemOpsDone();
+  start = globalClock;
+  dowrite(cache,0x12000);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT wr/wr dir hit, l2 miss: %lld\n", l2filltime);
+
+#endif
+  // -------------------
+  if (id<4)
+    doread(p4l2,0x220);
+  else
+    doread(p0l2,0x220);
+  waitAllMemOpsDone();
+  start = globalClock;
+  dowrite(cache,0x220);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT rd/wr dir hit, l2 miss: %lld\n", l2filltime);
+
+  // -------------------
+  if (id<4)
+    dowrite(p4l2,0x3220);
+  else
+    dowrite(p0l2,0x3220);
+  waitAllMemOpsDone();
+  start = globalClock;
+  doread(cache,0x3220);
+  waitAllMemOpsDone();
+  l2filltime = globalClock - start;
+  printf("L2 LAT wr/rd dir hit, l2 miss: %lld\n", l2filltime);
+}
+
 int main(int argc, char **argv) {
 
   MemInterface mi;
 
   if (argc!=5) {
-    fprintf(stderr,"Usage:\n\t%s <L2|L1> <RD|DISP|INV> coreid wait\n",argv[0]);
+    fprintf(stderr,"Usage:\n\t%s <L2|L1> <RD|DISP|INV|LAT> coreid wait\n",argv[0]);
     exit(-3);
   }
 
@@ -366,7 +538,13 @@ int main(int argc, char **argv) {
     rd = false;
   }
 
-  mi.test1(rd, coreid, wait);
+  if (strcasecmp(argv[2],"LAT")==0) {
+    mi.testlat(coreid);
+  }else if (strcasecmp(argv[2],"SNOOP")==0) {
+    mi.testsnoop(coreid, wait);
+  }else{
+    mi.testbw(rd, coreid, wait);
+  }
 
   return 0;
 }

@@ -188,12 +188,12 @@ Time_t PortManagerBanked::snoopFillBankUse(MemRequest *mreq) {
   Time_t max = 0;
   Time_t max_fc = 0;
   for(int fc = 0; fc<lineSize;   fc += recvFillWidth) {
-    max_fc++;
     for(int i = 0;i<recvFillWidth;i += bankSize) {
       Time_t t = nextBankSlot(mreq->getAddr()+fc+i,mreq->getStatsFlag());
       if ((t+max_fc)>max)
         max = t+max_fc;
     }
+    max_fc++;
   }
 
 #if 0

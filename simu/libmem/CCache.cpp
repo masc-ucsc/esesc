@@ -255,7 +255,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 
 				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
         trackAddress(inv_req);
-				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), inv_req, ma_setInvalid, inOrderUpMessage(1));
+				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), inv_req, ma_setInvalid, inOrderUpMessage());
         if (i==0)
           inv_req->ack();
 			}else{
@@ -264,7 +264,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 
 				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
         trackAddress(inv_req);
-				int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage(1));
+				int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage());
         if (i==0)
           inv_req->ack();
 			}
@@ -272,7 +272,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
 			invAll.inc(doStats);
 
 			MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
-      int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage(1));
+      int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage());
 
       if (i==0)
         inv_req->ack();
@@ -519,13 +519,17 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
 bool CCache::notifyLowerLevels(Line *l, MemRequest *mreq)
   // {{{1
 {
-  if (!needsCoherence && !justDirectory)
+  if (justDirectory)
+    return false;
+
+  if (!needsCoherence)
     return false;
 
   if (mreq->isReqAck())
     return false;
 
   I(mreq->isReq());
+
 
   if (l->shouldNotifyLowerLevels(mreq->getAction(),incoherent))
     return true;
@@ -564,7 +568,7 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
     // TODO: check that it is the correct DL1 IL1 request source
 
     if (!directory || l->isBroadcastNeeded()) {
-      router->sendSetStateOthers(mreq,ma,inOrderUpMessage(1));
+      router->sendSetStateOthers(mreq,ma,inOrderUpMessage());
       //I(num); // Otherwise, the need coherent would be set
     }else{
       for(int16_t i=0;i<l->getSharingCount();i++) {
@@ -573,7 +577,7 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
 #ifdef DEBUG
           int32_t j =
 #endif
-            router->sendSetStateOthersPos(l->getSharingPos(i),mreq,ma,inOrderUpMessage(1));
+            router->sendSetStateOthersPos(l->getSharingPos(i),mreq,ma,inOrderUpMessage());
           I(j);
         }
       }
@@ -679,6 +683,10 @@ void CCache::doReq(MemRequest *mreq)
     }
   }
 
+  if (justDirectory && retrying && l==0) {
+    l = allocateLine(addr,mreq);
+  }
+
   if (l == 0) {
     //if (nlprefetch)
       //MSG("%s @%lld miss req 0x%llx (%d)",getName(), globalClock, mreq->getAddr(), mreq->getID());
@@ -708,7 +716,7 @@ void CCache::doReq(MemRequest *mreq)
   }
 
 	I(l);
-	I(l->isValid());
+	I(l->isValid() || justDirectory); // JustDirectory can have newly allocated line with invalid state
 
   int16_t portid = router->getCreatorPort(mreq);
   GI(portid<0,mreq->isTopCoherentNode());
@@ -898,7 +906,7 @@ void CCache::doSetState(MemRequest *mreq)
 		// If not inclusive, do whatever we want
     I(mreq->getCurrMem() == this);
 		mreq->convert2SetStateAck(ma_setInvalid, false);
-    router->scheduleSetStateAck(mreq, 1); // invalidate ack with nothing else if not inclusive
+    router->scheduleSetStateAck(mreq, 0); // invalidate ack with nothing else if not inclusive
 
 		MTRACE("scheduleSetStateAck without disp (incoherent cache)");
     return;
@@ -908,7 +916,7 @@ void CCache::doSetState(MemRequest *mreq)
   if (victim) {
     I(needsCoherence);
     invAll.inc(mreq->getStatsFlag());
-    int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage(1));
+    int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage());
     if (l)
       l->invalidate();
     I(nmsg);
@@ -918,7 +926,7 @@ void CCache::doSetState(MemRequest *mreq)
   if (l==0) {
 		// Done!
 		mreq->convert2SetStateAck(ma_setInvalid, false);
-    router->scheduleSetStateAck(mreq, 1);
+    router->scheduleSetStateAck(mreq, 0);
 
 		MTRACE("scheduleSetStateAck without disp (local miss)");
     return;
@@ -933,17 +941,17 @@ void CCache::doSetState(MemRequest *mreq)
     if (directory) {
 			if (l->getSharingCount() == 1) {
         invOne.inc(mreq->getStatsFlag());
-				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), mreq, mreq->getAction(), inOrderUpMessage(1));
+				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), mreq, mreq->getAction(), inOrderUpMessage());
         I(i);
       }else{
         invAll.inc(mreq->getStatsFlag());
         // FIXME: optimize directory for 2 or more
-        int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage(1));
+        int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage());
         I(nmsg);
       }
     }else{
       invAll.inc(mreq->getStatsFlag());
-      int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage(1));
+      int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage());
       I(nmsg);
     }
 	}else{
@@ -955,7 +963,7 @@ void CCache::doSetState(MemRequest *mreq)
 		GI(mreq->getAction() == ma_setShared , l->isShared());
 
 		mreq->convert2SetStateAck(mreq->getAction(), needsDisp); // Keep shared or invalid
-    router->scheduleSetStateAck(mreq, 1);
+    router->scheduleSetStateAck(mreq, 0);
 
 		MTRACE("scheduleSetStateAck %s disp", needsDisp?"with":"without");
   }
@@ -980,8 +988,8 @@ void CCache::doSetStateAck(MemRequest *mreq)
   if(mreq->isHomeNode()) {
 		MTRACE("scheduleSetStateAck %s disp (home) line is %d" , mreq->isDisp()?"with":"without", l?l->getState():-1);
 
-    avgSnoopLat.sample(mreq->getTimeDelay()+1, mreq->getStatsFlag());
-		mreq->ack(1); // to give time for the same cycle disp
+    avgSnoopLat.sample(mreq->getTimeDelay()+0, mreq->getStatsFlag());
+		mreq->ack(); // same cycle
   }else{
 		router->scheduleSetStateAck(mreq, 1);
 		MTRACE("scheduleSetStateAck %s disp (forward)", mreq->isDisp()?"with":"without");
