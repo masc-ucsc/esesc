@@ -34,6 +34,8 @@ static int rd_pending = 0;
 static int wr_pending = 0;
 static int num_operations=0;
 
+double frequency = 1e9;
+
 #ifdef ENABLE_NBSD
 #include "MemRequest.h"
 void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *_mreq) {
@@ -271,7 +273,7 @@ public:
   }
 
   void testbw(bool rd, int id, int wait);
-  void testsnoop(int id, int wait);
+  void testsnoop(bool rd, int id, int wait);
   void testlat(int id);
 };
 
@@ -340,12 +342,12 @@ void MemInterface::testbw(bool rd, int id, int wait) {
   waitAllMemOpsDone();
   Time_t l2filltime = globalClock - start;
   t = ((double)l2filltime)/conta;
-  double mb = 64.0/t;
+  double mb = frequency*64.0/t/1e9;
 
   printf("L2 BW miss test wait=%d %lld (%g cycles/l2_miss) %g GB/s\n", wait, l2filltime, t,mb);
 }
 
-void MemInterface::testsnoop(int id, int wait) {
+void MemInterface::testsnoop(bool rd, int id, int wait) {
 
   CCache *ncache = 0;
   CCache *cache = 0;
@@ -377,7 +379,10 @@ void MemInterface::testsnoop(int id, int wait) {
   int max_reqs_cycle      = 4;
 
   for(int i=0;i<32768;i+=64) {
-    doread(ncache,0x1000 + i);
+    if (rd)
+      doread(ncache,0x1000 + i);
+    else
+      dowrite(ncache,0x1000 + i);
     waitAllMemOpsDone();
   }
 
@@ -407,7 +412,7 @@ void MemInterface::testsnoop(int id, int wait) {
   waitAllMemOpsDone();
   Time_t l2filltime = globalClock - start;
   t = ((double)l2filltime)/conta;
-  double mb = 64.0/t;
+  double mb = frequency*64.0/t/1e9;
 
   printf("L2 snoop test wait=%d %lld (%g cycles/l2_miss) %g GB/s\n", wait, l2filltime, t,mb);
 }
@@ -417,11 +422,11 @@ void MemInterface::testlat(int id) {
   CCache *cache = 0;
 
   if (id==0 || id==2)
-    cache = p0l2;
+    cache = p0dl1;
   else if (id==1)
-    cache = p1l2;
+    cache = p1dl1;
   else if (id==4)
-    cache = p4l2;
+    cache = p4dl1;
 
   if (cache == 0) {
     fprintf(stderr,"ERROR: Invalid cache source selection %d\n",id);
@@ -448,7 +453,7 @@ void MemInterface::testlat(int id) {
   doread(cache,0x1000);
   waitAllMemOpsDone();
   l2filltime = globalClock - start;
-  printf("L2 LAT rd l2 hit: %lld\n", l2filltime);
+  printf("L2 LAT rd cache hit: %lld\n", l2filltime);
 
   // -------------------
   start = globalClock;
@@ -462,7 +467,7 @@ void MemInterface::testlat(int id) {
   dowrite(cache,0x11000);
   waitAllMemOpsDone();
   l2filltime = globalClock - start;
-  printf("L2 LAT wr l2 hit: %lld\n", l2filltime);
+  printf("L2 LAT wr cache hit: %lld\n", l2filltime);
 
   // -------------------
   if (id<4)
@@ -519,8 +524,10 @@ int main(int argc, char **argv) {
 
   MemInterface mi;
 
+  frequency = SescConf->getDouble("technology","frequency");
+
   if (argc!=5) {
-    fprintf(stderr,"Usage:\n\t%s <L2|L1> <RD|DISP|INV|LAT> coreid wait\n",argv[0]);
+    fprintf(stderr,"Usage:\n\t%s <L2|L1> <RD|DISP|INV|SNOOP|LAT> coreid wait\n",argv[0]);
     exit(-3);
   }
 
@@ -541,7 +548,9 @@ int main(int argc, char **argv) {
   if (strcasecmp(argv[2],"LAT")==0) {
     mi.testlat(coreid);
   }else if (strcasecmp(argv[2],"SNOOP")==0) {
-    mi.testsnoop(coreid, wait);
+    mi.testsnoop(true, coreid, wait);
+  }else if (strcasecmp(argv[2],"INV")==0) {
+    mi.testsnoop(false, coreid, wait);
   }else{
     mi.testbw(rd, coreid, wait);
   }
