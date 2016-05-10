@@ -2223,7 +2223,7 @@ unsigned BPTage :: hashIndexForTaggedTable (DInst *dinst, unsigned bankID)
   AddrType branch_addr = (branchAddr >> instShiftAmount);
   AddrType index;
   unsigned M = (histLength[bankID] > 16) ? 16 : histLength[bankID];
-  index = (branch_addr ^ (branch_addr >> (abs(numberOfEntriesInTaggedComponent[bankID] - bankID) + 1)) ^ F(pathHistory, M, bankID));
+  index = (branch_addr ^ (branch_addr >> static_cast<unsigned>(abs(numberOfEntriesInTaggedComponent[bankID] - bankID) + 1)) ^ F(pathHistory, M, bankID));
   return (unsigned)(index & taggedTableIdxMask[bankID]);
 
 }
