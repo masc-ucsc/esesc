@@ -83,6 +83,7 @@ protected:
   GStatsAvg   avgRetireTime;
 
   const TimeDelta_t lat;
+  const int32_t     coreid;
 
   Time_t       usedTime;
 
@@ -150,6 +151,7 @@ public:
 class MemResource : public MemReplay {
 private:
 protected:
+  MemObj        *firstLevelMemObj;
   MemObj        *DL1;
   GMemorySystem *memorySystem;
   LSQ           *lsq;

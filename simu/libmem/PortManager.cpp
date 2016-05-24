@@ -40,6 +40,12 @@ PortManagerBanked::PortManagerBanked(const char *section, MemObj *_mobj)
 	missDelay = SescConf->getInt(section, "missDelay");
 	SescConf->isBetween(section,"missDelay",0,hitDelay);
 
+	if (SescConf->checkInt(section, "ncDelay")) {
+    ncDelay = SescConf->getInt(section, "ncDelay");
+  }else{
+    ncDelay = missDelay;
+  }
+
 	dataDelay  = hitDelay-missDelay;
 	tagDelay   = hitDelay-dataDelay;
 
@@ -123,7 +129,8 @@ Time_t PortManagerBanked::reqDone(MemRequest *mreq, bool retrying)
     return globalClock+1;
 
   Time_t when=sendFillPort->nextSlot(mreq->getStatsFlag());
-  if (!retrying)
+
+  if (!retrying && !mreq->isNonCacheable())
     when+=dataDelay;
 
   // TRACE 
@@ -147,7 +154,7 @@ Time_t PortManagerBanked::reqAckDone(MemRequest *mreq)
 //  if (strcmp(mobj->getName(),"L2(0)")==0)
 //  MSG("%5lld @%lld %-8s  done %12llx curReq=%d",mreq->getID(),when,mobj->getName(),mreq->getAddr(),curRequests);
 
-  return when;
+  return when+1;
 }
 
 void PortManagerBanked::reqRetire(MemRequest *mreq)
@@ -155,6 +162,15 @@ void PortManagerBanked::reqRetire(MemRequest *mreq)
   if (!mreq->isPrefetch())
     curRequests--;
   I(curRequests>=0);
+
+  while (!overflow.empty()) {
+    MemRequest *oreq = overflow.back();
+    overflow.pop_back();
+    req2(oreq);
+    if (curRequests>=maxRequests)
+      break;
+  }
+
 }
 
 bool PortManagerBanked::isBusy(AddrType addr) const
@@ -165,13 +181,13 @@ bool PortManagerBanked::isBusy(AddrType addr) const
   return false;
 }
 
-void PortManagerBanked::req(MemRequest *mreq)
-/* main processor read entry point {{{1 */
+void PortManagerBanked::req2(MemRequest *mreq)
 {
 	//I(curRequests<=maxRequests && !mreq->isWarmup());
 
-  if (!mreq->isRetrying() && !mreq->isPrefetch())
+  if (!mreq->isRetrying() && !mreq->isPrefetch()) {
     curRequests++;
+  }
 
   // TRACE 
 //  if (strcmp(mobj->getName(),"L2(0)")==0)
@@ -179,23 +195,53 @@ void PortManagerBanked::req(MemRequest *mreq)
 
   if (mreq->isWarmup())
     mreq->redoReq(); 
+  else if (mreq->isNonCacheable())
+    mreq->redoReqAbs(globalClock+ncDelay); 
   else
     mreq->redoReqAbs(nextBankSlot(mreq->getAddr(), mreq->getStatsFlag())+tagDelay);
+}
+void PortManagerBanked::req(MemRequest *mreq)
+/* main processor read entry point {{{1 */
+{
+  if (!mreq->isRetrying() && !mreq->isPrefetch()) {
+    if (curRequests >=maxRequests) {
+      overflow.push_front(mreq);
+      return;
+    }
+    while (!overflow.empty()) {
+      MemRequest *oreq = overflow.back();
+      overflow.pop_back();
+      req2(oreq);
+      if (curRequests>=maxRequests)
+        break;
+    }
+    if (!overflow.empty()) {
+      overflow.push_front(mreq);
+      return;
+    }
+  }
+
+  req2(mreq);
 }
 // }}}
 
 Time_t PortManagerBanked::snoopFillBankUse(MemRequest *mreq) {
-  Time_t max = 0;
+
+  if (mreq->isNonCacheable())
+    return globalClock;
+
+  Time_t max = globalClock;
   Time_t max_fc = 0;
   for(int fc = 0; fc<lineSize;   fc += recvFillWidth) {
-    max_fc++;
     for(int i = 0;i<recvFillWidth;i += bankSize) {
       Time_t t = nextBankSlot(mreq->getAddr()+fc+i,mreq->getStatsFlag());
       if ((t+max_fc)>max)
         max = t+max_fc;
     }
+    max_fc++;
   }
 
+#if 0
   // Make sure that all the banks are busy until the max time
   Time_t cur_fc = 0;
   for(int fc = 0; fc<lineSize ;  fc += recvFillWidth) {
@@ -204,6 +250,7 @@ Time_t PortManagerBanked::snoopFillBankUse(MemRequest *mreq) {
       nextBankSlotUntil(mreq->getAddr()+fc+i,max-max_fc+cur_fc, mreq->getStatsFlag());
     }
   }
+#endif
 
   return max;
 }

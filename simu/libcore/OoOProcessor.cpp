@@ -449,6 +449,7 @@ void OoOProcessor::retire()
   if(!rROB.empty()) {
     rrobUsed.sample(rROB.size(), rROB.top()->getStatsFlag());
 
+
 #ifdef ESESC_CODEPROFILE
     if (rROB.top()->getStatsFlag()) {
       if (codeProfile_trigger<=clockTicks.getDouble()) {
@@ -469,8 +470,16 @@ void OoOProcessor::retire()
   for(uint16_t i=0 ; i<RetireWidth && !rROB.empty() ; i++) {
     DInst *dinst = rROB.top();
 
-    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock) 
+    if ((dinst->getExecutedTime()+RetireDelay) >= globalClock) {
+#if 0
+      if (rROB.size()>8) {
+        dinst->getInst()->dump("not ret");
+        printf("----------------------\n");
+        dumpROB();
+      }
+#endif
       break;
+    }
 
     I(dinst->isExecuted());
     
@@ -479,8 +488,7 @@ void OoOProcessor::retire()
  
     bool done = dinst->getCluster()->retire(dinst, flushing);
     if( !done ) {
-      //dinst->getInst()->dump("not ret");
-      return;
+      break;
     }
 
 #if 0

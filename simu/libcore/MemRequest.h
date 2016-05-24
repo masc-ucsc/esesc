@@ -117,6 +117,7 @@ private:
   bool          needsDisp; // Once set, it keeps the value
   bool          doStats;
   bool          warmup;
+  bool          nonCacheable;
 
   AddrType     pc;
   /* }}} */
@@ -227,6 +228,14 @@ protected:
     return mreq;
   }
 
+  static void sendNCReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
+    MemRequest *mreq = create(m,addr, doStats, cb);
+    mreq->mt         = mt_req;
+    mreq->ma         = ma_setValid; // For reads, MOES are valid states
+    mreq->ma_orig    = mreq->ma;
+    mreq->nonCacheable = true;
+		m->req(mreq);
+  }
   static void sendReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
 #ifdef ENABLE_NBSD
       ,void *param=0
@@ -297,6 +306,14 @@ protected:
 #endif
 		m->req(mreq);
   }
+  static void sendNCReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
+    MemRequest *mreq   = create(m,addr,doStats, cb);
+    mreq->mt           = mt_req;
+    mreq->ma           = ma_setDirty; // For writes, only MO are valid states
+    mreq->ma_orig      = mreq->ma;
+    mreq->nonCacheable = true;
+		m->req(mreq);
+  }
 
   static void sendReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
 #ifdef ENABLE_NBSD
@@ -322,6 +339,12 @@ protected:
 
   bool isDemandCritical() const {
     return (mt == mt_req || mt == mt_reqAck) && !prefetch;
+  }
+  void markNonCacheable() {
+    nonCacheable = true;
+  }
+  bool isNonCacheable() const {
+    return nonCacheable;
   }
 
   void forceReqAction(MsgAction _ma) {
@@ -359,8 +382,8 @@ protected:
     needsDisp = _needsDisp;
   }
 
-  static void sendDirtyDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats) {
-    MemRequest *mreq = create(m,addr,doStats, 0);
+  static void sendDirtyDisp(MemObj *m, MemObj *creator, AddrType addr, bool doStats, CallbackBase *cb=0) {
+    MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_disp;
     mreq->ma         = ma_setDirty;
     mreq->ma_orig    = mreq->ma;

@@ -75,6 +75,7 @@ class Cluster {
   Resource   *res[iMAX];
 
   int32_t regPool;
+  bool lateAlloc;
 
   char *name;
 

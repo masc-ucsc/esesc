@@ -46,6 +46,7 @@ protected:
   int32_t     maxRequests;
   int32_t     curRequests;
 
+	TimeDelta_t ncDelay;
 	TimeDelta_t hitDelay;
 	TimeDelta_t missDelay;
 
@@ -62,11 +63,14 @@ protected:
 
 	Time_t      blockTime;
 
+  std::list<MemRequest *> overflow;
+
   Time_t snoopFillBankUse(MemRequest *mreq);
 
   Time_t calcNextBankSlot(AddrType addr);
   Time_t nextBankSlot(AddrType addr, bool en);
   void   nextBankSlotUntil(AddrType addr, Time_t until, bool en);
+  void req2(MemRequest *mreq        );
 public:
   PortManagerBanked(const char *section, MemObj *_mobj);
   virtual ~PortManagerBanked() { };

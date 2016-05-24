@@ -125,6 +125,10 @@ FetchEngine::FetchEngine(FlowID id
     }
   }
   lineSize = SescConf->getInt(isection,"bsize");
+  if ((lineSize/4) < FetchWidth) {
+    MSG("ERROR: icache line size should be larger than fetch width lineSize=%d fetchWidth=%d",lineSize, FetchWidth);
+    SescConf->notCorrect();
+  }
 
   // Get some icache L1 parameters
   enableICache = SescConf->getBool("cpusimu","enableICache", id);
@@ -214,10 +218,14 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           fetchLost =  (entryPC) & (Fetch2Width-1);
         }
 
+
         // No matter what, do not pass cache line boundary
         uint16_t fetchMaxPos = (entryPC & (lineSize/4-1)) + FetchWidth; 
-        if (fetchMaxPos>lineSize/4) {
-          fetchLost += (fetchMaxPos-lineSize/4);
+        if (fetchMaxPos>(lineSize/4)) {
+          //MSG("entryPC=0x%llx lost1=%d lost2=%d",entryPC, fetchLost, (fetchMaxPos-lineSize/4));
+          fetchLost = (fetchMaxPos-lineSize/4);
+        }else{
+          //MSG("entryPC=0x%llx lost1=%d",entryPC, fetchLost);
         }
 
         avgFetchLost.sample(fetchLost,dinst->getStatsFlag());

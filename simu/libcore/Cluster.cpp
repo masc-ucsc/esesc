@@ -227,6 +227,10 @@ Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *m
   }
 
   cluster->regPool = SescConf->getInt(clusterName, "nRegs");
+  if (SescConf->checkBool(clusterName, "lateAlloc"))
+    cluster->lateAlloc = SescConf->getBool(clusterName, "lateAlloc");
+  else
+    cluster->lateAlloc = false;
 
   SescConf->isInt(clusterName     , "nRegs");
   SescConf->isBetween(clusterName , "nRegs", 16, 262144);
@@ -267,7 +271,7 @@ void Cluster::addInst(DInst *dinst) {
   
   rdRegPool.add(2, dinst->getStatsFlag()); // 2 reads
 
-  if (dinst->getInst()->hasDstRegister()) {
+  if (!lateAlloc && dinst->getInst()->hasDstRegister()) {
     wrRegPool.inc(dinst->getStatsFlag());
     regPool--;
   }
@@ -282,6 +286,10 @@ void Cluster::addInst(DInst *dinst) {
 void ExecutingCluster::executing(DInst *dinst) {
   nready--;
 
+  if (lateAlloc && dinst->getInst()->hasDstRegister()) {
+    wrRegPool.inc(dinst->getStatsFlag());
+    regPool--;
+  }
   gproc->executing(dinst);
 
   delEntry();
@@ -314,8 +322,11 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 void ExecutedCluster::executing(DInst *dinst) {
   nready--;
 
+  if (lateAlloc && dinst->getInst()->hasDstRegister()) {
+    wrRegPool.inc(dinst->getStatsFlag());
+    regPool--;
+  }
   gproc->executing(dinst);
-
 }
 
 void ExecutedCluster::executed(DInst *dinst) {
@@ -346,8 +357,11 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
 void RetiredCluster::executing(DInst *dinst) {
   nready--;
 
+  if (lateAlloc && dinst->getInst()->hasDstRegister()) {
+    wrRegPool.inc(dinst->getStatsFlag());
+    regPool--;
+  }
   gproc->executing(dinst);
-
 }
 
 void RetiredCluster::executed(DInst *dinst) {

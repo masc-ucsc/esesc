@@ -45,8 +45,6 @@
 DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName, uint32_t pos)
   :srcCluster(aCluster)
   ,Id(gp->getID())
-  ,InterClusterLat(SescConf->getInt("cpusimu", "interClusterLat",gp->getID()))
-  ,SchedDelay(SescConf->getInt(clusterName, "schedDelay"))
   ,wrForwardBus("P(%d)_%s%d_wrForwardBus",Id, clusterName,pos)
 {
   char cadena[100];
@@ -56,12 +54,15 @@ DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName,
                                   ,SescConf->getInt(clusterName, "SchedNumPorts")
                                   ,SescConf->getInt(clusterName, "SchedPortOccp"));
 
+  InterClusterLat = SescConf->getInt("cpusimu", "interClusterLat",gp->getID());
+  SchedDelay      = SescConf->getInt(clusterName, "schedDelay");
+
   // Constraints
   SescConf->isInt(clusterName    , "schedDelay");
   SescConf->isBetween(clusterName , "schedDelay", 0, 1024);
 
   SescConf->isInt("cpusimu"    , "interClusterLat",Id);
-  SescConf->isBetween("cpusimu" , "interClusterLat", 0, 1024,Id);
+  SescConf->isBetween("cpusimu" , "interClusterLat", SchedDelay, 1024,Id);
 }
 
 DepWindow::~DepWindow() {
@@ -93,15 +94,13 @@ void DepWindow::preSelect(DInst *dinst) {
 
 void DepWindow::select(DInst *dinst) {
 
-  Time_t schedTime = schedPort->nextSlot(dinst->getStatsFlag()) + SchedDelay;
+  Time_t schedTime = schedPort->nextSlot(dinst->getStatsFlag());
   if (dinst->hasInterCluster())
     schedTime += InterClusterLat;
+  else
+    schedTime += SchedDelay;
 
   I(srcCluster == dinst->getCluster());
-  if (schedTime == globalClock) {
-    if (!dinst->isRenamed())
-      schedTime++;
-  }
 
   Resource::executingCB::scheduleAbs(schedTime, dinst->getClusterResource(), dinst);
 }

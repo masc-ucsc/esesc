@@ -34,6 +34,7 @@
 
 #include <signal.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #include "BootLoader.h"
 
@@ -231,7 +232,7 @@ void BootLoader::reportSample() {
   Transporter::receive_fast("continue", "%d,%d", &k, &skp);
   if(k == 1) {
     MSG("LiveSim sample done. Exiting");
-    exit(0);
+    quick_exit(0);
   } else {
     MSG("LiveSim: start simulating another sample");
     return;

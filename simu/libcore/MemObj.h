@@ -122,6 +122,7 @@ public:
 	virtual void setNeedsCoherence();
 	virtual void clearNeedsCoherence();
 
+  virtual bool Invalid(AddrType addr);
 };
 
 class DummyMemObj : public MemObj {

@@ -79,6 +79,8 @@ private:
   DInst     *lastd;
   CallbackContainer cbPending;
 
+  Time_t    lastMissTime; // FIXME: maybe we need an array
+
   bool      enableICache;
  
 protected:
@@ -89,6 +91,7 @@ protected:
   GStatsAvg  avgFetchLost;
   GStatsAvg  avgBranchTime;
   GStatsAvg  avgBranchTime2;
+  GStatsAvg  avgFetchTime;
   GStatsCntr nDelayInst1;
   GStatsCntr nDelayInst2;
   GStatsCntr nDelayInst3;

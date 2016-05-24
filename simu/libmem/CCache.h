@@ -180,9 +180,11 @@ protected:
 
     return when;
   }
-  Time_t inOrderUpMessage(TimeDelta_t lat) {
+  TimeDelta_t inOrderUpMessage(TimeDelta_t lat=0) {
     if (lastUpMsg>globalClock)
-      return lastUpMsg-globalClock+lat;
+      lat += (lastUpMsg-globalClock);
+
+    lastUpMsg = globalClock + lat;
 
     return lat;
   }
@@ -280,7 +282,7 @@ public:
   bool isJustDirectory() const { return justDirectory; }
 
  	bool Modified(AddrType addr) const {
-		Line *cl = cacheBank->readLine(addr);
+		Line *cl = cacheBank->findLineNoEffect(addr);
     if (cl !=0)
       return cl->isModified();
 
@@ -288,7 +290,7 @@ public:
 	}
 
 	bool Exclusive(AddrType addr) const {
-		Line *cl = cacheBank->readLine(addr);
+		Line *cl = cacheBank->findLineNoEffect(addr);
     if(cl!=0)
       return cl->isExclusive();
 
@@ -296,14 +298,14 @@ public:
 	}
 
 	bool Shared(AddrType addr) const {
-		Line *cl = cacheBank->readLine(addr);
+		Line *cl = cacheBank->findLineNoEffect(addr);
     if(cl!=0)
       return cl->isShared();
     return false;
 	}
 
 	bool Invalid(AddrType addr) const {
-		Line *cl = cacheBank->readLine(addr);
+		Line *cl = cacheBank->findLineNoEffect(addr);
     if (cl==0)
       return true;
     return cl->isLocalInvalid();

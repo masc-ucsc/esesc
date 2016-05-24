@@ -155,6 +155,7 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
   r->needsDisp   = false;
 	r->doStats     = doStats;
 	r->warmup      = false;
+	r->nonCacheable= false;
   r->pendingSetStateAck = 0;
   r->setStateAckOrig    = 0;
 #ifdef ENABLE_NBSD

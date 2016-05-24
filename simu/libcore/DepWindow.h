@@ -50,8 +50,8 @@ private:
 
   const int32_t Id;
 
-  const TimeDelta_t InterClusterLat;
-  const TimeDelta_t SchedDelay;
+  TimeDelta_t InterClusterLat;
+  TimeDelta_t SchedDelay;
 
   GStatsCntr wrForwardBus;
 

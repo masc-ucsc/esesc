@@ -222,4 +222,7 @@ void MemObj::setNeedsCoherence() {
 }
 void MemObj::clearNeedsCoherence() {
 }
+
+bool MemObj::Invalid(AddrType addr) {
+}
 /* }}} */
