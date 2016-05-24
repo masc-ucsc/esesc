@@ -188,7 +188,6 @@ void initialize(){
   if(!pluggedin){
     int arg1          = 1;
     const char *arg2[] = {"cachetest", 0};
-
     SescConf = new SConfig(arg1, arg2);
     gms_p0 = new MemorySystem(0);
     gms_p0->buildMemorySystem();

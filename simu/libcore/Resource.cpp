@@ -53,7 +53,7 @@
 #include "LSQ.h"
 #include "TaskHandler.h"
 
-//#define MEM_TSO 1
+#define MEM_TSO 1
 //#define USE_PNR
 
 /* }}} */
