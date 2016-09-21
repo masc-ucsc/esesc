@@ -69,6 +69,7 @@ protected:
   bool isReplayRecovering();
   Time_t getReplayID();
   void executing(DInst *dinst);
+  void executed(DInst *dinst);
 
   virtual void replay(DInst *target) { };// = 0;
 

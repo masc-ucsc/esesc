@@ -46,8 +46,7 @@ protected:
 
   MemObj **lower_level_banks;
   uint32_t numLowerLevelBanks;
-  uint32_t LineSize;
-  uint32_t Modfactor;
+  uint32_t dropBits;
 
   GStatsCntr**  XBar_rw_req;
 
@@ -80,7 +79,7 @@ public:
 
 	bool isBusy(AddrType addr) const;
 
-	uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const;
+	uint32_t addrHash(AddrType addr) const;
 
 };
 

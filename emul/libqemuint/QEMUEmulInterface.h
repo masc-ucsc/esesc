@@ -49,8 +49,9 @@ class QEMUEmulInterface : public EmulInterface {
   QEMUEmulInterface(const char *section);
   ~QEMUEmulInterface();
 
+  bool    populate(FlowID   fid);
   DInst  *peekHead(FlowID   fid);
-  DInst  *executeHead(FlowID   fid);
+  void    executeHead(FlowID   fid);
   void    reexecuteTail(FlowID fid);
   void    syncHeadTail(FlowID  fid);
 
@@ -79,6 +80,7 @@ class QEMUEmulInterface : public EmulInterface {
   void startTiming(FlowID fid);
 
   FlowID getFirstFlow() const; 
+  void   setFid(FlowID cpuid);
   FlowID getFid(FlowID last_fid);
   void freeFid(FlowID fid);
   void setFirstFlow(FlowID fid);

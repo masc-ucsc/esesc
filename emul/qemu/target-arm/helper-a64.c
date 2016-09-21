@@ -70,20 +70,7 @@ uint32_t HELPER(clz32)(uint32_t x)
 
 uint64_t HELPER(rbit64)(uint64_t x)
 {
-    /* assign the correct byte position */
-    x = bswap64(x);
-
-    /* assign the correct nibble position */
-    x = ((x & 0xf0f0f0f0f0f0f0f0ULL) >> 4)
-        | ((x & 0x0f0f0f0f0f0f0f0fULL) << 4);
-
-    /* assign the correct bit position */
-    x = ((x & 0x8888888888888888ULL) >> 3)
-        | ((x & 0x4444444444444444ULL) >> 1)
-        | ((x & 0x2222222222222222ULL) << 1)
-        | ((x & 0x1111111111111111ULL) << 3);
-
-    return x;
+    return revbit64(x);
 }
 
 /* Convert a softfloat float_relation_ (as returned by
@@ -355,12 +342,12 @@ float32 HELPER(frecpx_f32)(float32 a, void *fpstp)
 
     if (float32_is_any_nan(a)) {
         float32 nan = a;
-        if (float32_is_signaling_nan(a)) {
+        if (float32_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float32_maybe_silence_nan(a);
+            nan = float32_maybe_silence_nan(a, fpst);
         }
         if (fpst->default_nan_mode) {
-            nan = float32_default_nan;
+            nan = float32_default_nan(fpst);
         }
         return nan;
     }
@@ -384,12 +371,12 @@ float64 HELPER(frecpx_f64)(float64 a, void *fpstp)
 
     if (float64_is_any_nan(a)) {
         float64 nan = a;
-        if (float64_is_signaling_nan(a)) {
+        if (float64_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float64_maybe_silence_nan(a);
+            nan = float64_maybe_silence_nan(a, fpst);
         }
         if (fpst->default_nan_mode) {
-            nan = float64_default_nan;
+            nan = float64_default_nan(fpst);
         }
         return nan;
     }
@@ -418,7 +405,7 @@ float32 HELPER(fcvtx_f64_to_f32)(float64 a, CPUARMState *env)
     set_float_rounding_mode(float_round_to_zero, &tstat);
     set_float_exception_flags(0, &tstat);
     r = float64_to_float32(a, &tstat);
-    r = float32_maybe_silence_nan(r);
+    r = float32_maybe_silence_nan(r, &tstat);
     exflags = get_float_exception_flags(&tstat);
     if (exflags & float_flag_inexact) {
         r = make_float32(float32_val(r) | 1);
@@ -478,7 +465,8 @@ void aarch64_cpu_do_interrupt(CPUState *cs)
     }
 
     arm_log_exception(cs->exception_index);
-    qemu_log_mask(CPU_LOG_INT, "...from EL%d\n", arm_current_el(env));
+    qemu_log_mask(CPU_LOG_INT, "...from EL%d to EL%d\n", arm_current_el(env),
+                  new_el);
     if (qemu_loglevel_mask(CPU_LOG_INT)
         && !excp_is_internal(cs->exception_index)) {
         qemu_log_mask(CPU_LOG_INT, "...with ESR 0x%" PRIx32 "\n",
@@ -514,6 +502,12 @@ void aarch64_cpu_do_interrupt(CPUState *cs)
     case EXCP_VFIQ:
         addr += 0x100;
         break;
+    case EXCP_SEMIHOST:
+        qemu_log_mask(CPU_LOG_INT,
+                      "...handling as semihosting call 0x%" PRIx64 "\n",
+                      env->xregs[0]);
+        env->xregs[0] = do_arm_semihosting(env);
+        return;
     default:
         cpu_abort(cs, "Unhandled exception 0x%x\n", cs->exception_index);
     }

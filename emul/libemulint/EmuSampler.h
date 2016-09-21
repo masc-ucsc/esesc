@@ -58,8 +58,15 @@ public:
     EmuMax
   };
 
+private:
+  uint64_t nextSwitch;
 
 protected:
+  void setNextSwitch(uint64_t instNum);
+  uint64_t getNextSwitch() const { return nextSwitch; }
+
+  void syncTime();
+
   const char *name;
   FlowID sFid;
   FILE *syscall_file;
@@ -68,6 +75,9 @@ protected:
   EmulInterface *emul;
 
   static uint64_t __thread local_icount;
+
+  uint64_t nInstMax;
+  uint64_t nInstSkip;
 
   uint64_t next;
   uint64_t phasenInst; // ninst since the current mode started
@@ -100,7 +110,7 @@ protected:
   pthread_mutex_t mode_lock;
 
   static std::vector<bool> done;
-  static bool terminated;
+  static volatile bool terminated;
   static uint64_t *instPrev;
   static uint64_t *clockPrev;
   static uint64_t *fticksPrev;
@@ -114,10 +124,14 @@ protected:
   bool restartRabbit;
   uint32_t numFlow;
 
+  static bool roi_skip;
+
   static float turboRatio;
 public:
   uint64_t totalnInst; // total # instructions
   EmuMode getMode() const { return mode;}
+
+  void start_roi();
 
   void setModeNativeRabbit(){
     restartRabbit = true; //This flag is only set by the sampler
@@ -127,6 +141,9 @@ public:
     restartRabbit = false;
   }
 
+  static bool isTerminated() {
+    return terminated;
+  }
 
   bool getrestartrabbitstatus(){
     return restartRabbit;
@@ -189,7 +206,7 @@ public:
   virtual void pauseThread(FlowID fid) = 0;
   virtual void terminate() = 0;
 
-  virtual void start_roi() = 0;
+  virtual void setStatsFlag(DInst *dinst) = 0;
 
   float getMeaCPI() {
     calcCPIJustCalled = false;
@@ -206,6 +223,9 @@ public:
 
   FlowID getFid(FlowID last_fid) {
     return emul->getFid(last_fid);
+  }
+  void setFid(FlowID cpudid) {
+    emul->setFid(cpudid);
   }
 
   FlowID getsFid() const { return sFid; }

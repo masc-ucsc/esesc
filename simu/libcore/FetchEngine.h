@@ -49,9 +49,6 @@
 class GMemorySystem;
 class IBucket;
 
-// A FetchEngine holds only one execution flow. An SMT processor
-// should instantiate several FetchEngines.
-
 class FetchEngine {
 private:
 
@@ -75,8 +72,7 @@ private:
 
   // InstID of the address that generated a misprediction
  
-  bool      missInst; // branch missprediction. Stop fetching until solved
-  DInst     *lastd;
+  bool              missInst; // branch missprediction. Stop fetching until solved
   CallbackContainer cbPending;
 
   Time_t    lastMissTime; // FIXME: maybe we need an array
@@ -92,11 +88,12 @@ protected:
   GStatsAvg  avgBranchTime;
   GStatsAvg  avgBranchTime2;
   GStatsAvg  avgFetchTime;
+  GStatsAvg  avgFetched;
   GStatsCntr nDelayInst1;
   GStatsCntr nDelayInst2;
   GStatsCntr nDelayInst3;
-  GStatsCntr nFetched;
   GStatsCntr nBTAC;
+  GStatsCntr zeroDinst;
   // *******************
 
 public:
@@ -128,8 +125,7 @@ public:
 
   void dump(const char *str) const;
 
-
-  bool isBlocked(DInst* inst) const {
+  bool isBlocked() const {
     return missInst;
   }
 

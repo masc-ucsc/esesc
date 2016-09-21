@@ -75,6 +75,7 @@ static void unicore_ii_cpu_initfn(Object *obj)
 
     set_feature(env, UC32_HWCAP_CMOV);
     set_feature(env, UC32_HWCAP_UCF64);
+    set_snan_bit_is_one(1, &env->ucf64.fp_status);
 }
 
 static void uc32_any_cpu_initfn(Object *obj)
@@ -87,6 +88,7 @@ static void uc32_any_cpu_initfn(Object *obj)
 
     set_feature(env, UC32_HWCAP_CMOV);
     set_feature(env, UC32_HWCAP_UCF64);
+    set_snan_bit_is_one(1, &env->ucf64.fp_status);
 }
 
 static const UniCore32CPUInfo uc32_cpus[] = {
@@ -155,6 +157,13 @@ static void uc32_cpu_class_init(ObjectClass *oc, void *data)
     cc->get_phys_page_debug = uc32_cpu_get_phys_page_debug;
 #endif
     dc->vmsd = &vmstate_uc32_cpu;
+
+    /*
+     * Reason: uc32_cpu_initfn() calls cpu_exec_init(), which saves
+     * the object in cpus -> dangling pointer after final
+     * object_unref().
+     */
+    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static void uc32_register_cpu_type(const UniCore32CPUInfo *info)

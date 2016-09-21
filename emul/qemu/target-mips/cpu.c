@@ -109,6 +109,14 @@ static void mips_cpu_reset(CPUState *s)
 #endif
 }
 
+static void mips_cpu_disas_set_info(CPUState *s, disassemble_info *info) {
+#ifdef TARGET_WORDS_BIGENDIAN
+    info->print_insn = print_insn_big_mips;
+#else
+    info->print_insn = print_insn_little_mips;
+#endif
+}
+
 static void mips_cpu_realizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -162,9 +170,17 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
     cc->get_phys_page_debug = mips_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_mips_cpu;
 #endif
+    cc->disas_set_info = mips_cpu_disas_set_info;
 
     cc->gdb_num_core_regs = 73;
     cc->gdb_stop_before_watchpoint = true;
+
+    /*
+     * Reason: mips_cpu_initfn() calls cpu_exec_init(), which saves
+     * the object in cpus -> dangling pointer after final
+     * object_unref().
+     */
+    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static const TypeInfo mips_cpu_type_info = {

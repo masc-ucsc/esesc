@@ -88,6 +88,8 @@ my @SamplerType = ();
 my @Processors = ();
 my $enable_gpu = 0;
 my $gpusampler = 0;
+my $globalClock=0;
+my $globalClock_max=0;
 
 ###########################################
 # main section:
@@ -122,6 +124,7 @@ sub main {
 
     $cf = sesc->new($file);
 
+    $globalClock = $cf->getResultField("S(0)","globalClock_Timing")+1;
     my $bench = $cf->getResultField("OSSim","bench");
 
     unless ($cf->getResultField("OSSim","msecs")) {
@@ -136,6 +139,15 @@ sub main {
 
     $nCPUs= $cf->getResultField("OSSim","nCPUs");
     $nSamplers= $cf->getResultField("OSSim","nSampler");
+
+    $globalClock_max = 0;
+
+    for(my $i=0;$i<$nCPUs;$i++) {
+      my $clockTicks  = $cf->getResultField("P(${i})","clockTicks")+1;
+      if ($clockTicks > $globalClock_max) {
+        $globalClock_max = $clockTicks;
+      }
+    }
 
     @Samplers    = ();
     @SamplerType = ();
@@ -430,14 +442,6 @@ sub showStatReport {
   $name =~ /.*sesc\_([^ ]*)......./;
   $name = $1;
 
-  my $totCycles = 0;
-  my $nCycles=0;
-  for(my $i=0;$i<$nCPUs;$i++) {
-    my $val = $cf->getResultField("P(${i})","clockTicks");
-    $totCycles += $val;
-    $nCycles = $val if ($nCycles < $val);
-  }
-
   my $nInst;
   my $tmp;
   for(my $i=0;$i<$nCPUs;$i++) {
@@ -451,31 +455,24 @@ sub showStatReport {
   my $nWPathInsts = $tmp;
 
 #############################################################################
-  printf "#table0                            BusyCPU %: CommitInst: nCycles : nWPathInsts : IPC\n";
+  printf "#table0                            CommitInst: globalClock_Timing : nWPathInsts : IPC\n";
 
-  printf "table0  %44s ", $name;
-  # BusyCPU
-  if($nCycles >0){
-    printf " %4.2f ", $totCycles/$nCycles;
-  }
-  else{
-    printf "nCycles is zero!!!!!!!!";
-  }
+  printf "table0  %40s ", $name;
   # CommitInst
-  printf " %9.0f ", $nGradInsts;
-  # nCycles
-  printf " %9.0f ", $nCycles;
+  printf " %12.0f ", $nGradInsts;
+  # globalClock
+  printf " %12.0f ", $globalClock;
   # of wrong path instructions
-  printf " %9.0f ", $nWPathInsts;
+  printf " %12.0f ", $nWPathInsts;
   # IPC
-  printf " %6.3f ", $nGradInsts/($nCycles+1);
+  printf " %6.3f ", $nGradInsts/($globalClock_max+1);
+  printf " %6.3f ", $nGradInsts/($globalClock+1);
   printf "\n";
 
 #############################################################################
-  printf "#table3                            nCycles\n";
+  printf "#table3                            globalClock\n";
 
   printf "table3  %44s ", $name;
-  my $globalClock = $cf->getResultField("OS","wallClock");
   printf " %4.0f ", $globalClock;
   printf "\n";
 
@@ -509,8 +506,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -563,8 +560,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     printf "#table17 Benchmark:             L1rate:  l2rate: ipc: szBB brMIss brTime filename:\n";
     printf "table17 %22s ", $name;
@@ -606,9 +603,8 @@ sub showStatReport {
 
     printf " %6.3f ", 100*$l1_miss/($l1_total+1);
     printf " %6.3f ", 100*$l2_miss/($l2_total+1);
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
     my $nInst = getProcnInst($i);
-    printf "%9.3f ", $nInst/$clockTicks;
+    printf "%9.3f ", $nInst/$globalClock;
 
     # szBB
     my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
@@ -627,8 +623,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -652,7 +648,7 @@ sub showStatReport {
 
     # IPC
     my $nInst = getProcnInst($i);
-    printf "%9.3f ", $nInst/$clockTicks;
+    printf "%9.3f ", $nInst/$globalClock;
 
     # Inst/Replay
     my $nReplayInst_n = $cf->getResultField("P(${i})_nReplayInst","n");
@@ -718,8 +714,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -778,8 +774,8 @@ sub showStatReport {
 
   #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -842,20 +838,22 @@ sub showStatReport {
     }
 
     for(my $i=0;$i<$nCPUs;$i++) {
+      my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+      next unless( $nfetch > 1 );
+
       my $cpuType = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
-      my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-      next unless( $clockTicks > 1 );
+
       printf("table14 ");
       my $nInst = ($cf->getResultField("P(${i})", "nCommitted"));
 
       # ROB Power
       my $rob_pwr = $cf->getResultField("pwrDynP(${i})_ROB","v");
-      printf "%9.3f ", $clockTicks*$rob_pwr/$nInst;
+      printf "%9.3f ", $globalClock*$rob_pwr/$nInst;
 
       # dcache or FL2 Power
       if($cpuType eq "scooreCORE"){
         my $VPCfilter_pwr = $cf->getResultField("pwrDynFL2(${i})","v");
-        printf "%9.3f ", $clockTicks*$VPCfilter_pwr/$nInst;
+        printf "%9.3f ", $globalClock*$VPCfilter_pwr/$nInst;
       }else{
         my $dcache_pwr = $cf->getResultField("pwrDynP(${i})_dcache","v");
         my $dcache_maxpwr = $cf->getResultField("maxpwr_dcacheWBB","max")+
@@ -866,7 +864,7 @@ sub showStatReport {
         my $tlb_maxpwr      = $cf->getResultField("maxpwr_DTLB","max");
         my $tlb_ratio       = $tlb_maxpwr / ($dcache_maxpwr + $tlb_maxpwr);
         my $dcache_true_pwr = $dcache_pwr * (1-$tlb_ratio);
-        printf "%9.3f ", $clockTicks*$dcache_true_pwr/$nInst;
+        printf "%9.3f ", $globalClock*$dcache_true_pwr/$nInst;
       }
 
 # VPC-WB
@@ -881,7 +879,7 @@ sub showStatReport {
         my $VPCWB_true_pwr     = $VPCWB_ratio * $LSU_pwr;
         my $VPCSPECBUFF_ratio  = ($VPCSPECBW_maxpwr + $VPCSPECBR_maxpwr)/$VPC_tot_max;
         $VPCSPECBUFF_true_pwr  = $VPCSPECBUFF_ratio * $LSU_pwr;
-        printf "%9.3f ", $clockTicks*$VPCWB_true_pwr/$nInst;
+        printf "%9.3f ", $globalClock*$VPCWB_true_pwr/$nInst;
       }
 
       my $lsq_pwr;
@@ -908,14 +906,14 @@ sub showStatReport {
       #LSQ or VPC Power
       if($cpuType eq "scooreCORE"){
         my $VPC_pwr = $cf->getResultField("pwrDynP(${i})_dcache","v");
-        printf "%9.3f ", $clockTicks*$VPC_pwr/$nInst;
+        printf "%9.3f ", $globalClock*$VPC_pwr/$nInst;
       }else{
-        printf "%9.3f ", $clockTicks*$true_lsq_pwr/$nInst;
+        printf "%9.3f ", $globalClock*$true_lsq_pwr/$nInst;
       }
 
       #SPECBUFF Power
       if($cpuType eq "scooreCORE"){
-        printf "    %9.3f ", $clockTicks*$VPCSPECBUFF_true_pwr/$nInst;
+        printf "    %9.3f ", $globalClock*$VPCSPECBUFF_true_pwr/$nInst;
       }
 
       #TLB Power
@@ -930,26 +928,26 @@ sub showStatReport {
         my $tlb_ratio = $tlb_maxpwr / ($dcache_maxpwr + $tlb_maxpwr);
         my $dcache_pwr = $cf->getResultField("pwrDynP(${i})_dcache","v");
         my $tlb_pwr = $dcache_pwr * $tlb_ratio;
-        printf "%9.3f   ", $clockTicks*$tlb_pwr/$nInst;
+        printf "%9.3f   ", $globalClock*$tlb_pwr/$nInst;
       }
 
       #Rest of Mem Hierarchy Power
       my $mem_hier_pwr = $cf->getResultField("pwrDynL3(${i})","v")+
       $cf->getResultField("pwrDynL2(${i})","v")+
       $cf->getResultField("pwrDynMemBus(${i})","v");
-      printf "   %9.3f    ", $clockTicks*$mem_hier_pwr/$nInst;
+      printf "   %9.3f    ", $globalClock*$mem_hier_pwr/$nInst;
 
       #Rest of the Processor
       my $rest_of_proc_pwr = $cf->getResultField("pwrP(${i})_EXE","v")+
       $cf->getResultField("pwrDynP(${i})_fetch","v")+
       $cf->getResultField("pwrDynP(${i})_RNU","v")+
       $cf->getResultField("pwrDynP(${i})_icache","v");
-      printf "%9.3f ", $clockTicks*$rest_of_proc_pwr/$nInst;
-      printf "          %d         %d ", $nInst, $clockTicks;
+      printf "%9.3f ", $globalClock*$rest_of_proc_pwr/$nInst;
+      printf "          %d         %d ", $nInst, $globalClock;
 
       #StoreSets
       if($cpuType eq "tradCORE"){
-        printf "%9.3f ", $clockTicks*$ss_pwr/$nInst;
+        printf "%9.3f ", $globalClock*$ss_pwr/$nInst;
       }
       printf "           %-20s\n ", $file;
       print "\n\n";
@@ -989,7 +987,6 @@ sub showStatReport {
 
     for(my $i=0;$i<$nCPUs;$i++) {
       my $cpuType = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
-      my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
       my $nInst = ($cf->getResultField("P(${i})", "nCommitted"));
       $nInst_sum += $nInst;
 
@@ -1125,8 +1122,8 @@ sub showStatReport {
 #############################################################################
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $clockTicks= $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     printf "#table9a                            IPC : brMiss : szFB : szBB : brMissTime : wasteRatio : iMissRate\n";
     printf "table9a  %26s ", $name;
@@ -1134,7 +1131,7 @@ sub showStatReport {
     $nInst = getProcnInst($i);
 
     # IPC
-    printf " %9.3f ", $nInst/$clockTicks;
+    printf " %9.3f ", $nInst/$globalClock;
 
     # branchMissRate
     my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
@@ -1206,7 +1203,7 @@ sub showStatReport {
     printf " %-10s ", $bench;
 
     # IPC
-    printf " & %9.3f ", $nInst/$clockTicks;
+    printf " & %9.3f ", $nInst/$globalClock;
 
     # nDeps
     printf " & %9.1f ", 100*$nDeps_0/($nDeps_0 + $nDeps_1 + $nDeps_2 + 1);
@@ -1217,10 +1214,10 @@ sub showStatReport {
     printf " & %9.1f ", 100*$nDepsMiss/($nDeps_0 + $nDeps_1 + $nDeps_2 + 1);
 
     # cycles between overflows
-    if ($clockTicks/($nDepsOverflow+1) > 50e3) {
+    if ($globalClock/($nDepsOverflow+1) > 50e3) {
       printf " & \$>\$50k ";
     }else{
-      printf " & %9.0f ", $clockTicks/($nDepsOverflow+1);
+      printf " & %9.0f ", $globalClock/($nDepsOverflow+1);
     }
 
     print "\\\\ :";
@@ -1296,17 +1293,6 @@ sub dumpKIPS{
 
   next unless ($cf->getResultField("OSSim","msecs"));
 
-  for (my $j=0; ; $j++) {
-    my $clusterType = $cf->getConfigEntry(key=>"cluster", section=>$cpuType, index=>$j);
-    last unless (defined $clusterType);
-    next unless ($cf->getResultField("P(0)_${clusterType}_depTable","nDepsOverflow") > 1);
-
-    my $clk = 10*$cf->getResultField("P(0)_${clusterType}_depTable","nDepsOverflow");
-    my $clockTicks = $cf->getResultField("P(0)","clockTicks");
-    $slowdown = $clockTicks/($clockTicks+$clk);
-
-    die "Must compute overflow in a different way" if ($nCPUs != 1);
-  }
   $slowdown = 1 unless (defined $slowdown);
 
   $nLoadTotal  = 0;
@@ -1376,17 +1362,6 @@ sub simStats {
 
   next unless ($cf->getResultField("OSSim","msecs"));
 
-  for (my $j=0; ; $j++) {
-    my $clusterType = $cf->getConfigEntry(key=>"cluster", section=>$cpuType, index=>$j);
-    last unless (defined $clusterType);
-    next unless ($cf->getResultField("P(0)_${clusterType}_depTable","nDepsOverflow") > 1);
-
-    my $clk = 10*$cf->getResultField("P(0)_${clusterType}_depTable","nDepsOverflow");
-    my $clockTicks = $cf->getResultField("P(0)","clockTicks");
-    $slowdown = $clockTicks/($clockTicks+$clk);
-
-    die "Must compute overflow in a different way" if ($nCPUs != 1);
-  }
   $slowdown = 1 unless (defined $slowdown);
 
   $nLoadTotal  = 0;
@@ -1409,14 +1384,8 @@ sub simStats {
   print "********************************************************************************************************\n";
   for(my $s=0; $s<$nSampler;$s++){
 
-    my $sampler_totalclockticks = 0;
     my $ptr = @Samplers[$s];
-    for(my $size=0;$size<scalar (@$ptr) ;$size++) {
-      my $cpu_id = @Samplers[$s]->[$size];
-      $sampler_totalclockticks  += $cf->getResultField("P(${cpu_id})","clockTicks");
-    }
-
-    if ($sampler_totalclockticks > 0){
+    if ($globalClock > 0){
 
       printf ("Sampler %d (Procs ",$s);
 
@@ -1468,21 +1437,7 @@ sub simStats {
         printf "\t: Sim Time (s) %6.3f Exe ",$secs_gpu;
       }
 
-      my $clockTicks = 0;
-
-      if ($nCPUs > 1){
-        my $ptr = @Samplers[$s];
-        for(my $size=0;$size<scalar (@$ptr) ;$size++) {
-          my $cpu_id = @Samplers[$s]->[$size];
-          if ($clockTicks < $cf->getResultField("P(${cpu_id})","clockTicks")) {
-            $clockTicks = $cf->getResultField("P(${cpu_id})","clockTicks");
-          }
-        }
-      } else {
-        $clockTicks = $cf->getResultField("P(0)","clockTicks");
-      }
-
-      printf " %6.3f ms Sim",(1e-3/$freq)*$clockTicks;
+      printf " %6.3f ms Sim",(1e-3/$freq)*$globalClock;
       print " (${freq}MHz)\n";
       printf "  Inst  ";
 
@@ -1508,7 +1463,9 @@ sub instStats {
   print "Proc :  nCommit   :   nInst   :  AALU   :  BALU   :  CALU   :  LALU   :  SALU   :  LD Fwd :    Replay    : Worst Unit  (clk)\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    next unless( $cf->getResultField("P(${i})","clockTicks")>0 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
+
     printf " %3d :",$i;
 
     my $iAALU = $cf->getResultField("P(${i})_ExeEngine_iRALU","n")
@@ -1536,7 +1493,7 @@ sub instStats {
     + $cf->getResultField("P(${i})_ExeEngine_iCALU_DIV","n");
 
     my $nInst = $iAALU + $iBALU + $iCALU + $iSALU + $iLALU;
-    my $nFor   = $cf->getResultField("LSQ(${i})","stldForwarding");
+    my $nFor   = $cf->getResultField("P(${i})","stldForwarding");
 
     $nInst = 1 if ($nInst == 0);
 
@@ -1602,7 +1559,8 @@ sub branchStats {
   print "\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    next unless( $cf->getResultField("P(${i})","clockTicks")>0 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     my $cpuType    = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
     my $bpreddelay = $cf->getConfigEntry(key=>"bpredDelay", section=>$cpuType);
@@ -1738,14 +1696,6 @@ sub thermStats_table {
 
   my $file = shift;
 
-  my $totCycles = 0;
-  my $nCycles=0;
-  for(my $i=0;$i<$nCPUs;$i++) {
-    my $val = $cf->getResultField("P(${i})","clockTicks");
-    $totCycles += $val;
-    $nCycles = $val if ($nCycles < $val);
-  }
-
   return unless $cf->getResultField("chipMaxT","max");
 
   printf "################################################################################\n";
@@ -1815,11 +1765,11 @@ sub thermStats_table {
   # GET IPC
   my $nInst = 0;
   my $nuInst = 0;
-  my $clockTicks;
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    $clockTicks = $cf->getResultField("P(${i})","clockTicks");
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
+
     $nInst = $cf->getResultField("S(${i})","TimingInst");
     $nuInst  = getProcnInst($i);
   }
@@ -1829,9 +1779,9 @@ sub thermStats_table {
   printf "#table10 name\t\t IPC\t maxT(K)\t gradT\t Reliability\tChipLeak(W)\tChipPower(W)\tEnergy(J)\ttIPC\t uIPC\n";
   my $ipc = 0;
   my $uipc = 0;
-  if ($clockTicks != 0){
-    $ipc = $nInst/($clockTicks);
-    $uipc = $nuInst/($clockTicks);
+  if ($globalClock != 0){
+    $ipc = $nInst/($globalClock);
+    $uipc = $nuInst/($globalClock);
   }
   # maximum temperature throughout the chip
   printf "table10:\t%s:\t%f:\t%f:\t", $name,$ipc, $maxT;
@@ -1861,39 +1811,28 @@ sub tradCPUStats {
   print "  Regs    IO  maxBr  MisBr Br4Clk brDelay \n";
 
   my $inst_t = 0;
-  my $cycle_t = 1;
-  my $globalc_max = 0;
   my $nActiveCores = 0;
   my $gIPC = 0;
 
   my $tinst = 0;
-  my $tcycle = 1;
   my $tcores = 0;
 
   for(my $i=0;$i<$nCPUs;$i++) {
 
     my $sampler     = @Processors[$i]->[0];
-    my $globalClock = $cf->getResultField("OS","wallClock")+1;
 
-    if ($globalClock > $globalc_max) {
-      $globalc_max = $globalClock;
-    }
-
-    my $clockTicks  = $cf->getResultField("P(${i})","clockTicks");
-
-    $cycle_t += $clockTicks;
-
-    next unless( $clockTicks > 1 );
+    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+    next unless( $nfetch > 1 );
 
     $gIPC += $cf->getResultField("P(${i})_uipc","v");
     $nActiveCores++;
     my $nInst       = getProcnInst($i);
     $inst_t += $nInst;
     my $timingInst  = $cf->getResultField("S(${i})","TimingInst");
+    my $clockTicks  = $cf->getResultField("P(${i})","clockTicks")+1;
 
     my $sampler     = @Processors[$i]->[0];
     if (@SamplerType[$sampler] == 0){
-      $tcycle += $clockTicks;
       $tinst += $nInst;
       $tcores += 1;
     }
@@ -1911,7 +1850,7 @@ sub tradCPUStats {
     ##########################
     # pid, IPC, uIPC, active, cycles
 
-    printf " %3d  %5.2f  %5.2f  ",$i,$timingInst/$clockTicks,$nInst/$clockTicks;
+    printf " %3d  %5.2f  %5.2f  ",$i,$nInst/$globalClock_max,$nInst/$clockTicks;
     printf " %-12.2f",$clockTicks/$globalClock;
     printf " %-9.0f  ",$clockTicks;
 
@@ -1920,7 +1859,7 @@ sub tradCPUStats {
 
     $nInst = 1 if( $nInst < 1 );
 
-    my $idealInst = $issue*$clockTicks+1;
+    my $idealInst = $issue*$globalClock+1;
     $temp = 100*$nInst/($idealInst);
 
     printf " %04.1f ",$temp;
@@ -2032,8 +1971,8 @@ sub cpupowerStats {
     printf("--------------------------------------------------------------------------------------------------------\n");
 
     for(my $i=0;$i<$nCPUs;$i++) {
-
-      next unless( $cf->getResultField("P(${i})","clockTicks") );
+      my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
+      next unless( $nfetch > 1 );
 
       my $sampler     = @Processors[$i]->[0];
       if (@SamplerType[$sampler] == 0){
@@ -2125,7 +2064,8 @@ sub gpupowerStats {
     printf("--------------------------------------------------------------------------------------------------------\n");
 
     for(my $cpu=0;$cpu<$nCPUs;$cpu++) {
-      next unless( $cf->getResultField("P(${cpu})","clockTicks") );
+      my $nfetch = $cf->getResultField("P(${cpu})_FetchEngine_avgFetchTime","n");
+      next unless( $nfetch > 1 );
 
       my $sampler     = @Processors[$cpu]->[0];
       if (@SamplerType[$sampler] == 1){
@@ -2265,15 +2205,6 @@ sub thermStats{
   my $powersec = $cf->getConfigEntry(key=>"pwrmodel");
 
   if ($op_enTherm eq "true") {
-
-
-    my $totCycles = 0;
-    my $nCycles=0;
-    for(my $i=0;$i<$nCPUs;$i++) {
-      my $val = $cf->getResultField("P(${i})","clockTicks");
-      $totCycles += $val;
-      $nCycles = $val if ($nCycles < $val);
-    }
 
     return unless $cf->getResultField("chipMaxT","max");
 

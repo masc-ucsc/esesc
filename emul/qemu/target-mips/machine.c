@@ -203,8 +203,8 @@ const VMStateDescription vmstate_tlb = {
 
 const VMStateDescription vmstate_mips_cpu = {
     .name = "cpu",
-    .version_id = 7,
-    .minimum_version_id = 7,
+    .version_id = 8,
+    .minimum_version_id = 8,
     .post_load = cpu_post_load,
     .fields = (VMStateField[]) {
         /* Active TC */
@@ -302,4 +302,3 @@ const VMStateDescription vmstate_mips_cpu = {
         VMSTATE_END_OF_LIST()
     },
 };
-

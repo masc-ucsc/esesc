@@ -49,7 +49,6 @@ private:
   static bool       started;
   QEMUArgs         *qemuargs;
 
-  void populate(FlowID  fid);
 public:
 	static void setStarted() {
 		started = true;
@@ -57,10 +56,11 @@ public:
   QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint);
   virtual ~QEMUReader();
 
+  bool   populate(FlowID  fid);
   DInst *peekHead(FlowID  fid);
   DInst *executeHead(FlowID  fid);
-  void  reexecuteTail(FlowID fid);
-  void  syncHeadTail(FlowID  fid);
+  void   reexecuteTail(FlowID fid);
+  void   syncHeadTail(FlowID  fid);
 
   // Only method called by remote thread
   void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats);

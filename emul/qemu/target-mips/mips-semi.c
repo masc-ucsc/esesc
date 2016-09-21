@@ -24,7 +24,7 @@
 #include "exec/semihost.h"
 
 #ifdef CONFIG_ESESC
-#include "esesc_qemu_bm.h"
+#include "esesc_qemu.h"
 #endif
 
 typedef enum UHIOp {

@@ -17,14 +17,15 @@ ESESC is currently tested with Arch Linux and with Ubunut 12.04 LTS.  The follow
 
 ## Ubuntu 12.04 LTS (64bit)
     sudo apt-get install build-essential
+    sudo apt-get install g++
     sudo apt-get install cmake
     sudo apt-get install libboost-dev
     sudo apt-get install bison flex
-    sudo apt-get install g++
     sudo apt-get install python
-    sudo apt-get install texinfo
     sudo apt-get install libglib2.0-dev
+    sudo apt-get install libpixman-1-dev
     sudo apt-get install libncurses5-dev
+    sudo apt-get install zlib1g-dev
 
 With Ubuntu 12.04 it might also be necessary to set the `mmap_min_addr` setting.
 This can be done by editing `/etc/sysctl.conf` and adding the line:

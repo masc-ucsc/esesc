@@ -56,7 +56,6 @@ GStatsMax *SamplerBase::progressedTime = 0;
 
 SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
   : EmuSampler(iname, emu, fid)
-  , nextSwitch(0)
   , nInstForcedDetail(0)
   , gpuSampledRatio(0)
   , validP(0)
@@ -66,24 +65,15 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
   if (progressedTime == NULL)
       progressedTime = new GStatsMax("progressedTime");
 
-  nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkip"));
-
   nInstRabbit = static_cast<uint64_t>(SescConf->getDouble(section,"nInstRabbit"));
   nInstWarmup = static_cast<uint64_t>(SescConf->getDouble(section,"nInstWarmup"));
   nInstDetail = static_cast<uint64_t>(SescConf->getDouble(section,"nInstDetail"));
   nInstTiming = static_cast<uint64_t>(SescConf->getDouble(section,"nInstTiming"));
 
-  if (fid == 0) {
-    roi_skip = SescConf->getBool(section,"ROIOnly");
-  } else {
-    roi_skip = false;
-  }
-
   if (fid != 0){ // first thread might need a different skip
-    nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(section,"nInstSkipThreads"));
     cuda_inst_skip = nInstSkip;
   }
-  nInstMax    = static_cast<uint64_t>(SescConf->getDouble(section,"nInstMax"));
+
   maxnsTime   = static_cast<uint64_t>(SescConf->getDouble(section,"maxnsTime"));
   SescConf->isBetween(section,"maxnsTime",1,1e12);
 
@@ -154,6 +144,8 @@ SamplerBase::SamplerBase(const char *iname, const char *section, EmulInterface *
   dt_ratio       = (ninst_t+ninst_d+ninst_w+ninst_r)/(ninst_t+1);
 
   lastMode = EmuInit;
+
+  last_addtime = 0;
 }
 /* }}} */
 
@@ -221,6 +213,11 @@ uint64_t SamplerBase::getTime()
   double addtime = cpi2 * totalnInst;
   addtime = addtime * (1e9/getFreq());
 
+  if (addtime<= (last_addtime+20000))
+     addtime = last_addtime+20000;  // To provide a monotonically increasing clock in rabbit mode (20us steps)
+
+  last_addtime = addtime;
+
   //MSG("cpi=%g/%g = %g ; cpi*totalninst(%lld)/freq = %g",globalClock_Timing->getDouble(), iusage[EmuTiming]->getDouble(), cpi2, totalnInst, addtime);
   return static_cast<uint64_t>(addtime);
 }
@@ -251,9 +248,9 @@ FlowID SamplerBase::resumeThread(FlowID uid)
 
 void SamplerBase::terminate()
 {
+  terminated = true;
   progressedTime->sample(getTime(),true);
   TaskHandler::terminate();
-  terminated = true;
 }
 
 bool SamplerBase::isActive(FlowID fid)
@@ -309,13 +306,6 @@ FILE *SamplerBase::genReportFileNameAndOpen(const char *str) {
   return fp;
 }
 
-
-void SamplerBase::start_roi() {
-  MSG("### SamplerBase::start_roi() called");
-  I(roi_skip == true);
-  roi_skip = false;
-}
-
 void SamplerBase::fetchNextMode() {
   if (roi_skip) {
     next_mode = EmuRabbit;
@@ -328,11 +318,4 @@ void SamplerBase::fetchNextMode() {
   next_mode = sequence_mode[sequence_pos];
 }
 
-void SamplerBase::setNextSwitch(uint64_t instNum) {
-  if(instNum < nInstMax) {
-    nextSwitch = instNum;
-  } else {
-    nextSwitch = nInstMax;
-  }
-}
 

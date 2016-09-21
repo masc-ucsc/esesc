@@ -29,6 +29,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "../emul/libemulint/InstOpcode.h"
 #include "../misc/libsuc/LiveCache.h"
 extern LiveCache * live_warmup_cache;
+extern bool global_in_roi;
 typedef uint32_t FlowID; // DInst.h
 
 extern "C" void QEMUReader_goto_sleep(void *env);
@@ -92,4 +93,10 @@ extern "C" void QEMUReader_pauseThread(FlowID id) {
 extern "C" void QEMUReader_setFlowCmd(bool* flowStatus)
 {
 
+}
+
+extern "C" void QEMUReader_start_roi(uint32_t fid)
+{
+  fprintf(stderr,"Rabbit: start_roi\n");
+  global_in_roi = true;
 }

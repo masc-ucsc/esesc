@@ -72,6 +72,11 @@ protected:
   bool hasDstRegister() const { return dst1 != LREG_InvalidOutput || dst2 != LREG_InvalidOutput; }
   bool hasSrc1Register() const { return src1 != LREG_NoDependence;  }
   bool hasSrc2Register() const { return src2 != LREG_NoDependence;  }
+  int  getnsrc() const { 
+    int n= hasSrc1Register()?1:0 ;  
+    n += hasSrc2Register()?1:0 ;  
+    return n;
+  }
 
   bool isFuncCall() const { return opcode == iBALU_RCALL   || opcode == iBALU_LCALL;   }
   bool isFuncRet()  const { return opcode == iBALU_RET;    }

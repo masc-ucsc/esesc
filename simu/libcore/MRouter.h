@@ -141,9 +141,9 @@ public:
 
   bool isTopLevel() const { return up_node.empty(); }
 
-  MemObj *getDownNode() const {
-    I(down_node.size()==1);
-    return down_node[0];
+  MemObj *getDownNode(int pos=0) const {
+    I(down_node.size()>pos);
+    return down_node[pos];
   }
 };
 

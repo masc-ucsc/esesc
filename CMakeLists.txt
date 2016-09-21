@@ -174,7 +174,7 @@ ENDIF(ESESC_SYSTEM)
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-docs --enable-esesc --python=python2 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard-nss --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
+  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-virtfs --disable-numa --disable-nettle --disable-gcrypt --disable-bzip2 --disable-libssh2 --disable-curl --disable-linux-aio --disable-vhdx --disable-sdl --disable-docs --enable-esesc --python=python2 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0

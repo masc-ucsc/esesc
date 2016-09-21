@@ -2100,7 +2100,7 @@ static float32 subFloat32Sigs(float32 a, float32 b, flag zSign,
             return propagateFloat32NaN(a, b, status);
         }
         float_raise(float_flag_invalid, status);
-        return float32_default_nan;
+        return float32_default_nan(status);
     }
     if ( aExp == 0 ) {
         aExp = 1;
@@ -2229,7 +2229,7 @@ float32 float32_mul(float32 a, float32 b, float_status *status)
         }
         if ( ( bExp | bSig ) == 0 ) {
             float_raise(float_flag_invalid, status);
-            return float32_default_nan;
+            return float32_default_nan(status);
         }
         return packFloat32( zSign, 0xFF, 0 );
     }
@@ -2239,7 +2239,7 @@ float32 float32_mul(float32 a, float32 b, float_status *status)
         }
         if ( ( aExp | aSig ) == 0 ) {
             float_raise(float_flag_invalid, status);
-            return float32_default_nan;
+            return float32_default_nan(status);
         }
         return packFloat32( zSign, 0xFF, 0 );
     }
@@ -2294,7 +2294,7 @@ float32 float32_div(float32 a, float32 b, float_status *status)
                 return propagateFloat32NaN(a, b, status);
             }
             float_raise(float_flag_invalid, status);
-            return float32_default_nan;
+            return float32_default_nan(status);
         }
         return packFloat32( zSign, 0xFF, 0 );
     }
@@ -2308,7 +2308,7 @@ float32 float32_div(float32 a, float32 b, float_status *status)
         if ( bSig == 0 ) {
             if ( ( aExp | aSig ) == 0 ) {
                 float_raise(float_flag_invalid, status);
-                return float32_default_nan;
+                return float32_default_nan(status);
             }
             float_raise(float_flag_divbyzero, status);
             return packFloat32( zSign, 0xFF, 0 );
@@ -2362,7 +2362,7 @@ float32 float32_rem(float32 a, float32 b, float_status *status)
             return propagateFloat32NaN(a, b, status);
         }
         float_raise(float_flag_invalid, status);
-        return float32_default_nan;
+        return float32_default_nan(status);
     }
     if ( bExp == 0xFF ) {
         if (bSig) {
@@ -2373,7 +2373,7 @@ float32 float32_rem(float32 a, float32 b, float_status *status)
     if ( bExp == 0 ) {
         if ( bSig == 0 ) {
             float_raise(float_flag_invalid, status);
-            return float32_default_nan;
+            return float32_default_nan(status);
         }
         normalizeFloat32Subnormal( bSig, &bExp, &bSig );
     }
@@ -2488,7 +2488,7 @@ float32 float32_muladd(float32 a, float32 b, float32 c, int flags,
 
     if (infzero) {
         float_raise(float_flag_invalid, status);
-        return float32_default_nan;
+        return float32_default_nan(status);
     }
 
     if (flags & float_muladd_negate_c) {
@@ -2509,7 +2509,7 @@ float32 float32_muladd(float32 a, float32 b, float32 c, int flags,
         if (pInf && (pSign ^ cSign)) {
             /* addition of opposite-signed infinities => InvalidOperation */
             float_raise(float_flag_invalid, status);
-            return float32_default_nan;
+            return float32_default_nan(status);
         }
         /* Otherwise generate an infinity of the same sign */
         return packFloat32(cSign ^ signflip, 0xff, 0);
@@ -2685,12 +2685,12 @@ float32 float32_sqrt(float32 a, float_status *status)
         }
         if ( ! aSign ) return a;
         float_raise(float_flag_invalid, status);
-        return float32_default_nan;
+        return float32_default_nan(status);
     }
     if ( aSign ) {
         if ( ( aExp | aSig ) == 0 ) return a;
         float_raise(float_flag_invalid, status);
-        return float32_default_nan;
+        return float32_default_nan(status);
     }
     if ( aExp == 0 ) {
         if ( aSig == 0 ) return float32_zero;
@@ -2823,7 +2823,7 @@ float32 float32_log2(float32 a, float_status *status)
     }
     if ( aSign ) {
         float_raise(float_flag_invalid, status);
-        return float32_default_nan;
+        return float32_default_nan(status);
     }
     if ( aExp == 0xFF ) {
         if (aSig) {
@@ -2969,7 +2969,8 @@ int float32_eq_quiet(float32 a, float32 b, float_status *status)
     if (    ( ( extractFloat32Exp( a ) == 0xFF ) && extractFloat32Frac( a ) )
          || ( ( extractFloat32Exp( b ) == 0xFF ) && extractFloat32Frac( b ) )
        ) {
-        if ( float32_is_signaling_nan( a ) || float32_is_signaling_nan( b ) ) {
+        if (float32_is_signaling_nan(a, status)
+         || float32_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -2995,7 +2996,8 @@ int float32_le_quiet(float32 a, float32 b, float_status *status)
     if (    ( ( extractFloat32Exp( a ) == 0xFF ) && extractFloat32Frac( a ) )
          || ( ( extractFloat32Exp( b ) == 0xFF ) && extractFloat32Frac( b ) )
        ) {
-        if ( float32_is_signaling_nan( a ) || float32_is_signaling_nan( b ) ) {
+        if (float32_is_signaling_nan(a, status)
+         || float32_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -3026,7 +3028,8 @@ int float32_lt_quiet(float32 a, float32 b, float_status *status)
     if (    ( ( extractFloat32Exp( a ) == 0xFF ) && extractFloat32Frac( a ) )
          || ( ( extractFloat32Exp( b ) == 0xFF ) && extractFloat32Frac( b ) )
        ) {
-        if ( float32_is_signaling_nan( a ) || float32_is_signaling_nan( b ) ) {
+        if (float32_is_signaling_nan(a, status)
+         || float32_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -3055,7 +3058,8 @@ int float32_unordered_quiet(float32 a, float32 b, float_status *status)
     if (    ( ( extractFloat32Exp( a ) == 0xFF ) && extractFloat32Frac( a ) )
          || ( ( extractFloat32Exp( b ) == 0xFF ) && extractFloat32Frac( b ) )
        ) {
-        if ( float32_is_signaling_nan( a ) || float32_is_signaling_nan( b ) ) {
+        if (float32_is_signaling_nan(a, status)
+         || float32_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 1;
@@ -3886,7 +3890,7 @@ static float64 subFloat64Sigs(float64 a, float64 b, flag zSign,
             return propagateFloat64NaN(a, b, status);
         }
         float_raise(float_flag_invalid, status);
-        return float64_default_nan;
+        return float64_default_nan(status);
     }
     if ( aExp == 0 ) {
         aExp = 1;
@@ -4013,7 +4017,7 @@ float64 float64_mul(float64 a, float64 b, float_status *status)
         }
         if ( ( bExp | bSig ) == 0 ) {
             float_raise(float_flag_invalid, status);
-            return float64_default_nan;
+            return float64_default_nan(status);
         }
         return packFloat64( zSign, 0x7FF, 0 );
     }
@@ -4023,7 +4027,7 @@ float64 float64_mul(float64 a, float64 b, float_status *status)
         }
         if ( ( aExp | aSig ) == 0 ) {
             float_raise(float_flag_invalid, status);
-            return float64_default_nan;
+            return float64_default_nan(status);
         }
         return packFloat64( zSign, 0x7FF, 0 );
     }
@@ -4080,7 +4084,7 @@ float64 float64_div(float64 a, float64 b, float_status *status)
                 return propagateFloat64NaN(a, b, status);
             }
             float_raise(float_flag_invalid, status);
-            return float64_default_nan;
+            return float64_default_nan(status);
         }
         return packFloat64( zSign, 0x7FF, 0 );
     }
@@ -4094,7 +4098,7 @@ float64 float64_div(float64 a, float64 b, float_status *status)
         if ( bSig == 0 ) {
             if ( ( aExp | aSig ) == 0 ) {
                 float_raise(float_flag_invalid, status);
-                return float64_default_nan;
+                return float64_default_nan(status);
             }
             float_raise(float_flag_divbyzero, status);
             return packFloat64( zSign, 0x7FF, 0 );
@@ -4152,7 +4156,7 @@ float64 float64_rem(float64 a, float64 b, float_status *status)
             return propagateFloat64NaN(a, b, status);
         }
         float_raise(float_flag_invalid, status);
-        return float64_default_nan;
+        return float64_default_nan(status);
     }
     if ( bExp == 0x7FF ) {
         if (bSig) {
@@ -4163,7 +4167,7 @@ float64 float64_rem(float64 a, float64 b, float_status *status)
     if ( bExp == 0 ) {
         if ( bSig == 0 ) {
             float_raise(float_flag_invalid, status);
-            return float64_default_nan;
+            return float64_default_nan(status);
         }
         normalizeFloat64Subnormal( bSig, &bExp, &bSig );
     }
@@ -4265,7 +4269,7 @@ float64 float64_muladd(float64 a, float64 b, float64 c, int flags,
 
     if (infzero) {
         float_raise(float_flag_invalid, status);
-        return float64_default_nan;
+        return float64_default_nan(status);
     }
 
     if (flags & float_muladd_negate_c) {
@@ -4286,7 +4290,7 @@ float64 float64_muladd(float64 a, float64 b, float64 c, int flags,
         if (pInf && (pSign ^ cSign)) {
             /* addition of opposite-signed infinities => InvalidOperation */
             float_raise(float_flag_invalid, status);
-            return float64_default_nan;
+            return float64_default_nan(status);
         }
         /* Otherwise generate an infinity of the same sign */
         return packFloat64(cSign ^ signflip, 0x7ff, 0);
@@ -4484,12 +4488,12 @@ float64 float64_sqrt(float64 a, float_status *status)
         }
         if ( ! aSign ) return a;
         float_raise(float_flag_invalid, status);
-        return float64_default_nan;
+        return float64_default_nan(status);
     }
     if ( aSign ) {
         if ( ( aExp | aSig ) == 0 ) return a;
         float_raise(float_flag_invalid, status);
-        return float64_default_nan;
+        return float64_default_nan(status);
     }
     if ( aExp == 0 ) {
         if ( aSig == 0 ) return float64_zero;
@@ -4537,7 +4541,7 @@ float64 float64_log2(float64 a, float_status *status)
     }
     if ( aSign ) {
         float_raise(float_flag_invalid, status);
-        return float64_default_nan;
+        return float64_default_nan(status);
     }
     if ( aExp == 0x7FF ) {
         if (aSig) {
@@ -4684,7 +4688,8 @@ int float64_eq_quiet(float64 a, float64 b, float_status *status)
     if (    ( ( extractFloat64Exp( a ) == 0x7FF ) && extractFloat64Frac( a ) )
          || ( ( extractFloat64Exp( b ) == 0x7FF ) && extractFloat64Frac( b ) )
        ) {
-        if ( float64_is_signaling_nan( a ) || float64_is_signaling_nan( b ) ) {
+        if (float64_is_signaling_nan(a, status)
+         || float64_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -4712,7 +4717,8 @@ int float64_le_quiet(float64 a, float64 b, float_status *status)
     if (    ( ( extractFloat64Exp( a ) == 0x7FF ) && extractFloat64Frac( a ) )
          || ( ( extractFloat64Exp( b ) == 0x7FF ) && extractFloat64Frac( b ) )
        ) {
-        if ( float64_is_signaling_nan( a ) || float64_is_signaling_nan( b ) ) {
+        if (float64_is_signaling_nan(a, status)
+         || float64_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -4743,7 +4749,8 @@ int float64_lt_quiet(float64 a, float64 b, float_status *status)
     if (    ( ( extractFloat64Exp( a ) == 0x7FF ) && extractFloat64Frac( a ) )
          || ( ( extractFloat64Exp( b ) == 0x7FF ) && extractFloat64Frac( b ) )
        ) {
-        if ( float64_is_signaling_nan( a ) || float64_is_signaling_nan( b ) ) {
+        if (float64_is_signaling_nan(a, status)
+         || float64_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -4772,7 +4779,8 @@ int float64_unordered_quiet(float64 a, float64 b, float_status *status)
     if (    ( ( extractFloat64Exp( a ) == 0x7FF ) && extractFloat64Frac( a ) )
          || ( ( extractFloat64Exp( b ) == 0x7FF ) && extractFloat64Frac( b ) )
        ) {
-        if ( float64_is_signaling_nan( a ) || float64_is_signaling_nan( b ) ) {
+        if (float64_is_signaling_nan(a, status)
+         || float64_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 1;
@@ -5196,8 +5204,7 @@ static floatx80 subFloatx80Sigs(floatx80 a, floatx80 b, flag zSign,
 {
     int32 aExp, bExp, zExp;
     uint64_t aSig, bSig, zSig0, zSig1;
-    int32 expDiff;
-    floatx80 z;
+    int32_t expDiff;
 
     aSig = extractFloatx80Frac( a );
     aExp = extractFloatx80Exp( a );
@@ -5211,9 +5218,7 @@ static floatx80 subFloatx80Sigs(floatx80 a, floatx80 b, flag zSign,
             return propagateFloatx80NaN(a, b, status);
         }
         float_raise(float_flag_invalid, status);
-        z.low = floatx80_default_nan_low;
-        z.high = floatx80_default_nan_high;
-        return z;
+        return floatx80_default_nan(status);
     }
     if ( aExp == 0 ) {
         aExp = 1;
@@ -5307,7 +5312,6 @@ floatx80 floatx80_mul(floatx80 a, floatx80 b, float_status *status)
     flag aSign, bSign, zSign;
     int32 aExp, bExp, zExp;
     uint64_t aSig, bSig, zSig0, zSig1;
-    floatx80 z;
 
     aSig = extractFloatx80Frac( a );
     aExp = extractFloatx80Exp( a );
@@ -5331,9 +5335,7 @@ floatx80 floatx80_mul(floatx80 a, floatx80 b, float_status *status)
         if ( ( aExp | aSig ) == 0 ) {
  invalid:
             float_raise(float_flag_invalid, status);
-            z.low = floatx80_default_nan_low;
-            z.high = floatx80_default_nan_high;
-            return z;
+            return floatx80_default_nan(status);
         }
         return packFloatx80( zSign, 0x7FFF, LIT64( 0x8000000000000000 ) );
     }
@@ -5367,7 +5369,6 @@ floatx80 floatx80_div(floatx80 a, floatx80 b, float_status *status)
     int32 aExp, bExp, zExp;
     uint64_t aSig, bSig, zSig0, zSig1;
     uint64_t rem0, rem1, rem2, term0, term1, term2;
-    floatx80 z;
 
     aSig = extractFloatx80Frac( a );
     aExp = extractFloatx80Exp( a );
@@ -5399,9 +5400,7 @@ floatx80 floatx80_div(floatx80 a, floatx80 b, float_status *status)
             if ( ( aExp | aSig ) == 0 ) {
  invalid:
                 float_raise(float_flag_invalid, status);
-                z.low = floatx80_default_nan_low;
-                z.high = floatx80_default_nan_high;
-                return z;
+                return floatx80_default_nan(status);
             }
             float_raise(float_flag_divbyzero, status);
             return packFloatx80( zSign, 0x7FFF, LIT64( 0x8000000000000000 ) );
@@ -5451,7 +5450,6 @@ floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
     int32 aExp, bExp, expDiff;
     uint64_t aSig0, aSig1, bSig;
     uint64_t q, term0, term1, alternateASig0, alternateASig1;
-    floatx80 z;
 
     aSig0 = extractFloatx80Frac( a );
     aExp = extractFloatx80Exp( a );
@@ -5475,9 +5473,7 @@ floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
         if ( bSig == 0 ) {
  invalid:
             float_raise(float_flag_invalid, status);
-            z.low = floatx80_default_nan_low;
-            z.high = floatx80_default_nan_high;
-            return z;
+            return floatx80_default_nan(status);
         }
         normalizeFloatx80Subnormal( bSig, &bExp, &bSig );
     }
@@ -5549,7 +5545,6 @@ floatx80 floatx80_sqrt(floatx80 a, float_status *status)
     int32 aExp, zExp;
     uint64_t aSig0, aSig1, zSig0, zSig1, doubleZSig0;
     uint64_t rem0, rem1, rem2, rem3, term0, term1, term2, term3;
-    floatx80 z;
 
     aSig0 = extractFloatx80Frac( a );
     aExp = extractFloatx80Exp( a );
@@ -5565,9 +5560,7 @@ floatx80 floatx80_sqrt(floatx80 a, float_status *status)
         if ( ( aExp | aSig0 ) == 0 ) return a;
  invalid:
         float_raise(float_flag_invalid, status);
-        z.low = floatx80_default_nan_low;
-        z.high = floatx80_default_nan_high;
-        return z;
+        return floatx80_default_nan(status);
     }
     if ( aExp == 0 ) {
         if ( aSig0 == 0 ) return packFloatx80( 0, 0, 0 );
@@ -5735,8 +5728,8 @@ int floatx80_eq_quiet(floatx80 a, floatx80 b, float_status *status)
          || (    ( extractFloatx80Exp( b ) == 0x7FFF )
               && (uint64_t) ( extractFloatx80Frac( b )<<1 ) )
        ) {
-        if (    floatx80_is_signaling_nan( a )
-             || floatx80_is_signaling_nan( b ) ) {
+        if (floatx80_is_signaling_nan(a, status)
+         || floatx80_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -5766,8 +5759,8 @@ int floatx80_le_quiet(floatx80 a, floatx80 b, float_status *status)
          || (    ( extractFloatx80Exp( b ) == 0x7FFF )
               && (uint64_t) ( extractFloatx80Frac( b )<<1 ) )
        ) {
-        if (    floatx80_is_signaling_nan( a )
-             || floatx80_is_signaling_nan( b ) ) {
+        if (floatx80_is_signaling_nan(a, status)
+         || floatx80_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -5802,8 +5795,8 @@ int floatx80_lt_quiet(floatx80 a, floatx80 b, float_status *status)
          || (    ( extractFloatx80Exp( b ) == 0x7FFF )
               && (uint64_t) ( extractFloatx80Frac( b )<<1 ) )
        ) {
-        if (    floatx80_is_signaling_nan( a )
-             || floatx80_is_signaling_nan( b ) ) {
+        if (floatx80_is_signaling_nan(a, status)
+         || floatx80_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -5835,8 +5828,8 @@ int floatx80_unordered_quiet(floatx80 a, floatx80 b, float_status *status)
          || (    ( extractFloatx80Exp( b ) == 0x7FFF )
               && (uint64_t) ( extractFloatx80Frac( b )<<1 ) )
        ) {
-        if (    floatx80_is_signaling_nan( a )
-             || floatx80_is_signaling_nan( b ) ) {
+        if (floatx80_is_signaling_nan(a, status)
+         || floatx80_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 1;
@@ -6374,8 +6367,7 @@ static float128 subFloat128Sigs(float128 a, float128 b, flag zSign,
 {
     int32 aExp, bExp, zExp;
     uint64_t aSig0, aSig1, bSig0, bSig1, zSig0, zSig1;
-    int32 expDiff;
-    float128 z;
+    int32_t expDiff;
 
     aSig1 = extractFloat128Frac1( a );
     aSig0 = extractFloat128Frac0( a );
@@ -6393,9 +6385,7 @@ static float128 subFloat128Sigs(float128 a, float128 b, flag zSign,
             return propagateFloat128NaN(a, b, status);
         }
         float_raise(float_flag_invalid, status);
-        z.low = float128_default_nan_low;
-        z.high = float128_default_nan_high;
-        return z;
+        return float128_default_nan(status);
     }
     if ( aExp == 0 ) {
         aExp = 1;
@@ -6505,7 +6495,6 @@ float128 float128_mul(float128 a, float128 b, float_status *status)
     flag aSign, bSign, zSign;
     int32 aExp, bExp, zExp;
     uint64_t aSig0, aSig1, bSig0, bSig1, zSig0, zSig1, zSig2, zSig3;
-    float128 z;
 
     aSig1 = extractFloat128Frac1( a );
     aSig0 = extractFloat128Frac0( a );
@@ -6531,9 +6520,7 @@ float128 float128_mul(float128 a, float128 b, float_status *status)
         if ( ( aExp | aSig0 | aSig1 ) == 0 ) {
  invalid:
             float_raise(float_flag_invalid, status);
-            z.low = float128_default_nan_low;
-            z.high = float128_default_nan_high;
-            return z;
+            return float128_default_nan(status);
         }
         return packFloat128( zSign, 0x7FFF, 0, 0 );
     }
@@ -6572,7 +6559,6 @@ float128 float128_div(float128 a, float128 b, float_status *status)
     int32 aExp, bExp, zExp;
     uint64_t aSig0, aSig1, bSig0, bSig1, zSig0, zSig1, zSig2;
     uint64_t rem0, rem1, rem2, rem3, term0, term1, term2, term3;
-    float128 z;
 
     aSig1 = extractFloat128Frac1( a );
     aSig0 = extractFloat128Frac0( a );
@@ -6606,9 +6592,7 @@ float128 float128_div(float128 a, float128 b, float_status *status)
             if ( ( aExp | aSig0 | aSig1 ) == 0 ) {
  invalid:
                 float_raise(float_flag_invalid, status);
-                z.low = float128_default_nan_low;
-                z.high = float128_default_nan_high;
-                return z;
+                return float128_default_nan(status);
             }
             float_raise(float_flag_divbyzero, status);
             return packFloat128( zSign, 0x7FFF, 0, 0 );
@@ -6663,7 +6647,6 @@ float128 float128_rem(float128 a, float128 b, float_status *status)
     uint64_t aSig0, aSig1, bSig0, bSig1, q, term0, term1, term2;
     uint64_t allZero, alternateASig0, alternateASig1, sigMean1;
     int64_t sigMean0;
-    float128 z;
 
     aSig1 = extractFloat128Frac1( a );
     aSig0 = extractFloat128Frac0( a );
@@ -6689,9 +6672,7 @@ float128 float128_rem(float128 a, float128 b, float_status *status)
         if ( ( bSig0 | bSig1 ) == 0 ) {
  invalid:
             float_raise(float_flag_invalid, status);
-            z.low = float128_default_nan_low;
-            z.high = float128_default_nan_high;
-            return z;
+            return float128_default_nan(status);
         }
         normalizeFloat128Subnormal( bSig0, bSig1, &bExp, &bSig0, &bSig1 );
     }
@@ -6772,7 +6753,6 @@ float128 float128_sqrt(float128 a, float_status *status)
     int32 aExp, zExp;
     uint64_t aSig0, aSig1, zSig0, zSig1, zSig2, doubleZSig0;
     uint64_t rem0, rem1, rem2, rem3, term0, term1, term2, term3;
-    float128 z;
 
     aSig1 = extractFloat128Frac1( a );
     aSig0 = extractFloat128Frac0( a );
@@ -6789,9 +6769,7 @@ float128 float128_sqrt(float128 a, float_status *status)
         if ( ( aExp | aSig0 | aSig1 ) == 0 ) return a;
  invalid:
         float_raise(float_flag_invalid, status);
-        z.low = float128_default_nan_low;
-        z.high = float128_default_nan_high;
-        return z;
+        return float128_default_nan(status);
     }
     if ( aExp == 0 ) {
         if ( ( aSig0 | aSig1 ) == 0 ) return packFloat128( 0, 0, 0, 0 );
@@ -6959,8 +6937,8 @@ int float128_eq_quiet(float128 a, float128 b, float_status *status)
          || (    ( extractFloat128Exp( b ) == 0x7FFF )
               && ( extractFloat128Frac0( b ) | extractFloat128Frac1( b ) ) )
        ) {
-        if (    float128_is_signaling_nan( a )
-             || float128_is_signaling_nan( b ) ) {
+        if (float128_is_signaling_nan(a, status)
+         || float128_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -6990,8 +6968,8 @@ int float128_le_quiet(float128 a, float128 b, float_status *status)
          || (    ( extractFloat128Exp( b ) == 0x7FFF )
               && ( extractFloat128Frac0( b ) | extractFloat128Frac1( b ) ) )
        ) {
-        if (    float128_is_signaling_nan( a )
-             || float128_is_signaling_nan( b ) ) {
+        if (float128_is_signaling_nan(a, status)
+         || float128_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -7026,8 +7004,8 @@ int float128_lt_quiet(float128 a, float128 b, float_status *status)
          || (    ( extractFloat128Exp( b ) == 0x7FFF )
               && ( extractFloat128Frac0( b ) | extractFloat128Frac1( b ) ) )
        ) {
-        if (    float128_is_signaling_nan( a )
-             || float128_is_signaling_nan( b ) ) {
+        if (float128_is_signaling_nan(a, status)
+         || float128_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 0;
@@ -7060,8 +7038,8 @@ int float128_unordered_quiet(float128 a, float128 b, float_status *status)
          || (    ( extractFloat128Exp( b ) == 0x7FFF )
               && ( extractFloat128Frac0( b ) | extractFloat128Frac1( b ) ) )
        ) {
-        if (    float128_is_signaling_nan( a )
-             || float128_is_signaling_nan( b ) ) {
+        if (float128_is_signaling_nan(a, status)
+         || float128_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return 1;
@@ -7340,8 +7318,8 @@ static inline int float ## s ## _compare_internal(float ## s a, float ## s b,\
         ( ( extractFloat ## s ## Exp( b ) == nan_exp ) &&                    \
           extractFloat ## s ## Frac( b ) )) {                                \
         if (!is_quiet ||                                                     \
-            float ## s ## _is_signaling_nan( a ) ||                          \
-            float ## s ## _is_signaling_nan( b ) ) {                         \
+            float ## s ## _is_signaling_nan(a, status) ||                  \
+            float ## s ## _is_signaling_nan(b, status)) {                 \
             float_raise(float_flag_invalid, status);                         \
         }                                                                    \
         return float_relation_unordered;                                     \
@@ -7390,8 +7368,8 @@ static inline int floatx80_compare_internal(floatx80 a, floatx80 b,
         ( ( extractFloatx80Exp( b ) == 0x7fff ) &&
           ( extractFloatx80Frac( b )<<1 ) )) {
         if (!is_quiet ||
-            floatx80_is_signaling_nan( a ) ||
-            floatx80_is_signaling_nan( b ) ) {
+            floatx80_is_signaling_nan(a, status) ||
+            floatx80_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return float_relation_unordered;
@@ -7436,8 +7414,8 @@ static inline int float128_compare_internal(float128 a, float128 b,
         ( ( extractFloat128Exp( b ) == 0x7fff ) &&
           ( extractFloat128Frac0( b ) | extractFloat128Frac1( b ) ) )) {
         if (!is_quiet ||
-            float128_is_signaling_nan( a ) ||
-            float128_is_signaling_nan( b ) ) {
+            float128_is_signaling_nan(a, status) ||
+            float128_is_signaling_nan(b, status)) {
             float_raise(float_flag_invalid, status);
         }
         return float_relation_unordered;
@@ -7497,11 +7475,11 @@ static inline float ## s float ## s ## _minmax(float ## s a, float ## s b,     \
     if (float ## s ## _is_any_nan(a) ||                                 \
         float ## s ## _is_any_nan(b)) {                                 \
         if (isieee) {                                                   \
-            if (float ## s ## _is_quiet_nan(a) &&                       \
+            if (float ## s ## _is_quiet_nan(a, status) &&               \
                 !float ## s ##_is_any_nan(b)) {                         \
                 return b;                                               \
-            } else if (float ## s ## _is_quiet_nan(b) &&                \
-                       !float ## s ## _is_any_nan(a)) {                 \
+            } else if (float ## s ## _is_quiet_nan(b, status) &&        \
+                       !float ## s ## _is_any_nan(a)) {                \
                 return a;                                               \
             }                                                           \
         }                                                               \

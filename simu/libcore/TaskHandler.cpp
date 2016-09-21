@@ -43,7 +43,7 @@
 /* }}} */
 
 std::vector<TaskHandler::EmulSimuMapping >   TaskHandler::allmaps;
-volatile bool TaskHandler::terminate_all;
+bool TaskHandler::terminate_all;
 pthread_mutex_t TaskHandler::mutex;
 
 FlowID* TaskHandler::running;
@@ -188,10 +188,12 @@ FlowID TaskHandler::resumeThread(FlowID uid, FlowID fid) {
   running[running_size] = fid;
   running_size++;
 
+#ifdef DEBUG
   fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
   for (int i = 0; i < running_size; i++)
     fprintf(stderr,"%d:",running[i]);
   fprintf(stderr,"\n");
+#endif
 
   pthread_mutex_unlock (&mutex);
   return (fid);
@@ -290,7 +292,6 @@ void TaskHandler::syncRunning(){
 
 void TaskHandler::removeFromRunning(FlowID fid){
   /* remove fid from the running queue {{{1 */
-  //pthread_mutex_lock (&mutex);
  
   for (size_t i=0;i<running_size;i++){
     if (running[i] != fid)
@@ -303,10 +304,12 @@ void TaskHandler::removeFromRunning(FlowID fid){
     }
     running_size--;
 
+#ifdef DEBUG
     fprintf(stderr,"removeFromRunning: fid=%d running_size=%d : running=",fid,running_size);
     for (int j = 0; j < running_size; j++)
       fprintf(stderr,"%d:",running[j]);
     fprintf(stderr,"\n");
+#endif
 
     break;
   }
@@ -371,6 +374,7 @@ void TaskHandler::freeze(FlowID fid, Time_t nCycles) {
 }
 /* }}} */
 
+extern "C" void helper_esesc_dump();
 void TaskHandler::boot()
   /* main simulation loop {{{1 */
 {
@@ -387,6 +391,40 @@ void TaskHandler::boot()
       if (needIncreaseClock)
         EventScheduler::advanceClock();
     }else{
+      // 1st Make sure that they have enough instructions
+      bool one_failed;
+      bool all_failed;
+      bool retry = false;
+      do {
+        do{
+          one_failed = false;
+          all_failed = true;
+          for(size_t i =0;i<running_size;i++) {
+            FlowID fid = running[i];
+            bool p = allmaps[fid].emul->populate(fid);
+            if (!p) 
+              one_failed = true;
+            else
+              all_failed = false;
+          }
+        }while(all_failed && running_size);
+        if (!one_failed)
+          break;
+        if (retry) {
+          for(size_t i =0;i<running_size;i++) {
+            FlowID fid = running[i];
+            if (!allmaps[fid].active)
+              continue;
+
+            bool p = allmaps[fid].emul->populate(fid);
+            if (!p) 
+              pauseThread(fid);
+          }
+          break;
+        }
+        retry = true;
+      }while(running_size);
+      // 2nd: advance cores
       for(size_t i =0;i<running_size;i++) {
         FlowID fid = running[i];
         allmaps[fid].simu->advance_clock(fid);

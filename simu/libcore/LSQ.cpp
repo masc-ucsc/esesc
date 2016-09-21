@@ -99,6 +99,7 @@ DInst *LSQFull::executing(DInst *dinst)
     }
   }
 
+  unresolved--;
   I(!dinst->isExecuted()); // first clear, then mark executed
   return faulty;
 }
@@ -130,9 +131,8 @@ LSQNone::LSQNone(const int32_t id, int32_t size)
   /* constructor {{{1 */
   :LSQ(size) {
 
-    for(int i=0;i<128;i++)
-      addrTable[i] = 0;
-
+  for(int i=0;i<128;i++)
+    addrTable[i] = 0;
 }
 /* }}} */
 
@@ -156,6 +156,7 @@ DInst *LSQNone::executing(DInst *dinst)
   I(addrTable[i] == dinst);
   addrTable[i] = 0;
 
+  unresolved--;
   return 0;
 }
 /* }}} */
@@ -187,6 +188,7 @@ bool LSQVPC::insert(DInst *dinst)
 DInst *LSQVPC::executing(DInst *dinst)
 {
   I(0);
+  unresolved--;
   return 0;
 }
 

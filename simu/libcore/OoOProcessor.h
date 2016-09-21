@@ -50,6 +50,8 @@
 
 #define RCMEM 1
 
+#define TRACK_FORWARDING 1
+
 class OoOProcessor : public GOoOProcessor {
 private:
   class RetireState {
@@ -95,6 +97,7 @@ private:
 
   bool busy;
   bool replayRecovering;
+  bool getStatsFlag;
   Time_t replayID;
   bool flushing;
 
@@ -110,6 +113,17 @@ protected:
   ClusterManager clusterManager;
 
   GStatsAvg avgFetchWidth;
+#ifdef TRACK_FORWARDING
+  GStatsAvg avgNumSrc;
+  GStatsAvg avgNumDep;
+  Time_t     fwdDone[LREG_MAX];
+  GStatsCntr fwd0done0;
+  GStatsCntr fwd1done0;
+  GStatsCntr fwd1done1;
+  GStatsCntr fwd2done0;
+  GStatsCntr fwd2done1;
+  GStatsCntr fwd2done2;
+#endif
   CodeProfile codeProfile;
   double      codeProfile_trigger;
 
@@ -124,6 +138,7 @@ public:
   virtual ~OoOProcessor();
 
   void executing(DInst *dinst);
+  void executed(DInst *dinst);
   LSQ *getLSQ() { return &lsq; }
   void replay(DInst *target);
   bool isFlushing() {return flushing;}

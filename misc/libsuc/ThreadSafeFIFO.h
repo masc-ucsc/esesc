@@ -16,10 +16,10 @@ class ThreadSafeFIFO {
     typedef uint16_t IndexType;
     volatile IndexType tail;
     volatile IndexType head;
-    Type array[4096];
+    Type array[32768];
 
   public:
-    uint16_t size() const { return 2048; }
+    uint16_t size() const { return 32768-2048; }
 #if 0
     uint16_t realsize() const{
 
@@ -45,7 +45,7 @@ class ThreadSafeFIFO {
 
     void push() {
       //AtomicAdd(&tail,static_cast<IndexType>(1));
-      tail = (tail + 1) & 4095;
+      tail = (tail + 1) & 32767;
     };
     void push(const Type *item_) {
       array[tail] = *item_;
@@ -53,29 +53,41 @@ class ThreadSafeFIFO {
     };
 
     bool full() const {
-      if (((tail+2)&4095) == head)
+      if (((tail+2)&32767) == head)
         return true;
-      IndexType nextTail = ((tail + 1) & 4095); // Give some space
+      IndexType nextTail = ((tail + 1) & 32767); // Give some space
       return (nextTail == head);
     }
+
+    bool halfFull() const {
+      IndexType n;
+      if (head > tail) {
+        n = 32768-head+tail;
+      }else{
+        n = tail-head;
+      }
+
+      return n>16000;
+    }
+
     bool empty() {
       return (tail == head);
     }
 
     void pop() {
       //AtomicAdd(&head,static_cast<IndexType>(1));
-      head = (head + 1) & 4095;
+      head = (head + 1) & 32767;
     };
     Type *getHeadRef() {
       return &array[head];
     }
     Type *getNextHeadRef() {
-      return &array[static_cast<IndexType>((head+1) & 4095)];
+      return &array[static_cast<IndexType>((head+1) & 32767)];
     }
     void pop(Type *obj) {
       *obj = array[head];
       //AtomicAdd(&head,static_cast<IndexType>(1));
-      head = (head + 1) & 4095;
+      head = (head + 1) & 32767;
     };
 
 };

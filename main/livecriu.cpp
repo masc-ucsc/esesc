@@ -33,6 +33,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <netdb.h>
 #include <signal.h>
 #include <linux/stat.h>   
+#include <sys/syscall.h>
+#include <atomic>
 
 //#include "crypto++/sha.h" 
 #include "Transporter.h" 
@@ -64,12 +66,15 @@ struct LiveSetupState {
   int nchecks;
 
   bool simulating;
+  bool roi_only;
 
   char esesc_conf[MAX_CONF_NAME_LEN];
 
   LiveCache *live_warmup_cache;
   uint64_t live_warmup_addr[WARMUP_ARRAY_SIZE];
   bool live_warmup_st[WARMUP_ARRAY_SIZE];
+
+  pthread_mutex_t fork_cp_lock;
 };
 
 // Global State required for QEMU reader functions that have fixed interface
@@ -77,10 +82,12 @@ LiveSetupState gs;
 
 // Needs to a global because of use in rabbitso.cpp
 LiveCache *live_warmup_cache;
+//std::atomic<bool> global_in_roi = false;
+volatile bool global_in_roi = false;
 
 //XXX: checking to see if making inst_count a global instead of static function
 //changes anything (fixes segfault).
-static int64_t inst_count = 0;
+static std::atomic_long inst_count(0);
 
 //Declaring functions
 extern "C" void QEMUReader_goto_sleep(void *env);
@@ -122,6 +129,23 @@ dyn_QEMUReader_finish_t dyn_QEMUReader_finish=0;
 typedef void (*dyn_QEMUReader_setFlowCmd_t)(bool*);
 dyn_QEMUReader_setFlowCmd_t dyn_QEMUReader_setFlowCmd=0;
 
+void get_docker_id(char *buf) {
+ 
+  // Shell command to read the docker ID of the running container. The
+  // docker ID is 64 characters long. An additional character is needed to
+  // store the `\0` at the end of the string
+  static const char *cmd = "cat /proc/self/cgroup | grep docker | sed 's/^.*\\///' | head -n1";
+
+  FILE *p = popen(cmd, "r");
+  char *rv = fgets(buf, DOCKER_ID_LEN, p);
+  int rc = pclose(p);
+
+  I(rv);
+  I(rc == 0);
+}
+
+typedef void (*dyn_QEMUReader_start_roi_t)(uint32_t);
+dyn_QEMUReader_start_roi_t dyn_QEMUReader_start_roi=0;
 
 // Send message to criu controller on localhost
 void msg_criucont(const char *buf, size_t bytes, const char *host, const char *port) {
@@ -192,17 +216,21 @@ char *wait_fifo(char *readbuf, int bufsize) {
         perror("Could not open fifo");
       }
     }
-    fprintf(stderr, "Error: could not open fifo: %s", fifo_file);
-    exit(-1);
+    //fprintf(stderr, "Error: could not open fifo: %s", fifo_file);
+    //exit(-1);
   }
   char *rv = NULL;
+  int fifo_count = 0;
   do {
     rv = fgets(readbuf, bufsize, fp);
     if(rv == NULL) {
-      fprintf(stderr, "WARNING reading: '%s' returned NULL\n", fifo_file);
+      fprintf(stderr, "WARNING reading: '%s' returned NULL %d times\t errno: '%m'\n", fifo_file, ++fifo_count);
+      sleep(1);
     }
   } while(rv == NULL); 
-  
+
+  fprintf(stderr,"WAIT_FIFO: read '%s' from '%s'\n",readbuf,fifo_file);
+
   fclose(fp);
   return rv;
 }
@@ -220,6 +248,7 @@ void init_QEMUReader_fns(void *handle) {
   dyn_QEMUReader_syscall         = (dyn_QEMUReader_syscall_t)dlsym(handle, "QEMUReader_syscall");
   dyn_QEMUReader_finish          = (dyn_QEMUReader_finish_t)dlsym(handle, "QEMUReader_finish");
   dyn_QEMUReader_setFlowCmd      = (dyn_QEMUReader_setFlowCmd_t)dlsym(handle, "QEMUReader_setFlowCmd");
+  dyn_QEMUReader_start_roi       = (dyn_QEMUReader_start_roi_t)dlsym(handle, "QEMUReader_start_roi");
 
   char *err = dlerror();
   if(err) {
@@ -237,7 +266,7 @@ void load_rabbit () {
 
   gs.handle = dlopen("librabbitso.so", RTLD_NOW);
   if (!gs.handle) {
-    printf("DLOPEN: %s\n", dlerror());
+    fprintf(stderr,"DLOPEN: %s\n", dlerror());
     exit(EXIT_FAILURE);
   }
 
@@ -246,9 +275,20 @@ void load_rabbit () {
 
 void start_simulation() {
 
+  fprintf(stderr,"Called start_simulation()\n"); 
+  
+  
   // Fill out the live warmup array?
   uint64_t live_warmup_cnt;
-  live_warmup_cnt = gs.live_warmup_cache->traverse(gs.live_warmup_addr, gs.live_warmup_st);
+  
+  //TODO: Need to make LiveCache work with multithreaded apps
+  //For now if simulating 'roi_only' then don't traverse live cache because 
+  //it crashes.
+  if(!gs.roi_only) {
+    fprintf(stderr,"live_warmup_cache: %p\n",gs.live_warmup_cache); // Debugging code
+    live_warmup_cnt = gs.live_warmup_cache->traverse(gs.live_warmup_addr, gs.live_warmup_st);
+    fprintf(stderr,"live_warmup_cnt: %d\n",live_warmup_cnt);  // Debugging code
+  }
 
   pid_t pid = getpid();
 
@@ -260,7 +300,7 @@ void start_simulation() {
   dlclose(gs.handle);
   gs.handle = dlopen("libesescso.so", RTLD_NOW);
   if (!gs.handle) {
-    printf("DLOPEN: %s\n", dlerror());
+    fprintf(stderr,"DLOPEN: %s\n", dlerror());
     exit(EXIT_FAILURE);
   }
 
@@ -297,9 +337,10 @@ void start_simulation() {
 
 }
 
-void fork_checkpoint() {
+void fork_checkpoint(uint16_t fid) {
 
-  fprintf(stderr,"Calling fork_checkpoint()\n");
+  pid_t tid = syscall(SYS_gettid); // DEBUGGING: remove when done
+  fprintf(stderr,"Calling fork_checkpoint() fid: %d\t tid: %d\n", fid, tid);
   I(gs.cont_host);
   I(gs.cont_port);
 
@@ -321,8 +362,8 @@ void fork_checkpoint() {
     start_simulation();
   } 
   else {
-    printf("Received message: '%s' ", fifo_val);
-    printf("Exiting ESESC\n");
+    fprintf(stderr,"Received message: '%s' ", fifo_val);
+    fprintf(stderr,"Exiting ESESC\n");
     exit(0);
   }
 }
@@ -354,8 +395,8 @@ extern "C" FlowID QEMUReader_resumeThread (FlowID uid, FlowID last_fid) {
 
 
 extern "C" void QEMUReader_start_roi(uint32_t fid) {
-  //TODO:  Need to actually link function dynamically 
-  return;
+  fprintf(stderr,"Livecriu: start_roi\n");
+  return (*dyn_QEMUReader_start_roi)(fid);
 }
 
 
@@ -373,16 +414,38 @@ extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t f
   (*dyn_QEMUReader_queue_inst)(pc, addr, fid, op, src1, src2, dest, env);
 
   if(!gs.simulating) {
-    if (gs.nchecks <= 0) {
-      exit(0);
+    
+
+    if(gs.roi_only && !global_in_roi) {
+      return 0;
     }
 
-    inst_count += 1;
+    inst_count++; 
     if(inst_count > gs.nrabbit) {
-      gs.nchecks--;
+      pthread_mutex_lock(&gs.fork_cp_lock); //LOCK
+
+      // Only fork one checkpoit per inst count interval. If the other
+      // thread set inst_count to 0 then it will be less than nsrabbit
+      // when this thread aquires the lock. So thread should return rather
+      // than forking a checkpoint
+      if(inst_count < gs.nrabbit) {
+        pthread_mutex_unlock(&gs.fork_cp_lock); //UNLOCK for early exit
+        return 0;
+      }
+      
+      if (gs.nchecks <= 0) {
+        fprintf(stderr,"Exiting 0 checks left\n");
+        pthread_mutex_unlock(&gs.fork_cp_lock); //UNLOCK for early exit
+        exit(0);
+      }
+
       inst_count = 0;
-      fork_checkpoint();
+      write(2,"[\n",2);  // Debugging code to check for race
+      fork_checkpoint(fid);
+      write(2,"]\n",2);  // Debugging code to check for race
       gs.cpid++;
+      gs.nchecks--;
+      pthread_mutex_unlock(&gs.fork_cp_lock); //UNLOCK
     }
   }
 
@@ -403,7 +466,7 @@ extern "C" void QEMUReader_setFlowCmd (bool* flowStatus) {
 
 
 int main (int argc, char **argv) {
-  const int NUM_LIVE_ARGS = 11;
+  const int NUM_LIVE_ARGS = 12;
 
   fprintf(stderr,"Starting ESESC Livecriu test1\n");
   //raise(SIGSTOP);
@@ -413,7 +476,7 @@ int main (int argc, char **argv) {
   // duplication 
   if(argc < NUM_LIVE_ARGS + 1) { 
     printf("Usage: live <id> <controller host> <controller port> <host_adr> <server port_number> <num_cp> <cp_interval> "
-        "<esesc_conf_file> <benchmark name> <fifo base path> <benchmark binary> [benchmark_args] \n");
+        "<roi_only> <esesc_conf_file> <benchmark name> <fifo base path> <benchmark binary> [benchmark_args] \n");
     exit(-1);
   }
 
@@ -424,19 +487,27 @@ int main (int argc, char **argv) {
   gs.portno = atoi(argv[5]);
   gs.nchecks = atoi(argv[6]);
   gs.nrabbit = atoi(argv[7]);
-  strncpy(gs.esesc_conf, argv[8], MAX_CONF_NAME_LEN);
-  strncpy(gs.bench_id, argv[9], MAX_BENCH_NAME_LEN);
-  strncpy(gs.fifo_base_path, argv[10], MAX_FIFO_BASE_PATH_LEN);
+  gs.roi_only = static_cast<bool>(atoi(argv[8]));
+  strncpy(gs.esesc_conf, argv[9], MAX_CONF_NAME_LEN);
+  strncpy(gs.bench_id, argv[10], MAX_BENCH_NAME_LEN);
+  strncpy(gs.fifo_base_path, argv[11], MAX_FIFO_BASE_PATH_LEN);
   gs.cpid = 0;
   gs.simulating = false;
+
+  //inst_count = 0;
+  pthread_mutex_init(&gs.fork_cp_lock, NULL);
 
   int qargc = argc - (NUM_LIVE_ARGS - 1);
   char **qargv = static_cast<char **>(malloc(qargc * sizeof(char *)));
   qargv[0] = strdup("live");
   for(int i = NUM_LIVE_ARGS; i < argc; i++) {
     qargv[i - (NUM_LIVE_ARGS - 1)] = strdup(argv[i]);
+    fprintf(stderr,"arg[%d]: '%s'\n",i - (NUM_LIVE_ARGS-1), argv[i]);
   }
   fprintf(stderr,"Starting ESESC Livecriu test2\n");
+  if(gs.roi_only) {
+    fprintf(stderr,"ROI only measurement mode\n");
+  }
 
   load_rabbit();
   qemuesesc_main(qargc,qargv,0);

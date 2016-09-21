@@ -58,7 +58,7 @@ class TaskHandler {
     typedef FlowID* runningType;
 
     static AllMapsType allmaps;
-    volatile static bool terminate_all;
+    static bool terminate_all;
 
     static runningType running;
     static FlowID running_size;

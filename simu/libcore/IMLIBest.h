@@ -67,15 +67,16 @@
 
 #define SUBENTRIES 1
 
-#define NHIST 10
+#define NHIST 12
 
 #ifdef REALISTIC 
-#define LOGG  11 /* logsize of the  tagged TAGE tables*/
+#define LOGG  10 /* logsize of the  tagged TAGE tables*/
 #define TBITS 10 /* minimum tag width*/
 #define  POWER
 //use geometric history length
 #ifdef USE_DOLC
 #define MAXHIST 192 // (128+32)
+//#define MAXHIST 27 // (128+32)
 #define MINHIST 3
 #else
 //#define MINHIST 7
@@ -516,9 +517,14 @@ public:
 //For the TAGE predictor
 #define LOG2FETCHWIDTH 6
 #define LOGB   8 	  // 14 bits (8+6)
-#define BWIDTH 2
 #define UWIDTH 2		// u counter width on TAGE
+#ifdef FETCH_PREDICT
+#define BWIDTH 3
+#define CWIDTH 5	
+#else
+#define BWIDTH 2
 #define CWIDTH 3		// predictor counter width on the TAGE tagged tables
+#endif
 
 class Bimodal {
 private:

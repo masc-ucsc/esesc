@@ -18,7 +18,6 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "qemu/host-utils.h"
@@ -151,9 +150,7 @@ uint32_t helper_clz(uint32_t t0)
 
 uint32_t helper_carry(uint32_t a, uint32_t b, uint32_t cf)
 {
-    uint32_t ncf;
-    ncf = compute_carry(a, b, cf);
-    return ncf;
+    return compute_carry(a, b, cf);
 }
 
 static inline int div_prepare(CPUMBState *env, uint32_t a, uint32_t b)
@@ -289,12 +286,14 @@ uint32_t helper_fcmp_un(CPUMBState *env, uint32_t a, uint32_t b)
     fa.l = a;
     fb.l = b;
 
-    if (float32_is_signaling_nan(fa.f) || float32_is_signaling_nan(fb.f)) {
+    if (float32_is_signaling_nan(fa.f, &env->fp_status) ||
+        float32_is_signaling_nan(fb.f, &env->fp_status)) {
         update_fpu_flags(env, float_flag_invalid);
         r = 1;
     }
 
-    if (float32_is_quiet_nan(fa.f) || float32_is_quiet_nan(fb.f)) {
+    if (float32_is_quiet_nan(fa.f, &env->fp_status) ||
+        float32_is_quiet_nan(fb.f, &env->fp_status)) {
         r = 1;
     }
 

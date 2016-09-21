@@ -433,6 +433,11 @@ protected:
 //#endif
   void destroy();
 
+  void resetStart(MemObj *obj) { 
+    creatorObj = obj;  
+    homeMemObj = obj; 
+  }
+
   MemObj *getHomeNode() const  { return homeMemObj; }
   MemObj *getCreator()  const  { return creatorObj; }
   MemObj *getCurrMem()  const  { return currMemObj; }

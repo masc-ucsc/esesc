@@ -51,11 +51,10 @@ class MemObj;
 class SamplerBase : public EmuSampler {
 
 private:
-  uint64_t nextSwitch;
    
 protected:
 
-	MemObj  *DL1; // For warmup
+  MemObj  *DL1; // For warmup
 
   uint64_t nInstRabbit;
   uint64_t nInstWarmup;
@@ -63,11 +62,7 @@ protected:
   uint64_t nInstTiming;
   uint64_t nInstForcedDetail;
   uint64_t maxnsTime;
-
-  uint64_t nInstSkip;
-  uint64_t nInstMax;
-
-  bool roi_skip;
+  double   last_addtime;
 
   EmuMode  next2EmuTiming;
   EmuMode lastMode;
@@ -106,12 +101,6 @@ protected:
   FILE *genReportFileNameAndOpen(const char *str);
   void fetchNextMode();
 	void doWarmupOpAddr(InstOpcode op, uint64_t addr);
-
-  void setNextSwitch(uint64_t instNum);
-  uint64_t getNextSwitch() const { return nextSwitch; }
-
-  void start_roi();
-
 public:
   SamplerBase(const char *name, const char *section, EmulInterface *emul, FlowID fid = 0);
   virtual ~SamplerBase();
@@ -142,7 +131,9 @@ public:
   double getFreq() const { return freq*getTurboRatio(); }
   double getNominatedFreq(){ return freq; }
 
-  virtual float getSamplingRatio() = 0;
+  float getSamplingRatio() const {
+    return static_cast<float>(nInstTiming)/static_cast<float>(nInstRabbit + nInstWarmup + nInstDetail + nInstTiming);
+  };
 };
 
 #endif

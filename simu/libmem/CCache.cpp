@@ -806,11 +806,8 @@ void CCache::doDisp(MemRequest *mreq)
       if (l->getSharingCount() == 0)
         l->invalidate();
     }
-    router->scheduleDisp(mreq, 1);
-    writeBack.inc();
-  }else{
-    mreq->ack();
   }
+  mreq->ack();
 }
 // }}}
 

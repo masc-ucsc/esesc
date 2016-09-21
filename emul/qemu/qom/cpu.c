@@ -114,6 +114,8 @@ void cpu_reset_interrupt(CPUState *cpu, int mask)
 void cpu_exit(CPUState *cpu)
 {
     cpu->exit_request = 1;
+    /* Ensure cpu_exec will see the exit request after TCG has exited.  */
+    smp_wmb();
     cpu->tcg_exit_req = 1;
 }
 
@@ -247,8 +249,9 @@ static void cpu_common_reset(CPUState *cpu)
     cpu->mem_io_vaddr = 0;
     cpu->icount_extra = 0;
     cpu->icount_decr.u32 = 0;
-    cpu->can_do_io = 0;
+    cpu->can_do_io = 1;
     cpu->exception_index = -1;
+    cpu->crash_occurred = false;
     memset(cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof(void *));
 }
 
@@ -314,6 +317,7 @@ static void cpu_common_initfn(Object *obj)
 
     cpu->cpu_index = -1;
     cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
+    qemu_mutex_init(&cpu->work_mutex);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
 }

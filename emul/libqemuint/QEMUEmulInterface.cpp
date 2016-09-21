@@ -24,6 +24,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "QEMUEmulInterface.h"
 #include "QEMUInterface.h"
+#include "EmuSampler.h"
 #include "SescConf.h"
 
 std::vector<FlowID> QEMUEmulInterface::fidFreePool; // 0 not available for this core type, 
@@ -76,33 +77,63 @@ QEMUEmulInterface::QEMUEmulInterface(const char *section)
   int qargc = 1;
   int paramcount = SescConf->getRecordSize(section,"params");
 
+  bool stringmode = false;
   for(int j = 0; j < paramcount; j++) {
     char *s = strdup(SescConf->getCharPtr(section,"params",j));
     char *s_start = s;
     qargc++;
     while(*s) {
-      if(isspace(*s))
-        qargc++;
-      while(isspace(*s))
-        s++;
+      if (*s == '\'')
+        stringmode = !stringmode;
+      if (!stringmode) {
+        if(isspace(*s))
+          qargc++;
+
+        while(isspace(*s))
+          s++;
+      }
       s++;
     }
     free(s_start);
   }
 
+  stringmode = false;
   qargs->qargc = qargc;
   qargs->qargv = (char **)malloc(qargs->qargc*sizeof(char*));
+  for(int j = 0; j < qargs->qargc; j++) {
+    qargs->qargv[j] = strdup(" ");
+  }
   qargs->qargv[qargpos++] = (char *) "qemu";
   for(int j = 0; j < paramcount; j++) {
     char *param = strdup(SescConf->getCharPtr(section,"params",j));
     char *param_start = param;
     char *splitparam = strtok(param, " ");
     while(splitparam != NULL) {
-      qargs->qargv[qargpos++] = strdup(splitparam);
+      char cadena[8192];
+      if (stringmode) {
+        if (splitparam[0] == '\'')
+          sprintf(cadena,"%s %s",qargs->qargv[qargpos],&splitparam[1]);
+        else{
+          sprintf(cadena,"%s %s",qargs->qargv[qargpos],splitparam);
+          int last = strlen(cadena);
+          for(int i=0;i<last;i++)
+              if (cadena[i] == '\'')
+              cadena[i] = ' ';
+        }
+        qargs->qargv[qargpos] = strdup(cadena);
+      }else{
+        qargs->qargv[qargpos] = strdup(splitparam);
+      }
+      if (strchr(splitparam,'\''))
+        stringmode = !stringmode;
+      if (!stringmode)
+        qargpos++;
+
       splitparam = strtok(NULL," ");
     }
     free(param_start);
   }
+  qargs->qargc = qargpos;
 
   firstassign = 1; // zero is already assigned as FID
   if (firstassign >= fidFreePool.size())
@@ -116,6 +147,11 @@ QEMUEmulInterface::~QEMUEmulInterface()
 {
   delete reader;
   reader = 0;
+}
+
+void QEMUEmulInterface::setFid(FlowID cpuid) {
+  I(fidFreePool.size()>cpuid);
+  fidFreePool[cpuid] = FID_TAKEN;
 }
 
 FlowID QEMUEmulInterface::getFid(FlowID last_fid)
@@ -179,24 +215,37 @@ void QEMUEmulInterface::freeFid(FlowID fid)
 {
   //pthread_mutex_lock (&mutex);
 
-  I(fidFreePool[fid] == FID_TAKEN);
+  //I(fidFreePool[fid] == FID_TAKEN); // Sometimes removed whenthe queue is too small ahead
   fidFreePool[fid] = FID_FREED;
 
   //pthread_mutex_unlock(&mutex);
+}
+
+bool QEMUEmulInterface::populate(FlowID fid) 
+{
+  I(nFlows>fid);
+
+  return reader->populate(fid);
 }
 
 DInst *QEMUEmulInterface::peekHead(FlowID fid) 
 {
   I(nFlows);
 
-  return reader->peekHead(fid);
+  I(qsamplerlist[fid] == sampler);
+
+  DInst *dinst = reader->peekHead(fid);
+  if (dinst)
+    sampler->setStatsFlag(dinst);
+
+  return dinst;
 }
 
-DInst *QEMUEmulInterface::executeHead(FlowID fid) 
+void QEMUEmulInterface::executeHead(FlowID fid) 
 {
   I(nFlows);
 
-  return reader->executeHead(fid);
+  reader->executeHead(fid);
 }
 
 void QEMUEmulInterface::reexecuteTail(FlowID fid) 

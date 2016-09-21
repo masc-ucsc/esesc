@@ -43,17 +43,40 @@
 #include "FetchEngine.h"
 #include "GMemorySystem.h"
 #include "ClusterManager.h"
+#include "estl.h"
+
+class feqstr {
+public:
+  inline bool operator()(const char* s1, const char* s2) const {
+    return strcasecmp(s1, s2) == 0;
+  }
+};
+
+typedef HASH_MAP<const char *,SMTFetch *, HASH<const char*>, feqstr>  FetchMapType;
+static FetchMapType   fetchMap;
 
 InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   :GProcessor(gm, i)
   ,RetireDelay(SescConf->getInt("cpusimu", "RetireDelay",i))
-  ,IFID(i, gm)
   ,pipeQ(i)
   ,lsq(i,32768)
   ,rROB(SescConf->getInt("cpusimu", "robSize", i))
   ,clusterManager(gm, this)
-{/*{{{*/
+{// {{{1
+  char fName[1024];
 
+  sprintf(fName,"Fetch(%d)",smt_ctx);
+  FetchMapType::const_iterator it = fetchMap.find(fName);
+
+  if (it != fetchMap.end() && smt>1) {
+    ifid = new FetchEngine(i, gm, it->second->fe);
+    sf   = it->second;
+  }else{
+    ifid = new FetchEngine(i, gm);
+    sf = new SMTFetch;
+    sf->fe = ifid;
+    fetchMap[fName] = sf;
+  }
 
   spaceInInstQueue = InstQueueSize;
 
@@ -61,8 +84,11 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   RAT = new DInst* [LREG_MAX * smtnum * 128];
   bzero(RAT,sizeof(DInst*)*LREG_MAX * smtnum * 128);
 
-  busy = false;/*}}}*/
-}/*}}}*/
+  busy = false;
+  lastrob_getStatsFlag = false;
+
+}
+// 1}}}
 
 InOrderProcessor::~InOrderProcessor()
 {/*{{{*/
@@ -70,23 +96,55 @@ InOrderProcessor::~InOrderProcessor()
   // Nothing to do
 }/*}}}*/
 
+bool SMTFetch::update(bool space) {
+  // {{{1
+  if (smt_lastTime != globalClock) {
+    smt_lastTime = globalClock;
+    smt_active   = smt_cnt;
+    smt_cnt      = 1;
+  }else{
+    smt_cnt++;
+  }
+  I(smt_active>0);
+
+  smt_turn--;
+  if (smt_turn<0 && space) {
+    if (smt_cnt == smt_active)
+      smt_turn = 0;
+    else
+      smt_turn = smt_active;
+    return true;
+  }
+
+  return false;
+} // 1}}}
+
 void InOrderProcessor::fetch(FlowID fid)
 {/*{{{*/
   // TODO: Move this to GProcessor (same as in OoOProcessor)
   I(eint);
   I(active);
 
-  if( IFID.isBlocked(0)) {
-    busy = true;
-  }else{
-    IBucket *bucket = pipeQ.pipeLine.newItem();
-    if( bucket ) {
-      IFID.fetch(bucket, eint, fid);
-      if (!bucket->empty()) {
-        busy = true;
-      }
+  if (smt>1) {
+    bool run = sf->update(spaceInInstQueue >= FetchWidth);
+
+    if (run) {
+      //printf("1.fetch fid=%d active=%d @%lld\n",fid, sf->smt_active, globalClock);
+    }else{
+      //printf("2.fetch fid=%d active=%d turn=%d @%lld\n",fid, sf->smt_active, sf->smt_turn, globalClock);
+      // busy = true;
+      return;
     }
   }
+
+  if(ifid->isBlocked())
+    return;
+
+  IBucket *bucket = pipeQ.pipeLine.newItem();
+  if( bucket ) {
+    ifid->fetch(bucket, eint, fid);
+  }
+
 }/*}}}*/
 
 bool InOrderProcessor::advance_clock(FlowID fid)
@@ -100,12 +158,13 @@ bool InOrderProcessor::advance_clock(FlowID fid)
   //IS(if (cpu_id == 1) MSG("\n**\n@%lld: Processing CPU (%d)",(long long int)globalClock,cpu_id));
   fetch(fid);
 
-  if (!busy)
-    return false;
-
-  bool getStatsFlag = false;
+  bool getStatsFlag;
   if( !ROB.empty() ) {
     getStatsFlag = ROB.top()->getStatsFlag();
+    lastrob_getStatsFlag = getStatsFlag;
+  }else{
+    // In-order core tends to be quite empty, remember last ROB stats if rob is empty
+    getStatsFlag = lastrob_getStatsFlag;
   }
   //IS(if (cpu_id == 1) MSG("@%lld: Fetching CPU (%d)",(long long int)globalClock,cpu_id));
   clockTicks.inc(getStatsFlag);
@@ -131,6 +190,7 @@ bool InOrderProcessor::advance_clock(FlowID fid)
   //IS(if (cpu_id == 1) MSG("@%lld: Renaming CPU (%d)",(long long int)globalClock,cpu_id));
   // RENAME Stage
   if ( !pipeQ.instQueue.empty() ) {
+    busy = true;
     uint32_t n_insn =  issue(pipeQ);
     spaceInInstQueue += n_insn;
     //IS(if (cpu_id == 1) MSG("@%lld: Issuing %d items in pipeline for CPU (%d)",(long long int)globalClock,n_insn, cpu_id));
@@ -141,6 +201,7 @@ bool InOrderProcessor::advance_clock(FlowID fid)
     //IS(if ((cpu_id == 1)&&(busy)) MSG("@%lld: pipeline also has outstanding items CPU (%d)",(long long int)globalClock,cpu_id));
     return true;
   } else {
+    busy = true;
     //IS(if (cpu_id == 1) MSG("@%lld: CPU (%d) PipeQ.instQueue is empty, and either ROB and rROB are empty",(long long int)globalClock,cpu_id));
   }
 
@@ -153,22 +214,33 @@ bool InOrderProcessor::advance_clock(FlowID fid)
 void InOrderProcessor::executing(DInst *dinst) {
 }
 
+void InOrderProcessor::executed(DInst *dinst) {
+}
+
 StallCause InOrderProcessor::addInst(DInst *dinst)
 {/*{{{*/
 
   const Instruction *inst = dinst->getInst();
 
+#if 1
 #if 0
   // Simple in-order
   if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence) && (inst->getSrc1() != LREG_InvalidOutput)) ||
      ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence) && (inst->getSrc2() != LREG_InvalidOutput))||
      ((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
-     ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))){
+     ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))) {
+#else
+#if 1
+  // Simple in-order for RAW, but not WAW or WAR
+  if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence)) ||
+     ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence)) ) {
 #else
     // scoreboard, no output dependence
   if(((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
-     ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))){
+     ((RAT[inst->getDst2()] != 0) && (inst->getDst2() != LREG_InvalidOutput))) {
 #endif
+#endif
+
 #if 0
     //Useful for debug
     if (cpu_id == 1 ){
@@ -202,6 +274,7 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
 #endif
     return SmallWinStall;
   }
+#endif
 
   if( (ROB.size()+rROB.size()) >= MaxROBSize )
     return SmallROBStall;
@@ -353,3 +426,4 @@ void InOrderProcessor::replay(DInst *dinst)
 
   // FIXME: How do we manage a replay in this processor??
 }/*}}}*/
+

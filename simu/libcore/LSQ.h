@@ -37,9 +37,11 @@ private:
 protected:
 
   int32_t freeEntries;
+  int32_t unresolved;
 
   LSQ(int32_t size) {
     freeEntries = size;
+    unresolved  = 0;
   }
 
   virtual ~LSQ() { }
@@ -54,9 +56,11 @@ public:
     freeEntries++;
   }
   void decFreeEntries() {
+    unresolved++;
     freeEntries--;
   }
-  int32_t hasFreeEntries() const { return freeEntries>0; }
+  bool  hasFreeEntries()       const { return freeEntries>0; }
+  bool  hasPendingResolution() const { return unresolved >0; }
 
 };
 

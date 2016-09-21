@@ -79,6 +79,27 @@ static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
     }
 }
 
+static void cp_reg_check_reset(gpointer key, gpointer value,  gpointer opaque)
+{
+    /* Purely an assertion check: we've already done reset once,
+     * so now check that running the reset for the cpreg doesn't
+     * change its value. This traps bugs where two different cpregs
+     * both try to reset the same state field but to different values.
+     */
+    ARMCPRegInfo *ri = value;
+    ARMCPU *cpu = opaque;
+    uint64_t oldvalue, newvalue;
+
+    if (ri->type & (ARM_CP_SPECIAL | ARM_CP_ALIAS | ARM_CP_NO_RAW)) {
+        return;
+    }
+
+    oldvalue = read_raw_cp_reg(&cpu->env, ri);
+    cp_reg_reset(key, value, opaque);
+    newvalue = read_raw_cp_reg(&cpu->env, ri);
+    assert(oldvalue == newvalue);
+}
+
 /* CPUClass::reset() */
 static void arm_cpu_reset(CPUState *s)
 {
@@ -90,6 +111,8 @@ static void arm_cpu_reset(CPUState *s)
 
     memset(env, 0, offsetof(CPUARMState, features));
     g_hash_table_foreach(cpu->cp_regs, cp_reg_reset, cpu);
+    g_hash_table_foreach(cpu->cp_regs, cp_reg_check_reset, cpu);
+
     env->vfp.xregs[ARM_VFP_FPSID] = cpu->reset_fpsid;
     env->vfp.xregs[ARM_VFP_MVFR0] = cpu->mvfr0;
     env->vfp.xregs[ARM_VFP_MVFR1] = cpu->mvfr1;
@@ -308,10 +331,7 @@ static void arm_cpu_set_irq(void *opaque, int irq, int level)
     switch (irq) {
     case ARM_CPU_VIRQ:
     case ARM_CPU_VFIQ:
-        if (!arm_feature(env, ARM_FEATURE_EL2)) {
-            hw_error("%s: Virtual interrupt line %d with no EL2 support\n",
-                     __func__, irq);
-        }
+        assert(arm_feature(env, ARM_FEATURE_EL2));
         /* fall through */
     case ARM_CPU_IRQ:
     case ARM_CPU_FIQ:
@@ -322,7 +342,7 @@ static void arm_cpu_set_irq(void *opaque, int irq, int level)
         }
         break;
     default:
-        hw_error("arm_cpu_set_irq: Bad interrupt line %d\n", irq);
+        g_assert_not_reached();
     }
 }
 
@@ -341,7 +361,7 @@ static void arm_cpu_kvm_set_irq(void *opaque, int irq, int level)
         kvm_irq |= KVM_ARM_IRQ_CPU_FIQ;
         break;
     default:
-        hw_error("arm_cpu_kvm_set_irq: Bad interrupt line %d\n", irq);
+        g_assert_not_reached();
     }
     kvm_irq |= cs->cpu_index << KVM_ARM_IRQ_VCPU_SHIFT;
     kvm_set_irq(kvm_state, kvm_irq, level ? 1 : 0);
@@ -436,7 +456,7 @@ static void arm_cpu_initfn(Object *obj)
      */
     Aff1 = cs->cpu_index / ARM_CPUS_PER_CLUSTER;
     Aff0 = cs->cpu_index % ARM_CPUS_PER_CLUSTER;
-    cpu->mp_affinity = (Aff1 << 8) | Aff0;
+    cpu->mp_affinity = (Aff1 << ARM_AFF1_SHIFT) | Aff0;
 
 #ifndef CONFIG_USER_ONLY
     /* Our inbound IRQ and FIQ lines */
@@ -453,6 +473,10 @@ static void arm_cpu_initfn(Object *obj)
                                                 arm_gt_ptimer_cb, cpu);
     cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
                                                 arm_gt_vtimer_cb, cpu);
+    cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
+                                                arm_gt_htimer_cb, cpu);
+    cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
+                                                arm_gt_stimer_cb, cpu);
     qdev_init_gpio_out(DEVICE(cpu), cpu->gt_timer_outputs,
                        ARRAY_SIZE(cpu->gt_timer_outputs));
 #endif
@@ -1403,6 +1427,17 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->debug_excp_handler = arm_debug_excp_handler;
 
     cc->disas_set_info = arm_disas_set_info;
+
+    /*
+     * Reason: arm_cpu_initfn() calls cpu_exec_init(), which saves
+     * the object in cpus -> dangling pointer after final
+     * object_unref().
+     *
+     * Once this is fixed, the devices that create ARM CPUs should be
+     * updated not to set cannot_destroy_with_object_finalize_yet,
+     * unless they still screw up something else.
+     */
+    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static void cpu_register(const ARMCPUInfo *info)

@@ -23,40 +23,8 @@
 #include "exec/cpu_ldst.h"
 #include "sysemu/kvm.h"
 
-#ifndef CONFIG_USER_ONLY
-static inline void cpu_mips_tlb_flush (CPUMIPSState *env, int flush_global);
-#endif
-
 /*****************************************************************************/
 /* Exceptions processing helpers */
-
-static inline void QEMU_NORETURN do_raise_exception_err(CPUMIPSState *env,
-                                                        uint32_t exception,
-                                                        int error_code,
-                                                        uintptr_t pc)
-{
-    CPUState *cs = CPU(mips_env_get_cpu(env));
-
-    if (exception < EXCP_SC) {
-        qemu_log("%s: %d %d\n", __func__, exception, error_code);
-    }
-    cs->exception_index = exception;
-    env->error_code = error_code;
-
-    if (pc) {
-        /* now we have a real cpu fault */
-        cpu_restore_state(cs, pc);
-    }
-
-    cpu_loop_exit(cs);
-}
-
-static inline void QEMU_NORETURN do_raise_exception(CPUMIPSState *env,
-                                                    uint32_t exception,
-                                                    uintptr_t pc)
-{
-    do_raise_exception_err(env, exception, 0, pc);
-}
 
 void helper_raise_exception_err(CPUMIPSState *env, uint32_t exception,
                                 int error_code)
@@ -66,12 +34,32 @@ void helper_raise_exception_err(CPUMIPSState *env, uint32_t exception,
 
 void helper_raise_exception(CPUMIPSState *env, uint32_t exception)
 {
+    do_raise_exception(env, exception, GETPC());
+}
+
+void helper_raise_exception_debug(CPUMIPSState *env)
+{
+    do_raise_exception(env, EXCP_DEBUG, 0);
+}
+
+static void raise_exception(CPUMIPSState *env, uint32_t exception)
+{
     do_raise_exception(env, exception, 0);
 }
 
 #ifdef CONFIG_ESESC
+#include "esesc_qemu.h"
+
 long long int icount = 0;
-uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest, void *env);
+
+
+void helper_esesc_dump() {
+    CPUState *other_cs = first_cpu;
+
+    CPU_FOREACH(other_cs) {
+        printf("cpuid=%d halted=%d\n",other_cs->fid, other_cs->halted);
+    }
+}
 
 void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t op, uint64_t reg) {
 
@@ -80,9 +68,9 @@ void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t
     return;
   }
 
-	//qemu_log_mask(CPU_LOG_TB_IN_ASM,"4. %d pc:%llx op:%llx addr:%llx\n", env->fid, (long long)pc, (long long)op, (long long)target);
+  //qemu_log_mask(CPU_LOG_TB_IN_ASM,"4. %d pc:%llx op:%llx addr:%llx\n", env->fid, (long long)pc, (long long)op, (long long)target);
   CPUState *cpu       = ENV_GET_CPU(env);
-  
+
   int src1 = reg & 0xFF;
   reg      = reg >> 8;
   int src2 = reg & 0xFF;
@@ -94,24 +82,25 @@ void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t
 
 void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg) {
 
+
   if (icount>0) {
     icount--;
     return;
   }
-  
+
   CPUState *cpu       = ENV_GET_CPU(env);
-  
+
   int src1 = reg & 0xFF;
   reg      = reg >> 8;
   int src2 = reg & 0xFF;
   reg      = reg >> 8;
   int dest = reg & 0xFF;
 
-	//fprintf(stderr,"%d pc:%llx op:%llx src1:%d src2:%d dest:%d\n", cpu->fid, (long long)pc, (long long)op, src1, src2, dest);
-//fprintf(stdout,"Here\n");
+  //fprintf(stderr,"%d pc:%llx op:%llx src1:%d src2:%d dest:%d\n", cpu->fid, (long long)pc, (long long)op, src1, src2, dest);
+  //fprintf(stdout,"Here\n");
   // This will not be accurate but it'll be faster
   // Assuming that's why you are running in rabbit mode
-    
+
   icount = QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest, env);
 }
 #endif
@@ -119,21 +108,21 @@ void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg)
 #if defined(CONFIG_USER_ONLY)
 #define HELPER_LD(name, insn, type)                                     \
 static inline type do_##name(CPUMIPSState *env, target_ulong addr,      \
-                             int mem_idx)                               \
+                             int mem_idx, uintptr_t retaddr)            \
 {                                                                       \
-    return (type) cpu_##insn##_data(env, addr);                         \
+    return (type) cpu_##insn##_data_ra(env, addr, retaddr);             \
 }
 #else
 #define HELPER_LD(name, insn, type)                                     \
 static inline type do_##name(CPUMIPSState *env, target_ulong addr,      \
-                             int mem_idx)                               \
+                             int mem_idx, uintptr_t retaddr)            \
 {                                                                       \
     switch (mem_idx)                                                    \
     {                                                                   \
-    case 0: return (type) cpu_##insn##_kernel(env, addr); break;        \
-    case 1: return (type) cpu_##insn##_super(env, addr); break;         \
+    case 0: return (type) cpu_##insn##_kernel_ra(env, addr, retaddr);   \
+    case 1: return (type) cpu_##insn##_super_ra(env, addr, retaddr);    \
     default:                                                            \
-    case 2: return (type) cpu_##insn##_user(env, addr); break;          \
+    case 2: return (type) cpu_##insn##_user_ra(env, addr, retaddr);     \
     }                                                                   \
 }
 #endif
@@ -146,21 +135,21 @@ HELPER_LD(ld, ldq, int64_t)
 #if defined(CONFIG_USER_ONLY)
 #define HELPER_ST(name, insn, type)                                     \
 static inline void do_##name(CPUMIPSState *env, target_ulong addr,      \
-                             type val, int mem_idx)                     \
+                             type val, int mem_idx, uintptr_t retaddr)  \
 {                                                                       \
-    cpu_##insn##_data(env, addr, val);                                  \
+    cpu_##insn##_data_ra(env, addr, val, retaddr);                      \
 }
 #else
 #define HELPER_ST(name, insn, type)                                     \
 static inline void do_##name(CPUMIPSState *env, target_ulong addr,      \
-                             type val, int mem_idx)                     \
+                             type val, int mem_idx, uintptr_t retaddr)  \
 {                                                                       \
     switch (mem_idx)                                                    \
     {                                                                   \
-    case 0: cpu_##insn##_kernel(env, addr, val); break;                 \
-    case 1: cpu_##insn##_super(env, addr, val); break;                  \
+    case 0: cpu_##insn##_kernel_ra(env, addr, val, retaddr); break;     \
+    case 1: cpu_##insn##_super_ra(env, addr, val, retaddr); break;      \
     default:                                                            \
-    case 2: cpu_##insn##_user(env, addr, val); break;                   \
+    case 2: cpu_##insn##_user_ra(env, addr, val, retaddr); break;       \
     }                                                                   \
 }
 #endif
@@ -339,14 +328,15 @@ target_ulong helper_bitswap(target_ulong rt)
 
 static inline hwaddr do_translate_address(CPUMIPSState *env,
                                                       target_ulong address,
-                                                      int rw)
+                                                      int rw, uintptr_t retaddr)
 {
     hwaddr lladdr;
+    CPUState *cs = CPU(mips_env_get_cpu(env));
 
     lladdr = cpu_mips_translate_address(env, address, rw);
 
     if (lladdr == -1LL) {
-        cpu_loop_exit(CPU(mips_env_get_cpu(env)));
+        cpu_loop_exit_restore(cs, retaddr);
     } else {
         return lladdr;
     }
@@ -357,10 +347,10 @@ target_ulong helper_##name(CPUMIPSState *env, target_ulong arg, int mem_idx)  \
 {                                                                             \
     if (arg & almask) {                                                       \
         env->CP0_BadVAddr = arg;                                              \
-        helper_raise_exception(env, EXCP_AdEL);                               \
+        do_raise_exception(env, EXCP_AdEL, GETPC());                          \
     }                                                                         \
-    env->lladdr = do_translate_address(env, arg, 0);                          \
-    env->llval = do_##insn(env, arg, mem_idx);                                \
+    env->lladdr = do_translate_address(env, arg, 0, GETPC());                 \
+    env->llval = do_##insn(env, arg, mem_idx, GETPC());                       \
     return env->llval;                                                        \
 }
 HELPER_LD_ATOMIC(ll, lw, 0x3)
@@ -377,12 +367,12 @@ target_ulong helper_##name(CPUMIPSState *env, target_ulong arg1,              \
                                                                               \
     if (arg2 & almask) {                                                      \
         env->CP0_BadVAddr = arg2;                                             \
-        helper_raise_exception(env, EXCP_AdES);                               \
+        do_raise_exception(env, EXCP_AdES, GETPC());                          \
     }                                                                         \
-    if (do_translate_address(env, arg2, 1) == env->lladdr) {                  \
-        tmp = do_##ld_insn(env, arg2, mem_idx);                               \
+    if (do_translate_address(env, arg2, 1, GETPC()) == env->lladdr) {         \
+        tmp = do_##ld_insn(env, arg2, mem_idx, GETPC());                      \
         if (tmp == env->llval) {                                              \
-            do_##st_insn(env, arg2, arg1, mem_idx);                           \
+            do_##st_insn(env, arg2, arg1, mem_idx, GETPC());                  \
             return 1;                                                         \
         }                                                                     \
     }                                                                         \
@@ -406,31 +396,43 @@ HELPER_ST_ATOMIC(scd, ld, sd, 0x7)
 void helper_swl(CPUMIPSState *env, target_ulong arg1, target_ulong arg2,
                 int mem_idx)
 {
-    do_sb(env, arg2, (uint8_t)(arg1 >> 24), mem_idx);
+    do_sb(env, arg2, (uint8_t)(arg1 >> 24), mem_idx, GETPC());
 
-    if (GET_LMASK(arg2) <= 2)
-        do_sb(env, GET_OFFSET(arg2, 1), (uint8_t)(arg1 >> 16), mem_idx);
+    if (GET_LMASK(arg2) <= 2) {
+        do_sb(env, GET_OFFSET(arg2, 1), (uint8_t)(arg1 >> 16), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK(arg2) <= 1)
-        do_sb(env, GET_OFFSET(arg2, 2), (uint8_t)(arg1 >> 8), mem_idx);
+    if (GET_LMASK(arg2) <= 1) {
+        do_sb(env, GET_OFFSET(arg2, 2), (uint8_t)(arg1 >> 8), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK(arg2) == 0)
-        do_sb(env, GET_OFFSET(arg2, 3), (uint8_t)arg1, mem_idx);
+    if (GET_LMASK(arg2) == 0) {
+        do_sb(env, GET_OFFSET(arg2, 3), (uint8_t)arg1, mem_idx,
+              GETPC());
+    }
 }
 
 void helper_swr(CPUMIPSState *env, target_ulong arg1, target_ulong arg2,
                 int mem_idx)
 {
-    do_sb(env, arg2, (uint8_t)arg1, mem_idx);
+    do_sb(env, arg2, (uint8_t)arg1, mem_idx, GETPC());
 
-    if (GET_LMASK(arg2) >= 1)
-        do_sb(env, GET_OFFSET(arg2, -1), (uint8_t)(arg1 >> 8), mem_idx);
+    if (GET_LMASK(arg2) >= 1) {
+        do_sb(env, GET_OFFSET(arg2, -1), (uint8_t)(arg1 >> 8), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK(arg2) >= 2)
-        do_sb(env, GET_OFFSET(arg2, -2), (uint8_t)(arg1 >> 16), mem_idx);
+    if (GET_LMASK(arg2) >= 2) {
+        do_sb(env, GET_OFFSET(arg2, -2), (uint8_t)(arg1 >> 16), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK(arg2) == 3)
-        do_sb(env, GET_OFFSET(arg2, -3), (uint8_t)(arg1 >> 24), mem_idx);
+    if (GET_LMASK(arg2) == 3) {
+        do_sb(env, GET_OFFSET(arg2, -3), (uint8_t)(arg1 >> 24), mem_idx,
+              GETPC());
+    }
 }
 
 #if defined(TARGET_MIPS64)
@@ -446,55 +448,83 @@ void helper_swr(CPUMIPSState *env, target_ulong arg1, target_ulong arg2,
 void helper_sdl(CPUMIPSState *env, target_ulong arg1, target_ulong arg2,
                 int mem_idx)
 {
-    do_sb(env, arg2, (uint8_t)(arg1 >> 56), mem_idx);
+    do_sb(env, arg2, (uint8_t)(arg1 >> 56), mem_idx, GETPC());
 
-    if (GET_LMASK64(arg2) <= 6)
-        do_sb(env, GET_OFFSET(arg2, 1), (uint8_t)(arg1 >> 48), mem_idx);
+    if (GET_LMASK64(arg2) <= 6) {
+        do_sb(env, GET_OFFSET(arg2, 1), (uint8_t)(arg1 >> 48), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) <= 5)
-        do_sb(env, GET_OFFSET(arg2, 2), (uint8_t)(arg1 >> 40), mem_idx);
+    if (GET_LMASK64(arg2) <= 5) {
+        do_sb(env, GET_OFFSET(arg2, 2), (uint8_t)(arg1 >> 40), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) <= 4)
-        do_sb(env, GET_OFFSET(arg2, 3), (uint8_t)(arg1 >> 32), mem_idx);
+    if (GET_LMASK64(arg2) <= 4) {
+        do_sb(env, GET_OFFSET(arg2, 3), (uint8_t)(arg1 >> 32), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) <= 3)
-        do_sb(env, GET_OFFSET(arg2, 4), (uint8_t)(arg1 >> 24), mem_idx);
+    if (GET_LMASK64(arg2) <= 3) {
+        do_sb(env, GET_OFFSET(arg2, 4), (uint8_t)(arg1 >> 24), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) <= 2)
-        do_sb(env, GET_OFFSET(arg2, 5), (uint8_t)(arg1 >> 16), mem_idx);
+    if (GET_LMASK64(arg2) <= 2) {
+        do_sb(env, GET_OFFSET(arg2, 5), (uint8_t)(arg1 >> 16), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) <= 1)
-        do_sb(env, GET_OFFSET(arg2, 6), (uint8_t)(arg1 >> 8), mem_idx);
+    if (GET_LMASK64(arg2) <= 1) {
+        do_sb(env, GET_OFFSET(arg2, 6), (uint8_t)(arg1 >> 8), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) <= 0)
-        do_sb(env, GET_OFFSET(arg2, 7), (uint8_t)arg1, mem_idx);
+    if (GET_LMASK64(arg2) <= 0) {
+        do_sb(env, GET_OFFSET(arg2, 7), (uint8_t)arg1, mem_idx,
+              GETPC());
+    }
 }
 
 void helper_sdr(CPUMIPSState *env, target_ulong arg1, target_ulong arg2,
                 int mem_idx)
 {
-    do_sb(env, arg2, (uint8_t)arg1, mem_idx);
+    do_sb(env, arg2, (uint8_t)arg1, mem_idx, GETPC());
 
-    if (GET_LMASK64(arg2) >= 1)
-        do_sb(env, GET_OFFSET(arg2, -1), (uint8_t)(arg1 >> 8), mem_idx);
+    if (GET_LMASK64(arg2) >= 1) {
+        do_sb(env, GET_OFFSET(arg2, -1), (uint8_t)(arg1 >> 8), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) >= 2)
-        do_sb(env, GET_OFFSET(arg2, -2), (uint8_t)(arg1 >> 16), mem_idx);
+    if (GET_LMASK64(arg2) >= 2) {
+        do_sb(env, GET_OFFSET(arg2, -2), (uint8_t)(arg1 >> 16), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) >= 3)
-        do_sb(env, GET_OFFSET(arg2, -3), (uint8_t)(arg1 >> 24), mem_idx);
+    if (GET_LMASK64(arg2) >= 3) {
+        do_sb(env, GET_OFFSET(arg2, -3), (uint8_t)(arg1 >> 24), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) >= 4)
-        do_sb(env, GET_OFFSET(arg2, -4), (uint8_t)(arg1 >> 32), mem_idx);
+    if (GET_LMASK64(arg2) >= 4) {
+        do_sb(env, GET_OFFSET(arg2, -4), (uint8_t)(arg1 >> 32), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) >= 5)
-        do_sb(env, GET_OFFSET(arg2, -5), (uint8_t)(arg1 >> 40), mem_idx);
+    if (GET_LMASK64(arg2) >= 5) {
+        do_sb(env, GET_OFFSET(arg2, -5), (uint8_t)(arg1 >> 40), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) >= 6)
-        do_sb(env, GET_OFFSET(arg2, -6), (uint8_t)(arg1 >> 48), mem_idx);
+    if (GET_LMASK64(arg2) >= 6) {
+        do_sb(env, GET_OFFSET(arg2, -6), (uint8_t)(arg1 >> 48), mem_idx,
+              GETPC());
+    }
 
-    if (GET_LMASK64(arg2) == 7)
-        do_sb(env, GET_OFFSET(arg2, -7), (uint8_t)(arg1 >> 56), mem_idx);
+    if (GET_LMASK64(arg2) == 7) {
+        do_sb(env, GET_OFFSET(arg2, -7), (uint8_t)(arg1 >> 56), mem_idx,
+              GETPC());
+    }
 }
 #endif /* TARGET_MIPS64 */
 
@@ -511,13 +541,14 @@ void helper_lwm(CPUMIPSState *env, target_ulong addr, target_ulong reglist,
 
         for (i = 0; i < base_reglist; i++) {
             env->active_tc.gpr[multiple_regs[i]] =
-                (target_long)do_lw(env, addr, mem_idx);
+                (target_long)do_lw(env, addr, mem_idx, GETPC());
             addr += 4;
         }
     }
 
     if (do_r31) {
-        env->active_tc.gpr[31] = (target_long)do_lw(env, addr, mem_idx);
+        env->active_tc.gpr[31] = (target_long)do_lw(env, addr, mem_idx,
+                                                    GETPC());
     }
 }
 
@@ -531,13 +562,14 @@ void helper_swm(CPUMIPSState *env, target_ulong addr, target_ulong reglist,
         target_ulong i;
 
         for (i = 0; i < base_reglist; i++) {
-            do_sw(env, addr, env->active_tc.gpr[multiple_regs[i]], mem_idx);
+            do_sw(env, addr, env->active_tc.gpr[multiple_regs[i]], mem_idx,
+                  GETPC());
             addr += 4;
         }
     }
 
     if (do_r31) {
-        do_sw(env, addr, env->active_tc.gpr[31], mem_idx);
+        do_sw(env, addr, env->active_tc.gpr[31], mem_idx, GETPC());
     }
 }
 
@@ -552,13 +584,14 @@ void helper_ldm(CPUMIPSState *env, target_ulong addr, target_ulong reglist,
         target_ulong i;
 
         for (i = 0; i < base_reglist; i++) {
-            env->active_tc.gpr[multiple_regs[i]] = do_ld(env, addr, mem_idx);
+            env->active_tc.gpr[multiple_regs[i]] = do_ld(env, addr, mem_idx,
+                                                         GETPC());
             addr += 8;
         }
     }
 
     if (do_r31) {
-        env->active_tc.gpr[31] = do_ld(env, addr, mem_idx);
+        env->active_tc.gpr[31] = do_ld(env, addr, mem_idx, GETPC());
     }
 }
 
@@ -572,13 +605,14 @@ void helper_sdm(CPUMIPSState *env, target_ulong addr, target_ulong reglist,
         target_ulong i;
 
         for (i = 0; i < base_reglist; i++) {
-            do_sd(env, addr, env->active_tc.gpr[multiple_regs[i]], mem_idx);
+            do_sd(env, addr, env->active_tc.gpr[multiple_regs[i]], mem_idx,
+                  GETPC());
             addr += 8;
         }
     }
 
     if (do_r31) {
-        do_sd(env, addr, env->active_tc.gpr[31], mem_idx);
+        do_sd(env, addr, env->active_tc.gpr[31], mem_idx, GETPC());
     }
 }
 #endif
@@ -608,6 +642,9 @@ static inline void mips_vpe_wake(MIPSCPU *c)
     /* Dont set ->halted = 0 directly, let it be done via cpu_has_work
        because there might be other conditions that state that c should
        be sleeping.  */
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_start(CPU(c)->cpu_index);
+#endif
     cpu_interrupt(CPU(c), CPU_INTERRUPT_WAKE);
 }
 
@@ -618,6 +655,9 @@ static inline void mips_vpe_sleep(MIPSCPU *cpu)
     /* The VPE was shut off, really go to bed.
        Reset any old _WAKE requests.  */
     cs->halted = 1;
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_stop(cs->cpu_index);
+#endif
     cpu_reset_interrupt(cs, CPU_INTERRUPT_WAKE);
 }
 
@@ -877,11 +917,6 @@ target_ulong helper_mfc0_count(CPUMIPSState *env)
     return (int32_t)cpu_mips_get_count(env);
 }
 
-target_ulong helper_mfc0_gcrbase(CPUMIPSState *env)
-{
-    return env->CP0_CMGCRBase;
-}
-
 target_ulong helper_mftc0_entryhi(CPUMIPSState *env)
 {
     int other_tc = env->CP0_VPEControl & (0xff << CP0VPECo_TargTC);
@@ -920,18 +955,12 @@ target_ulong helper_mfc0_lladdr(CPUMIPSState *env)
 
 target_ulong helper_mfc0_maar(CPUMIPSState *env)
 {
-    if (env->CP0_MAARI < MIPS_MAAR_MAX) {
-        return (int32_t) env->CP0_MAAR[env->CP0_MAARI];
-    }
-    return 0;
+    return (int32_t) env->CP0_MAAR[env->CP0_MAARI];
 }
 
 target_ulong helper_mfhc0_maar(CPUMIPSState *env)
 {
-    if (env->CP0_MAARI < MIPS_MAAR_MAX) {
-        return env->CP0_MAAR[env->CP0_MAARI] >> 32;
-    }
-    return 0;
+    return env->CP0_MAAR[env->CP0_MAARI] >> 32;
 }
 
 target_ulong helper_mfc0_watchlo(CPUMIPSState *env, uint32_t sel)
@@ -1002,10 +1031,7 @@ target_ulong helper_dmfc0_lladdr(CPUMIPSState *env)
 
 target_ulong helper_dmfc0_maar(CPUMIPSState *env)
 {
-    if (env->CP0_MAARI < MIPS_MAAR_MAX) {
-        return env->CP0_MAAR[env->CP0_MAARI];
-    }
-    return 0;
+    return env->CP0_MAAR[env->CP0_MAARI];
 }
 
 target_ulong helper_dmfc0_watchlo(CPUMIPSState *env, uint32_t sel)
@@ -1472,7 +1498,8 @@ void helper_mtc0_hwrena(CPUMIPSState *env, target_ulong arg1)
 {
     uint32_t mask = 0x0000000F;
 
-    if (env->CP0_Config1 & (1 << CP0C1_PC)) {
+    if ((env->CP0_Config1 & (1 << CP0C1_PC)) &&
+        (env->insn_flags & ISA_MIPS32R6)) {
         mask |= (1 << 4);
     }
     if (env->insn_flags & ISA_MIPS32R6) {
@@ -1688,21 +1715,19 @@ void helper_mtc0_lladdr(CPUMIPSState *env, target_ulong arg1)
     env->lladdr = (env->lladdr & ~mask) | (arg1 & mask);
 }
 
+#define MTC0_MAAR_MASK(env) \
+        ((0x1ULL << 63) | ((env->PAMask >> 4) & ~0xFFFull) | 0x3)
+
 void helper_mtc0_maar(CPUMIPSState *env, target_ulong arg1)
 {
-    uint64_t mask = ((env->PAMask >> 4) & ~0xFFFull) | 0x3;
-
-    if (env->CP0_MAARI < MIPS_MAAR_MAX) {
-        env->CP0_MAAR[env->CP0_MAARI] = arg1 & mask;
-    }
+    env->CP0_MAAR[env->CP0_MAARI] = arg1 & MTC0_MAAR_MASK(env);
 }
 
 void helper_mthc0_maar(CPUMIPSState *env, target_ulong arg1)
 {
-    if (env->CP0_MAARI < MIPS_MAAR_MAX) {
-        env->CP0_MAAR[env->CP0_MAARI] = ((uint64_t) arg1 << 32) |
-                (env->CP0_MAAR[env->CP0_MAARI] & 0x00000000ffffffffULL);
-    }
+    env->CP0_MAAR[env->CP0_MAARI] =
+        (((uint64_t) arg1 << 32) & MTC0_MAAR_MASK(env)) |
+        (env->CP0_MAAR[env->CP0_MAARI] & 0x00000000ffffffffULL);
 }
 
 void helper_mtc0_maari(CPUMIPSState *env, target_ulong arg1)
@@ -1774,9 +1799,31 @@ void helper_mtc0_performance0(CPUMIPSState *env, target_ulong arg1)
     env->CP0_Performance0 = arg1 & 0x000007ff;
 }
 
+void helper_mtc0_errctl(CPUMIPSState *env, target_ulong arg1)
+{
+    int32_t wst = arg1 & (1 << CP0EC_WST);
+    int32_t spr = arg1 & (1 << CP0EC_SPR);
+    int32_t itc = env->itc_tag ? (arg1 & (1 << CP0EC_ITC)) : 0;
+
+    env->CP0_ErrCtl = wst | spr | itc;
+
+    if (itc && !wst && !spr) {
+        env->hflags |= MIPS_HFLAG_ITC_CACHE;
+    } else {
+        env->hflags &= ~MIPS_HFLAG_ITC_CACHE;
+    }
+}
+
 void helper_mtc0_taglo(CPUMIPSState *env, target_ulong arg1)
 {
-    env->CP0_TagLo = arg1 & 0xFFFFFCF6;
+    if (env->hflags & MIPS_HFLAG_ITC_CACHE) {
+        /* If CACHE instruction is configured for ITC tags then make all
+           CP0.TagLo bits writable. The actual write to ITC Configuration
+           Tag will take care of the read-only bits. */
+        env->CP0_TagLo = arg1;
+    } else {
+        env->CP0_TagLo = arg1 & 0xFFFFFCF6;
+    }
 }
 
 void helper_mtc0_datalo(CPUMIPSState *env, target_ulong arg1)
@@ -1971,13 +2018,13 @@ target_ulong helper_yield(CPUMIPSState *env, target_ulong arg)
                 env->active_tc.CP0_TCStatus & (1 << CP0TCSt_DT)) {
                 env->CP0_VPEControl &= ~(0x7 << CP0VPECo_EXCPT);
                 env->CP0_VPEControl |= 4 << CP0VPECo_EXCPT;
-                helper_raise_exception(env, EXCP_THREAD);
+                do_raise_exception(env, EXCP_THREAD, GETPC());
             }
         }
     } else if (arg1 == 0) {
         if (0 /* TODO: TC underflow */) {
             env->CP0_VPEControl &= ~(0x7 << CP0VPECo_EXCPT);
-            helper_raise_exception(env, EXCP_THREAD);
+            do_raise_exception(env, EXCP_THREAD, GETPC());
         } else {
             // TODO: Deallocate TC
         }
@@ -1985,7 +2032,7 @@ target_ulong helper_yield(CPUMIPSState *env, target_ulong arg)
         /* Yield qualifier inputs not implemented. */
         env->CP0_VPEControl &= ~(0x7 << CP0VPECo_EXCPT);
         env->CP0_VPEControl |= 2 << CP0VPECo_EXCPT;
-        helper_raise_exception(env, EXCP_THREAD);
+        do_raise_exception(env, EXCP_THREAD, GETPC());
     }
     return env->CP0_YQMask;
 }
@@ -1997,7 +2044,7 @@ target_ulong helper_dvp(CPUMIPSState *env)
     CPUState *other_cs = first_cpu;
     target_ulong prev = env->CP0_VPControl;
 
-    if (!((env->CP0_VPControl >> CP0VPCtl_DIS) &1)) {
+    if (!((env->CP0_VPControl >> CP0VPCtl_DIS) & 1)) {
         CPU_FOREACH(other_cs) {
             MIPSCPU *other_cpu = MIPS_CPU(other_cs);
             /* Turn off all VPs except the one executing the dvp. */
@@ -2015,11 +2062,10 @@ target_ulong helper_evp(CPUMIPSState *env)
     CPUState *other_cs = first_cpu;
     target_ulong prev = env->CP0_VPControl;
 
-    if (((env->CP0_VPControl >> CP0VPCtl_DIS) &1)) {
+    if ((env->CP0_VPControl >> CP0VPCtl_DIS) & 1) {
         CPU_FOREACH(other_cs) {
             MIPSCPU *other_cpu = MIPS_CPU(other_cs);
-            if (&other_cpu->env != env
-                && !mips_vp_is_wfi(other_cpu)) {
+            if ((&other_cpu->env != env) && !mips_vp_is_wfi(other_cpu)) {
                 /* If the VP is WFI, don't disturb its sleep.
                  * Otherwise, wake it up. */
                 mips_vpe_wake(other_cpu);
@@ -2033,15 +2079,6 @@ target_ulong helper_evp(CPUMIPSState *env)
 
 #ifndef CONFIG_USER_ONLY
 /* TLB management */
-static void cpu_mips_tlb_flush (CPUMIPSState *env, int flush_global)
-{
-    MIPSCPU *cpu = mips_env_get_cpu(env);
-
-    /* Flush qemu's TLB and discard all shadowed entries.  */
-    tlb_flush(CPU(cpu), flush_global);
-    env->tlb->tlb_in_use = env->tlb->nb_tlb;
-}
-
 static void r4k_mips_tlb_flush_extra (CPUMIPSState *env, int first)
 {
     /* Discard entries from env->tlb[first] onwards.  */
@@ -2385,7 +2422,7 @@ static inline void check_hwrena(CPUMIPSState *env, int reg)
     if ((env->hflags & MIPS_HFLAG_CP0) || (env->CP0_HWREna & (1 << reg))) {
         return;
     }
-    helper_raise_exception(env, EXCP_RI);
+    do_raise_exception(env, EXCP_RI, GETPC());
 }
 
 target_ulong helper_rdhwr_cpunum(CPUMIPSState *env)
@@ -2404,9 +2441,9 @@ target_ulong helper_rdhwr_cc(CPUMIPSState *env)
 {
     check_hwrena(env, 2);
 #ifdef CONFIG_USER_ONLY
-        return env->CP0_Count;
+    return env->CP0_Count;
 #else
-        return (int32_t)cpu_mips_get_count(env);
+    return (int32_t)cpu_mips_get_count(env);
 #endif
 }
 
@@ -2454,13 +2491,28 @@ void helper_pmon(CPUMIPSState *env, int function)
     }
 }
 
+#ifdef CONFIG_ESESC
+void helper_esesc0(CPUMIPSState *env)
+{
+    CPUState *cs = CPU(mips_env_get_cpu(env));
+
+    icount = 0;
+    QEMUReader_start_roi(cs->fid);
+}
+#endif
+
 void helper_wait(CPUMIPSState *env)
 {
     CPUState *cs = CPU(mips_env_get_cpu(env));
 
     cs->halted = 1;
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_stop(cs->cpu_index);
+#endif
     cpu_reset_interrupt(cs, CPU_INTERRUPT_WAKE);
-    helper_raise_exception(env, EXCP_HLT);
+    /* Last instruction in the block, PC was updated before
+       - no need to recover PC and icount */
+    raise_exception(env, EXCP_HLT);
 }
 
 #if !defined(CONFIG_USER_ONLY)
@@ -2521,9 +2573,9 @@ void mips_cpu_unassigned_access(CPUState *cs, hwaddr addr,
     }
 
     if (is_exec) {
-        helper_raise_exception(env, EXCP_IBE);
+        raise_exception(env, EXCP_IBE);
     } else {
-        helper_raise_exception(env, EXCP_DBE);
+        raise_exception(env, EXCP_DBE);
     }
 }
 #endif /* !CONFIG_USER_ONLY */
@@ -2532,6 +2584,7 @@ void mips_cpu_unassigned_access(CPUState *cs, hwaddr addr,
 
 #define FLOAT_TWO32 make_float32(1 << 30)
 #define FLOAT_TWO64 make_float64(1ULL << 62)
+
 #define FP_TO_INT32_OVERFLOW 0x7fffffff
 #define FP_TO_INT64_OVERFLOW 0x7fffffffffffffffULL
 
@@ -2558,7 +2611,7 @@ target_ulong helper_cfc1(CPUMIPSState *env, uint32_t reg)
                 arg1 = (int32_t)
                        ((env->CP0_Status & (1  << CP0St_FR)) >> CP0St_FR);
             } else {
-                helper_raise_exception(env, EXCP_RI);
+                do_raise_exception(env, EXCP_RI, GETPC());
             }
         }
         break;
@@ -2601,7 +2654,7 @@ void helper_ctc1(CPUMIPSState *env, target_ulong arg1, uint32_t fs, uint32_t rt)
             env->CP0_Status &= ~(1 << CP0St_FR);
             compute_hflags(env);
         } else {
-            helper_raise_exception(env, EXCP_RI);
+            do_raise_exception(env, EXCP_RI, GETPC());
         }
         break;
     case 4:
@@ -2613,7 +2666,7 @@ void helper_ctc1(CPUMIPSState *env, target_ulong arg1, uint32_t fs, uint32_t rt)
             env->CP0_Status |= (1 << CP0St_FR);
             compute_hflags(env);
         } else {
-            helper_raise_exception(env, EXCP_RI);
+            do_raise_exception(env, EXCP_RI, GETPC());
         }
         break;
     case 5:
@@ -2659,12 +2712,11 @@ void helper_ctc1(CPUMIPSState *env, target_ulong arg1, uint32_t fs, uint32_t rt)
                      ((arg1 & 0x4) << 22);
         break;
     case 31:
-        if (env->insn_flags & ISA_MIPS32R6) {
-            uint32_t mask = 0xfefc0000;
-            env->active_fpu.fcr31 = (arg1 & ~mask) |
-                (env->active_fpu.fcr31 & mask);
-        } else if (!(arg1 & 0x007c0000)) {
-            env->active_fpu.fcr31 = arg1;
+        {
+            /* TODO: rw mask per CPU */
+            uint32_t mask = (env->insn_flags & ISA_MIPS32R6) ?
+                            0xfefc0000 : 0x007c0000;
+            env->active_fpu.fcr31 = (arg1 & ~mask) | (env->active_fpu.fcr31 & mask);
         }
         break;
     default:
@@ -2744,6 +2796,7 @@ uint64_t helper_float_cvtd_s(CPUMIPSState *env, uint32_t fst0)
     uint64_t fdt2;
 
     fdt2 = float32_to_float64(fst0, &env->active_fpu.fp_status);
+    fdt2 = float64_maybe_silence_nan(fdt2, &env->active_fpu.fp_status);
     update_fcr31(env, GETPC());
     return fdt2;
 }
@@ -2764,32 +2817,6 @@ uint64_t helper_float_cvtd_l(CPUMIPSState *env, uint64_t dt0)
     fdt2 = int64_to_float64(dt0, &env->active_fpu.fp_status);
     update_fcr31(env, GETPC());
     return fdt2;
-}
-
-uint64_t helper_float_cvtl_d(CPUMIPSState *env, uint64_t fdt0)
-{
-    uint64_t dt2;
-
-    dt2 = float64_to_int64(fdt0, &env->active_fpu.fp_status);
-    if (get_float_exception_flags(&env->active_fpu.fp_status)
-        & (float_flag_invalid | float_flag_overflow)) {
-        dt2 = FP_TO_INT64_OVERFLOW;
-    }
-    update_fcr31(env, GETPC());
-    return dt2;
-}
-
-uint64_t helper_float_cvtl_s(CPUMIPSState *env, uint32_t fst0)
-{
-    uint64_t dt2;
-
-    dt2 = float32_to_int64(fst0, &env->active_fpu.fp_status);
-    if (get_float_exception_flags(&env->active_fpu.fp_status)
-        & (float_flag_invalid | float_flag_overflow)) {
-        dt2 = FP_TO_INT64_OVERFLOW;
-    }
-    update_fcr31(env, GETPC());
-    return dt2;
 }
 
 uint64_t helper_float_cvtps_pw(CPUMIPSState *env, uint64_t dt0)
@@ -2833,6 +2860,7 @@ uint32_t helper_float_cvts_d(CPUMIPSState *env, uint64_t fdt0)
     uint32_t fst2;
 
     fst2 = float64_to_float32(fdt0, &env->active_fpu.fp_status);
+    fst2 = float32_maybe_silence_nan(fst2, &env->active_fpu.fp_status);
     update_fcr31(env, GETPC());
     return fst2;
 }
@@ -2873,20 +2901,33 @@ uint32_t helper_float_cvts_pu(CPUMIPSState *env, uint32_t wth0)
     return wt2;
 }
 
-uint32_t helper_float_cvtw_s(CPUMIPSState *env, uint32_t fst0)
+uint64_t helper_float_cvt_l_d(CPUMIPSState *env, uint64_t fdt0)
 {
-    uint32_t wt2;
+    uint64_t dt2;
 
-    wt2 = float32_to_int32(fst0, &env->active_fpu.fp_status);
+    dt2 = float64_to_int64(fdt0, &env->active_fpu.fp_status);
     if (get_float_exception_flags(&env->active_fpu.fp_status)
         & (float_flag_invalid | float_flag_overflow)) {
-        wt2 = FP_TO_INT32_OVERFLOW;
+        dt2 = FP_TO_INT64_OVERFLOW;
     }
     update_fcr31(env, GETPC());
-    return wt2;
+    return dt2;
 }
 
-uint32_t helper_float_cvtw_d(CPUMIPSState *env, uint64_t fdt0)
+uint64_t helper_float_cvt_l_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint64_t dt2;
+
+    dt2 = float32_to_int64(fst0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+        & (float_flag_invalid | float_flag_overflow)) {
+        dt2 = FP_TO_INT64_OVERFLOW;
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint32_t helper_float_cvt_w_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint32_t wt2;
 
@@ -2899,7 +2940,20 @@ uint32_t helper_float_cvtw_d(CPUMIPSState *env, uint64_t fdt0)
     return wt2;
 }
 
-uint64_t helper_float_roundl_d(CPUMIPSState *env, uint64_t fdt0)
+uint32_t helper_float_cvt_w_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint32_t wt2;
+
+    wt2 = float32_to_int32(fst0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+        & (float_flag_invalid | float_flag_overflow)) {
+        wt2 = FP_TO_INT32_OVERFLOW;
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint64_t helper_float_round_l_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint64_t dt2;
 
@@ -2914,7 +2968,7 @@ uint64_t helper_float_roundl_d(CPUMIPSState *env, uint64_t fdt0)
     return dt2;
 }
 
-uint64_t helper_float_roundl_s(CPUMIPSState *env, uint32_t fst0)
+uint64_t helper_float_round_l_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint64_t dt2;
 
@@ -2929,7 +2983,7 @@ uint64_t helper_float_roundl_s(CPUMIPSState *env, uint32_t fst0)
     return dt2;
 }
 
-uint32_t helper_float_roundw_d(CPUMIPSState *env, uint64_t fdt0)
+uint32_t helper_float_round_w_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint32_t wt2;
 
@@ -2944,7 +2998,7 @@ uint32_t helper_float_roundw_d(CPUMIPSState *env, uint64_t fdt0)
     return wt2;
 }
 
-uint32_t helper_float_roundw_s(CPUMIPSState *env, uint32_t fst0)
+uint32_t helper_float_round_w_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint32_t wt2;
 
@@ -2959,7 +3013,7 @@ uint32_t helper_float_roundw_s(CPUMIPSState *env, uint32_t fst0)
     return wt2;
 }
 
-uint64_t helper_float_truncl_d(CPUMIPSState *env, uint64_t fdt0)
+uint64_t helper_float_trunc_l_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint64_t dt2;
 
@@ -2972,7 +3026,7 @@ uint64_t helper_float_truncl_d(CPUMIPSState *env, uint64_t fdt0)
     return dt2;
 }
 
-uint64_t helper_float_truncl_s(CPUMIPSState *env, uint32_t fst0)
+uint64_t helper_float_trunc_l_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint64_t dt2;
 
@@ -2985,7 +3039,7 @@ uint64_t helper_float_truncl_s(CPUMIPSState *env, uint32_t fst0)
     return dt2;
 }
 
-uint32_t helper_float_truncw_d(CPUMIPSState *env, uint64_t fdt0)
+uint32_t helper_float_trunc_w_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint32_t wt2;
 
@@ -2998,7 +3052,7 @@ uint32_t helper_float_truncw_d(CPUMIPSState *env, uint64_t fdt0)
     return wt2;
 }
 
-uint32_t helper_float_truncw_s(CPUMIPSState *env, uint32_t fst0)
+uint32_t helper_float_trunc_w_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint32_t wt2;
 
@@ -3011,7 +3065,7 @@ uint32_t helper_float_truncw_s(CPUMIPSState *env, uint32_t fst0)
     return wt2;
 }
 
-uint64_t helper_float_ceill_d(CPUMIPSState *env, uint64_t fdt0)
+uint64_t helper_float_ceil_l_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint64_t dt2;
 
@@ -3026,7 +3080,7 @@ uint64_t helper_float_ceill_d(CPUMIPSState *env, uint64_t fdt0)
     return dt2;
 }
 
-uint64_t helper_float_ceill_s(CPUMIPSState *env, uint32_t fst0)
+uint64_t helper_float_ceil_l_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint64_t dt2;
 
@@ -3041,7 +3095,7 @@ uint64_t helper_float_ceill_s(CPUMIPSState *env, uint32_t fst0)
     return dt2;
 }
 
-uint32_t helper_float_ceilw_d(CPUMIPSState *env, uint64_t fdt0)
+uint32_t helper_float_ceil_w_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint32_t wt2;
 
@@ -3056,7 +3110,7 @@ uint32_t helper_float_ceilw_d(CPUMIPSState *env, uint64_t fdt0)
     return wt2;
 }
 
-uint32_t helper_float_ceilw_s(CPUMIPSState *env, uint32_t fst0)
+uint32_t helper_float_ceil_w_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint32_t wt2;
 
@@ -3071,7 +3125,7 @@ uint32_t helper_float_ceilw_s(CPUMIPSState *env, uint32_t fst0)
     return wt2;
 }
 
-uint64_t helper_float_floorl_d(CPUMIPSState *env, uint64_t fdt0)
+uint64_t helper_float_floor_l_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint64_t dt2;
 
@@ -3086,7 +3140,7 @@ uint64_t helper_float_floorl_d(CPUMIPSState *env, uint64_t fdt0)
     return dt2;
 }
 
-uint64_t helper_float_floorl_s(CPUMIPSState *env, uint32_t fst0)
+uint64_t helper_float_floor_l_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint64_t dt2;
 
@@ -3101,7 +3155,7 @@ uint64_t helper_float_floorl_s(CPUMIPSState *env, uint32_t fst0)
     return dt2;
 }
 
-uint32_t helper_float_floorw_d(CPUMIPSState *env, uint64_t fdt0)
+uint32_t helper_float_floor_w_d(CPUMIPSState *env, uint64_t fdt0)
 {
     uint32_t wt2;
 
@@ -3116,7 +3170,7 @@ uint32_t helper_float_floorw_d(CPUMIPSState *env, uint64_t fdt0)
     return wt2;
 }
 
-uint32_t helper_float_floorw_s(CPUMIPSState *env, uint32_t fst0)
+uint32_t helper_float_floor_w_s(CPUMIPSState *env, uint32_t fst0)
 {
     uint32_t wt2;
 
@@ -3126,6 +3180,330 @@ uint32_t helper_float_floorw_s(CPUMIPSState *env, uint32_t fst0)
     if (get_float_exception_flags(&env->active_fpu.fp_status)
         & (float_flag_invalid | float_flag_overflow)) {
         wt2 = FP_TO_INT32_OVERFLOW;
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint64_t helper_float_cvt_2008_l_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint64_t dt2;
+
+    dt2 = float64_to_int64(fdt0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint64_t helper_float_cvt_2008_l_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint64_t dt2;
+
+    dt2 = float32_to_int64(fst0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint32_t helper_float_cvt_2008_w_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint32_t wt2;
+
+    wt2 = float64_to_int32(fdt0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint32_t helper_float_cvt_2008_w_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint32_t wt2;
+
+    wt2 = float32_to_int32(fst0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint64_t helper_float_round_2008_l_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint64_t dt2;
+
+    set_float_rounding_mode(float_round_nearest_even, &env->active_fpu.fp_status);
+    dt2 = float64_to_int64(fdt0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint64_t helper_float_round_2008_l_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint64_t dt2;
+
+    set_float_rounding_mode(float_round_nearest_even, &env->active_fpu.fp_status);
+    dt2 = float32_to_int64(fst0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint32_t helper_float_round_2008_w_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint32_t wt2;
+
+    set_float_rounding_mode(float_round_nearest_even, &env->active_fpu.fp_status);
+    wt2 = float64_to_int32(fdt0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint32_t helper_float_round_2008_w_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint32_t wt2;
+
+    set_float_rounding_mode(float_round_nearest_even, &env->active_fpu.fp_status);
+    wt2 = float32_to_int32(fst0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint64_t helper_float_trunc_2008_l_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint64_t dt2;
+
+    dt2 = float64_to_int64_round_to_zero(fdt0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint64_t helper_float_trunc_2008_l_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint64_t dt2;
+
+    dt2 = float32_to_int64_round_to_zero(fst0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint32_t helper_float_trunc_2008_w_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint32_t wt2;
+
+    wt2 = float64_to_int32_round_to_zero(fdt0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint32_t helper_float_trunc_2008_w_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint32_t wt2;
+
+    wt2 = float32_to_int32_round_to_zero(fst0, &env->active_fpu.fp_status);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint64_t helper_float_ceil_2008_l_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint64_t dt2;
+
+    set_float_rounding_mode(float_round_up, &env->active_fpu.fp_status);
+    dt2 = float64_to_int64(fdt0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint64_t helper_float_ceil_2008_l_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint64_t dt2;
+
+    set_float_rounding_mode(float_round_up, &env->active_fpu.fp_status);
+    dt2 = float32_to_int64(fst0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint32_t helper_float_ceil_2008_w_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint32_t wt2;
+
+    set_float_rounding_mode(float_round_up, &env->active_fpu.fp_status);
+    wt2 = float64_to_int32(fdt0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint32_t helper_float_ceil_2008_w_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint32_t wt2;
+
+    set_float_rounding_mode(float_round_up, &env->active_fpu.fp_status);
+    wt2 = float32_to_int32(fst0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint64_t helper_float_floor_2008_l_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint64_t dt2;
+
+    set_float_rounding_mode(float_round_down, &env->active_fpu.fp_status);
+    dt2 = float64_to_int64(fdt0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint64_t helper_float_floor_2008_l_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint64_t dt2;
+
+    set_float_rounding_mode(float_round_down, &env->active_fpu.fp_status);
+    dt2 = float32_to_int64(fst0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            dt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return dt2;
+}
+
+uint32_t helper_float_floor_2008_w_d(CPUMIPSState *env, uint64_t fdt0)
+{
+    uint32_t wt2;
+
+    set_float_rounding_mode(float_round_down, &env->active_fpu.fp_status);
+    wt2 = float64_to_int32(fdt0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float64_is_any_nan(fdt0)) {
+            wt2 = 0;
+        }
+    }
+    update_fcr31(env, GETPC());
+    return wt2;
+}
+
+uint32_t helper_float_floor_2008_w_s(CPUMIPSState *env, uint32_t fst0)
+{
+    uint32_t wt2;
+
+    set_float_rounding_mode(float_round_down, &env->active_fpu.fp_status);
+    wt2 = float32_to_int32(fst0, &env->active_fpu.fp_status);
+    restore_rounding_mode(env);
+    if (get_float_exception_flags(&env->active_fpu.fp_status)
+            & (float_flag_invalid)) {
+        if (float32_is_any_nan(fst0)) {
+            wt2 = 0;
+        }
     }
     update_fcr31(env, GETPC());
     return wt2;
@@ -3282,11 +3660,12 @@ FLOAT_RINT(rint_d, 64)
 #define FLOAT_CLASS_POSITIVE_ZERO      0x200
 
 #define FLOAT_CLASS(name, bits)                                      \
-uint ## bits ## _t helper_float_ ## name (uint ## bits ## _t arg)    \
+uint ## bits ## _t float_ ## name (uint ## bits ## _t arg,           \
+                                   float_status *status)             \
 {                                                                    \
-    if (float ## bits ## _is_signaling_nan(arg)) {                   \
+    if (float ## bits ## _is_signaling_nan(arg, status)) {           \
         return FLOAT_CLASS_SIGNALING_NAN;                            \
-    } else if (float ## bits ## _is_quiet_nan(arg)) {                \
+    } else if (float ## bits ## _is_quiet_nan(arg, status)) {        \
         return FLOAT_CLASS_QUIET_NAN;                                \
     } else if (float ## bits ## _is_neg(arg)) {                      \
         if (float ## bits ## _is_infinity(arg)) {                    \
@@ -3309,7 +3688,14 @@ uint ## bits ## _t helper_float_ ## name (uint ## bits ## _t arg)    \
             return FLOAT_CLASS_POSITIVE_NORMAL;                      \
         }                                                            \
     }                                                                \
+}                                                                    \
+uint ## bits ## _t helper_float_ ## name (CPUMIPSState *env,         \
+                                          uint ## bits ## _t arg)    \
+{                                                                    \
+    return float_ ## name(arg, &env->active_fpu.fp_status);          \
 }
+
+
 
 FLOAT_CLASS(class_s, 32)
 FLOAT_CLASS(class_d, 64)
@@ -3854,7 +4240,7 @@ FOP_CONDN_S(sne,  (float32_lt(fst1, fst0, &env->active_fpu.fp_status)
 #if !defined(CONFIG_USER_ONLY)
 #define MEMOP_IDX(DF)                                           \
         TCGMemOpIdx oi = make_memop_idx(MO_TE | DF | MO_UNALN,  \
-                                        cpu_mmu_index(env));
+                                        cpu_mmu_index(env, false));
 #else
 #define MEMOP_IDX(DF)
 #endif
@@ -3910,7 +4296,7 @@ void helper_msa_st_ ## TYPE(CPUMIPSState *env, uint32_t wd,             \
                             target_ulong addr)                          \
 {                                                                       \
     wr_t *pwd = &(env->active_fpu.fpr[wd].wr);                          \
-    int mmu_idx = cpu_mmu_index(env);                                   \
+    int mmu_idx = cpu_mmu_index(env, false);				\
     int i;                                                              \
     MEMOP_IDX(DF)                                                       \
     ensure_writable_pages(env, addr, mmu_idx, GETRA());                 \
@@ -3930,3 +4316,19 @@ MSA_ST_DF(DF_HALF,   h, cpu_stw_data)
 MSA_ST_DF(DF_WORD,   w, cpu_stl_data)
 MSA_ST_DF(DF_DOUBLE, d, cpu_stq_data)
 #endif
+
+void helper_cache(CPUMIPSState *env, target_ulong addr, uint32_t op)
+{
+#ifndef CONFIG_USER_ONLY
+    target_ulong index = addr & 0x1fffffff;
+    if (op == 9) {
+        /* Index Store Tag */
+        memory_region_dispatch_write(env->itc_tag, index, env->CP0_TagLo,
+                                     8, MEMTXATTRS_UNSPECIFIED);
+    } else if (op == 5) {
+        /* Index Load Tag */
+        memory_region_dispatch_read(env->itc_tag, index, &env->CP0_TagLo,
+                                    8, MEMTXATTRS_UNSPECIFIED);
+    }
+#endif
+}

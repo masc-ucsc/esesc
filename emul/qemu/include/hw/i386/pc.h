@@ -2,6 +2,7 @@
 #define HW_PC_H
 
 #include "qemu-common.h"
+#include "qemu/typedefs.h"
 #include "exec/memory.h"
 #include "hw/boards.h"
 #include "hw/isa/isa.h"
@@ -39,6 +40,7 @@ struct PCMachineState {
     OnOffAuto vmport;
     OnOffAuto smm;
     bool enforce_aligned_dimm;
+    ram_addr_t below_4g_mem_size, above_4g_mem_size;
 };
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"
@@ -57,12 +59,10 @@ struct PCMachineClass {
     MachineClass parent_class;
 
     /*< public >*/
+    bool broken_reserved_end;
     HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
                                            DeviceState *dev);
 };
-
-typedef struct PCMachineState PCMachineState;
-typedef struct PCMachineClass PCMachineClass;
 
 #define TYPE_PC_MACHINE "generic-pc-machine"
 #define PC_MACHINE(obj) \
@@ -123,6 +123,11 @@ int pic_get_output(DeviceState *d);
 void hmp_info_pic(Monitor *mon, const QDict *qdict);
 void hmp_info_irq(Monitor *mon, const QDict *qdict);
 
+/* ioapic.c */
+
+void kvm_ioapic_dump_state(Monitor *mon, const QDict *qdict);
+void ioapic_dump_state(Monitor *mon, const QDict *qdict);
+
 /* Global System Interrupts */
 
 #define GSI_NUM_PINS IOAPIC_NUM_PINS
@@ -162,12 +167,11 @@ bool pc_machine_is_smm_enabled(PCMachineState *pcms);
 void pc_register_ferr_irq(qemu_irq irq);
 void pc_acpi_smi_interrupt(void *opaque, int irq, int level);
 
-void pc_cpus_init(const char *cpu_model, DeviceState *icc_bridge);
+void pc_cpus_init(PCMachineState *pcms);
 void pc_hot_add_cpu(const int64_t id, Error **errp);
 void pc_acpi_init(const char *default_dsdt);
 
-PcGuestInfo *pc_guest_info_init(ram_addr_t below_4g_mem_size,
-                                ram_addr_t above_4g_mem_size);
+PcGuestInfo *pc_guest_info_init(PCMachineState *pcms);
 
 void pc_set_legacy_acpi_data_size(void);
 
@@ -182,15 +186,10 @@ void pc_set_legacy_acpi_data_size(void);
 void pc_pci_as_mapping_init(Object *owner, MemoryRegion *system_memory,
                             MemoryRegion *pci_address_space);
 
-FWCfgState *xen_load_linux(const char *kernel_filename,
-                           const char *kernel_cmdline,
-                           const char *initrd_filename,
-                           ram_addr_t below_4g_mem_size,
+FWCfgState *xen_load_linux(PCMachineState *pcms,
                            PcGuestInfo *guest_info);
-FWCfgState *pc_memory_init(MachineState *machine,
+FWCfgState *pc_memory_init(PCMachineState *pcms,
                            MemoryRegion *system_memory,
-                           ram_addr_t below_4g_mem_size,
-                           ram_addr_t above_4g_mem_size,
                            MemoryRegion *rom_memory,
                            MemoryRegion **ram_memory,
                            PcGuestInfo *guest_info);
@@ -202,8 +201,7 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
                           bool no_vmport,
                           uint32 hpet_irqs);
 void pc_init_ne2k_isa(ISABus *bus, NICInfo *nd);
-void pc_cmos_init(ram_addr_t ram_size, ram_addr_t above_4g_mem_size,
-                  const char *boot_device, MachineState *machine,
+void pc_cmos_init(PCMachineState *pcms,
                   BusState *ide0, BusState *ide1,
                   ISADevice *s);
 void pc_nic_init(ISABus *isa_bus, PCIBus *pci_bus);
@@ -227,7 +225,13 @@ extern int no_hpet;
 struct PCII440FXState;
 typedef struct PCII440FXState PCII440FXState;
 
-PCIBus *i440fx_init(PCII440FXState **pi440fx_state, int *piix_devfn,
+#define TYPE_I440FX_PCI_HOST_BRIDGE "i440FX-pcihost"
+#define TYPE_I440FX_PCI_DEVICE "i440FX"
+
+#define TYPE_IGD_PASSTHROUGH_I440FX_PCI_DEVICE "igd-passthrough-i440FX"
+
+PCIBus *i440fx_init(const char *host_type, const char *pci_type,
+                    PCII440FXState **pi440fx_state, int *piix_devfn,
                     ISABus **isa_bus, qemu_irq *pic,
                     MemoryRegion *address_space_mem,
                     MemoryRegion *address_space_io,
@@ -292,7 +296,78 @@ int e820_add_entry(uint64_t, uint64_t, uint32_t);
 int e820_get_num_entries(void);
 bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 
+#define PC_COMPAT_2_4 \
+        HW_COMPAT_2_4 \
+        {\
+            .driver   = "Haswell-" TYPE_X86_CPU,\
+            .property = "abm",\
+            .value    = "off",\
+        },\
+        {\
+            .driver   = "Haswell-noTSX-" TYPE_X86_CPU,\
+            .property = "abm",\
+            .value    = "off",\
+        },\
+        {\
+            .driver   = "Broadwell-" TYPE_X86_CPU,\
+            .property = "abm",\
+            .value    = "off",\
+        },\
+        {\
+            .driver   = "Broadwell-noTSX-" TYPE_X86_CPU,\
+            .property = "abm",\
+            .value    = "off",\
+        },\
+        {\
+            .driver   = "host" "-" TYPE_X86_CPU,\
+            .property = "host-cache-info",\
+            .value    = "on",\
+        },\
+        {\
+            .driver   = TYPE_X86_CPU,\
+            .property = "check",\
+            .value    = "off",\
+        },\
+        {\
+            .driver   = "qemu64" "-" TYPE_X86_CPU,\
+            .property = "sse4a",\
+            .value    = "on",\
+        },\
+        {\
+            .driver   = "qemu64" "-" TYPE_X86_CPU,\
+            .property = "abm",\
+            .value    = "on",\
+        },\
+        {\
+            .driver   = "qemu64" "-" TYPE_X86_CPU,\
+            .property = "popcnt",\
+            .value    = "on",\
+        },\
+        {\
+            .driver   = "qemu32" "-" TYPE_X86_CPU,\
+            .property = "popcnt",\
+            .value    = "on",\
+        },{\
+            .driver   = "Opteron_G2" "-" TYPE_X86_CPU,\
+            .property = "rdtscp",\
+            .value    = "on",\
+        },{\
+            .driver   = "Opteron_G3" "-" TYPE_X86_CPU,\
+            .property = "rdtscp",\
+            .value    = "on",\
+        },{\
+            .driver   = "Opteron_G4" "-" TYPE_X86_CPU,\
+            .property = "rdtscp",\
+            .value    = "on",\
+        },{\
+            .driver   = "Opteron_G5" "-" TYPE_X86_CPU,\
+            .property = "rdtscp",\
+            .value    = "on",\
+        },
+
+
 #define PC_COMPAT_2_3 \
+        PC_COMPAT_2_4 \
         HW_COMPAT_2_3 \
         {\
             .driver   = TYPE_X86_CPU,\
@@ -374,11 +449,111 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 
 #define PC_COMPAT_2_2 \
         PC_COMPAT_2_3 \
-        HW_COMPAT_2_2
+        HW_COMPAT_2_2 \
+        {\
+            .driver = "kvm64" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "kvm32" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Conroe" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Penryn" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Nehalem" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Westmere" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "SandyBridge" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Haswell" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Broadwell" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Opteron_G1" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Opteron_G2" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Opteron_G3" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Opteron_G4" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Opteron_G5" "-" TYPE_X86_CPU,\
+            .property = "vme",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Haswell" "-" TYPE_X86_CPU,\
+            .property = "f16c",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Haswell" "-" TYPE_X86_CPU,\
+            .property = "rdrand",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Broadwell" "-" TYPE_X86_CPU,\
+            .property = "f16c",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Broadwell" "-" TYPE_X86_CPU,\
+            .property = "rdrand",\
+            .value = "off",\
+        },
 
 #define PC_COMPAT_2_1 \
         PC_COMPAT_2_2 \
-        HW_COMPAT_2_1
+        HW_COMPAT_2_1 \
+        {\
+            .driver = "coreduo" "-" TYPE_X86_CPU,\
+            .property = "vmx",\
+            .value = "on",\
+        },\
+        {\
+            .driver = "core2duo" "-" TYPE_X86_CPU,\
+            .property = "vmx",\
+            .value = "on",\
+        },
 
 #define PC_COMPAT_2_0 \
         PC_COMPAT_2_1 \
@@ -589,19 +764,17 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
             .driver   = "486-" TYPE_X86_CPU,\
             .property = "model",\
             .value    = stringify(0),\
+        },\
+        {\
+            .driver = "n270" "-" TYPE_X86_CPU,\
+            .property = "movbe",\
+            .value = "off",\
+        },\
+        {\
+            .driver = "Westmere" "-" TYPE_X86_CPU,\
+            .property = "pclmulqdq",\
+            .value = "off",\
         },
-
-static inline void pc_common_machine_options(MachineClass *m)
-{
-    m->default_boot_order = "cad";
-}
-
-static inline void pc_default_machine_options(MachineClass *m)
-{
-    pc_common_machine_options(m);
-    m->hot_add_cpu = pc_hot_add_cpu;
-    m->max_cpus = 255;
-}
 
 #define DEFINE_PC_MACHINE(suffix, namestr, initfn, optsfn) \
     static void pc_machine_##suffix##_class_init(ObjectClass *oc, void *data) \
@@ -630,4 +803,5 @@ static inline void pc_default_machine_options(MachineClass *m)
     (m)->compat_props = props; \
 } while (0)
 
+extern void igd_passthrough_isa_bridge_create(PCIBus *bus, uint16_t gpu_dev_id);
 #endif

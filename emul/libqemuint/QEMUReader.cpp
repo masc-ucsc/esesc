@@ -155,6 +155,9 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op
   I(dest2<LREG_MAX);
 
   while (tsfifo[fid].full()) {
+    if (qsamplerlist[fid]->isActive(fid) == false) {
+      qsamplerlist[fid]->resumeThread(fid,fid);
+    }
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
 #if 0
@@ -211,9 +214,12 @@ uint32_t QEMUReader::wait_until_FIFO_full(FlowID fid)
 }
 // }}}
 
-void QEMUReader::populate(FlowID fid) {
+bool QEMUReader::populate(FlowID fid) {
   int conta = 0;
-  while(!tsfifo[fid].full()) {
+  if (ruffer[fid].size()>1024) // No need to overpopulate the queues
+    return true;
+
+  if(!tsfifo[fid].full()) {
     
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
@@ -238,15 +244,30 @@ void QEMUReader::populate(FlowID fid) {
 #endif
 
     if (qsamplerlist[fid]->isActive(fid) == false) {
-      MSG("DOWN");
-      return;
+      //MSG("DOWN");
+      return true;
     }
 
-    if (conta++>100) {
-      //printf("+%d",fid);
-      return;
+    for(int i=0;i<numFlows;i++) {
+      if (tsfifo_snd_mutex_blocked[i]==0)
+        continue;
+
+      if (qsamplerlist[i]->isActive(i) == false) {
+#ifdef DEBUG
+        MSG("Deadlock avoidance: sleeping thread was not active");
+#endif
+        qsamplerlist[i]->resumeThread(i,i);
+      }else{
+#ifdef DEBUG
+        MSG("Slowlock: sleeping thread was active");
+#endif
+      }
     }
+
+    return false;
   }
+
+  I(tsfifo[fid].full());
 
   for(int i=32;i<tsfifo[fid].size();i++) {
     RAWDInst  *rinst = tsfifo[fid].getHeadRef();
@@ -264,6 +285,8 @@ void QEMUReader::populate(FlowID fid) {
     pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
   }
   pthread_mutex_unlock(&mutex_ctrl); // END
+
+  return true;
 }
 
 DInst *QEMUReader::peekHead(FlowID fid) {
@@ -276,7 +299,9 @@ DInst *QEMUReader::peekHead(FlowID fid) {
       return dinst;
     }
 
-    populate(fid);
+    bool p = populate(fid);
+    if (!p)
+      return 0;
 
   }while(!ruffer[fid].empty());
 
@@ -295,7 +320,9 @@ DInst *QEMUReader::executeHead(FlowID fid)
       return dinst;
     }
 
-    populate(fid);
+    bool p = populate(fid);
+    if (!p)
+      return 0;
 
   }while(!ruffer[fid].empty());
 

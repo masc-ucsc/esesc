@@ -74,8 +74,9 @@ class EmulInterface {
   //  - Other  : addr == 0
 
   // Advance the PC of the head
+  virtual bool   populate(FlowID fid) = 0;
   virtual DInst *peekHead(FlowID fid) = 0;
-  virtual DInst *executeHead(FlowID fid) = 0;
+  virtual void   executeHead(FlowID fid) = 0;
   // Advance the PC of the tail
   virtual void reexecuteTail(FlowID fid) = 0;
 
@@ -102,6 +103,7 @@ class EmulInterface {
   virtual void startDetail(FlowID fid)=0;
   virtual void startTiming(FlowID fid)=0;
 
+  virtual void   setFid(FlowID cpuid)=0;
   virtual FlowID getFid(FlowID last_fid)=0;
   virtual void   freeFid(FlowID)=0;
   virtual FlowID mapLid(FlowID) = 0; // Map local FlowID

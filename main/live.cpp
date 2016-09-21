@@ -161,6 +161,7 @@ void load_esesc () {
   dyn_QEMUReader_finish          = (dyn_QEMUReader_finish_t)dlsym(handle, "QEMUReader_finish");
   dyn_QEMUReader_setFlowCmd      = (dyn_QEMUReader_setFlowCmd_t)dlsym(handle, "QEMUReader_setFlowCmd");
 
+
   typedef void (*dyn_start_esesc_t)(char *, int, int, int, int, uint64_t *, bool *, uint64_t, int, const char *);
   dyn_start_esesc_t dyn_start_esesc = (dyn_start_esesc_t)dlsym(handle, "start_esesc");
   if (dyn_start_esesc==0) {
@@ -287,8 +288,7 @@ extern "C" FlowID QEMUReader_resumeThread (FlowID uid, FlowID last_fid) {
 
 
 extern "C" void QEMUReader_start_roi(uint32_t fid) {
-  //TODO:  Need to actually link function dynamically 
-  return;
+  return (*dyn_QEMUReader_start_roi)(fid);
 }
 
 

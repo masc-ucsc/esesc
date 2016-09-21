@@ -59,6 +59,7 @@ public:
   virtual ~Reader() {
   };
 
+  virtual bool   populate(FlowID fid)      = 0;
   virtual DInst *peekHead(FlowID fid)      = 0;
   virtual DInst *executeHead(FlowID fid)   = 0;
   virtual void   reexecuteTail(FlowID fid) = 0;

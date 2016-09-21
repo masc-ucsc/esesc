@@ -40,6 +40,8 @@
 
 #include <limits.h>
 
+//#define MEM_TSO 1
+//#define MEM_TSO2 1
 #include "Resource.h"
 
 #include "Cluster.h"
@@ -53,7 +55,6 @@
 #include "LSQ.h"
 #include "TaskHandler.h"
 
-#define MEM_TSO 1
 //#define USE_PNR
 
 /* }}} */
@@ -74,6 +75,12 @@ Resource::Resource(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l)
   I(cls);
   if(gen)
     gen->subscribe();
+
+  const char *str = SescConf->getCharPtr("cpusimu", "type", cls->getGProcessor()->getID());
+  if (strcasecmp(str,"inorder")==0)
+    inorder = true;
+  else
+    inorder = false;
 }
 /* }}} */
 
@@ -255,6 +262,9 @@ void MemReplay::replayManage(DInst* dinst) {
 FULoad::FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
   /* Constructor {{{1 */
   : MemResource(type, cls, aGen, _lsq, ss, l, ms, id, cad)
+#ifdef MEM_TSO2 
+  ,tso2Replay("P(%d)_%s_%s:tso2Replay", id, cls->getName(), cad)
+#endif
   ,LSDelay(lsdelay)
   ,freeEntries(size) {
   char cadena[1000];
@@ -276,19 +286,28 @@ StallCause FULoad::canIssue(DInst *dinst) {
   if( !lsq->hasFreeEntries() )
     return OutsLoadsStall;
   
+  if (inorder)
+    if(lsq->hasPendingResolution())
+      return OutsLoadsStall;
+
   if (!lsq->insert(dinst))
     return OutsLoadsStall;
 
   storeset->insert(dinst);
 
   lsq->decFreeEntries();
-  freeEntries--;
+
+  if (!LSQlateAlloc)
+    freeEntries--;
   return NoStall;
 }
 /* }}} */
 
 void FULoad::executing(DInst *dinst) {
   /* executing {{{1 */
+
+  if (LSQlateAlloc)
+    freeEntries--;
 
   cluster->executing(dinst);
   Time_t when = gen->nextSlot(dinst->getStatsFlag())+lat;
@@ -375,7 +394,8 @@ bool FULoad::retire(DInst *dinst, bool flushing)
 
 #ifdef MEM_TSO2
   if (DL1->Invalid(dinst->getAddr())) {
-    MSG("Sync head/tail @%lld",globalClock);
+    //MSG("Sync head/tail @%lld",globalClock);
+    tso2Replay.inc(dinst->getStatsFlag());
     gproc->replay(dinst);
 #if 0
     EmulInterface *eint = TaskHandler::getEmul(coreid);
@@ -419,7 +439,14 @@ FUStore::FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, Store
   enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
   scbSize      = SescConf->getInt("cpusimu", "scbSize", id);
   scbEntries   = scbSize;
+  if (SescConf->checkBool("cpusimu", "LSQlateAlloc",id))
+    LSQlateAlloc = SescConf->getBool("cpusimu", "LSQlateAlloc",id);
+  else
+    LSQlateAlloc = false;
 
+  const char *dl1_section = DL1->getSection();
+  int bsize               = SescConf->getInt(dl1_section,"bsize");
+  lineSizeBits            = log2i(bsize);
 }
 /* }}} */
 
@@ -435,6 +462,10 @@ StallCause FUStore::canIssue(DInst *dinst) {
   }
   if (!lsq->hasFreeEntries())
     return OutsStoresStall;
+
+  if (inorder)
+    if(lsq->hasPendingResolution())
+      return OutsStoresStall;
 
   if (!lsq->insert(dinst))
     return OutsStoresStall;
@@ -501,13 +532,6 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
     performed(dinst);
     return true;
   }
-  if (!enableDcache) {
-    if (dinst->isExecuted()) {
-      performed(dinst);
-      return true;
-    }
-    return false;
-  }
 
   if (scbEntries<=0)
     return false;
@@ -521,7 +545,16 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
   freeEntries++;
   scbEntries--;
   scbQueue.push_back(dinst);
-  MemRequest::sendReqWrite(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst));
+
+  bool pendingLine = scbMerge[(dinst->getAddr()>>lineSizeBits) & 1023]>0;
+  scbMerge[(dinst->getAddr()>>lineSizeBits) & 1023]++;
+
+  if (enableDcache && !pendingLine) {
+    MemRequest::sendReqWrite(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), performedCB::create(this,dinst));
+  }else{
+    // Merge request if pending
+    performed(dinst);
+  }
 
   return true;
 }
@@ -537,6 +570,8 @@ void FUStore::performed(DInst *dinst) {
     dinst->recycle();
   }
   dinst->markPerformed();
+
+  scbMerge[(dinst->getAddr()>>lineSizeBits) & 1023]--;
 
 #ifndef MEM_TSO
   // RC
@@ -608,6 +643,13 @@ FUGeneric::FUGeneric(uint8_t type, Cluster *cls ,PortGeneric *aGen ,TimeDelta_t 
 
 StallCause FUGeneric::canIssue(DInst *dinst) {
   /* canIssue {{{1 */
+#if 0
+  if (inorder) {
+    Time_t t = gen->calcNextSlot();
+    if (t>globalClock)
+      return DivergeStall;
+  }
+#endif
   return NoStall;
 }
 /* }}} */
@@ -740,14 +782,13 @@ void FUBranch::performed(DInst *dinst) {
 
 /***********************************************/
 
-FURALU::FURALU(uint8_t type, Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, bool scooreMemory_, int32_t id)
+FURALU::FURALU(uint8_t type, Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, int32_t id)
   /* constructor {{{1 */
   :Resource(type, cls, aGen, l)
   ,dmemoryBarrier("P(%d)_%s_dmemoryBarrier",id,cls->getName())
   ,imemoryBarrier("P(%d)_%s_imemoryBarrier",id,cls->getName())
 {
   blockUntil = 0;
-  scooreMemory = scooreMemory_;
 }
 /* }}} */
 
@@ -774,8 +815,7 @@ StallCause FURALU::canIssue(DInst *dinst)
     return SyscallStall;
   }else if (!dinst->getInst()->hasDstRegister()
             && !dinst->getInst()->hasSrc1Register()
-            && !dinst->getInst()->hasSrc2Register()
-            && !scooreMemory) {
+            && !dinst->getInst()->hasSrc2Register()) {
     if (gproc->isROBEmpty())
       return NoStall;
     if (dinst->getAddr() == 0xbeefbeef)

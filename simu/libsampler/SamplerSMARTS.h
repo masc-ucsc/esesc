@@ -55,7 +55,7 @@ public:
   void syncStats(){
   };
   void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
-  float getSamplingRatio() {return static_cast<float>(nInstTiming)/static_cast<float>(nInstRabbit + nInstWarmup + nInstDetail + nInstTiming);};
+  void setStatsFlag(DInst *dinst);
 };
 #endif
 

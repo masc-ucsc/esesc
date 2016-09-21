@@ -54,7 +54,7 @@
 #include "hw/empty_slot.h"
 #include "sysemu/kvm.h"
 #include "exec/semihost.h"
-#include "hw/mips/mips_gic.h"
+#include "hw/mips/cps.h"
 
 //#define DEBUG_BOARD_INIT
 
@@ -93,6 +93,7 @@ typedef struct {
 typedef struct {
     SysBusDevice parent_obj;
 
+    MIPSCPSState *cps;
     qemu_irq *i8259;
 } MaltaState;
 
@@ -606,8 +607,8 @@ static void network_init(PCIBus *pci_bus)
      a3 - RAM size in bytes
 */
 
-static void write_bootloader (CPUMIPSState *env, uint8_t *base,
-                              int64_t run_addr, int64_t kernel_entry)
+static void write_bootloader(uint8_t *base, int64_t run_addr,
+                             int64_t kernel_entry)
 {
     uint32_t *p;
 
@@ -796,7 +797,7 @@ static int64_t load_kernel (void)
 
     if (load_elf(loaderparams.kernel_filename, cpu_mips_kseg0_to_phys, NULL,
                  (uint64_t *)&kernel_entry, NULL, (uint64_t *)&kernel_high,
-                 big_endian, ELF_MACHINE, 1) < 0) {
+                 big_endian, EM_MIPS, 1) < 0) {
         fprintf(stderr, "qemu: could not load kernel '%s'\n",
                 loaderparams.kernel_filename);
         exit(1);
@@ -902,16 +903,75 @@ static void main_cpu_reset(void *opaque)
 
     if (kvm_enabled()) {
         /* Start running from the bootloader we wrote to end of RAM */
-        env->active_tc.PC = 0x40000000 + loaderparams.ram_size;
+        env->active_tc.PC = 0x40000000 + loaderparams.ram_low_size;
     }
 }
 
-static void cpu_request_exit(void *opaque, int irq, int level)
+static void create_cpu_without_cps(const char *cpu_model,
+                                   qemu_irq *cbus_irq, qemu_irq *i8259_irq)
 {
-    CPUState *cpu = current_cpu;
+    CPUMIPSState *env;
+    MIPSCPU *cpu;
+    int i;
 
-    if (cpu && level) {
-        cpu_exit(cpu);
+    for (i = 0; i < smp_cpus; i++) {
+        cpu = cpu_mips_init(cpu_model);
+        if (cpu == NULL) {
+            fprintf(stderr, "Unable to find CPU definition\n");
+            exit(1);
+        }
+        env = &cpu->env;
+
+        /* Init internal devices */
+        cpu_mips_irq_init_cpu(env);
+        cpu_mips_clock_init(env);
+        qemu_register_reset(main_cpu_reset, cpu);
+    }
+
+    cpu = MIPS_CPU(first_cpu);
+    env = &cpu->env;
+    *i8259_irq = env->irq[2];
+    *cbus_irq = env->irq[4];
+}
+
+static void create_cps(MaltaState *s, const char *cpu_model,
+                       qemu_irq *cbus_irq, qemu_irq *i8259_irq)
+{
+    Error *err = NULL;
+    s->cps = g_new0(MIPSCPSState, 1);
+
+    object_initialize(s->cps, sizeof(MIPSCPSState), TYPE_MIPS_CPS);
+    qdev_set_parent_bus(DEVICE(s->cps), sysbus_get_default());
+
+    object_property_set_str(OBJECT(s->cps), cpu_model, "cpu-model", &err);
+    object_property_set_int(OBJECT(s->cps), smp_cpus, "num-vp", &err);
+    object_property_set_bool(OBJECT(s->cps), true, "realized", &err);
+    if (err != NULL) {
+        error_report("%s", error_get_pretty(err));
+        exit(1);
+    }
+
+    sysbus_mmio_map_overlap(SYS_BUS_DEVICE(s->cps), 0, 0, 1);
+
+    *i8259_irq = get_cps_irq(s->cps, 3);
+    *cbus_irq = NULL;
+}
+
+static void create_cpu(MaltaState *s, const char *cpu_model,
+                       qemu_irq *cbus_irq, qemu_irq *i8259_irq)
+{
+    if (cpu_model == NULL) {
+#ifdef TARGET_MIPS64
+        cpu_model = "20Kc";
+#else
+        cpu_model = "24Kf";
+#endif
+    }
+
+    if ((smp_cpus > 1) && cpu_supports_cps_smp(cpu_model)) {
+        create_cps(s, cpu_model, cbus_irq, i8259_irq);
+    } else {
+        create_cpu_without_cps(cpu_model, cbus_irq, i8259_irq);
     }
 }
 
@@ -920,7 +980,6 @@ void mips_malta_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
     ram_addr_t ram_low_size;
-    const char *cpu_model = machine->cpu_model;
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
@@ -937,10 +996,8 @@ void mips_malta_init(MachineState *machine)
     int64_t kernel_entry, bootloader_run_addr;
     PCIBus *pci_bus;
     ISABus *isa_bus;
-    MIPSCPU *cpu;
-    CPUMIPSState *env;
     qemu_irq *isa_irq;
-    qemu_irq *cpu_exit_irq;
+    qemu_irq cbus_irq, i8259_irq;
     int piix4_devfn;
     I2CBus *smbus;
     int i;
@@ -970,30 +1027,8 @@ void mips_malta_init(MachineState *machine)
         }
     }
 
-    /* init CPUs */
-    if (cpu_model == NULL) {
-#ifdef TARGET_MIPS64
-        cpu_model = "20Kc";
-#else
-        cpu_model = "24Kf";
-#endif
-    }
-
-    for (i = 0; i < smp_cpus; i++) {
-        cpu = cpu_mips_init(cpu_model);
-        if (cpu == NULL) {
-            fprintf(stderr, "Unable to find CPU definition\n");
-            exit(1);
-        }
-        env = &cpu->env;
-
-        /* Init internal devices */
-        cpu_mips_irq_init_cpu(env);
-        cpu_mips_clock_init(env);
-        qemu_register_reset(main_cpu_reset, cpu);
-    }
-    cpu = MIPS_CPU(first_cpu);
-    env = &cpu->env;
+    /* create CPU */
+    create_cpu(s, machine->cpu_model, &cbus_irq, &i8259_irq);
 
     /* allocate RAM */
     if (ram_size > (2048u << 20)) {
@@ -1034,7 +1069,7 @@ void mips_malta_init(MachineState *machine)
 #endif
     /* FPGA */
     /* The CBUS UART is attached to the MIPS CPU INT2 pin, ie interrupt 4 */
-    malta_fpga_init(system_memory, FPGA_ADDRESS, env->irq[4], serial_hds[2]);
+    malta_fpga_init(system_memory, FPGA_ADDRESS, cbus_irq, serial_hds[2]);
 
     /* Load firmware in flash / BIOS. */
     dinfo = drive_get(IF_PFLASH, 0, fl_idx);
@@ -1071,11 +1106,11 @@ void mips_malta_init(MachineState *machine)
         loaderparams.initrd_filename = initrd_filename;
         kernel_entry = load_kernel();
 
-        write_bootloader(env, memory_region_get_ram_ptr(bios),
+        write_bootloader(memory_region_get_ram_ptr(bios),
                          bootloader_run_addr, kernel_entry);
         if (kvm_enabled()) {
             /* Write the bootloader code @ the end of RAM, 1MB reserved */
-            write_bootloader(env, memory_region_get_ram_ptr(ram_low_preio) +
+            write_bootloader(memory_region_get_ram_ptr(ram_low_preio) +
                                     ram_low_size,
                              bootloader_run_addr, kernel_entry);
         }
@@ -1131,7 +1166,7 @@ void mips_malta_init(MachineState *machine)
      * regions are not executable.
      */
     memory_region_init_ram(bios_copy, NULL, "bios.1fc", BIOS_SIZE,
-                           &error_abort);
+                           &error_fatal);
     if (!rom_copy(memory_region_get_ram_ptr(bios_copy),
                   FLASH_ADDRESS, BIOS_SIZE)) {
         memcpy(memory_region_get_ram_ptr(bios_copy),
@@ -1142,16 +1177,6 @@ void mips_malta_init(MachineState *machine)
 
     /* Board ID = 0x420 (Malta Board with CoreLV) */
     stl_p(memory_region_get_ram_ptr(bios_copy) + 0x10, 0x00000420);
-
-    /* Init internal devices */
-    cpu_mips_irq_init_cpu(env);
-    cpu_mips_clock_init(env);
-
-    /* GCR/GIC */
-    if (env->CP0_Config3 & (1 << CP0C3_CMGCR)) {
-        gcr_init(smp_cpus, first_cpu, system_memory,
-                 (qemu_irq **)&env->gic_irqs);
-    }
 
     /*
      * We have a circular dependency problem: pci_bus depends on isa_irq,
@@ -1172,11 +1197,7 @@ void mips_malta_init(MachineState *machine)
 
     /* Interrupt controller */
     /* The 8259 is attached to the MIPS CPU INT0 pin, ie interrupt 2 */
-    if (env->gic_irqs) {
-        s->i8259 = i8259_init(isa_bus, env->gic_irqs[3]);
-    } else {
-        s->i8259 = i8259_init(isa_bus, env->irq[2]);
-    }
+    s->i8259 = i8259_init(isa_bus, i8259_irq);
 
     isa_bus_irqs(isa_bus, s->i8259);
     pci_piix4_ide_init(pci_bus, hd, piix4_devfn + 1);
@@ -1186,8 +1207,7 @@ void mips_malta_init(MachineState *machine)
     smbus_eeprom_init(smbus, 8, smbus_eeprom_buf, smbus_eeprom_size);
     g_free(smbus_eeprom_buf);
     pit = pit_init(isa_bus, 0x40, 0, NULL);
-    cpu_exit_irq = qemu_allocate_irqs(cpu_request_exit, NULL, 1);
-    DMA_init(0, cpu_exit_irq);
+    DMA_init(0);
 
     /* Super I/O */
     isa_create_simple(isa_bus, "i8042");
@@ -1227,23 +1247,19 @@ static const TypeInfo mips_malta_device = {
     .class_init    = mips_malta_class_init,
 };
 
-static QEMUMachine mips_malta_machine = {
-    .name = "malta",
-    .desc = "MIPS Malta Core LV",
-    .init = mips_malta_init,
-    .max_cpus = 32,
-    .is_default = 1,
-};
+static void mips_malta_machine_init(MachineClass *mc)
+{
+    mc->desc = "MIPS Malta Core LV";
+    mc->init = mips_malta_init;
+    mc->max_cpus = 16;
+    mc->is_default = 1;
+}
+
+DEFINE_MACHINE("malta", mips_malta_machine_init)
 
 static void mips_malta_register_types(void)
 {
     type_register_static(&mips_malta_device);
 }
 
-static void mips_malta_machine_init(void)
-{
-    qemu_register_machine(&mips_malta_machine);
-}
-
 type_init(mips_malta_register_types)
-machine_init(mips_malta_machine_init);

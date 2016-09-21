@@ -2,6 +2,7 @@
  * IMX31 Clock Control Module
  *
  * Copyright (C) 2012 NICTA
+ * Updated by Jean-Christophe Dubois <jcd@tribudubois.net>
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
@@ -10,51 +11,27 @@
  * the CCM.
  */
 
-#include "hw/hw.h"
-#include "hw/sysbus.h"
-#include "sysemu/sysemu.h"
-#include "hw/arm/imx.h"
+#include "hw/misc/imx_ccm.h"
 
 #define CKIH_FREQ 26000000 /* 26MHz crystal input */
 #define CKIL_FREQ    32768 /* nominal 32khz clock */
 
-
-//#define DEBUG_CCM 1
-#ifdef DEBUG_CCM
-#define DPRINTF(fmt, args...) \
-do { printf("imx_ccm: " fmt , ##args); } while (0)
-#else
-#define DPRINTF(fmt, args...) do {} while (0)
+#ifndef DEBUG_IMX_CCM
+#define DEBUG_IMX_CCM 0
 #endif
+
+#define DPRINTF(fmt, args...) \
+    do { \
+        if (DEBUG_IMX_CCM) { \
+            fprintf(stderr, "[%s]%s: " fmt , TYPE_IMX_CCM, \
+                                             __func__, ##args); \
+        } \
+    } while (0)
 
 static int imx_ccm_post_load(void *opaque, int version_id);
 
-#define TYPE_IMX_CCM "imx_ccm"
-#define IMX_CCM(obj) OBJECT_CHECK(IMXCCMState, (obj), TYPE_IMX_CCM)
-
-typedef struct IMXCCMState {
-    SysBusDevice parent_obj;
-
-    MemoryRegion iomem;
-
-    uint32_t ccmr;
-    uint32_t pdr0;
-    uint32_t pdr1;
-    uint32_t mpctl;
-    uint32_t spctl;
-    uint32_t cgr[3];
-    uint32_t pmcr0;
-    uint32_t pmcr1;
-
-    /* Frequencies precalculated on register changes */
-    uint32_t pll_refclk_freq;
-    uint32_t mcu_clk_freq;
-    uint32_t hsp_clk_freq;
-    uint32_t ipg_clk_freq;
-} IMXCCMState;
-
 static const VMStateDescription vmstate_imx_ccm = {
-    .name = "imx-ccm",
+    .name = TYPE_IMX_CCM,
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
@@ -71,44 +48,6 @@ static const VMStateDescription vmstate_imx_ccm = {
     },
     .post_load = imx_ccm_post_load,
 };
-
-/* CCMR */
-#define CCMR_FPME (1<<0)
-#define CCMR_MPE  (1<<3)
-#define CCMR_MDS  (1<<7)
-#define CCMR_FPMF (1<<26)
-#define CCMR_PRCS (3<<1)
-
-/* PDR0 */
-#define PDR0_MCU_PODF_SHIFT (0)
-#define PDR0_MCU_PODF_MASK (0x7)
-#define PDR0_MAX_PODF_SHIFT (3)
-#define PDR0_MAX_PODF_MASK (0x7)
-#define PDR0_IPG_PODF_SHIFT (6)
-#define PDR0_IPG_PODF_MASK (0x3)
-#define PDR0_NFC_PODF_SHIFT (8)
-#define PDR0_NFC_PODF_MASK (0x7)
-#define PDR0_HSP_PODF_SHIFT (11)
-#define PDR0_HSP_PODF_MASK (0x7)
-#define PDR0_PER_PODF_SHIFT (16)
-#define PDR0_PER_PODF_MASK (0x1f)
-#define PDR0_CSI_PODF_SHIFT (23)
-#define PDR0_CSI_PODF_MASK (0x1ff)
-
-#define EXTRACT(value, name) (((value) >> PDR0_##name##_PODF_SHIFT) \
-                              & PDR0_##name##_PODF_MASK)
-#define INSERT(value, name) (((value) & PDR0_##name##_PODF_MASK) << \
-                             PDR0_##name##_PODF_SHIFT)
-/* PLL control registers */
-#define PD(v) (((v) >> 26) & 0xf)
-#define MFD(v) (((v) >> 16) & 0x3ff)
-#define MFI(v) (((v) >> 10) & 0xf);
-#define MFN(v) ((v) & 0x3ff)
-
-#define PLL_PD(x)               (((x) & 0xf) << 26)
-#define PLL_MFD(x)              (((x) & 0x3ff) << 16)
-#define PLL_MFI(x)              (((x) & 0xf) << 10)
-#define PLL_MFN(x)              (((x) & 0x3ff) << 0)
 
 uint32_t imx_clock_frequency(DeviceState *dev, IMXClk clock)
 {
@@ -174,7 +113,7 @@ static void update_clocks(IMXCCMState *s)
     s->hsp_clk_freq = s->mcu_clk_freq / (1 + EXTRACT(s->pdr0, HSP));
     s->ipg_clk_freq = s->hsp_clk_freq / (1 + EXTRACT(s->pdr0, IPG));
 
-    DPRINTF("Clocks: mcu %uMHz, HSP %uMHz, IPG %uHz\n",
+    DPRINTF("mcu %uMHz, HSP %uMHz, IPG %uHz\n",
             s->mcu_clk_freq / 1000000,
             s->hsp_clk_freq / 1000000,
             s->ipg_clk_freq);
@@ -200,7 +139,8 @@ static uint64_t imx_ccm_read(void *opaque, hwaddr offset,
 {
     IMXCCMState *s = (IMXCCMState *)opaque;
 
-    DPRINTF("read(offset=%x)", offset >> 2);
+    DPRINTF("(offset=0x%" HWADDR_PRIx ")\n", offset);
+
     switch (offset >> 2) {
     case 0: /* CCMR */
         DPRINTF(" ccmr = 0x%x\n", s->ccmr);
@@ -231,9 +171,11 @@ static uint64_t imx_ccm_read(void *opaque, hwaddr offset,
     case 23:
         DPRINTF(" pcmr0 = 0x%x\n", s->pmcr0);
         return s->pmcr0;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR, "[%s]%s: Bad register at offset 0x%"
+                      HWADDR_PRIx "\n", TYPE_IMX_CCM, __func__, offset);
+        return 0;
     }
-    DPRINTF(" return 0\n");
-    return 0;
 }
 
 static void imx_ccm_write(void *opaque, hwaddr offset,
@@ -241,8 +183,9 @@ static void imx_ccm_write(void *opaque, hwaddr offset,
 {
     IMXCCMState *s = (IMXCCMState *)opaque;
 
-    DPRINTF("write(offset=%x, value = %x)\n",
-            offset >> 2, (unsigned int)value);
+    DPRINTF("(offset=0x%" HWADDR_PRIx ", value = 0x%x)\n",
+            offset, (unsigned int)value);
+
     switch (offset >> 2) {
     case 0:
         s->ccmr = CCMR_FPMF | (value & 0x3b6fdfff);
@@ -270,6 +213,8 @@ static void imx_ccm_write(void *opaque, hwaddr offset,
         return;
 
     default:
+        qemu_log_mask(LOG_GUEST_ERROR, "[%s]%s: Bad register at offset 0x%"
+                      HWADDR_PRIx "\n", TYPE_IMX_CCM, __func__, offset);
         return;
     }
     update_clocks(s);
@@ -286,7 +231,7 @@ static int imx_ccm_init(SysBusDevice *dev)
     IMXCCMState *s = IMX_CCM(dev);
 
     memory_region_init_io(&s->iomem, OBJECT(dev), &imx_ccm_ops, s,
-                          "imx_ccm", 0x1000);
+                          TYPE_IMX_CCM, 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
 
     return 0;

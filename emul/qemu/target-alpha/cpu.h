@@ -32,8 +32,6 @@
 
 #include "fpu/softfloat.h"
 
-#define ELF_MACHINE     EM_ALPHA
-
 #define ICACHE_LINE_SIZE 32
 #define DCACHE_LINE_SIZE 32
 
@@ -289,7 +287,6 @@ struct CPUAlphaState {
 
 #define cpu_list alpha_cpu_list
 #define cpu_exec cpu_alpha_exec
-#define cpu_gen_code cpu_alpha_gen_code
 #define cpu_signal_handler cpu_alpha_signal_handler
 
 #include "exec/cpu-all.h"
@@ -376,7 +373,7 @@ enum {
     PS_USER_MODE = 8
 };
 
-static inline int cpu_mmu_index(CPUAlphaState *env)
+static inline int cpu_mmu_index(CPUAlphaState *env, bool ifetch)
 {
     if (env->pal_mode) {
         return MMU_KERNEL_IDX;
@@ -445,8 +442,9 @@ void QEMU_NORETURN arith_excp(CPUAlphaState *, uintptr_t, int, uint64_t);
 
 uint64_t cpu_alpha_load_fpcr (CPUAlphaState *env);
 void cpu_alpha_store_fpcr (CPUAlphaState *env, uint64_t val);
+uint64_t cpu_alpha_load_gr(CPUAlphaState *env, unsigned reg);
+void cpu_alpha_store_gr(CPUAlphaState *env, unsigned reg, uint64_t val);
 #ifndef CONFIG_USER_ONLY
-void swap_shadow_regs(CPUAlphaState *env);
 QEMU_NORETURN void alpha_cpu_unassigned_access(CPUState *cpu, hwaddr addr,
                                                bool is_write, bool is_exec,
                                                int unused, unsigned size);

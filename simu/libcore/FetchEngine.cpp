@@ -47,7 +47,7 @@
 #include "Pipeline.h"
 extern bool MIMDmode;
 
-#define ENABLE_FAST_WARMUP 1
+//#define ENABLE_FAST_WARMUP 1
 //#define FETCH_TRACE 1
 
 FetchEngine::FetchEngine(FlowID id
@@ -58,11 +58,12 @@ FetchEngine::FetchEngine(FlowID id
   ,avgBranchTime("P(%d)_FetchEngine_avgBranchTime", id)
   ,avgBranchTime2("P(%d)_FetchEngine_avgBranchTime2", id)
   ,avgFetchTime("P(%d)_FetchEngine_avgFetchTime", id)
+  ,avgFetched("P(%d)_FetchEngine_avgFetched", id)
   ,nDelayInst1("P(%d)_FetchEngine:nDelayInst1", id)
   ,nDelayInst2("P(%d)_FetchEngine:nDelayInst2", id) // Not enough BB/LVIDs per cycle
   ,nDelayInst3("P(%d)_FetchEngine:nDelayInst3", id) 
-  ,nFetched("P(%d)_FetchEngine:nFetched", id)
   ,nBTAC("P(%d)_FetchEngine:nBTAC", id) // BTAC corrections to BTB
+  ,zeroDinst("P(%d)_zeroDinst:nBTAC", id) 
   //  ,szBB("FetchEngine(%d):szBB", id)
   //  ,szFB("FetchEngine(%d):szFB", id)
   //  ,szFS("FetchEngine(%d):szFS", id)
@@ -97,8 +98,7 @@ FetchEngine::FetchEngine(FlowID id
   else
     bpred = new BPredictor(id, gms->getIL1());
 
-  lastd     = 0;
-  missInst  = false;
+  missInst = false;
 
   const char *isection = SescConf->getCharPtr("cpusimu","IL1", id);
   const char *pos = strchr(isection,' ');
@@ -126,7 +126,7 @@ FetchEngine::FetchEngine(FlowID id
   }
   lineSize = SescConf->getInt(isection,"bsize");
   if ((lineSize/4) < FetchWidth) {
-    MSG("ERROR: icache line size should be larger than fetch width lineSize=%d fetchWidth=%d",lineSize, FetchWidth);
+    MSG("ERROR: icache line size should be larger than fetch width lineSize=%d fetchWidth=%d [%s]",lineSize, FetchWidth,isection);
     SescConf->notCorrect();
   }
 
@@ -156,9 +156,10 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
   Time_t n = (globalClock-lastMissTime);
   avgFetchTime.sample(n, dinst->getStatsFlag());
 
-  if (fastfix)
+  if (fastfix) {
+    I(globalClock);
     unBlockFetchBPredDelayCB::schedule(delay, this , dinst, globalClock);
-  else 
+  }else 
     dinst->lockFetch(this);
 
   return true;
@@ -177,8 +178,10 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
   do {
     DInst *dinst = 0;
     dinst = eint->peekHead(fid);
-    if (dinst == 0)
+    if (dinst == 0) {
+      zeroDinst.inc(true);
       break;
+    }
 
 #ifdef ENABLE_FAST_WARMUP
     if (dinst->getPC() == 0) {
@@ -250,7 +253,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     }
     lastpc  = dinst->getPC();
 
-    I(!missInst);
     eint->executeHead(fid); // Consume for sure
 
     dinst->setFetchTime();
@@ -284,10 +286,13 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         DInst *dinstn = eint->peekHead(fid);
         if (dinstn && dinst->getAddr() && n2Fetch) { // Taken branch and next inst is delay slot
           if (dinstn->getPC() == (lastpc+4)) {
-            bucket->push(eint->executeHead(fid));
+            eint->executeHead(fid);
+            bucket->push(dinstn);
             n2Fetch--;
           }
-        }
+        }else if (dinstn == 0)
+          zeroDinst.inc(true);
+
 #ifdef FETCH_TRACE
         if (dinst->isBiasBranch() && dinst->getFetch()) {
           // OOPS. Thought that it was bias and it is a long misspredict
@@ -303,7 +308,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
         break;
       }
-      I(!missInst);
 #ifdef FETCH_TRACE
       if (bias_ninst>256) {
         MSG("2ENDS first=%llx last=%llx ninst=%d", bias_firstPC, dinst->getPC(), bias_ninst);
@@ -339,7 +343,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
   bpred->fetchBoundaryEnd();
 
   if(enableICache && !bucket->empty()) {
-    nFetched.add(FetchWidth - n2Fetch, bucket->top()->getStatsFlag());
+    avgFetched.sample(FetchWidth - n2Fetch, bucket->top()->getStatsFlag());
     MemRequest::sendReqRead(gms->getIL1(), bucket->top()->getStatsFlag(), bucket->top()->getPC(), &(bucket->markFetchedCB));
   }else{
     bucket->markFetchedCB.schedule(IL1HitDelay);
@@ -354,20 +358,16 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         );
 #endif
   }
-
 }
 
 void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
-
   // Reset the max number of BB to fetch in this cycle (decreased in processBranch)
   maxBB = BB4Cycle;
 
   // You pass maxBB because there may be many fetches calls to realfetch in one cycle
   // (thanks to the callbacks)
   realfetch(bucket, eint, fid, FetchWidth);
-
 }
-
 
 void FetchEngine::dump(const char *str) const {
   char *nstr = (char *)alloca(strlen(str) + 20);
@@ -404,9 +404,9 @@ void FetchEngine::unBlockFetch(DInst* dinst, Time_t missFetchTime) {
 void FetchEngine::clearMissInst(DInst * dinst, Time_t missFetchTime){
 
   //MSG("\t\t\t\t\tCPU: %d\tU:ID: %d,DInst PE:%d, Dinst PC %x",(int) this->gproc->getID(),(int) dinst->getID(),dinst->getPE(),dinst->getPC());
+  I(missInst);
   missInst = false;
 
-  I(lastd == dinst);
   cbPending.mycall();
 }
 
@@ -415,7 +415,6 @@ void FetchEngine::setMissInst(DInst * dinst) {
 
   I(!missInst);
 
-  missInst      = true;
-  lastd         = dinst;
+  missInst = true;
 }
 

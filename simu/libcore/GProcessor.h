@@ -64,7 +64,6 @@
 #include "LSQ.h"
 
 
-class FetchEngine;
 class GMemorySystem;
 class BPredictor;
 
@@ -92,6 +91,9 @@ class GProcessor {
     // Updated by Processor or SMTProcessor. Shows the number of clocks
     // that the processor have been active (fetch + exe engine)
     ID(int32_t prevDInstID);
+
+    uint32_t   smt; // 1...
+    uint32_t   smt_ctx; // 0... smt_ctx = cpu_id % smt
 
     bool       active;
 
@@ -146,6 +148,7 @@ class GProcessor {
 
     GMemorySystem *getMemorySystem() const { return memorySystem; }
     virtual void executing(DInst *dinst) = 0;
+    virtual void executed(DInst *dinst) = 0;
     virtual LSQ *getLSQ() = 0;
     virtual bool isFlushing() = 0;
     virtual bool isReplayRecovering() = 0;
@@ -183,6 +186,8 @@ class GProcessor {
 
     void setWallClock(bool en=true) {
 
+//FIXME: Periods of no fetch do not advance clock. 
+
       trackactivity();
 
       if (lastWallClock == globalClock || !en)
@@ -191,6 +196,7 @@ class GProcessor {
       lastWallClock = globalClock;
       wallClock->inc(en);
     }
+    static Time_t getWallClock() { return lastWallClock; }
 
     void trackactivity(){
       if (activeclock_end == (lastWallClock-1)){

@@ -71,6 +71,12 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i)
   else
     active = false;
 
+  smt = 1;
+  if (SescConf->checkInt("cpusimu","smt",(int)i)) 
+    smt = SescConf->getInt("cpusimu","smt",(int)i);
+  smt_ctx  = i - (i % smt);
+
+  // maxFlows are REAL THreads IDs inside core (GPU SMT)
   if (SescConf->checkInt("cpusimu","smtnum")) {
    maxFlows = SescConf->getInt("cpusimu","smtnum");
    SescConf->isBetween("cpusimu","smtnum",1,32);

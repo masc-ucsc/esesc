@@ -40,21 +40,22 @@
 #include "EmuSampler.h"
 #include "SescConf.h"
 
+bool EmuSampler::roi_skip;
+
 bool cuda_go_ahead = false;
 bool MIMDmode      = false;
 std::vector<bool> EmuSampler::done;
-bool EmuSampler::terminated = false;
+volatile bool EmuSampler::terminated = false;
 uint64_t *EmuSampler::instPrev;
 uint64_t *EmuSampler::clockPrev;
 uint64_t *EmuSampler::fticksPrev;
-
-uint64_t __thread EmuSampler::local_icount=0; // private per thread
 
 float EmuSampler::turboRatio = 1.0;
  
 EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   /* EmuSampler constructor  */
-  : name(strdup(iname))
+  : nextSwitch(0)
+    ,name(strdup(iname))
     ,sFid(fid)
     ,emul(emu)
     ,lastPhasenInst(0)
@@ -62,6 +63,14 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
     ,restartRabbit(false)
 {
   clock_gettime(CLOCK_REALTIME,&startTime);
+
+  const char *samp_sec = SescConf->getCharPtr(emu->getSection(),"sampler");
+  nInstMax    = static_cast<uint64_t>(SescConf->getDouble(samp_sec,"nInstMax"));
+  nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(samp_sec,"nInstSkip"));
+  if (fid != 0){ // first thread might need a different skip
+    nInstSkip   = static_cast<uint64_t>(SescConf->getDouble(samp_sec,"nInstSkipThreads"));
+  }
+  roi_skip = SescConf->getBool(samp_sec,"ROIOnly");
 
   const char *sys_sec = SescConf->getCharPtr(emu->getSection(),"syscall");
   syscall_enable      = SescConf->getBool(sys_sec,"enable");
@@ -122,9 +131,7 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
   stopJustCalled = true; // implicit stop at the beginning
   calcCPIJustCalled = false;
 
-  local_icount = 0;
-
-  next = 1024*1024+7;
+  next = 2*1024*1024+7;
 
   pthread_mutex_init(&stop_lock, NULL);
   numFlow = SescConf->getRecordSize("","cpuemul");
@@ -142,6 +149,33 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
 }
 /*  */
 
+void EmuSampler::setNextSwitch(uint64_t instNum) {
+  if(instNum < nInstMax) {
+    nextSwitch = instNum;
+  } else {
+    nextSwitch = nInstMax;
+  }
+}
+
+void EmuSampler::start_roi() {
+  roi_skip = !roi_skip;
+  stopJustCalled = false;
+
+  if (roi_skip) {
+    MSG("### SamplerBase::start_roi() called: STOP Simulation");
+    syncTime();
+    setNextSwitch(nInstSkip);
+    startRabbit(0);
+  }else{
+    MSG("### SamplerBase::start_roi() called: START Simulation");
+
+    totalnInst = 0; // reset 
+    setNextSwitch(nInstSkip);
+    if (nInstSkip)
+      startRabbit(0);
+  }
+}
+
 EmuSampler::~EmuSampler() 
   /* Destructor  */
 {
@@ -156,8 +190,9 @@ EmuSampler::~EmuSampler()
 void EmuSampler::setMode(EmuMode mod, FlowID fid)
   /* Stop and start statistics for a given mode  */
 {
-  //printf("Thread: %u, set to mode: %u\n", fid, mod);
-  nSwitches->inc();
+  if (mode != mod) {
+    nSwitches->inc();
+  }
   stop();
   switch(mod) {
     case EmuRabbit:
@@ -200,27 +235,14 @@ void EmuSampler::beginTiming(EmuMode mod)
 }
 /*  */
 
-void EmuSampler::stop()
-  /* stop a given mode, and assign statistics  */
-{ 
-//  if (terminated)
-//    return;
-
-  if (totalnInst >= cuda_inst_skip)
-    cuda_go_ahead = true;
-
-  //MSG("Sampler:STOP");
-  pthread_mutex_lock(&stop_lock);
-  if(stopJustCalled){
-    pthread_mutex_unlock (&stop_lock);
-    return;
-  }
-
+void EmuSampler::syncTime() {
   struct timespec endTime;
   clock_gettime(CLOCK_REALTIME,&endTime);
   uint64_t usecs = endTime.tv_sec - startTime.tv_sec;
   usecs *= 1000000;
   usecs += (endTime.tv_nsec - startTime.tv_nsec)/1000;
+
+  startTime = endTime;
   tusage[mode]->add(usecs);
   iusage[mode]->add(phasenInst);
 
@@ -239,12 +261,32 @@ void EmuSampler::stop()
 
   calcCPI();
 
-  I(!stopJustCalled);
   //I(phasenInst); // There should be something executed (more likely)
   lastPhasenInst    = phasenInst;
   phasenInst        = 0;
-  stopJustCalled    = true;
   calcCPIJustCalled = false;
+}
+
+void EmuSampler::stop()
+  /* stop a given mode, and assign statistics  */
+{ 
+//  if (terminated)
+//    return;
+
+  if (totalnInst >= cuda_inst_skip)
+    cuda_go_ahead = true;
+
+  //MSG("Sampler:STOP");
+  pthread_mutex_lock(&stop_lock);
+  if(stopJustCalled){
+    pthread_mutex_unlock (&stop_lock);
+    return;
+  }
+
+  syncTime();
+
+  I(!stopJustCalled);
+  stopJustCalled    = true;
 
   pthread_mutex_unlock (&stop_lock);
 }
@@ -312,31 +354,27 @@ bool EmuSampler::execute(FlowID fid, uint64_t icount)
 
   GI(mode==EmuTiming, icount==1);
 
-  local_icount+=icount; // There can be several samplers, but each has its own thread
-  //if ( likely(local_icount < 100))
-  //  return !done[fid];
-
-  AtomicAdd(&phasenInst, local_icount);
-  AtomicAdd(&totalnInst, local_icount);
-  local_icount = 0;
+  AtomicAdd(&phasenInst, icount);
+  AtomicAdd(&totalnInst, icount);
 
   if( likely(totalnInst <= next) )  // This is an likely taken branch, pass the info to gcc
     return !done[fid];
 
-  next += 4*1024*1024; // Note, this is racy code. We can miss a rwdt from time to time, but who cares?
+  next += 2*1024*1024; // Note, this is racy code. We can miss a rwdt from time to time, but who cares?
 
   if ( done[fid] ) {
     fprintf(stderr,"X" ); 
     fflush(stderr);
     {
       // We can not really, hold the thread, because it can hold locks inside qemu
-      usleep(10000);
       fprintf(stderr,"X[%d]",fid); 
+      usleep(10000);
     }
   }else{
-    if (mode==EmuRabbit)
-      fprintf(stderr,"r%d",fid );
-    else if (mode==EmuWarmup)
+    if (mode==EmuRabbit) {
+      if (!roi_skip)
+        fprintf(stderr,"r%d",fid );
+    }else if (mode==EmuWarmup)
       fprintf(stderr,"w%d",fid );
     else if (mode==EmuDetail)
       fprintf(stderr,"d%d",fid );
@@ -352,9 +390,11 @@ bool EmuSampler::execute(FlowID fid, uint64_t icount)
   // Repeat: Note, this is racy code. We can miss a rwdt from time to time, but who cares?
   if (icount > 1) {
     while (next < totalnInst) {
-        if (mode==EmuRabbit)
+        if (mode==EmuRabbit) {
+          if (!roi_skip)
             fprintf(stderr,"r%d",fid );
-        next += 4*1024*1024; 
+        }
+        next += 2*1024*1024; 
     }
     next = totalnInst;
   }

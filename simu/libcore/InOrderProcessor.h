@@ -42,16 +42,36 @@
 #include "FetchEngine.h"
 #include "LSQ.h"
 
+struct SMTFetch {
+  FetchEngine *fe;
+  Time_t      smt_lastTime;
+  int         smt_cnt;
+  int         smt_active;
+  int         smt_turn;
+
+  SMTFetch() {
+    fe = 0;
+    smt_lastTime = 0;
+    smt_cnt      = 0;
+    smt_active   = 1;
+    smt_turn     = 0;
+  };
+
+  bool update(bool space);
+};
 class InOrderProcessor : public GProcessor {
 private:
   const int32_t RetireDelay;
 
-  FetchEngine IFID;
+  FetchEngine *ifid;
   PipeQueue   pipeQ;
   int32_t     spaceInInstQueue;
 
   LSQNone     lsq;
   bool        busy;
+  bool        lastrob_getStatsFlag;
+
+  SMTFetch *sf;
 
   //DInst *RAT[LREG_MAX];
   DInst **RAT;
@@ -74,6 +94,7 @@ public:
   virtual ~InOrderProcessor();
 
   void       executing(DInst *dinst);
+  void       executed(DInst *dinst);
   LSQ *getLSQ() { return &lsq; }
   void replay(DInst *dinst);
   bool isFlushing() {

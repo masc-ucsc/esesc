@@ -397,3 +397,7 @@ void SamplerPeriodic::dumpTime() {
   fprintf(log, "\n");
 }
 
+void SamplerPeriodic::setStatsFlag(DInst *dinst) {
+  // Keep same
+}
+

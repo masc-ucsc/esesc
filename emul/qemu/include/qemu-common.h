@@ -12,8 +12,7 @@
 #ifndef QEMU_COMMON_H
 #define QEMU_COMMON_H
 
-#include "qemu/compiler.h"
-#include "config-host.h"
+#include "qemu/osdep.h"
 #include "qemu/typedefs.h"
 #include "qemu/fprintf-fn.h"
 
@@ -23,59 +22,9 @@
 
 #define TFR(expr) do { if ((expr) != -1) break; } while (errno == EINTR)
 
-/* we put basic includes here to avoid repeating them in device drivers */
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <string.h>
-#include <strings.h>
-#include <inttypes.h>
-#include <limits.h>
-#include <time.h>
-#include <ctype.h>
-#include <errno.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <assert.h>
-#include <signal.h>
 #include "glib-compat.h"
 #include "qemu/option.h"
-
-#ifdef _WIN32
-#include "sysemu/os-win32.h"
-#endif
-
-#ifdef CONFIG_POSIX
-#include "sysemu/os-posix.h"
-#endif
-
-#ifndef O_LARGEFILE
-#define O_LARGEFILE 0
-#endif
-#ifndef O_BINARY
-#define O_BINARY 0
-#endif
-#ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS MAP_ANON
-#endif
-#ifndef ENOMEDIUM
-#define ENOMEDIUM ENODEV
-#endif
-#if !defined(ENOTSUP)
-#define ENOTSUP 4096
-#endif
-#if !defined(ECANCELED)
-#define ECANCELED 4097
-#endif
-#if !defined(EMEDIUMTYPE)
-#define EMEDIUMTYPE 4098
-#endif
-#ifndef TIME_MAX
-#define TIME_MAX LONG_MAX
-#endif
+#include "qemu/host-utils.h"
 
 /* HOST_LONG_BITS is the size of a native pointer in bits. */
 #if UINTPTR_MAX == UINT32_MAX
@@ -84,23 +33,6 @@
 # define HOST_LONG_BITS 64
 #else
 # error Unknown pointer size
-#endif
-
-#ifdef _WIN32
-#define fsync _commit
-#if !defined(lseek)
-# define lseek _lseeki64
-#endif
-int qemu_ftruncate64(int, int64_t);
-#if !defined(ftruncate)
-# define ftruncate qemu_ftruncate64
-#endif
-
-static inline char *realpath(const char *path, char *resolved_path)
-{
-    _fullpath(resolved_path, path, _MAX_PATH);
-    return resolved_path;
-}
 #endif
 
 void cpu_ticks_init(void);
@@ -114,7 +46,6 @@ extern int64_t max_delay;
 extern int64_t max_advance;
 void dump_drift_info(FILE *f, fprintf_function cpu_fprintf);
 
-#include "qemu/osdep.h"
 #include "qemu/bswap.h"
 
 /* FIXME: Remove NEED_CPU_H.  */
@@ -269,32 +200,40 @@ int qemu_strnlen(const char *s, int max_len);
  */
 char *qemu_strsep(char **input, const char *delim);
 time_t mktimegm(struct tm *tm);
-int qemu_fls(int i);
 int qemu_fdatasync(int fd);
 int fcntl_setfl(int fd, int flag);
 int qemu_parse_fd(const char *param);
+int qemu_strtol(const char *nptr, const char **endptr, int base,
+                long *result);
+int qemu_strtoul(const char *nptr, const char **endptr, int base,
+                 unsigned long *result);
+int qemu_strtoll(const char *nptr, const char **endptr, int base,
+                 int64_t *result);
+int qemu_strtoull(const char *nptr, const char **endptr, int base,
+                  uint64_t *result);
 
 int parse_uint(const char *s, unsigned long long *value, char **endptr,
                int base);
 int parse_uint_full(const char *s, unsigned long long *value, int base);
 
 /*
- * strtosz() suffixes used to specify the default treatment of an
- * argument passed to strtosz() without an explicit suffix.
+ * qemu_strtosz() suffixes used to specify the default treatment of an
+ * argument passed to qemu_strtosz() without an explicit suffix.
  * These should be defined using upper case characters in the range
- * A-Z, as strtosz() will use qemu_toupper() on the given argument
+ * A-Z, as qemu_strtosz() will use qemu_toupper() on the given argument
  * prior to comparison.
  */
-#define STRTOSZ_DEFSUFFIX_EB	'E'
-#define STRTOSZ_DEFSUFFIX_PB	'P'
-#define STRTOSZ_DEFSUFFIX_TB	'T'
-#define STRTOSZ_DEFSUFFIX_GB	'G'
-#define STRTOSZ_DEFSUFFIX_MB	'M'
-#define STRTOSZ_DEFSUFFIX_KB	'K'
-#define STRTOSZ_DEFSUFFIX_B	'B'
-int64_t strtosz(const char *nptr, char **end);
-int64_t strtosz_suffix(const char *nptr, char **end, const char default_suffix);
-int64_t strtosz_suffix_unit(const char *nptr, char **end,
+#define QEMU_STRTOSZ_DEFSUFFIX_EB 'E'
+#define QEMU_STRTOSZ_DEFSUFFIX_PB 'P'
+#define QEMU_STRTOSZ_DEFSUFFIX_TB 'T'
+#define QEMU_STRTOSZ_DEFSUFFIX_GB 'G'
+#define QEMU_STRTOSZ_DEFSUFFIX_MB 'M'
+#define QEMU_STRTOSZ_DEFSUFFIX_KB 'K'
+#define QEMU_STRTOSZ_DEFSUFFIX_B 'B'
+int64_t qemu_strtosz(const char *nptr, char **end);
+int64_t qemu_strtosz_suffix(const char *nptr, char **end,
+                            const char default_suffix);
+int64_t qemu_strtosz_suffix_unit(const char *nptr, char **end,
                             const char default_suffix, int64_t unit);
 #define K_BYTE     (1ULL << 10)
 #define M_BYTE     (1ULL << 20)
@@ -307,6 +246,14 @@ int64_t strtosz_suffix_unit(const char *nptr, char **end,
 #define STR_OR_NULL(str) ((str) ? (str) : "null")
 
 /* id.c */
+
+typedef enum IdSubSystems {
+    ID_QDEV,
+    ID_BLOCK,
+    ID_MAX      /* last element, used as array size */
+} IdSubSystems;
+
+char *id_generate(IdSubSystems id);
 bool id_wellformed(const char *id);
 
 /* path.c */
@@ -481,57 +428,11 @@ static inline uint8_t from_bcd(uint8_t val)
     return ((val >> 4) * 10) + (val & 0x0f);
 }
 
-/* compute with 96 bit intermediate result: (a*b)/c */
-#ifdef CONFIG_INT128
-static inline uint64_t muldiv64(uint64_t a, uint32_t b, uint32_t c)
-{
-    return (__int128_t)a * b / c;
-}
-#else
-static inline uint64_t muldiv64(uint64_t a, uint32_t b, uint32_t c)
-{
-    union {
-        uint64_t ll;
-        struct {
-#ifdef HOST_WORDS_BIGENDIAN
-            uint32_t high, low;
-#else
-            uint32_t low, high;
-#endif
-        } l;
-    } u, res;
-    uint64_t rl, rh;
-
-    u.ll = a;
-    rl = (uint64_t)u.l.low * (uint64_t)b;
-    rh = (uint64_t)u.l.high * (uint64_t)b;
-    rh += (rl >> 32);
-    res.l.high = rh / c;
-    res.l.low = (((rh % c) << 32) + (rl & 0xffffffff)) / c;
-    return res.ll;
-}
-#endif
-
 /* Round number down to multiple */
 #define QEMU_ALIGN_DOWN(n, m) ((n) / (m) * (m))
 
 /* Round number up to multiple */
 #define QEMU_ALIGN_UP(n, m) QEMU_ALIGN_DOWN((n) + (m) - 1, (m))
-
-static inline bool is_power_of_2(uint64_t value)
-{
-    if (!value) {
-        return 0;
-    }
-
-    return !(value & (value - 1));
-}
-
-/* round down to the nearest power of 2*/
-int64_t pow2floor(int64_t value);
-
-/* round up to the nearest power of 2 (0 if overflow) */
-uint64_t pow2ceil(uint64_t value);
 
 #include "qemu/module.h"
 
@@ -598,5 +499,6 @@ size_t buffer_find_nonzero_offset(const void *buf, size_t len);
 int parse_debug_env(const char *name, int max, int initial);
 
 const char *qemu_ether_ntoa(const MACAddr *mac);
+void page_size_init(void);
 
 #endif

@@ -115,7 +115,7 @@ uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, i
   }
 
   // Look for the new mode
-  I(getNextSwitch() <= totalnInst);
+  // This can fail because the other thread can update: racy but infrequent, so OK I(getNextSwitch() <= totalnInst);
 
  // I(mode != next_mode);
   pthread_mutex_lock (&mode_lock);
@@ -144,7 +144,7 @@ uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, FlowID fid, char op, i
 
     BootLoader::reportSample();
     
-    if (getTime()>=maxnsTime || totalnInst>=nInstMax) {
+    if (GProcessor::getWallClock()>=maxnsTime || totalnInst>=nInstMax) {
       markDone();
       pthread_mutex_unlock (&mode_lock);
       return 0;
@@ -204,5 +204,9 @@ void SamplerSMARTS::nextMode(bool rotate, FlowID fid, EmuMode mod){
   }else{
     I(0);
   }
+}
+
+void SamplerSMARTS::setStatsFlag(DInst *dinst) {
+  // Keep same
 }
 

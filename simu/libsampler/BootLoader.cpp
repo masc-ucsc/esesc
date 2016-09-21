@@ -43,6 +43,7 @@
 #endif
 
 #include "SamplerSMARTS.h"
+#include "SamplerSync.h"
 #include "SamplerPeriodic.h"
 
 #include "GProcessor.h"
@@ -305,6 +306,8 @@ EmuSampler *BootLoader::getSampler(const char *section, const char *keyword, Emu
 
   if(strcasecmp(sampler_type,"inst") == 0 ) {
     sampler = new SamplerSMARTS("TASS",sampler_sec,eint, fid);
+  }else if(strcasecmp(sampler_type,"sync") == 0 ) {
+    sampler = new SamplerSync("SYNC",sampler_sec,eint, fid);
   }else if(strcasecmp(sampler_type,"time") == 0 ) {
     sampler = new SamplerPeriodic("TBS",sampler_sec,eint, fid);
   }else{
