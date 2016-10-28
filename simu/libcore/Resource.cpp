@@ -56,6 +56,7 @@
 #include "TaskHandler.h"
 
 //#define USE_PNR
+#define LSQ_LATE_EXECUTED 1
 
 /* }}} */
 
@@ -306,8 +307,10 @@ StallCause FULoad::canIssue(DInst *dinst) {
 void FULoad::executing(DInst *dinst) {
   /* executing {{{1 */
 
+#ifndef LSQ_LATE_EXECUTED
   if (LSQlateAlloc)
     freeEntries--;
+#endif
 
   cluster->executing(dinst);
   Time_t when = gen->nextSlot(dinst->getStatsFlag())+lat;
@@ -359,6 +362,11 @@ void FULoad::cacheDispatched(DInst *dinst) {
 
 void FULoad::executed(DInst* dinst) {
   /* executed {{{1 */
+
+#ifdef LSQ_LATE_EXECUTED
+  if (LSQlateAlloc)
+    freeEntries--;
+#endif
 
   storeset->remove(dinst);
 

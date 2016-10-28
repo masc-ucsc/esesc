@@ -330,6 +330,14 @@ PredType  BPNotTaken::predict(DInst *dinst, bool doUpdate, bool doStats) {
 }
 
 /*****************************************
+ * BPMiss
+ */
+
+PredType  BPMiss::predict(DInst *dinst, bool doUpdate, bool doStats) {
+  return MissPrediction;
+}
+
+/*****************************************
  * BPNotTakenEnhaced
  */
 
@@ -2674,6 +2682,8 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname)
   // Normal Predictor
   if (strcasecmp(type, "oracle") == 0) {
     pred = new BPOracle(id, sec, sname);
+  } else if (strcasecmp(type, "Miss") == 0) {
+    pred = new BPMiss(id, sec, sname);
   } else if (strcasecmp(type, "NotTaken") == 0) {
     pred = new BPNotTaken(id, sec, sname);
   } else if (strcasecmp(type, "NotTakenEnhanced") == 0) {

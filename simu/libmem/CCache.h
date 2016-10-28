@@ -52,6 +52,8 @@ class PortManager;
 class MemRequest;
 /* }}} */
 
+#define CCACHE_MAXNSHARERS 16
+
 class CCache: public MemObj {
 protected:
   class CState : public StateGeneric<AddrType> 
@@ -69,7 +71,7 @@ protected:
     bool prefetch; // Line brought for prefetch, not used otherwise
 
     int16_t nSharers;
-    int16_t share[8]; // Max number of shares to remember. If nshares >=8, then broadcast
+    int16_t share[CCACHE_MAXNSHARERS]; // Max number of shares to remember. If nshares >=8, then broadcast
   public:
     CState(int32_t lineSize) {
       state    = I;
@@ -144,7 +146,7 @@ protected:
       clearTag();
     }
 
-		bool isBroadcastNeeded() const { return nSharers >= 8; }
+		bool isBroadcastNeeded() const { return nSharers >= CCACHE_MAXNSHARERS; }
 
 		int16_t getSharingCount() const {
 			return nSharers; // Directory

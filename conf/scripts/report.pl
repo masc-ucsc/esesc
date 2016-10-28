@@ -357,6 +357,7 @@ sub newMemStat {
     + $cf->getResultField("${cache}","busReadHalfMiss")
     + $cf->getResultField("${cache}","busReadHit")+1;
     printf ",%5.1f%) ", (100*$tmp/$tmp2);
+    printf " %5.1f GB/s ", 64*($tmp1*$freq/$globalClock_max)/1024;
 
 
     if ($op_enPower eq "true") {
@@ -451,8 +452,23 @@ sub showStatReport {
 
     $nInst += getProcnInst($i);
   }
+  my $wIPC;
   my $nGradInsts  = $nInst;
   my $nWPathInsts = $tmp;
+
+  $wIPC = 0;
+  my $nactiveCPUs=0;
+  for(my $i=0;$i<$nCPUs;$i++) {
+    my $clockTicks  = $cf->getResultField("P(${i})","clockTicks")+1;
+    $tmp = getProcnInst($i);
+    if ($clockTicks>($globalClock_max/5) && $tmp > 10) {
+      $nactiveCPUs = $nactiveCPUs + 1;
+
+      #printf "table0 %g*%g\n", ($tmp/$nInst),($tmp/($clockTicks));
+
+      $wIPC += ($tmp/$nInst)*($tmp/($clockTicks));
+    }
+  }
 
 #############################################################################
   printf "#table0                            CommitInst: globalClock_Timing : nWPathInsts : IPC\n";
@@ -467,6 +483,8 @@ sub showStatReport {
   # IPC
   printf " %6.3f ", $nGradInsts/($globalClock_max+1);
   printf " %6.3f ", $nGradInsts/($globalClock+1);
+  printf " %6.3f ", $wIPC;
+  printf " %6.3f ", $nactiveCPUs*$wIPC;
   printf "\n";
 
 #############################################################################

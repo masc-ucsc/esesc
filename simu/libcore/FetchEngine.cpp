@@ -87,6 +87,17 @@ FetchEngine::FetchEngine(FlowID id
   }else{
     TraceAlign = false;
   }
+  if ( SescConf->checkBool("cpusimu","TargetInLine", id)) {
+    TargetInLine = SescConf->getBool("cpusimu","TargetInLine", id);
+  }else{
+    TargetInLine = false;
+  }
+
+  if ( SescConf->checkBool("cpusimu","fetchOneLine", id)) {
+    FetchOneLine = SescConf->getBool("cpusimu","fetchOneLine", id);
+  }else{
+    FetchOneLine = !TraceAlign;
+  }
 
   SescConf->isBetween("cpusimu", "bb4Cycle",0,1024,id);
   BB4Cycle = SescConf->getInt("cpusimu", "bb4Cycle",id);
@@ -124,11 +135,12 @@ FetchEngine::FetchEngine(FlowID id
       SescConf->notCorrect();
     }
   }
-  lineSize = SescConf->getInt(isection,"bsize");
-  if ((lineSize/4) < FetchWidth) {
-    MSG("ERROR: icache line size should be larger than fetch width lineSize=%d fetchWidth=%d [%s]",lineSize, FetchWidth,isection);
+  LineSize = SescConf->getInt(isection,"bsize");
+  if ((LineSize/4) < FetchWidth) {
+    MSG("ERROR: icache line size should be larger than fetch width LineSize=%d fetchWidth=%d [%s]",LineSize, FetchWidth,isection);
     SescConf->notCorrect();
   }
+  LineSizeBits = log2i(LineSize);
 
   // Get some icache L1 parameters
   enableICache = SescConf->getBool("cpusimu","enableICache", id);
@@ -155,6 +167,14 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
 
   Time_t n = (globalClock-lastMissTime);
   avgFetchTime.sample(n, dinst->getStatsFlag());
+
+#if 1
+  if (!dinst->isBiasBranch()) {
+    if ( dinst->isTaken() && (dinst->getAddr() > dinst->getPC() && (dinst->getAddr() + 8<<2) <= dinst->getPC())) {
+      fastfix = true;
+    }
+  }
+#endif
 
   if (fastfix) {
     I(globalClock);
@@ -223,10 +243,10 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
 
         // No matter what, do not pass cache line boundary
-        uint16_t fetchMaxPos = (entryPC & (lineSize/4-1)) + FetchWidth; 
-        if (fetchMaxPos>(lineSize/4)) {
-          //MSG("entryPC=0x%llx lost1=%d lost2=%d",entryPC, fetchLost, (fetchMaxPos-lineSize/4));
-          fetchLost = (fetchMaxPos-lineSize/4);
+        uint16_t fetchMaxPos = (entryPC & (LineSize/4-1)) + FetchWidth; 
+        if (fetchMaxPos>(LineSize/4)) {
+          //MSG("entryPC=0x%llx lost1=%d lost2=%d",entryPC, fetchLost, (fetchMaxPos-LineSize/4));
+          fetchLost = (fetchMaxPos-LineSize/4);
         }else{
           //MSG("entryPC=0x%llx lost1=%d",entryPC, fetchLost);
         }
@@ -238,10 +258,13 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
       n2Fetch--;
     }else{
+      I(lastpc);
+
       if ((lastpc+4) == dinst->getPC()) {
         n2Fetch--;
       }else if ((lastpc+8) != dinst->getPC()) {
-        maxBB--;
+        if (!TargetInLine || (lastpc>>LineSizeBits) != (dinst->getPC()>>LineSizeBits))
+          maxBB--;
         if( maxBB < 1 ) {
           nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
           break;
@@ -249,6 +272,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         n2Fetch--; // There may be a NOP in the delay slot, do not count it
       }else{
         n2Fetch-=2; // NOP still consumes delay slot
+      }
+      if (FetchOneLine) {
+        if ((lastpc>>LineSizeBits) != (dinst->getPC()>>LineSizeBits)) {
+          break;
+        }
       }
     }
     lastpc  = dinst->getPC();

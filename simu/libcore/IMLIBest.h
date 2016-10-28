@@ -27,18 +27,20 @@
 
 
 #define SC //use the statistical corrector: comment to get TAGE alone
-#define LOCALH			// use local histories
+//#define TAGE4 1
+#ifndef TAGE4
 #define LOOPPREDICTOR		//  use loop  predictor
+#define LOCALH			// use local histories
 #define IMLI			// using IMLI component
 #define IMLISIC            //use IMLI-SIC
 #define IMLIOH		//use IMLI-OH
+#endif
 
 //#define LARGE_SC
 //#define STRICTSIZE
 //uncomment to get the 256 Kbits record predictor mentioned in the paper achieves 2.228 MPKI
 
 //#define POSTPREDICT
-#define REALISTIC
 #define CHAMPIONSHIP
 // uncomment to get a realistic predictor around 256 Kbits , with 12 1024 entries tagged tables in the TAGE predictor, and a global history and single local history GEHL statistical corrector
 // total misprediction numbers
@@ -67,8 +69,21 @@
 
 #define SUBENTRIES 1
 
-#define NHIST 12
 
+#ifdef TAGE4
+#define REALISTIC
+#define NHIST 3
+#define LOGG  9 /* logsize of the  tagged TAGE tables*/
+#define TBITS 9 /* minimum tag width*/
+#define POWER
+#ifdef USE_DOLC
+#define MAXHIST 27 // (128+32)
+#define MINHIST 3
+#endif
+#else
+// NO TAGE4
+#define REALISTIC
+#define NHIST 12
 #ifdef REALISTIC 
 #define LOGG  10 /* logsize of the  tagged TAGE tables*/
 #define TBITS 10 /* minimum tag width*/
@@ -86,6 +101,8 @@
 #endif
 //probably not the best history length, but nice
 #endif
+
+#endif // TAGE4
 
 #ifdef USE_DOLC
 DOLC dolc(MAXHIST,3,9,16);

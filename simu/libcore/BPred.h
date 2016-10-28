@@ -213,6 +213,18 @@ public:
 
 };
 
+class BPMiss : public BPred {
+private:
+protected:
+public:
+  BPMiss(int32_t i, const char *section, const char *sname)
+    :BPred(i, section, sname, "Miss") {
+    // Done
+  }
+
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
+};
+
 class BPNotTakenEnhanced : public BPred {
 private:
   BPBTB btb;

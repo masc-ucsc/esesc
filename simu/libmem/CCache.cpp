@@ -447,6 +447,8 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
     removeSharing(portid);
   }else if (mreq->isSetStateAck()) {
     if (mreq->getAction() == ma_setInvalid) {
+      if (isBroadcastNeeded())
+        nSharers = CCACHE_MAXNSHARERS-1; // Broadcast was sent, remove broadcast need
       removeSharing(portid);
     }else{
       I(mreq->getAction() == ma_setShared);
@@ -593,7 +595,7 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
 
 void CCache::CState::addSharing(int16_t id)
 {/*{{{*/
-  if (nSharers>=8) {
+  if (nSharers>=CCACHE_MAXNSHARERS) {
     I(shareState == S);
     return;
   }
@@ -625,7 +627,7 @@ void CCache::CState::addSharing(int16_t id)
 void CCache::CState::removeSharing(int16_t id)
 // {{{1
 {
-  if (nSharers>=8)
+  if (nSharers>=CCACHE_MAXNSHARERS)
     return; // not possible to remove if in broadcast mode
 
   for(int16_t i=0;i<nSharers;i++) {
