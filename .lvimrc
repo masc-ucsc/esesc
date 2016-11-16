@@ -1,0 +1,18 @@
+
+let g:syntastic_cpp_compiler_options = "-std=c++11 -I".g:localvimrc_script_dir_unresolved."/misc/libsuc -I".g:localvimrc_script_dir_unresolved."/emul/libemulint -I".g:localvimrc_script_dir_unresolved."/emul/libqemuint -I".g:localvimrc_script_dir_unresolved."/simu/libcore -I".g:localvimrc_script_dir_unresolved."/simu/libsampler"
+
+let g:neomake_logfile="/home/renau/neo.log"
+let g:neomake_verbose=3
+
+let g:neomake_cpp_enabled_makers=['clang']
+
+let g:neomake_cpp_clang_maker = {
+			\ 'exe': 'clang++',
+			\ 'args': ['%:p', '-fsyntax-only','-std=c++11','-Wall',"-I".g:localvimrc_script_dir_unresolved."/misc/libsuc", "-I".g:localvimrc_script_dir_unresolved."/emul/libemulint", "-I".g:localvimrc_script_dir_unresolved."/emul/libqemuint", "-I".g:localvimrc_script_dir_unresolved."/simu/libcore", "-I".g:localvimrc_script_dir_unresolved."/simu/libsampler"], 
+			\ 'append_file': 0,
+			\ 'errorformat': '%f:%l:%c: %m',
+			\ }
+
+let g:ale_cpp_gcc_options = "-Wall -std=c++11 -I".g:localvimrc_script_dir_unresolved."/misc/libsuc -I".g:localvimrc_script_dir_unresolved."/emul/libemulint -I".g:localvimrc_script_dir_unresolved."/emul/libqemuint -I".g:localvimrc_script_dir_unresolved."/simu/libcore -I".g:localvimrc_script_dir_unresolved."/simu/libsampler"
+let g:ale_cpp_cppcheck_options = "--enable=style -std=c++11 -I".g:localvimrc_script_dir_unresolved."/misc/libsuc -I".g:localvimrc_script_dir_unresolved."/emul/libemulint -I".g:localvimrc_script_dir_unresolved."/emul/libqemuint -I".g:localvimrc_script_dir_unresolved."/simu/libcore -I".g:localvimrc_script_dir_unresolved."/simu/libsampler"
+

@@ -54,6 +54,7 @@
 #include "../libsampler/BootLoader.h"
 /* }}} */
 
+// {{{1 Debug information
 #ifdef DEBUG
 void CCache::trackAddress(MemRequest *mreq) {
   //I((mreq->getAddr() & 0xFFFF0) != 0x74f00);
@@ -66,28 +67,29 @@ void CCache::trackAddress(MemRequest *mreq) {
 #define MTRACE(a...)
 //#define MTRACE(a...)   do{ if (mreq->getID()== 109428) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 //#define MTRACE(a...)   do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
+// 1}}}
 
 CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   // Constructor {{{1
   :MemObj(section, name)
-	 ,nTryPrefetch    ("%s:nTryPrefetch",        name)
-	 ,nSendPrefetch   ("%s:nSendPrefetch",       name)
-	 ,displacedSend   ("%s:displacedSend",       name)
-	 ,displacedRecv   ("%s:displacedRecv",       name)
-	 ,invAll          ("%s:invAll",          name)
-	 ,invOne          ("%s:invOne",          name)
-	 ,invNone         ("%s:invNone",         name)
-	 ,writeBack       ("%s:writeBack",       name)
-	 ,lineFill        ("%s:lineFill",        name)
-	 ,avgMissLat      ("%s_avgMissLat",      name)
-	 ,avgMemLat       ("%s_avgMemLat",       name)
-	 ,avgHalfMemLat   ("%s_avgHalfMemLat",   name)
-	 ,avgSnoopLat     ("%s_avgSnoopLat",     name)
-	 ,capInvalidateHit   ("%s_capInvalidateHit",   name)
-	 ,capInvalidateMiss  ("%s_capInvalidateMiss",  name)
-	 ,invalidateHit   ("%s_invalidateHit",   name)
-	 ,invalidateMiss  ("%s_invalidateMiss",  name)
-	 ,writeExclusive  ("%s:writeExclusive",  name)
+   ,nTryPrefetch    ("%s:nTryPrefetch",    name)
+   ,nSendPrefetch   ("%s:nSendPrefetch",   name)
+   ,displacedSend   ("%s:displacedSend",   name)
+   ,displacedRecv   ("%s:displacedRecv",   name)
+   ,invAll          ("%s:invAll",          name)
+   ,invOne          ("%s:invOne",          name)
+   ,invNone         ("%s:invNone",         name)
+   ,writeBack       ("%s:writeBack",       name)
+   ,lineFill        ("%s:lineFill",        name)
+   ,avgMissLat      ("%s_avgMissLat",      name)
+   ,avgMemLat       ("%s_avgMemLat",       name)
+   ,avgHalfMemLat   ("%s_avgHalfMemLat",   name)
+   ,avgSnoopLat     ("%s_avgSnoopLat",     name)
+   ,capInvalidateHit   ("%s_capInvalidateHit",   name)
+   ,capInvalidateMiss  ("%s_capInvalidateMiss",  name)
+   ,invalidateHit   ("%s_invalidateHit",   name)
+   ,invalidateMiss  ("%s_invalidateMiss",  name)
+   ,writeExclusive  ("%s:writeExclusive",  name)
 {
   s_reqHit[ma_setInvalid]   = new GStatsCntr("%s:setInvalidHit",name);
   s_reqHit[ma_setValid]     = new GStatsCntr("%s:readHit",name);
@@ -196,11 +198,11 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 
   inclusive = SescConf->getBool(section, "inclusive");
   directory = SescConf->getBool(section, "directory");
-	if (directory && !inclusive) {
-	I(0);
-		MSG("ERROR: %s CCache can not have a 'directory' without being 'inclusive'",section);
-		SescConf->notCorrect();
-	}
+  if (directory && !inclusive) {
+    I(0);
+    MSG("ERROR: %s CCache can not have a 'directory' without being 'inclusive'",section);
+    SescConf->notCorrect();
+  }
   if(SescConf->checkBool(section,"justDirectory")) {
     justDirectory = SescConf->getBool(section,"justDirectory");
   } else {
@@ -208,15 +210,15 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   }
   if (justDirectory && !inclusive) {
     MSG("ERROR: justDirectory option is only possible with inclusive=true");
-		SescConf->notCorrect();
+    SescConf->notCorrect();
   }
   if (justDirectory && !directory) {
     MSG("ERROR: justDirectory option is only possible with directory=true");
-		SescConf->notCorrect();
+    SescConf->notCorrect();
   }
   if (justDirectory && victim) {
     MSG("ERROR: justDirectory option is only possible with directory=true and no victim");
-		SescConf->notCorrect();
+    SescConf->notCorrect();
   }
 
   MemObj *lower_level = gms->declareMemoryObj(section, "lowerLevel");
@@ -225,7 +227,7 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 
   port = PortManager::create(section, this);
 
-	lastUpMsg = 0;
+  lastUpMsg = 0;
 }
 // }}}
 
@@ -236,47 +238,46 @@ CCache::~CCache()
 }
 // }}}
 
-void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
+void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l) {
 /* displace a line from the CCache. writeback if necessary {{{1 */
-{
   I(naddr != mreq->getAddr()); // naddr is the displace address, mreq is the trigger
-	I(l->isValid());
+  I(l->isValid());
 
   bool doStats = mreq->getStatsFlag();
 
   if (inclusive) {
-		if (directory) {
-			if (l->getSharingCount() == 0) {
-				invNone.inc(doStats);
+    if (directory) {
+      if (l->getSharingCount() == 0) {
+        invNone.inc(doStats);
 
-				// DONE! Nice directory tracking detected no higher level sharing
-			}else if (l->getSharingCount() == 1) {
-				invOne.inc(doStats);
+        // DONE! Nice directory tracking detected no higher level sharing
+      }else if (l->getSharingCount() == 1) {
+        invOne.inc(doStats);
 
-				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
+        MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
         trackAddress(inv_req);
-				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), inv_req, ma_setInvalid, inOrderUpMessage());
+        int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), inv_req, ma_setInvalid, inOrderUpMessage());
         if (i==0)
           inv_req->ack();
-			}else{
+      }else{
         // FIXME: optimize directory for 2 or more
-				invAll.inc(doStats);
+        invAll.inc(doStats);
 
-				MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
+        MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
         trackAddress(inv_req);
-				int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage());
+        int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage());
         if (i==0)
           inv_req->ack();
-			}
-		}else{
-			invAll.inc(doStats);
+      }
+    }else{
+      invAll.inc(doStats);
 
-			MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
+      MemRequest *inv_req = MemRequest::createSetState(this, this, ma_setInvalid, naddr, doStats);
       int32_t i = router->sendSetStateAll(inv_req, ma_setInvalid, inOrderUpMessage());
 
       if (i==0)
         inv_req->ack();
-		}
+    }
   }
 
   displacedSend.inc(doStats);
@@ -284,7 +285,7 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l)
   if (l->needsDisp()) {
     MTRACE("displace 0x%llx dirty", naddr);
     router->sendDirtyDisp(naddr, mreq->getStatsFlag(), 1);
-		writeBack.inc();
+    writeBack.inc(mreq->getStatsFlag());
   }else{
     MTRACE("displace 0x%llx clean", naddr);
     router->sendCleanDisp(naddr, l->isPrefetch(), mreq->getStatsFlag(), 1);
@@ -307,7 +308,7 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
   I(l); // Ignore lock guarantees to find line
 
   if(l->isValid()) {
-		// TODO: add a port for evictions. Schedule the displaceLine accordingly
+    // TODO: add a port for evictions. Schedule the displaceLine accordingly
     displaceLine(rpl_addr, mreq, l);
   }
 
@@ -408,10 +409,10 @@ CCache::CState::StateType CCache::CState::calcAdjustState(MemRequest *mreq) cons
       nstate = I;
       break;
     case ma_setDirty:
-			nstate = M;
+      nstate = M;
       break;
     case ma_setShared:
-			nstate = S;
+      nstate = S;
       break;
     case ma_setExclusive:
       //I(state == I || state == E);
@@ -457,11 +458,11 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
     }
     if (mreq->isHomeNode()) {
       state = ostate;
-			if (mreq->isSetStateAckDisp()) {
-				// Only if it is the one that triggered the setState
-				state = M;
-			}
-		}
+      if (mreq->isSetStateAckDisp()) {
+        // Only if it is the one that triggered the setState
+        state = M;
+      }
+    }
   }else if (mreq->isSetState()) {
 //    if (nSharers)
 //      shareState = state;
@@ -657,7 +658,7 @@ void CCache::doReq(MemRequest *mreq)
   //MSG("%s 0x%x %s",getName(),  mreq->getAddr(), retrying?"R":"");
 
   if (retrying) { // reissued operation
-		mreq->clearRetrying();
+    mreq->clearRetrying();
     //GI(mreq->isPrefetch() , !pmshr->canIssue(addr)); // the req is already queued if retrying
     GI(!mreq->isPrefetch(), !mshr->canIssue(addr)); // the req is already queued if retrying
   }else{
@@ -698,7 +699,7 @@ void CCache::doReq(MemRequest *mreq)
     //if (nlprefetch)
       //MSG("%s @%lld miss req 0x%llx (%d)",getName(), globalClock, mreq->getAddr(), mreq->getID());
     MTRACE("doReq cache miss");
-		mustForwardReqDown(mreq, true, 0);
+    mustForwardReqDown(mreq, true, 0);
     return;
   }
 
@@ -722,12 +723,12 @@ void CCache::doReq(MemRequest *mreq)
     return;
   }
 
-	I(l);
-	I(l->isValid() || justDirectory); // JustDirectory can have newly allocated line with invalid state
+  I(l);
+  I(l->isValid() || justDirectory); // JustDirectory can have newly allocated line with invalid state
 
   int16_t portid = router->getCreatorPort(mreq);
   GI(portid<0,mreq->isTopCoherentNode());
-	l->adjustState(mreq, portid);
+  l->adjustState(mreq, portid);
 
   Time_t when = port->reqDone(mreq,retrying);
   if (when == 0) {
@@ -754,7 +755,7 @@ void CCache::doReq(MemRequest *mreq)
   if (mreq->isDemandCritical() ) {
     double lat = mreq->getTimeDelay()+(when-globalClock);
     avgMemLat.sample(lat, mreq->getStatsFlag());
-    if (retrying) 
+    if (retrying)
       avgHalfMemLat.sample(lat, mreq->getStatsFlag());
 
 #if 0
@@ -763,21 +764,21 @@ void CCache::doReq(MemRequest *mreq)
 #endif
   }
 
-	I(when>=globalClock);
+  I(when>=globalClock);
   if(mreq->isHomeNode()) {
-		mreq->ackAbs(when);
-	}else{
+    mreq->ackAbs(when);
+  }else{
 #ifdef DEBUG_RABBIT
     const char *name = mreq->getCurrMem()->getName();
     if (strncasecmp(name,"L3",2)==0) {
       I(l->reqAckNeeds() != ma_setShared);
     }
 #endif
-		mreq->convert2ReqAck(l->reqAckNeeds());
+    mreq->convert2ReqAck(l->reqAckNeeds());
     if (!mreq->isWarmup())
       when = inOrderUpMessageAbs(when);
-		router->scheduleReqAckAbs(mreq,when);
-	}
+    router->scheduleReqAckAbs(mreq,when);
+  }
 
   MTRACE("doReq done %lld", when);
 
@@ -808,15 +809,20 @@ void CCache::doDisp(MemRequest *mreq)
       if (l->getSharingCount() == 0)
         l->invalidate();
     }
+    router->scheduleDisp(mreq,1);
+    writeBack.inc(mreq->getStatsFlag());
+  }else{
+    mreq->ack();
   }
-  mreq->ack();
 }
 // }}}
 
 void CCache::blockFill(MemRequest *mreq)
+  // Block cache line fill {{{1
 {
   port->blockFill(mreq);
 }
+// }}}
 
 void CCache::doReqAck(MemRequest *mreq)
 /* CCache reqAck {{{1 */
@@ -858,7 +864,7 @@ void CCache::doReqAck(MemRequest *mreq)
         l->forceInvalid();
       }
     }else{
-      I(victim); // Only victim can pass through 
+      I(victim); // Only victim can pass through
     }
   }
 
@@ -909,12 +915,12 @@ void CCache::doSetState(MemRequest *mreq)
   GI(victim, needsCoherence);
 
   if (!inclusive || !needsCoherence) {
-		// If not inclusive, do whatever we want
+    // If not inclusive, do whatever we want
     I(mreq->getCurrMem() == this);
-		mreq->convert2SetStateAck(ma_setInvalid, false);
+    mreq->convert2SetStateAck(ma_setInvalid, false);
     router->scheduleSetStateAck(mreq, 0); // invalidate ack with nothing else if not inclusive
 
-		MTRACE("scheduleSetStateAck without disp (incoherent cache)");
+    MTRACE("scheduleSetStateAck without disp (incoherent cache)");
     return;
   }
 
@@ -930,24 +936,24 @@ void CCache::doSetState(MemRequest *mreq)
   }
 
   if (l==0) {
-		// Done!
-		mreq->convert2SetStateAck(ma_setInvalid, false);
+    // Done!
+    mreq->convert2SetStateAck(ma_setInvalid, false);
     router->scheduleSetStateAck(mreq, 0);
 
-		MTRACE("scheduleSetStateAck without disp (local miss)");
+    MTRACE("scheduleSetStateAck without disp (local miss)");
     return;
   }
 
   // FIXME: add hit/mixx delay
 
   int16_t portid = router->getCreatorPort(mreq);
-	if (l->getSharingCount()) {
+  if (l->getSharingCount()) {
     if (portid>=0)
       l->removeSharing(portid);
     if (directory) {
-			if (l->getSharingCount() == 1) {
+      if (l->getSharingCount() == 1) {
         invOne.inc(mreq->getStatsFlag());
-				int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), mreq, mreq->getAction(), inOrderUpMessage());
+        int32_t i = router->sendSetStateOthersPos(l->getFirstSharingPos(), mreq, mreq->getAction(), inOrderUpMessage());
         I(i);
       }else{
         invAll.inc(mreq->getStatsFlag());
@@ -960,18 +966,18 @@ void CCache::doSetState(MemRequest *mreq)
       int32_t nmsg = router->sendSetStateAll(mreq, mreq->getAction(), inOrderUpMessage());
       I(nmsg);
     }
-	}else{
+  }else{
     invNone.inc(mreq->getStatsFlag());
     // We are done
-		bool needsDisp = l->needsDisp();
-		l->adjustState(mreq,portid);
-		GI(mreq->getAction() == ma_setInvalid, !l->isValid());
-		GI(mreq->getAction() == ma_setShared , l->isShared());
+    bool needsDisp = l->needsDisp();
+    l->adjustState(mreq,portid);
+    GI(mreq->getAction() == ma_setInvalid, !l->isValid());
+    GI(mreq->getAction() == ma_setShared , l->isShared());
 
-		mreq->convert2SetStateAck(mreq->getAction(), needsDisp); // Keep shared or invalid
+    mreq->convert2SetStateAck(mreq->getAction(), needsDisp); // Keep shared or invalid
     router->scheduleSetStateAck(mreq, 0);
 
-		MTRACE("scheduleSetStateAck %s disp", needsDisp?"with":"without");
+    MTRACE("scheduleSetStateAck %s disp", needsDisp?"with":"without");
   }
 }
 // }}}
@@ -992,14 +998,14 @@ void CCache::doSetStateAck(MemRequest *mreq)
   }
 
   if(mreq->isHomeNode()) {
-		MTRACE("scheduleSetStateAck %s disp (home) line is %d" , mreq->isDisp()?"with":"without", l?l->getState():-1);
+    MTRACE("scheduleSetStateAck %s disp (home) line is %d" , mreq->isDisp()?"with":"without", l?l->getState():-1);
 
     avgSnoopLat.sample(mreq->getTimeDelay()+0, mreq->getStatsFlag());
-		mreq->ack(); // same cycle
+    mreq->ack(); // same cycle
   }else{
-		router->scheduleSetStateAck(mreq, 1);
-		MTRACE("scheduleSetStateAck %s disp (forward)", mreq->isDisp()?"with":"without");
-	}
+    router->scheduleSetStateAck(mreq, 1);
+    MTRACE("scheduleSetStateAck %s disp (forward)", mreq->isDisp()?"with":"without");
+  }
 }
 // }}}
 
@@ -1014,7 +1020,7 @@ void CCache::req(MemRequest *mreq)
   if (!incoherent)
     mreq->trySetTopCoherentNode(this);
 
-	//I(!mreq->isRetrying());
+  //I(!mreq->isRetrying());
   port->req(mreq);
 }
 // }}}
@@ -1022,7 +1028,7 @@ void CCache::req(MemRequest *mreq)
 void CCache::reqAck(MemRequest *mreq)
 /* request Ack {{{1 */
 {
-	//I(!mreq->isRetrying());
+  //I(!mreq->isRetrying());
   //
   MTRACE("Received reqAck request");
   if (mreq->isRetrying()){
@@ -1047,7 +1053,7 @@ void CCache::setState(MemRequest *mreq)
 
   s_reqSetState[mreq->getAction()]->inc(mreq->getStatsFlag());
 
-	I(!mreq->isRetrying());
+  I(!mreq->isRetrying());
   port->setState(mreq);
 }
 // }}}
@@ -1055,7 +1061,7 @@ void CCache::setState(MemRequest *mreq)
 void CCache::setStateAck(MemRequest *mreq)
 /* set state ack {{{1 */
 {
-	I(!mreq->isRetrying());
+  I(!mreq->isRetrying());
   port->setStateAck(mreq);
 }
 // }}}
@@ -1064,7 +1070,7 @@ void CCache::disp(MemRequest *mreq)
 /* displace a CCache line {{{1 */
 {
   displacedRecv.inc(mreq->getStatsFlag());
-	I(!mreq->isRetrying());
+  I(!mreq->isRetrying());
   port->disp(mreq);
 }
 // }}}
@@ -1136,12 +1142,12 @@ TimeDelta_t CCache::ffwrite(AddrType addr)
   Line *l = cacheBank->writeLine(addr);
   if (l) {
   }else{
-		l = cacheBank->fillLine(addr, addr_r);
-	}
-	if (router->isTopLevel())
-		l->setModified(); // WARNING, can create random inconsistencies (no inv others)
-	else
-		l->setExclusive(); 
+    l = cacheBank->fillLine(addr, addr_r);
+  }
+  if (router->isTopLevel())
+    l->setModified(); // WARNING, can create random inconsistencies (no inv others)
+  else
+    l->setExclusive();
 
   return router->ffwrite(addr) + 1;
 }
@@ -1157,14 +1163,14 @@ void CCache::setTurboRatio(float r)
 void CCache::setNeedsCoherence()
   // {{{1
 {
-	needsCoherence = true;
+  needsCoherence = true;
 }
 // }}}
 
 void CCache::clearNeedsCoherence()
   // {{{1
 {
-	needsCoherence = false;
+  needsCoherence = false;
 }
 // }}}
 

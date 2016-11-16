@@ -43,7 +43,6 @@
 
 #include "estl.h"
 
-//#define ENABLE_SMT
 // Begin: Fields used during constructions
 
 struct UnitEntry {
@@ -107,10 +106,8 @@ void Cluster::buildUnit(const char *clusterName
 
   int smt = 1;
   int id = gproc->getID();
-#if 1 // def ENABLE_SMT
   if (SescConf->checkInt("cpusimu","smt",id))
     smt = SescConf->getInt("cpusimu","smt",id);
-#endif
   int smt_ctx  = id - (id % smt);
 
   const char *sUnitName = SescConf->getCharPtr(clusterName,utUnit);
@@ -224,10 +221,8 @@ Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *m
   
   int smt = 1;
   int id = gproc->getID();
-#ifdef ENABLE_SMT
   if (SescConf->checkInt("cpusimu","smt",id))
     smt = SescConf->getInt("cpusimu","smt",id);
-#endif
   int smt_ctx  = id - (id % smt);
 
   char cName[1024];

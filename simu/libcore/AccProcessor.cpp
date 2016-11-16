@@ -7,7 +7,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -47,7 +47,6 @@
 #include "GMemorySystem.h"
 #include "EmuSampler.h"
 #include "MemRequest.h"
-
 /* }}} */
 
 AccProcessor::AccProcessor(GMemorySystem *gm, CPU_t i)
@@ -73,6 +72,7 @@ AccProcessor::~AccProcessor()
 /* }}} */
 
 void AccProcessor::read_performed( uint32_t id, Time_t startTime)
+  // {{{1 callback for completed reads
 {
   //MSG("@%lld: AccProcessor::read_performed cpu_id=%d reqid=%d lat=%d\n",(long long int)globalClock,cpu_id, id, (int)(globalClock-startTime));
   accReads.inc(true);
@@ -81,6 +81,7 @@ void AccProcessor::read_performed( uint32_t id, Time_t startTime)
 /* }}} */
 
 void AccProcessor::write_performed( uint32_t id, Time_t startTime)
+  // {{{1 callback for completed writes
 {
   //MSG("@%lld: AccProcessor::write_performed cpu_id=%d reqid=%d lat=%d\n",(long long int)globalClock,cpu_id, id, (int)(globalClock-startTime));
   accWrites.inc(true);
@@ -141,17 +142,21 @@ void AccProcessor::fetch(FlowID fid) {
 
 LSQ *AccProcessor::getLSQ() {
   I(0);
+  return 0;
 }
 
 bool AccProcessor::isFlushing() {
   I(0);
+  return false;
 }
 
 bool AccProcessor::isReplayRecovering() {
   I(0);
+  return false;
 }
 
 Time_t AccProcessor::getReplayID() {
   I(0);
+  return 0;
 }
 

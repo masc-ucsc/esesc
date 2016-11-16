@@ -518,7 +518,6 @@ void OoOProcessor::retire()
   if(!rROB.empty()) {
     rrobUsed.sample(rROB.size(), rROB.top()->getStatsFlag());
 
-
 #ifdef ESESC_CODEPROFILE
     if (rROB.top()->getStatsFlag()) {
       if (codeProfile_trigger<=clockTicks.getDouble()) {
@@ -652,7 +651,7 @@ void OoOProcessor::replay(DInst *target)
   size_t fetch2rename = 0;
   fetch2rename += (InstQueueSize-spaceInInstQueue);
   fetch2rename += pipeQ.pipeLine.size();
-  
+
   nReplayInst.sample(fetch2rename+ROB.size(), target->getStatsFlag());
 }
 /* }}} */

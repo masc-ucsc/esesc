@@ -223,10 +223,13 @@ bool QEMUReader::populate(FlowID fid) {
     
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
+    bool unblocked = false;
+
     if (tsfifo_snd_mutex_blocked[fid]) {
       tsfifo_snd_mutex_blocked[fid] = 0;
       pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
       //MSG("2.alarmt snd%d",fid);
+      unblocked = true;
     }
 #if 0
     if (tsfifo_rcv_mutex_blocked == 0) {
@@ -242,6 +245,9 @@ bool QEMUReader::populate(FlowID fid) {
 #else
     pthread_mutex_unlock(&mutex_ctrl); // END
 #endif
+
+    if (unblocked)
+      return true;
 
     if (qsamplerlist[fid]->isActive(fid) == false) {
       //MSG("DOWN");

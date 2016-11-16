@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
 
@@ -42,7 +42,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  * exit(125)
  *
  * ASSERTSTREAM is stderr by default. It also may be changed.
- * 
+ *
  */
 
 /*
@@ -51,7 +51,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  *      ID(int32_t i;)  // See that the ; is inside. Required only in C, not C++ 
  *      ID(int32_t j;)
  *      int32_t k;
- *      
+ *
  *      for(k=0;k<100;k++)
  *              a[k]=k;
  *
@@ -60,7 +60,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  *      MSG("Hello");
  *
  *      IN(exists((j=0;j<100;j++),a[j]==10));
- *      
+ *
  *      IN(existsn((i=1;i<100;i++),
  *                        forall((j=0;j<i;j++),0)
  *                        ));
@@ -178,7 +178,7 @@ void VoidNoGCCGMSG(int32_t g, const char *format, ...);
 #endif
 
 /********************************************************
- * NDEBUG Only section 
+ * NDEBUG Only section
  */
 
 #ifdef NDEBUG

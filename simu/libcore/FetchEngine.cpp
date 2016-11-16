@@ -168,7 +168,7 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
   Time_t n = (globalClock-lastMissTime);
   avgFetchTime.sample(n, dinst->getStatsFlag());
 
-#if 1
+#if 0
   if (!dinst->isBiasBranch()) {
     if ( dinst->isTaken() && (dinst->getAddr() > dinst->getPC() && (dinst->getAddr() + 8<<2) <= dinst->getPC())) {
       fastfix = true;

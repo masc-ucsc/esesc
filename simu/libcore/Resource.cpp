@@ -315,6 +315,52 @@ void FULoad::executing(DInst *dinst) {
   cluster->executing(dinst);
   Time_t when = gen->nextSlot(dinst->getStatsFlag())+lat;
 
+#if 0
+  static AddrType last_addr[4096];
+  static AddrType last_xor[4096];
+  static AddrType last_pc[4096];
+  AddrType addr  = dinst->getAddr();
+  AddrType haddr = addr>>5;
+  haddr          = (haddr ^ (haddr>>5) ) & 4095;
+
+  AddrType pc   = dinst->getPC()>>2;
+  AddrType hpc1 = (pc^(pc>>5)^(pc>>11)) & 4095;
+  AddrType hpc2 = (pc^pc>>7) & 255;
+
+  AddrType laddr = last_addr[hpc1];
+  int delta = addr-laddr;
+  bool hit  = (last_pc[hpc1] == hpc2);
+
+  AddrType xor2    = last_xor[hpc1] ^ (laddr ^ addr);
+
+  last_addr[hpc1]  = addr;
+  last_xor[hpc1]   = laddr ^ addr;
+  last_pc[hpc1]    = hpc2;
+
+  fprintf(stderr,"a=");
+  for(int i=0;i<20;i++) {
+    int b= (addr & (1<<i))?1:0;
+    if (i==5 || i==11)
+      fprintf(stderr,"_");
+    fprintf(stderr,"%d",b);
+  }
+  fprintf(stderr," x=");
+  for(int i=0;i<20;i++) {
+    if (i==5 || i==11)
+      fprintf(stderr,"_");
+    int b= ((laddr ^ addr) & (1<<i))?1:0;
+    fprintf(stderr,"%d",b);
+  }
+  fprintf(stderr," x2=");
+  for(int i=0;i<20;i++) {
+    if (i==5 || i==11)
+      fprintf(stderr,"_");
+    int b= (xor2 & (1<<i))?1:0;
+    fprintf(stderr,"%d",b);
+  }
+  MSG(" pc=%llx %llx %d %s",(long)dinst->getPC(), (long)dinst->getAddr(), delta,hit?"H":"M");
+#endif
+
   DInst *qdinst = lsq->executing(dinst);
   I(qdinst==0);
   if (qdinst) {

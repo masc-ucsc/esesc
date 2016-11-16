@@ -46,7 +46,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #else
 /* GNU C Compiler */
 
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 6
+#if __GNUC__ == 4 && __GNUC_MINOR__ < 6 && __cplusplus < 199711L
 #include <ext/hash_set>
 #include <ext/hash_map>
 #define HASH_MAP       __gnu_cxx::hash_map
