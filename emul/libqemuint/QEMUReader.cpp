@@ -219,7 +219,7 @@ bool QEMUReader::populate(FlowID fid) {
   if (ruffer[fid].size()>1024) // No need to overpopulate the queues
     return true;
 
-  if(!tsfifo[fid].full()) {
+  if(!tsfifo[fid].halfFull()) {
     
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
@@ -273,7 +273,7 @@ bool QEMUReader::populate(FlowID fid) {
     return false;
   }
 
-  I(tsfifo[fid].full());
+  I(tsfifo[fid].halfFull());
 
   for(int i=32;i<tsfifo[fid].size();i++) {
     RAWDInst  *rinst = tsfifo[fid].getHeadRef();

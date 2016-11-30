@@ -52,7 +52,7 @@ struct SMTFetch {
   SMTFetch() {
     fe = 0;
     smt_lastTime = 0;
-    smt_cnt      = 0;
+    smt_cnt      = 1;
     smt_active   = 1;
     smt_turn     = 0;
   };

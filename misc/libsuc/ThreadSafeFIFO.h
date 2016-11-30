@@ -19,7 +19,7 @@ class ThreadSafeFIFO {
     Type array[32768];
 
   public:
-    uint16_t size() const { return 32768-2048; }
+    uint16_t size() const { return 32768/2-2048; }
 #if 0
     uint16_t realsize() const{
 
@@ -60,14 +60,14 @@ class ThreadSafeFIFO {
     }
 
     bool halfFull() const {
-      IndexType n;
+      uint32_t n;
       if (head > tail) {
         n = 32768-head+tail;
       }else{
         n = tail-head;
       }
 
-      return n>16000;
+      return n>size();
     }
 
     bool empty() {

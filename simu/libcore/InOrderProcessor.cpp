@@ -86,7 +86,6 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
 
   busy = false;
   lastrob_getStatsFlag = false;
-
 }
 // 1}}}
 
