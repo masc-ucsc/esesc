@@ -147,11 +147,10 @@ private:
   void updatePowerGStats();
   void updateSig();
   void updatePowerTime(uint64_t timeinterval);
-  std::vector<FlowID> * getFlowIDEmulMapping() { return &(TaskHandler::FlowIDEmulMapping); };
   EmulInterface *getEmul(FlowID fid)           { return TaskHandler::getEmul(fid); };
   void syncStats()                             { return TaskHandler::syncStats();  };
   void freeze(FlowID fid, Time_t nCycles)      { return TaskHandler::freeze(fid, nCycles); };
-  FlowID getNumActiveCores()                   { return TaskHandler::getNumActiveCores(); }; 
+  FlowID getNumActiveCores()                   { return TaskHandler::getNumActiveCores(); };
   float getTurboRatio()                        { return EmuSampler::getTurboRatio(); };
 
   float getDyn(uint32_t i);

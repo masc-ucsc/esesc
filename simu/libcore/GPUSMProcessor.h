@@ -56,8 +56,6 @@ private:
 
   DInst **RAT;
 
-  FastQueue<DInst *> rROB; // ready/retiring/executed ROB
-
   void fetch(FlowID fid);
 protected:
   ClusterManager clusterManager;

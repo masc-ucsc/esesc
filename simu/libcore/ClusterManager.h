@@ -53,7 +53,7 @@ class ClusterManager {
 
  protected:
  public:
-  ClusterManager(GMemorySystem *ms, GProcessor *gproc);
+  ClusterManager(GMemorySystem *ms, uint32_t cpuid, GProcessor *gproc);
 
   Resource *getResource(DInst *dinst) const {
     return scheduler->getResource(dinst);

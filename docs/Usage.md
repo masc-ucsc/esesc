@@ -51,14 +51,14 @@ These steps assume that the ESESC repo is checked out in the `~/projs/esesc` dir
 # Release
     mkdir ~/build_release
     cd ~/build_release
-    cmake ~/projs/esesc 
-    make 
+    cmake ~/projs/esesc
+    make
 
 # Release and System
     mkdir ~/build_system
     cd ~/build_release
-    cmake -DESESC_SYSTEM=1 ~/projs/esesc 
-    make 
+    cmake -DESESC_SYSTEM=1 ~/projs/esesc
+    make
 
 # Compile with QEMU in a arm machine (arch linux chromebook)
 

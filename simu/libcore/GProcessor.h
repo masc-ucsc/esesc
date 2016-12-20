@@ -156,7 +156,11 @@ class GProcessor {
 
     virtual void replay(DInst *target) { };// = 0;
 
-    bool isROBEmpty() const { return ROB.empty() && rROB.empty(); }
+    bool isROBEmpty() const { return(ROB.empty() && rROB.empty()); }
+    int getROBsize() const { return(ROB.size() + rROB.size()); }
+    void drain() {
+      retire();
+    }
 
     // Returns the maximum number of flows this processor can support
     FlowID getMaxFlows(void) const { return maxFlows; }
@@ -180,6 +184,7 @@ class GProcessor {
       active = true;
     }
     void clearActive() {
+      I(isROBEmpty());
       active = false;
     }
     bool isActive() const { return active; }

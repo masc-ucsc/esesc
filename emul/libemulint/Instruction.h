@@ -52,7 +52,7 @@ protected:
   RegType     src2;
   RegType     dst1;
   RegType     dst2;
-  
+
   public:
 
   static const char *opcode2Name(InstOpcode type);
@@ -72,9 +72,9 @@ protected:
   bool hasDstRegister() const { return dst1 != LREG_InvalidOutput || dst2 != LREG_InvalidOutput; }
   bool hasSrc1Register() const { return src1 != LREG_NoDependence;  }
   bool hasSrc2Register() const { return src2 != LREG_NoDependence;  }
-  int  getnsrc() const { 
-    int n= hasSrc1Register()?1:0 ;  
-    n += hasSrc2Register()?1:0 ;  
+  int  getnsrc() const {
+    int n= hasSrc1Register()?1:0;
+    n += hasSrc2Register()?1:0;
     return n;
   }
 
@@ -85,10 +85,10 @@ protected:
   // All the unconditional but function return are jumps
   bool isJump()     const { return opcode == iBALU_RJUMP   || opcode == iBALU_LJUMP || isFuncCall(); }
 
-  bool isControl()  const { 
+  bool isControl()  const {
     GI(opcode >= iBALU_LBRANCH && opcode <= iBALU_RET, isJump() || isBranch() || isFuncCall() || isFuncRet());
 
-    return opcode >= iBALU_LBRANCH && opcode <= iBALU_RET; 
+    return opcode >= iBALU_LBRANCH && opcode <= iBALU_RET;
   }
 
   bool isLoad() const         { return opcode == iLALU_LD; }

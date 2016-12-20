@@ -51,8 +51,6 @@ FlowID TaskHandler::running_size;
 
 std::vector<EmulInterface *>  TaskHandler::emulas; // associated emula
 std::vector<GProcessor *>     TaskHandler::cpus;   // All the CPUs in the system
-std::vector<FlowID>           TaskHandler::FlowIDEmulMapping;  
-
 
 void TaskHandler::report(const char *str) {
   /* dump statistics to report file {{{1 */
@@ -70,11 +68,11 @@ void TaskHandler::report(const char *str) {
     Report::field("OSSim:P(%d)_Type=%d",cpuid,emulas[i]->cputype);
 
     cpuid_sub++;
-    if (cpuid_sub>=cpus[cpuid]->getMaxFlows()) {
+    //if (cpuid_sub>=cpus[cpuid]->getMaxFlows()) {
       cpuid_sub = 0;
       GI((cpus.size() > 1), (cpuid < cpus.size()));
       cpuid     = cpuid+1;
-    }
+    //}
   }
   Report::field("OSSim:nSampler=%d",samplercount+1);
   Report::field("OSSim:globalClock=%lld",globalClock);
@@ -148,10 +146,11 @@ void TaskHandler::addSimu(GProcessor *gproc) {
 
   EmulSimuMapping map;
 
-  map.fid    = gproc->getID();
-  map.emul   = 0;
-  map.simu   = gproc;
-  map.active = gproc->isActive();
+  map.fid          = gproc->getID();
+  map.emul         = 0;
+  map.simu         = gproc;
+  map.active       = gproc->isActive();
+  map.deactivating = false;
 
   allmaps.push_back(map);
 }
@@ -183,12 +182,13 @@ FlowID TaskHandler::resumeThread(FlowID uid, FlowID fid) {
     pthread_mutex_unlock (&mutex);
     return (0);
   }
-  allmaps[fid].active = true;
+  allmaps[fid].active       = true;
+  allmaps[fid].deactivating = false;
   allmaps[fid].simu->setActive();
   running[running_size] = fid;
   running_size++;
 
-#ifdef DEBUG
+#ifdef DEBUG2
   fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
   for (int i = 0; i < running_size; i++)
     fprintf(stderr,"%d:",running[i]);
@@ -210,7 +210,8 @@ FlowID TaskHandler::resumeThread(FlowID fid) {
   for (size_t i = 0; i < running_size; i++){
     if (running[i] == fid){
       //MSG("Was in queue");
-      allmaps[fid].active = true;
+      allmaps[fid].active       = true;
+      allmaps[fid].deactivating = false;
       allmaps[fid].simu->setActive();
       /*
       fprintf(stderr,"GPUResume: running_size = %d : running->",running_size);
@@ -228,38 +229,25 @@ FlowID TaskHandler::resumeThread(FlowID fid) {
   FlowID GPU_fid = (fid);
   I(allmaps[GPU_fid].fid == GPU_fid);
 
-  //IS(MSG("TaskHandler::GPU resumeThread(%d)",GPU_fid));
-
   pthread_mutex_lock (&mutex);
   //  if (allmaps[GPU_fid].active || terminate_all){
   if (terminate_all){
     MSG("TaskHandler::terminate_all flag is set, cannot start Thread (%d)",fid);
     pthread_mutex_unlock (&mutex);
-/*
-    fprintf(stderr,"GPUResume: running_size = %d : running->",running_size);
-    for (int i = 0; i < running_size; i++)
-      fprintf(stderr,"%d->",running[i]);
-    fprintf(stderr,"\n");
-*/
     return (999);
   } else if(allmaps[GPU_fid].active){
     MSG("TaskHandler::fid(%d) is already active",GPU_fid);
     pthread_mutex_unlock (&mutex);
-/*
-    fprintf(stderr,"GPUResume: running_size = %d : running->",running_size);
-    for (int i = 0; i < running_size; i++)
-      fprintf(stderr,"%d->",running[i]);
-    fprintf(stderr,"\n");
-*/
     return (GPU_fid);
-  }  
+  }
 
-  allmaps[GPU_fid].active = true;
+  allmaps[GPU_fid].active       = true;
+  allmaps[GPU_fid].deactivating = false;
   allmaps[GPU_fid].simu->setActive();
 
   // Make sure that the fid is not in the running queue
   // This might happen if the execution is very slow. 
-  
+
   running[running_size] = GPU_fid;
   running_size++;
 
@@ -274,25 +262,11 @@ FlowID TaskHandler::resumeThread(FlowID fid) {
 }
 /* }}} */
 
-void TaskHandler::syncRunning(){
-  /* syncs the running queue with emul  {{{1 */
-  pthread_mutex_lock (&mutex);
-
-  for(size_t i=0; i<allmaps.size(); i++)
-  {
-    if (!allmaps[i].active)
-    {
-      I(0);
-      removeFromRunning(i);
-    }
-  }
-  pthread_mutex_unlock (&mutex);
-}
-/* }}} */
-
 void TaskHandler::removeFromRunning(FlowID fid){
   /* remove fid from the running queue {{{1 */
- 
+
+  I(allmaps[fid].simu->isROBEmpty());
+
   for (size_t i=0;i<running_size;i++){
     if (running[i] != fid)
       continue;
@@ -304,7 +278,7 @@ void TaskHandler::removeFromRunning(FlowID fid){
     }
     running_size--;
 
-#ifdef DEBUG
+#ifdef DEBUG2
     fprintf(stderr,"removeFromRunning: fid=%d running_size=%d : running=",fid,running_size);
     for (int j = 0; j < running_size; j++)
       fprintf(stderr,"%d:",running[j]);
@@ -315,7 +289,6 @@ void TaskHandler::removeFromRunning(FlowID fid){
   }
 
   if (allmaps[fid].active){
-    //emulas[FlowIDEmulMapping.at(fid)]->freeFid(fid); // FIXME: no vector for emulas?
     emulas[fid]->freeFid(fid); // FIXME: no vector for emulas?
   }
 }
@@ -331,13 +304,21 @@ void TaskHandler::pauseThread(FlowID fid){
 
   if (!allmaps[fid].active){
     //MSG("TaskHandler::pauseThread(%d) not needed, since it is not active",fid);
+    if (allmaps[fid].deactivating) {
+      if (allmaps[fid].simu->isROBEmpty()) {
+        removeFromRunning(fid);
+        allmaps[fid].active       = false;
+        allmaps[fid].deactivating = false; // already deactivated
+        allmaps[fid].simu->clearActive();
+      }
+    }
     pthread_mutex_unlock (&mutex);
     return;
   }
 
-  removeFromRunning(fid);
-  allmaps[fid].active = false;
-  allmaps[fid].simu->clearActive();
+  allmaps[fid].active       = false; // So that no more populate is called
+  allmaps[fid].deactivating = true;
+
   pthread_mutex_unlock (&mutex);
 }
 /* }}} */
@@ -354,9 +335,10 @@ void TaskHandler::terminate()
       continue;
     if (allmaps[i].emul)
       allmaps[i].emul->getSampler()->stop();
-    allmaps[i].active = false;
+    allmaps[i].active       = false;
+    allmaps[i].deactivating = false;
   }
-  
+
   //GStats::stopAll(1);
 
   pthread_mutex_lock (&mutex);
@@ -396,13 +378,21 @@ void TaskHandler::boot()
       bool all_failed;
       bool retry = false;
       do {
+#ifdef DEBUG
+        static int conta=0;
+        conta++;
+        if (conta>1000000) {
+          fprintf(stderr,".");
+          conta = 0;
+        }
+#endif
         do{
           one_failed = false;
           all_failed = true;
           for(size_t i =0;i<running_size;i++) {
             FlowID fid = running[i];
             bool p = allmaps[fid].emul->populate(fid);
-            if (!p) 
+            if (!p)
               one_failed = true;
             else
               all_failed = false;
@@ -413,11 +403,14 @@ void TaskHandler::boot()
         if (retry) {
           for(size_t i =0;i<running_size;i++) {
             FlowID fid = running[i];
-            if (!allmaps[fid].active)
+            if (!allmaps[fid].active) {
+              if (!allmaps[fid].deactivating)
+                removeFromRunning(fid);
               continue;
+            }
 
             bool p = allmaps[fid].emul->populate(fid);
-            if (!p) 
+            if (!p)
               pauseThread(fid);
           }
           break;
@@ -427,21 +420,43 @@ void TaskHandler::boot()
       // 2nd: advance cores
       for(size_t i =0;i<running_size;i++) {
         FlowID fid = running[i];
-        allmaps[fid].simu->advance_clock(fid);
+        if (allmaps[fid].deactivating) {
+#ifdef DEBUG
+          if (!allmaps[fid].simu->isROBEmpty()) {
+            MSG("@%lld drain fid:%d rob:%d", globalClock, fid, allmaps[fid].simu->getROBsize());
+          }
+#endif
+          allmaps[fid].simu->drain();
+          if (allmaps[fid].simu->isROBEmpty()) {
+            pauseThread(fid);
+            I(!allmaps[fid].deactivating);
+          }
+        }else{
+          allmaps[fid].simu->advance_clock(fid);
+        }
       }
+#ifdef DEBUG
+      for(size_t i=0;i<allmaps.size();i++) {
+        if (allmaps[i].active)
+          continue;
+        if (allmaps[i].deactivating)
+          continue;
+        I(allmaps[i].simu->isROBEmpty());
+      }
+#endif
       EventScheduler::advanceClock();
     }
   }
 }
 /* }}} */
 
-void TaskHandler::unboot() 
+void TaskHandler::unboot()
   /* nothing to do {{{1 */
 {
 }
 /* }}} */
 
-void TaskHandler::plugBegin() 
+void TaskHandler::plugBegin()
   /* allocate objects {{{1 */
 {
   I(emulas.empty());
@@ -458,7 +473,7 @@ void TaskHandler::plugEnd()
 {
   size_t nCPUThreads = 0;
   for(size_t i = 0;i<cpus.size();i++) {
-    nCPUThreads += cpus[i]->getMaxFlows();
+    nCPUThreads += 1; // cpus[i]->getMaxFlows();
   }
   if( emulas.size() > nCPUThreads ) {
     MSG("ERROR: There are more emul (%zu) than cpu flows (%zu) available. Increase the number of cores or emulas can starve", emulas.size(), nCPUThreads);
@@ -486,11 +501,11 @@ void TaskHandler::plugEnd()
     allmaps[i].simu->setEmulInterface(emulas[i]);
     
     cpuid_sub++;
-    if (cpuid_sub>=cpus[cpuid]->getMaxFlows()) {
+    //if (cpuid_sub>=cpus[cpuid]->getMaxFlows()) {
       cpuid_sub = 0;
       I(cpuid < cpus.size());
       cpuid     = cpuid+1;
-    }
+   // }
   }
   for(size_t i=0;i<allmaps.size();i++) {
     if (allmaps[i].active)

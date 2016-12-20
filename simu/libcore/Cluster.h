@@ -48,7 +48,6 @@
 
 class Resource;
 class GMemorySystem;
-class GProcessor;
 
 class Cluster {
  private:
@@ -56,7 +55,10 @@ class Cluster {
                  ,uint32_t pos
                  ,GMemorySystem *ms
                  ,Cluster *cluster
-                 ,InstOpcode type);
+                 ,uint32_t cpuid
+                 ,InstOpcode type
+                 ,GProcessor *gproc
+                 );
 
  protected:
   DepWindow window;
@@ -66,16 +68,17 @@ class Cluster {
 
   int32_t nready;
 
-  GProcessor *const gproc;
-
   GStatsAvg  winNotUsed;
   GStatsCntr rdRegPool;
   GStatsCntr wrRegPool;
 
   Resource   *res[iMAX];
 
+  int32_t nRegs;
   int32_t regPool;
   bool lateAlloc;
+
+  uint32_t cpuid;
 
   char *name;
 
@@ -90,7 +93,7 @@ class Cluster {
   }
   
   virtual ~Cluster();
-  Cluster(const char *clusterName, uint32_t pos, GProcessor *gp);
+  Cluster(const char *clusterName, uint32_t pos, uint32_t cpuid);
 
  public:
 
@@ -100,7 +103,7 @@ class Cluster {
   virtual void executed(DInst *dinst)  = 0;
   virtual bool retire(DInst *dinst, bool replay)    = 0;
 
-  static Cluster *create(const char *clusterName, uint32_t pos, GMemorySystem *ms, GProcessor *gproc);
+  static Cluster *create(const char *clusterName, uint32_t pos, GMemorySystem *ms, uint32_t cpuid, GProcessor *gproc);
 
   Resource *getResource(InstOpcode type) const {
     I(type < iMAX);
@@ -111,8 +114,6 @@ class Cluster {
 
   StallCause canIssue(DInst *dinst) const;
   void addInst(DInst *dinst);
-
-  GProcessor *getGProcessor() const { return gproc; }
 
   int32_t getAvailSpace() const { 
     if (regPool<windowSize)
@@ -128,8 +129,8 @@ class ExecutingCluster : public Cluster {
   virtual ~ExecutingCluster() {
   }
     
-  ExecutingCluster(const char *clusterName, uint32_t pos, GProcessor *gp)
-    : Cluster(clusterName, pos, gp) { }
+  ExecutingCluster(const char *clusterName, uint32_t pos, uint32_t cpuid)
+    : Cluster(clusterName, pos, cpuid) { }
     
   void executing(DInst *dinst);
   void executed(DInst *dinst);
@@ -141,8 +142,8 @@ class ExecutedCluster : public Cluster {
   virtual ~ExecutedCluster() {
   }
     
-  ExecutedCluster(const char *clusterName, uint32_t pos, GProcessor *gp)
-    : Cluster(clusterName, pos, gp) { }
+  ExecutedCluster(const char *clusterName, uint32_t pos, uint32_t cpuid)
+    : Cluster(clusterName, pos, cpuid) { }
     
   void executing(DInst *dinst);
   void executed(DInst *dinst);
@@ -153,8 +154,8 @@ class RetiredCluster : public Cluster {
  public:
   virtual ~RetiredCluster() {
   }
-  RetiredCluster(const char *clusterName, uint32_t pos, GProcessor *gp)
-    : Cluster(clusterName, pos, gp) { }
+  RetiredCluster(const char *clusterName, uint32_t pos, uint32_t cpuid)
+    : Cluster(clusterName, pos, cpuid) { }
 
   void executing(DInst *dinst);
   void executed(DInst *dinst);

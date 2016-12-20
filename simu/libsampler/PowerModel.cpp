@@ -822,7 +822,7 @@ void PowerModel::readStatsFromConfFile(const char *section) {
       while (std::isspace(*end))
         end++;
 
-      start = end;     
+      start = end;
       while (!std::isspace(*end) && *end) {
         len++;
         end++;
@@ -839,12 +839,9 @@ void PowerModel::readStatsFromConfFile(const char *section) {
 
 void PowerModel::genIndeces() {
   coreIndex = new std::vector<uint32_t>();
-  gpuIndex = new std::vector<uint32_t>();
-  for (size_t i = 0; i < getFlowIDEmulMapping()->size(); i++){
-    if ((*getFlowIDEmulMapping())[i])
-      gpuIndex->push_back(i);
-    else
-      coreIndex->push_back(i);
+  gpuIndex = new std::vector<uint32_t>(); // Not used now
+  for (size_t i = 0; i < TaskHandler::getNumCores(); i++){
+    coreIndex->push_back(i);
   }
 }
 

@@ -320,7 +320,7 @@ void TLB::req(MemRequest *mreq)
 /* main read entry point {{{1 */
 {
   if(mreq->getAddr() == 0) {
-    mreq->ack();
+    mreq->ack(1);
     return;
   }
   if (!mreq->isRetrying())

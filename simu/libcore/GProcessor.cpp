@@ -77,9 +77,9 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i)
   smt_ctx  = i - (i % smt);
 
   // maxFlows are REAL THreads IDs inside core (GPU SMT)
-  if (SescConf->checkInt("cpusimu","smtnum")) {
-   maxFlows = SescConf->getInt("cpusimu","smtnum");
-   SescConf->isBetween("cpusimu","smtnum",1,32);
+  if (SescConf->checkInt("cpusimu","smt")) {
+    maxFlows = SescConf->getInt("cpusimu","smt");
+    SescConf->isBetween("cpusimu","smt",1,32);
   }else{
     maxFlows = 1;
   }
@@ -171,6 +171,7 @@ int32_t GProcessor::issue(PipeQueue &pipeQ) {
       //  GMSG(getCoreId()==1,"push to pipe %p", bucket);
 
       //MSG("@%lld  CPU[%d]: preaddInst dinstID=%lld PE[%d]",globalClock,cpu_id, dinst->getID(),dinst->getPE());
+      dinst->setGProc(this);
       StallCause c = addInst(dinst);
       if (c != NoStall) {
         //MSG("@%lld CPU[%d]: stalling dinstID=%lld for %d cycles, reason= %d PE[%d]",globalClock,cpu_id,dinst->getID(),(RealisticWidth-i),c,dinst->getPE());

@@ -269,8 +269,6 @@ void BootLoader::plugEmulInterfaces() {
         SescConf->notCorrect();
         return;
       }
-      TaskHandler::FlowIDEmulMapping.push_back(0); // Interface 0 is QEMU
-
       createEmulInterface(QEMUCPUSection, i); // each CPU has it's own Emul/Sampler
     }else if(strcasecmp(type,"accel") == 0 ) {
       MSG("cpuemul[%d] specifies a different section %s",i,section);

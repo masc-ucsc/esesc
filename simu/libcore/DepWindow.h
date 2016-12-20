@@ -41,7 +41,6 @@
 #include "Port.h"
 
 class DInst;
-class GProcessor;
 class Cluster;
 
 class DepWindow {
@@ -62,7 +61,7 @@ protected:
 
 public:
   ~DepWindow();
-  DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName, uint32_t pos);
+  DepWindow(uint32_t cpuid, Cluster *aCluster, const char *clusterName, uint32_t pos);
 
   void select(DInst *dinst);
 

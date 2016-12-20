@@ -52,6 +52,7 @@ class BPredictor;
 class Cluster;
 class Resource;
 class EmulInterface;
+class GProcessor;
 
 //#define ESESC_TRACE 1
 
@@ -139,6 +140,7 @@ private:
   DInst      **RAT2Entry;
   DInst      **serializeEntry;
   FetchEngine *fetch;
+  GProcessor  *gproc;
 
   char nDeps;              // 0, 1 or 2 for RISC processors
 
@@ -160,6 +162,7 @@ private:
     RAT2Entry       = 0;
     serializeEntry  = 0;
     fetch           = 0;
+    gproc           = 0;
     SSID            = -1;
     conflictStorePC = 0;
 
@@ -291,6 +294,13 @@ public:
     return fetched;
   }
 
+  void setGProc(GProcessor *_gproc) {
+    I(gproc==0 || gproc == _gproc);
+    gproc = _gproc;
+  }
+
+  GProcessor *getGProc() const { I(gproc); return gproc; }
+
   DInst *getNextPending() {
     I(first);
     DInst *n = first->getDInst();
@@ -369,7 +379,6 @@ public:
     n->nextDep = 0;
     last = n;
   }
-
 
   void setAddr(AddrType a)     { addr = a;               }
   AddrType getPC()       const { return pc;              }

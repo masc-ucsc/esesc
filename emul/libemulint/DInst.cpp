@@ -37,7 +37,7 @@
 #include "EmulInterface.h"
 /* }}} */
 
-pool<DInst> DInst::dInstPool(1024, "DInst"); //4 * tsfifo size
+pool<DInst> DInst::dInstPool(32768, "DInst"); //4 * tsfifo size
 
 Time_t DInst::currentID=0;
 
@@ -135,6 +135,7 @@ void DInst::recycle() {
   I(nDeps == 0);    // No deps src
   I(first == 0);    // no dependent instructions
 
+  GI(isMarkAdd(), isMarkDel());
   dInstPool.in(this);
 }
 
@@ -144,6 +145,8 @@ void DInst::scrap(EmulInterface *eint) {
 
   I(eint);
   eint->reexecuteTail(fid);
+
+  GI(isMarkAdd(), isMarkDel());
 
   dInstPool.in(this);
 }
@@ -156,6 +159,11 @@ void DInst::destroy(EmulInterface *eint) {
 
   I(first == 0);   // no dependent instructions
 
-  scrap(eint);
+  GI(isMarkAdd(), isMarkDel());
+
+  I(eint);
+  eint->reexecuteTail(fid);
+
+  dInstPool.in(this);
 }
 

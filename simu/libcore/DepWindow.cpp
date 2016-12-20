@@ -42,27 +42,27 @@
 #include "SescConf.h"
 #include "GProcessor.h"
 
-DepWindow::DepWindow(GProcessor *gp, Cluster *aCluster, const char *clusterName, uint32_t pos)
+DepWindow::DepWindow(uint32_t cpuid, Cluster *aCluster, const char *clusterName, uint32_t pos)
   :srcCluster(aCluster)
-  ,Id(gp->getID())
-  ,wrForwardBus("P(%d)_%s%d_wrForwardBus",Id, clusterName,pos)
+  ,Id(cpuid)
+  ,wrForwardBus("P(%d)_%s%d_wrForwardBus",cpuid, clusterName,pos)
 {
-  char cadena[100];
+  char cadena[1024];
 
-  sprintf(cadena,"P(%d)_%s%d_sched", Id, clusterName,pos);
+  sprintf(cadena,"P(%d)_%s%d_sched", cpuid, clusterName,pos);
   schedPort = PortGeneric::create(cadena
                                   ,SescConf->getInt(clusterName, "SchedNumPorts")
                                   ,SescConf->getInt(clusterName, "SchedPortOccp"));
 
-  InterClusterLat = SescConf->getInt("cpusimu", "interClusterLat",gp->getID());
+  InterClusterLat = SescConf->getInt("cpusimu", "interClusterLat",cpuid);
   SchedDelay      = SescConf->getInt(clusterName, "schedDelay");
 
   // Constraints
   SescConf->isInt(clusterName    , "schedDelay");
   SescConf->isBetween(clusterName , "schedDelay", 0, 1024);
 
-  SescConf->isInt("cpusimu"    , "interClusterLat",Id);
-  SescConf->isBetween("cpusimu" , "interClusterLat", SchedDelay, 1024,Id);
+  SescConf->isInt("cpusimu"    , "interClusterLat",cpuid);
+  SescConf->isBetween("cpusimu" , "interClusterLat", SchedDelay, 1024,cpuid);
 }
 
 DepWindow::~DepWindow() {

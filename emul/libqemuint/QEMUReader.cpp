@@ -220,7 +220,6 @@ bool QEMUReader::populate(FlowID fid) {
     return true;
 
   if(!tsfifo[fid].halfFull()) {
-    
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
     bool unblocked = false;
@@ -264,7 +263,7 @@ bool QEMUReader::populate(FlowID fid) {
 #endif
         qsamplerlist[i]->resumeThread(i,i);
       }else{
-#ifdef DEBUG
+#ifdef DEBUG2
         MSG("Slowlock: sleeping thread was active");
 #endif
       }

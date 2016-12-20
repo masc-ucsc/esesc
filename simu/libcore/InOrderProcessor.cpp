@@ -60,8 +60,7 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
   ,RetireDelay(SescConf->getInt("cpusimu", "RetireDelay",i))
   ,pipeQ(i)
   ,lsq(i,32768)
-  ,rROB(SescConf->getInt("cpusimu", "robSize", i))
-  ,clusterManager(gm, this)
+  ,clusterManager(gm, i, this)
 {// {{{1
   char fName[1024];
 
@@ -80,7 +79,7 @@ InOrderProcessor::InOrderProcessor(GMemorySystem *gm, CPU_t i)
 
   spaceInInstQueue = InstQueueSize;
 
-  uint32_t smtnum = getMaxFlows();
+  uint32_t smtnum = 1; // getMaxFlows();
   RAT = new DInst* [LREG_MAX * smtnum * 128];
   bzero(RAT,sizeof(DInst*)*LREG_MAX * smtnum * 128);
 
@@ -126,14 +125,8 @@ void InOrderProcessor::fetch(FlowID fid)
 
   if (smt>1) {
     bool run = sf->update(spaceInInstQueue >= FetchWidth);
-
-    if (run) {
-      //printf("1.fetch fid=%d active=%d @%lld\n",fid, sf->smt_active, globalClock);
-    }else{
-      //printf("2.fetch fid=%d active=%d turn=%d @%lld\n",fid, sf->smt_active, sf->smt_turn, globalClock);
-      // busy = true;
+    if (!run) 
       return;
-    }
   }
 
   if(ifid->isBlocked())
@@ -150,21 +143,20 @@ bool InOrderProcessor::advance_clock(FlowID fid)
 {/*{{{*/
 
   if (!active) {
-    // time to remove from the running queue
-    //TaskHandler::removeFromRunning(cpu_id);
+    I(isROBEmpty());
     return false;
   }
-  //IS(if (cpu_id == 1) MSG("\n**\n@%lld: Processing CPU (%d)",(long long int)globalClock,cpu_id));
+
+  I(cpu_id == fid);
+
   fetch(fid);
 
-  bool getStatsFlag;
+  bool getStatsFlag = lastrob_getStatsFlag;
   if( !ROB.empty() ) {
     getStatsFlag = ROB.top()->getStatsFlag();
     lastrob_getStatsFlag = getStatsFlag;
-  }else{
-    // In-order core tends to be quite empty, remember last ROB stats if rob is empty
-    getStatsFlag = lastrob_getStatsFlag;
   }
+
   //IS(if (cpu_id == 1) MSG("@%lld: Fetching CPU (%d)",(long long int)globalClock,cpu_id));
   clockTicks.inc(getStatsFlag);
   setWallClock(getStatsFlag);
@@ -220,6 +212,7 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
 {/*{{{*/
 
   const Instruction *inst = dinst->getInst();
+  FlowID rat_off = 0; // no need, addInst is private per thread. Cluster is shared (dinst->getFlowId() % getMaxFlows())*LREG_MAX;
 
 #if 1
 #if 0
@@ -231,8 +224,8 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
 #else
 #if 1
   // Simple in-order for RAW, but not WAW or WAR
-  if(((RAT[inst->getSrc1()] != 0) && (inst->getSrc1() != LREG_NoDependence)) ||
-     ((RAT[inst->getSrc2()] != 0) && (inst->getSrc2() != LREG_NoDependence)) ) {
+  if(((RAT[inst->getSrc1() + rat_off] != 0) && (inst->getSrc1() != LREG_NoDependence)) ||
+     ((RAT[inst->getSrc2() + rat_off] != 0) && (inst->getSrc2() != LREG_NoDependence)) ) {
 #else
     // scoreboard, no output dependence
   if(((RAT[inst->getDst1()] != 0) && (inst->getDst1() != LREG_InvalidOutput))||
@@ -285,6 +278,8 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
     dinst->setCluster(cluster, res);
   }
 
+  I(dinst->getFlowId() == cpu_id);
+
   StallCause sc = cluster->canIssue(dinst);
   if (sc != NoStall)
     return sc;
@@ -301,23 +296,25 @@ StallCause InOrderProcessor::addInst(DInst *dinst)
   if( !dinst->isSrc2Ready() ) {
     // It already has a src2 dep. It means that it is solved at
     // retirement (Memory consistency. coherence issues)
-    if( RAT[inst->getSrc1()] )
-      RAT[inst->getSrc1()]->addSrc1(dinst);
+    if( RAT[inst->getSrc1() + rat_off] )
+      RAT[inst->getSrc1() + rat_off]->addSrc1(dinst);
   }else{
-    if( RAT[inst->getSrc1()] )
-      RAT[inst->getSrc1()]->addSrc1(dinst);
+    if( RAT[inst->getSrc1() + rat_off] )
+      RAT[inst->getSrc1() + rat_off]->addSrc1(dinst);
 
-    if( RAT[inst->getSrc2()] )
-      RAT[inst->getSrc2()]->addSrc2(dinst);
+    if( RAT[inst->getSrc2() + rat_off] )
+      RAT[inst->getSrc2() + rat_off]->addSrc2(dinst);
   }
 
-  dinst->setRAT1Entry(&RAT[inst->getDst1()]);
-  dinst->setRAT2Entry(&RAT[inst->getDst2()]);
+  I(!dinst->isExecuted());
+
+  dinst->setRAT1Entry(&RAT[inst->getDst1() + rat_off]);
+  dinst->setRAT2Entry(&RAT[inst->getDst2() + rat_off]);
 
   dinst->getCluster()->addInst(dinst);
 
-  RAT[inst->getDst1()] = dinst;
-  RAT[inst->getDst2()] = dinst;
+  RAT[inst->getDst1() + rat_off] = dinst;
+  RAT[inst->getDst2() + rat_off] = dinst;
 
   I(dinst->getCluster());
   dinst->markRenamed();
@@ -333,6 +330,8 @@ void InOrderProcessor::retire()
   while(!ROB.empty()) {
     DInst *dinst = ROB.top();
     stats = dinst->getStatsFlag();
+
+    I(cpu_id == dinst->getFlowId());
 
     bool done = dinst->getClusterResource()->preretire(dinst, false);
     if( !done )
@@ -371,40 +370,15 @@ void InOrderProcessor::retire()
     I(dinst->getCluster());
 
     bool done = dinst->getCluster()->retire(dinst, false);
-    if( !done ) {
-      //dinst->getInst()->dump("");
-      //if ( dinst->getFlowId() == 1 ) dinst->dump("\nCannot Retire...");
+    if( !done )
       return;
-    } else {
-      //if ( dinst->getFlowId() == 1 ) dinst->dump("\nFinished...");
-    }
-
-#if 0
-    FlowID fid = dinst->getFlowId();
-    if( active) {
-      EmulInterface *eint = TaskHandler::getEmul(fid);
-      eint->reexecuteTail( fid );
-    }
-#endif
-
-#if 0
-    FlowID fid = dinst->getFlowId();
-    fprintf(stderr,"\nRetiring from rROB , FlowID(%d), dinst->pc = %llx, dinst->addr = %llx, dinst->pe_id = %d, dinst->warp_id = %d",
-          fid,
-          dinst->getPC(),
-          dinst->getAddr(),
-          dinst->getPE(),
-          dinst->getWarpID()
-         );
-
-#endif
 
 #ifdef DEBUG
     if (!dinst->getInst()->isStore()) // Stores can perform after retirement
       I(dinst->isPerformed());
 #endif
 
-   if (dinst->isPerformed()) // Stores can perform after retirement
+    if (dinst->isPerformed()) // Stores can perform after retirement
       dinst->destroy(eint);
     else{
       eint->reexecuteTail(dinst->getFlowId());

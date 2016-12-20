@@ -62,7 +62,7 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   ,pipeQ(i)
   ,lsq(i, SescConf->checkInt("cpusimu", "maxLSQ",i)?SescConf->getInt("cpusimu", "maxLSQ",i):32768) // 32K (unlimited or fix)
   ,retire_lock_checkCB(this)
-  ,clusterManager(gm, this)
+  ,clusterManager(gm, i, this)
   ,avgFetchWidth("P(%d)_avgFetchWidth",i)
 #ifdef TRACK_FORWARDING
   ,avgNumSrc("P(%d)_avgNumSrc",i)
@@ -471,7 +471,7 @@ void OoOProcessor::retire_lock_check()
     state.r_dinst    = rROB.top();
     state.r_dinst_ID = rROB.top()->getID();
   }
-  
+
   if (!ROB.empty()) {
     state.dinst    = ROB.top();
     state.dinst_ID = ROB.top()->getID();
@@ -480,13 +480,6 @@ void OoOProcessor::retire_lock_check()
   if (last_state == state && active) {
     I(0);
     MSG("Lock detected in P(%d), flushing pipeline", getID());
-    if (!rROB.empty()) {
-//      replay(rROB.top());
-    }
-    if (!ROB.empty()) {
-//      ROB.top()->markExecuted();
-//      replay(ROB.top());
-    }
   }
 
   last_state = state;
@@ -550,14 +543,13 @@ void OoOProcessor::retire()
     }
 
     I(dinst->isExecuted());
-    
+
     GI(!flushing, dinst->isExecuted());
     I(dinst->getCluster());
- 
+
     bool done = dinst->getCluster()->retire(dinst, flushing);
-    if( !done ) {
+    if( !done ) 
       break;
-    }
 
 #if 0
     static int conta=0;
@@ -569,7 +561,7 @@ void OoOProcessor::retire()
       dumpROB();
     }
 #endif
-    
+
     FlowID fid = dinst->getFlowId();
     if( dinst->isReplay() ) {
       flushing = true;
@@ -602,18 +594,14 @@ void OoOProcessor::retire()
     if (dinst->getInst()->hasDstRegister())
       nTotalRegs++;
 
-#if 1 
     if (!dinst->getInst()->isStore()) // Stores can perform after retirement
       I(dinst->isPerformed());
 
-   if (dinst->isPerformed()) // Stores can perform after retirement
+    if (dinst->isPerformed()) // Stores can perform after retirement
       dinst->destroy(eint);
     else{
       eint->reexecuteTail(fid);
     }
-#else
-    dinst->destroy(eint);
-#endif 
 
     if (last_serialized == dinst)
       last_serialized = 0;
@@ -659,6 +647,7 @@ void OoOProcessor::replay(DInst *target)
 void OoOProcessor::dumpROB()
   // {{{1 Dump rob statistics
 {
+#if 0
   uint32_t size = ROB.size();
   fprintf(stderr,"ROB: (%d)\n",size);
 
@@ -679,6 +668,7 @@ void OoOProcessor::dumpROB()
       printf("-----REPLAY--------\n");
     dinst->dump("");
   }
+#endif
 }
 // 1}}}
 

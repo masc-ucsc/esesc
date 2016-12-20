@@ -51,7 +51,6 @@ GPUSMProcessor::GPUSMProcessor(GMemorySystem *gm, CPU_t i)
   ,IFID(i, this, gm)
   ,pipeQ(i)
   ,lsq(i)
-  ,rROB(SescConf->getInt("cpusimu", "robSize", i))
   ,clusterManager(gm, this)
 {/*{{{*/
   numSP = SescConf->getInt("cpusimu", "sp_per_sm", i);

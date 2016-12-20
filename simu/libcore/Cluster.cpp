@@ -40,6 +40,7 @@
 #include "Port.h"
 #include "Resource.h"
 #include "SescConf.h"
+#include "TaskHandler.h"
 
 #include "estl.h"
 
@@ -71,19 +72,19 @@ Cluster::~Cluster() {
     // Nothing to do
 }
 
-Cluster::Cluster(const char *clusterName, uint32_t pos, GProcessor *gp)
-  : window(gp,this,clusterName, pos)
+Cluster::Cluster(const char *clusterName, uint32_t pos, uint32_t _cpuid)
+  : window(_cpuid,this,clusterName, pos)
   ,MaxWinSize(SescConf->getInt(clusterName,"winSize"))
   ,windowSize(SescConf->getInt(clusterName,"winSize")) 
-  ,gproc(gp)
-  ,winNotUsed("P(%d)_%s%d_winNotUsed",gp->getID(), clusterName, pos)
-  ,rdRegPool("P(%d)_%s%d_rdRegPool",gp->getID(), clusterName, pos)
-  ,wrRegPool("P(%d)_%s%d_wrRegPool",gp->getID(), clusterName, pos)
+  ,winNotUsed("P(%d)_%s%d_winNotUsed",_cpuid, clusterName, pos)
+  ,rdRegPool("P(%d)_%s%d_rdRegPool",_cpuid, clusterName, pos)
+  ,wrRegPool("P(%d)_%s%d_wrRegPool",_cpuid, clusterName, pos)
+  ,cpuid(_cpuid)
 {
   name = (char *)malloc(strlen(clusterName)+32);
   sprintf(name,"%s%d",clusterName,pos);
 
-  bzero(res,sizeof(Resource *)*iMAX);  
+  bzero(res,sizeof(Resource *)*iMAX);
 
   nready = 0;
 }
@@ -92,20 +93,22 @@ void Cluster::buildUnit(const char *clusterName
       ,uint32_t pos
       ,GMemorySystem *ms
       ,Cluster *cluster
-      ,InstOpcode type)
+      ,uint32_t cpuid
+      ,InstOpcode type
+      ,GProcessor *gproc)
 {
   const char *unitType = Instruction::opcode2Name(type);
-  
+
   char utUnit[1024];
   char utLat[1024];
   sprintf(utUnit,"%sUnit",unitType);
   sprintf(utLat,"%sLat",unitType);
-  
+
   if( !SescConf->checkCharPtr(clusterName,utUnit) )
     return;
 
   int smt = 1;
-  int id = gproc->getID();
+  int id = cpuid;
   if (SescConf->checkInt("cpusimu","smt",id))
     smt = SescConf->getInt("cpusimu","smt",id);
   int smt_ctx  = id - (id % smt);
@@ -113,23 +116,23 @@ void Cluster::buildUnit(const char *clusterName
   const char *sUnitName = SescConf->getCharPtr(clusterName,utUnit);
   char unitName[1024];
   sprintf(unitName,"P(%d)_%s%d_%s",smt_ctx,clusterName,pos,sUnitName);
-  
+
   TimeDelta_t lat = SescConf->getInt(clusterName,utLat);
   PortGeneric *gen;
 
   SescConf->isBetween(clusterName,utLat,0,1024);
   UnitMapType::const_iterator it = unitMap.find(unitName);
-    
+
   if( it != unitMap.end() ) {
     gen = it->second.gen;
   }else{
     UnitEntry e;
     e.num = SescConf->getInt(sUnitName,"Num");
     SescConf->isLT(sUnitName,"Num",1024);
-      
+
     e.occ = SescConf->getInt(sUnitName,"occ");
     SescConf->isBetween(sUnitName,"occ",0,1024);
-      
+
     e.gen = PortGeneric::create(unitName,e.num,e.occ);
 
     unitMap[unitName] = e;
@@ -146,7 +149,7 @@ void Cluster::buildUnit(const char *clusterName
     switch(type) {
       case iOpInvalid: 
       case iRALU:
-        r = new FURALU(type, cluster, gen, lat, gproc->getID());
+        r = new FURALU(type, cluster, gen, lat, cpuid);
         break ;
       case iAALU:
       case iCALU_FPMULT:
@@ -154,7 +157,7 @@ void Cluster::buildUnit(const char *clusterName
       case iCALU_FPALU:
       case iCALU_MULT:
       case iCALU_DIV:
-        r = new FUGeneric(type, cluster, gen, lat);
+        r = new FUGeneric(type, cluster, gen, lat, cpuid);
         break ;
       case iBALU_LBRANCH:
       case iBALU_LJUMP:
@@ -164,24 +167,24 @@ void Cluster::buildUnit(const char *clusterName
       case iBALU_RCALL:
       case iBALU_RET:
         {
-          int32_t MaxBranches = SescConf->getInt("cpusimu", "maxBranches", gproc->getID());
+          int32_t MaxBranches = SescConf->getInt("cpusimu", "maxBranches", cpuid);
           if( MaxBranches == 0 )
             MaxBranches = INT_MAX;
-          bool drainOnMiss = SescConf->getBool("cpusimu", "drainOnMiss", gproc->getID());
+          bool drainOnMiss = SescConf->getBool("cpusimu", "drainOnMiss", cpuid);
 
-          r = new FUBranch(type, cluster, gen, lat, MaxBranches, drainOnMiss);
+          r = new FUBranch(type, cluster, gen, lat, cpuid, MaxBranches, drainOnMiss);
         }
         break;
       case iLALU_LD: 
         {
-          TimeDelta_t ldstdelay=SescConf->getInt("cpusimu", "stForwardDelay",gproc->getID());
-          SescConf->isInt("cpusimu", "maxLoads",gproc->getID());
-          SescConf->isBetween("cpusimu", "maxLoads", 0, 256*1024, gproc->getID());
-          int32_t maxLoads=SescConf->getInt("cpusimu", "maxLoads",gproc->getID());
+          TimeDelta_t ldstdelay=SescConf->getInt("cpusimu", "stForwardDelay", cpuid);
+          SescConf->isInt("cpusimu", "maxLoads", cpuid);
+          SescConf->isBetween("cpusimu", "maxLoads", 0, 256*1024, cpuid);
+          int32_t maxLoads=SescConf->getInt("cpusimu", "maxLoads",cpuid);
           if( maxLoads == 0 )
             maxLoads = 256*1024;
 
-          r = new FULoad(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, gproc->getID(), "specld");
+          r = new FULoad(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, cpuid, "specld");
         }
         break;
       case iSALU_LL: 
@@ -189,13 +192,13 @@ void Cluster::buildUnit(const char *clusterName
       case iSALU_ST:
       case iSALU_ADDR:
         {
-          SescConf->isInt("cpusimu", "maxStores",gproc->getID());
-          SescConf->isBetween("cpusimu", "maxStores", 0, 256*1024, gproc->getID());
-          int32_t maxStores=SescConf->getInt("cpusimu", "maxStores",gproc->getID());
+          SescConf->isInt("cpusimu", "maxStores",cpuid);
+          SescConf->isBetween("cpusimu", "maxStores", 0, 256*1024, cpuid);
+          int32_t maxStores=SescConf->getInt("cpusimu", "maxStores",cpuid);
           if( maxStores == 0 )
             maxStores = 256*1024;
 
-          r = new FUStore(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, gproc->getID(), Instruction::opcode2Name(type));
+          r = new FUStore(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, cpuid, Instruction::opcode2Name(type));
         }
         break;
       default:
@@ -210,17 +213,17 @@ void Cluster::buildUnit(const char *clusterName
   res[type] = r;
 }
 
-Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *ms, GProcessor *gproc) {
+Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *ms, uint32_t cpuid, GProcessor *gproc) {
   // Constraints
   SescConf->isCharPtr(clusterName,"recycleAt");
   SescConf->isInList(clusterName,"recycleAt","Executing","Execute","Retire");
   const char *recycleAt = SescConf->getCharPtr(clusterName,"recycleAt");
-  
+
   SescConf->isInt(clusterName,"winSize");
   SescConf->isBetween(clusterName,"winSize",1,262144);
-  
+
   int smt = 1;
-  int id = gproc->getID();
+  int id = cpuid;
   if (SescConf->checkInt("cpusimu","smt",id))
     smt = SescConf->getInt("cpusimu","smt",id);
   int smt_ctx  = id - (id % smt);
@@ -236,15 +239,16 @@ Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *m
   }else{
 
     if( strcasecmp(recycleAt,"retire") == 0) {
-      cluster = new RetiredCluster(clusterName, pos, gproc);
+      cluster = new RetiredCluster(clusterName, pos, cpuid);
     }else if( strcasecmp(recycleAt,"executing") == 0) {
-      cluster = new ExecutingCluster(clusterName, pos, gproc);
+      cluster = new ExecutingCluster(clusterName, pos, cpuid);
     }else{
       I( strcasecmp(recycleAt,"execute") == 0);
-      cluster = new ExecutedCluster(clusterName, pos, gproc);
+      cluster = new ExecutedCluster(clusterName, pos, cpuid);
     }
 
-    cluster->regPool = SescConf->getInt(clusterName, "nRegs");
+    cluster->nRegs   = SescConf->getInt(clusterName, "nRegs");
+    cluster->regPool = cluster->nRegs;
     if (SescConf->checkBool(clusterName, "lateAlloc"))
       cluster->lateAlloc = SescConf->getBool(clusterName, "lateAlloc");
     else
@@ -254,7 +258,7 @@ Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *m
     SescConf->isBetween(clusterName , "nRegs", 2, 262144);
 
     for(int32_t t = 0; t < iMAX; t++) {
-      cluster->buildUnit(clusterName,pos, ms,cluster,static_cast<InstOpcode>(t));
+      cluster->buildUnit(clusterName,pos, ms,cluster, cpuid,static_cast<InstOpcode>(t), gproc);
     }
 
     clusterMap[cName] = cluster;
@@ -263,7 +267,6 @@ Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *m
   return cluster;
 }
 
-
 void Cluster::select(DInst *dinst) {
   I(nready>=0);
   nready++;
@@ -271,7 +274,7 @@ void Cluster::select(DInst *dinst) {
 }
 
 
-StallCause Cluster::canIssue(DInst *dinst) const { 
+StallCause Cluster::canIssue(DInst *dinst) const {
   if (regPool<=0)
     return SmallREGStall;
 
@@ -286,13 +289,15 @@ StallCause Cluster::canIssue(DInst *dinst) const {
 }
 
 void Cluster::addInst(DInst *dinst) {
-  
+
   rdRegPool.add(2, dinst->getStatsFlag()); // 2 reads
 
   if (!lateAlloc && dinst->getInst()->hasDstRegister()) {
     wrRegPool.inc(dinst->getStatsFlag());
+    I(regPool>0);
     regPool--;
   }
+  //dinst->dump("add");
 
   newEntry();
 
@@ -306,9 +311,10 @@ void ExecutingCluster::executing(DInst *dinst) {
 
   if (lateAlloc && dinst->getInst()->hasDstRegister()) {
     wrRegPool.inc(dinst->getStatsFlag());
+    I(regPool>0);
     regPool--;
   }
-  gproc->executing(dinst);
+  dinst->getGProc()->executing(dinst);
 
   delEntry();
 }
@@ -316,7 +322,7 @@ void ExecutingCluster::executing(DInst *dinst) {
 void ExecutingCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
-  gproc->executed(dinst);
+  dinst->getGProc()->executed(dinst);
 }
 
 bool ExecutingCluster::retire(DInst *dinst, bool reply) {
@@ -328,8 +334,10 @@ bool ExecutingCluster::retire(DInst *dinst, bool reply) {
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
 
-  if( hasDest )
+  if( hasDest ) {
     regPool++;
+    I(regPool <= nRegs);
+  }
 
   winNotUsed.sample(windowSize, dinst->getStatsFlag());
 
@@ -343,15 +351,16 @@ void ExecutedCluster::executing(DInst *dinst) {
 
   if (lateAlloc && dinst->getInst()->hasDstRegister()) {
     wrRegPool.inc(dinst->getStatsFlag());
+    I(regPool>0);
     regPool--;
   }
-  gproc->executing(dinst);
+  dinst->getGProc()->executing(dinst);
 }
 
 void ExecutedCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
-  gproc->executed(dinst);
+  dinst->getGProc()->executed(dinst);
   I(!dinst->hasPending());
 
   delEntry();
@@ -364,8 +373,11 @@ bool ExecutedCluster::retire(DInst *dinst, bool reply) {
     return false;
 
   bool hasDest = (dinst->getInst()->hasDstRegister());
-  if( hasDest )
+  if( hasDest ) {
     regPool++;
+    I(regPool <= nRegs);
+  }
+  //dinst->dump("ret");
 
   winNotUsed.sample(windowSize, dinst->getStatsFlag());
 
@@ -381,13 +393,13 @@ void RetiredCluster::executing(DInst *dinst) {
     wrRegPool.inc(dinst->getStatsFlag());
     regPool--;
   }
-  gproc->executing(dinst);
+  dinst->getGProc()->executing(dinst);
 }
 
 void RetiredCluster::executed(DInst *dinst) {
 
   window.executed(dinst);
-  gproc->executed(dinst);
+  dinst->getGProc()->executed(dinst);
 }
 
 bool RetiredCluster::retire(DInst *dinst, bool reply) {
@@ -396,12 +408,17 @@ bool RetiredCluster::retire(DInst *dinst, bool reply) {
   if( !done )
     return false;
 
+  I(dinst->getGProc()->getID() == dinst->getFlowId());
+
   bool hasDest = (dinst->getInst()->hasDstRegister());
 
-  if( hasDest )
+  if( hasDest ) {
     regPool++;
+    I(regPool <= nRegs);
+  }
 
   winNotUsed.sample(windowSize, dinst->getStatsFlag());
+
   delEntry();
 
   return true;

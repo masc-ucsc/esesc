@@ -50,6 +50,7 @@ class TaskHandler {
       public:
         FlowID         fid;
         bool           active;
+        bool           deactivating;
         EmulInterface *emul;
         GProcessor    *simu;
     };
@@ -64,20 +65,17 @@ class TaskHandler {
     static FlowID running_size;
     static pthread_mutex_t mutex;
 
-    // static std::vector<bool>             active; // Is the flow active?
     static std::vector<EmulInterface *>  emulas; // associated emula
     static std::vector<GProcessor *>     cpus;   // All the CPUs in the system
-  public:
 
-    static std::vector<FlowID>           FlowIDEmulMapping;   //Which FlowIDs are associated with CPU and which with the GPUs 
+    static void removeFromRunning(FlowID fid);
+  public:
 
     static void freeze(FlowID fid, Time_t nCycles);
 
     static FlowID resumeThread(FlowID uid, FlowID last_fid);
     static FlowID resumeThread(FlowID uid);
-    static void removeFromRunning(FlowID fid);
     static void pauseThread(FlowID fid);
-    static void syncRunning();
     static void terminate();
 
     static void report(const char *str);
@@ -87,7 +85,7 @@ class TaskHandler {
     static void addSimu(GProcessor *gproc);
 
     static bool isTerminated() {
-      return terminate_all; 
+      return terminate_all;
     }
 
     static bool isActive(FlowID fid) {
@@ -95,12 +93,9 @@ class TaskHandler {
       return allmaps[fid].active;
     }
 
-    static FlowID getNumActiveCores(); 
+    static FlowID getNumActiveCores();
+    static FlowID getNumCores() { return allmaps.size(); }
 
-    static FlowID getMaxFlows() {
-      I(emulas.size() == cpus.size());
-      return emulas.size();
-    }
     static FlowID getNumCPUS() {
 			I(cpus.size()>0);
       return cpus.size();

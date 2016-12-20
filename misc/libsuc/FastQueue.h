@@ -31,21 +31,25 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #ifdef FASTQUEUE_USE_QUEUE
 template<class Data>
-class FastQueue : public std::deque<Data> {
+class FastQueue {
+  std::deque<Data> dq;
 public:
   FastQueue(int32_t size) {
   };
 
   void push(Data d) {
-    push_back(d);
+    dq.push_back(d);
   };
   void pop() {
-    pop_front();
+    dq.pop_front();
   };
 
   Data top() {
-    return front();
+    return dq.front();
   };
+
+  size_t size() const { return dq.size();  }
+  bool empty() const  { return dq.empty(); }
 };
 #else
 template<class Data>

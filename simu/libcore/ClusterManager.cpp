@@ -38,18 +38,17 @@
 
 #include "Cluster.h"
 #include "GMemorySystem.h"
-#include "GProcessor.h"
 #include "Resource.h"
 #include "SescConf.h"
 
 
-ClusterManager::ClusterManager(GMemorySystem *ms, GProcessor *gproc) {
+ClusterManager::ClusterManager(GMemorySystem *ms, uint32_t cpuid, GProcessor *gproc) {
 
   ResourcesPoolType res(iMAX);
 
   IN(forall((size_t i=1;i<static_cast<size_t>(iMAX);i++),res[i].empty()));
 
-  const char *coreSection = SescConf->getCharPtr("","cpusimu",gproc->getID());
+  const char *coreSection = SescConf->getCharPtr("","cpusimu",cpuid);
   if(coreSection == 0) 
     return;  // No core section, bad conf
 
@@ -59,7 +58,7 @@ ClusterManager::ClusterManager(GMemorySystem *ms, GProcessor *gproc) {
     const char *clusterName = SescConf->getCharPtr(coreSection,"cluster",i);
     SescConf->isCharPtr(coreSection,"cluster",i);
     
-    Cluster *cluster = Cluster::create(clusterName, i, ms, gproc);
+    Cluster *cluster = Cluster::create(clusterName, i, ms, cpuid, gproc);
 
     for(int32_t t = 0; t < iMAX; t++) {
       Resource *r = cluster->getResource(static_cast<InstOpcode>(t));
