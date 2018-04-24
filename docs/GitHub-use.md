@@ -34,7 +34,7 @@ This section describes how we synchronize the public and private ESESC repos.
 Most users can ignore it and simply work on the appropriate public or private 
 repo.
 
-### Workflow
+### Create Private ESESC repo for first time
 
 If you work outside UCSC, you should clone the pubic esesc repo. First, create
 an empty repository (esesc-private), then run this to close esesc
@@ -46,7 +46,7 @@ an empty repository (esesc-private), then run this to close esesc
     cd ..
     rm -rf esesc.git
 
-### Workflow
+### Typical usage
 
 The workflow in the [MASC lab][masc] is as follows:
 
@@ -71,7 +71,7 @@ The workflow in the [MASC lab][masc] is as follows:
     cd esesc
     git remote add esesc-private https://github.com/yourname/esesc-private.git
     git checkout -b pull_request_yourname
-    git pull private_repo_yourname master
+    git pull esesc-private master
     git push origin pull_request_yourname
 
 Now create a [pull][pull] request through github, and the UCSC/MASC team will review it.
