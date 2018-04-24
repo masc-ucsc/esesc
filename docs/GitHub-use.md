@@ -69,9 +69,9 @@ To pull latest version of code from esesc public repository
 
 To push your edits to the main public esesc repo (replace XXX by your github name)
 
-    git clone https://github.com/masc-ucsc/esesc
-    cd esesc
-    git remote add esesc-private https://github.com/yourname/esesc-private.git
+    git clone https://github.com/masc-ucsc/esesc esesc-public
+    cd esesc-public
+    git remote add esesc-private git@github.com:masc-ucsc/esesc-masc.git  # Replace for your private repo
     git checkout -b pull_request_XXX
     git pull esesc-private master
     git push origin pull_request_XXX
