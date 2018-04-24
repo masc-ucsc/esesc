@@ -81,6 +81,8 @@ void DInst::dump(const char *str) {
 
   if (performed) {
     fprintf(stderr," performed");
+  }else if (executing) {
+    fprintf(stderr," executing");
   }else if (executed) {
     fprintf(stderr," executed");
   }else if (issued) {
@@ -116,6 +118,101 @@ void DInst::clearRATEntry() {
       *serializeEntry = 0;
 }
 
+#ifdef ESESC_TRACE_DATA
+DataSign DInst::calcDataSign(int64_t _data) {
+
+	DataSign data_sign;
+  int64_t hash,code;
+
+  if (_data==0)
+    data_sign = DS_V0;
+  else if (_data==1)
+    data_sign = DS_P1;
+  else if (_data==2)
+    data_sign = DS_P2;
+  else if (_data==3)
+    data_sign = DS_P3;
+  else if (_data==4)
+    data_sign = DS_P4;
+  else if (_data==5)
+    data_sign = DS_P5;
+  else if (_data==6)
+    data_sign = DS_P6;
+  else if (_data==7)
+    data_sign = DS_P7;
+  else if (_data==8)
+    data_sign = DS_P8;
+  else if (_data==9)
+    data_sign = DS_P9;
+  else if (_data==10)
+    data_sign = DS_P10;
+  else if (_data==11)
+    data_sign = DS_P11;
+  else if (_data==12)
+    data_sign = DS_P12;
+  else if (_data==13)
+    data_sign = DS_P13;
+  else if (_data==14)
+    data_sign = DS_P14;
+  else if (_data==15)
+    data_sign = DS_P15;
+  else if (_data==16)
+    data_sign = DS_P16;
+  else if (_data==32)
+    data_sign = DS_P32;
+  else if (_data==-1)
+    data_sign = DS_N1;
+  else if (_data==-2)
+    data_sign = DS_N2;
+  else if (_data>1024*1024 || _data < -1024*1024)
+    data_sign = DS_PTR;
+  else{
+    int v = static_cast<int>(DS_OPos) + (_data%255);
+    data_sign = static_cast<DataSign>(v);
+  }
+  return data_sign;
+}
+
+void DInst::setDataSign(int64_t _data, AddrType _ldpc) {
+  data = _data;
+  ldpc = _ldpc;
+
+  data_sign = calcDataSign(_data);
+}
+void DInst::addDataSign(int ds, int64_t _data, AddrType _ldpc) {
+  ldpc      = (ldpc<<4) ^ _ldpc;
+
+  if (ds==0) {
+    /*if (_data == data)
+      data_sign = DS_EQ;
+    else if (_data >= data)
+      data_sign = DS_GEC;
+    else if (_data < data)
+      data_sign = DS_LTC;
+    else if (_data != data)
+      data_sign = DS_NE;*/  // FIXME: add DS_LT, DS_LE, DS...
+
+    if (_data == data)    //beq; rs(data) == rt(_data)
+      data_sign = DS_EQ;
+    else if (data < _data)  //bltc; rs < rt (bgtc alias for bltc)
+      data_sign = DS_LTC;
+    else if (data >= _data)  //bgec; rs >= rt (blec is alias for bgec)
+      data_sign = DS_GEC;
+    else if (_data != data)  //bne; rs ! = rt
+      data_sign = DS_NE;
+  }else if (ds==1) {
+    //DataType mix = data ^ (_data<<3) + (data>>1);
+    DataType mix = data ^ (_data<<3);
+    data         = mix;
+    int v = static_cast<int>(DS_OPos) + (data%255);
+    data_sign = static_cast<DataSign>(v);
+  }else{
+    // Do not mix
+  }
+
+}
+#endif
+
 DInst *DInst::clone() {
 
   DInst *i = dInstPool.out();
@@ -124,6 +221,12 @@ DInst *DInst::clone() {
   i->inst          = inst;
   i->pc            = pc;
   i->addr          = addr;
+#ifdef ESESC_TRACE_DATA
+  i->ldpc          = ldpc;
+  i->data          = data;
+  i->data_sign     = data_sign;
+  i->chained       = 0;
+#endif
   i->keepStats   = keepStats;
 
   i->setup();
@@ -135,7 +238,6 @@ void DInst::recycle() {
   I(nDeps == 0);    // No deps src
   I(first == 0);    // no dependent instructions
 
-  GI(isMarkAdd(), isMarkDel());
   dInstPool.in(this);
 }
 
@@ -145,8 +247,6 @@ void DInst::scrap(EmulInterface *eint) {
 
   I(eint);
   eint->reexecuteTail(fid);
-
-  GI(isMarkAdd(), isMarkDel());
 
   dInstPool.in(this);
 }
@@ -158,8 +258,6 @@ void DInst::destroy(EmulInterface *eint) {
   I(executed);
 
   I(first == 0);   // no dependent instructions
-
-  GI(isMarkAdd(), isMarkDel());
 
   I(eint);
   eint->reexecuteTail(fid);

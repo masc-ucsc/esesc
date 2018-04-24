@@ -147,7 +147,7 @@ void MSHR::blockEntry(AddrType addr, MemRequest *mreq)
 }
 /* }}} */
 
-void MSHR::retire(AddrType addr, MemRequest *mreq)
+bool MSHR::retire(AddrType addr, MemRequest *mreq)
   /* retire, and check for deps {{{1 */
 {
   uint32_t pos = calcEntry(addr);
@@ -181,7 +181,10 @@ void MSHR::retire(AddrType addr, MemRequest *mreq)
 
   if (!entry[pos].cc.empty()) {
     entry[pos].cc.callNext();
+    return true;
   }
+
+  return false;
 }
 /* }}} */
 void MSHR::dump() const

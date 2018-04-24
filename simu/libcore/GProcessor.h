@@ -36,6 +36,8 @@
 #ifndef GPROCESSOR_H
 #define GPROCESSOR_H
 
+//#define WAVESNAP_EN
+
 #include "estl.h"
 
 #include <stdint.h>
@@ -62,10 +64,15 @@
 #include "Resource.h"
 #include "Snippets.h"
 #include "LSQ.h"
-
+#include "Prefetcher.h"
 
 class GMemorySystem;
 class BPredictor;
+
+#ifdef WAVESNAP_EN
+#include "wavesnap.h"
+class wavesnap;
+#endif
 
 class GProcessor {
   private:
@@ -85,6 +92,7 @@ class GProcessor {
     GMemorySystem   *memorySystem;
 
     StoreSet           storeset;
+    Prefetcher         prefetcher;
     FastQueue<DInst *> rROB; // ready/retiring/executed ROB
     FastQueue<DInst *> ROB;
 
@@ -142,6 +150,9 @@ class GProcessor {
     virtual StallCause addInst(DInst *dinst) = 0;
   public:
 
+#ifdef WAVESNAP_EN
+    wavesnap *snap;
+#endif
     virtual ~GProcessor();
     int getID() const { return cpu_id; }
     GStatsCntr *getnCommitted() { return &nCommitted;}
@@ -227,6 +238,7 @@ class GProcessor {
     }
 
     StoreSet *getSS() { return &storeset; }
+    Prefetcher *getPrefetcher() { return &prefetcher; }
 
     float getTurboRatio() { return EmuSampler::getTurboRatio(); };
 

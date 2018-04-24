@@ -42,6 +42,8 @@ private:
   void reset(uint32_t cid, bool taken);
   bool predict(uint32_t cid, bool taken); // predict and update
   void update(uint32_t cid, bool taken);
+  void inc(uint32_t cid, int d);
+  void dec(uint32_t cid, int d);
 
   bool predict(uint32_t cid)  const    { return table[cid & sizeMask] >= Saturate; }
   bool isLowest(uint32_t cid) const    { return table[cid & sizeMask] == 0; }

@@ -49,7 +49,6 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   ,delay(SescConf->getInt(section, "delay"))
 {
   //busyUpto = 0;
-  MemObj *lower_level = NULL;
 
   SescConf->isInt(section, "numPorts");
   SescConf->isInt(section, "portOccp");
@@ -65,14 +64,10 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   cmdPort  = PortGeneric::create(cadena, num, 1);
 
   I(current);
-  lower_level = current->declareMemoryObj(section, "lowerLevel");   
-  if (lower_level)
+  MemObj *lower_level = current->declareMemoryObj(section, "lowerLevel");   
+  if (lower_level) {
     addLowerLevel(lower_level);
-
-#ifdef ENABLE_NBSD
-	dcache = name[0]=='I'?false:true;
-	I(name[0] == 'I' || name[0] == 'D');
-#endif
+  }
 }
 /* }}} */
 
@@ -165,10 +160,10 @@ bool Bus::isBusy(AddrType addr) const
 }
 /* }}} */
 
-void Bus::tryPrefetch(AddrType addr, bool doStats)
+void Bus::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
   /* forward tryPrefetch {{{1 */
 { 
-  router->tryPrefetch(addr,doStats);
+  router->tryPrefetch(addr,doStats, degree, pref_sign, pc, cb);
 }
 /* }}} */
 

@@ -46,11 +46,8 @@
 #include "FastQueue.h"
 #include "CodeProfile.h"
 
-#define MAX_REMEMBERED_VALUES 16384
-
-#define RCMEM 1
-
-#define TRACK_FORWARDING 1
+//#define TRACK_FORWARDING 1
+#define TRACK_TIMELEAK 1
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -113,6 +110,10 @@ protected:
   ClusterManager clusterManager;
 
   GStatsAvg avgFetchWidth;
+#ifdef TRACK_TIMELEAK
+  GStatsAvg avgPNRHitLoadSpec;
+  GStatsHist avgPNRMissLoadSpec;
+#endif
 #ifdef TRACK_FORWARDING
   GStatsAvg avgNumSrc;
   GStatsAvg avgNumDep;

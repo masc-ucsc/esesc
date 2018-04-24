@@ -40,8 +40,8 @@
 #define FETCHENGINE_H
 
 #include "nanassert.h"
-
 #include "EmulInterface.h"
+#include "AddressPredictor.h"
 
 #include "BPred.h"
 #include "GStats.h"
@@ -61,6 +61,74 @@ private:
   uint16_t      Fetch2Width;
   uint16_t      Fetch2WidthBits;
 
+#ifdef ESESC_TRACE_DATA
+
+  AddressPredictor *ideal_apred;
+  struct OracleDataLastEntry {
+    OracleDataLastEntry() {
+      addr    = 0;
+      data    = 0;
+      delta0  = false;
+      used    = 0;
+      chained = 0;
+    }
+    DataType data;
+    AddrType addr;
+    uint8_t  used;
+    int      chained;
+    bool     delta0;
+
+    void clear(DataType d, AddrType a) {
+      data = d;
+      addr = a;
+      used = 0;
+    }
+    void set(DataType d, AddrType a) {
+      data = d;
+      delta0 = (addr == a);
+      addr = a;
+      if (used>0)
+        used--;
+    }
+
+    bool isChained() const { return used >= 6; }
+    void chain() {
+      if (used<6)
+        used+=2;
+      used= 0; // disable chaining loads
+    }
+
+    int inc_chain() {
+      chained++;
+      return chained;
+    }
+    void dec_chain() {
+      if (chained==0)
+        return;
+      chained--;
+    }
+  };
+
+  AddrType lastPredictable_ldpc;
+  AddrType lastPredictable_addr;
+  DataType lastPredictable_data;
+
+  SCTable  lastData;
+
+  struct OracleDataRATEntry {
+    OracleDataRATEntry() {
+      ldpc = 0;
+      depth = 32768;
+    }
+    AddrType ldpc;
+    int      depth;
+  };
+  HASH_MAP<AddrType,OracleDataLastEntry> oracleDataLast;
+  OracleDataRATEntry    oracleDataRAT[LREG_MAX];
+
+  HASH_MAP<AddrType,AddrType>   ldpc2brpc; // FIXME: Only a small table of address to track
+#endif
+
   bool          TargetInLine;
   bool          FetchOneLine;
 	bool          AlignedFetch;
@@ -76,6 +144,7 @@ private:
   // InstID of the address that generated a misprediction
  
   bool              missInst; // branch missprediction. Stop fetching until solved
+  ID(DInst            *missDInst);
   CallbackContainer cbPending;
 
   Time_t    lastMissTime; // FIXME: maybe we need an array
@@ -97,6 +166,14 @@ protected:
   GStatsCntr nDelayInst3;
   GStatsCntr nBTAC;
   GStatsCntr zeroDinst;
+#ifdef ESESC_TRACE_DATA
+  GStatsHist dataHist;
+  GStatsHist dataSignHist;
+  GStatsHist nbranchMissHist;
+  GStatsHist nLoadData_per_branch;
+  GStatsHist nLoadAddr_per_branch;
+  
+#endif
   // *******************
 
 public:
@@ -111,6 +188,10 @@ public:
 
   void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
   //typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, &FetchEngine::realfetch>  realfetchCB;
+
+  void chainPrefDone(AddrType pc, int distance, AddrType addr);
+  void chainLoadDone(DInst *dinst);
+  typedef CallbackMember3<FetchEngine, AddrType, int, AddrType,  &FetchEngine::chainPrefDone> chainPrefDoneCB;
 
   void unBlockFetch(DInst* dinst, Time_t missFetchTime);
   typedef CallbackMember2<FetchEngine, DInst*, Time_t,  &FetchEngine::unBlockFetch> unBlockFetchCB;
@@ -128,9 +209,10 @@ public:
 
   void dump(const char *str) const;
 
-  bool isBlocked() const {
-    return missInst;
-  }
+  bool isBlocked() const { return missInst; }
+#ifdef DEBUG
+  DInst *getMissDInst() const { return missDInst; }
+#endif
 
   void clearMissInst(DInst * dinst, Time_t missFetchTime);
   void setMissInst(DInst * dinst);

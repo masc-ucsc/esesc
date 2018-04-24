@@ -38,6 +38,7 @@ robSize           = 196
 stForwardDelay    = 3  # +1 clk from the instruction latency
 maxLoads          = 48
 maxStores         = 32
+prefetcher        = "PrefetchEngine"
 #LSQBanks          = 2 not in new simu.conf
 #DL1              = "DL1_core DL1"
 DL1               = "PerCore_DTLB PTLB"
@@ -54,6 +55,14 @@ opcodeWidth       = 11
 nArchRegs         = 32
 nTotalRegs        = 164
 scbSize           = 16
+
+[PrefetchEngine]
+type              = 'void'
+maxPrefetch       = 0
+minDistance       = 0
+pfStride          = 1
+blockName         = "PF"
+
 
 #########
 [AUNIT]
@@ -170,12 +179,18 @@ btbBsize          = 1
 btbAssoc          = 64
 btbReplPolicy     = 'LRU'
 rasSize           = 16
+rasPrefetch       = 0
 numBanks            = 1
 
 
 [BPredIssueX2]
 #type              = "oracle"
 type              = "imli"
+FetchPredict      = true
+bimodalSize      = 4096
+bimodalWidth     = 2
+nhist            = 4
+statcorrector    = false
 addrShift         = 0
 BTACDelay         = 3
 glength           = 128
@@ -190,6 +205,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 [BPredIssueX3]
@@ -207,6 +223,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 [BPredIssueX4]
@@ -226,6 +243,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 [BPredIssueTAGE]
@@ -249,6 +267,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 [BPredIssueTAGE2]
@@ -272,6 +291,7 @@ btbBsize          = 1
 btbAssoc          = 4
 btbReplPolicy     = 'LRU'
 rasSize           = 0
+rasPrefetch       = 0
 numBanks            = 1
 
 
@@ -363,13 +383,13 @@ directory         = false
 blockName         = "L2"
 numBanks          = 2
 maxRequests       = 16 
-size              = 2*1024*1024 
+size              = 1024*1024 
 assoc             = 16
 bsize             = 64
 replPolicy        = 'LRU'
 bkNumPorts        = 1
 bkPortOccp        = 2 
-hitDelay          = 12 
+hitDelay          = 6 
 missDelay         = 1 
 #lowerLevel        = "Shared_TLB STLB shared"
 #lowerLevel       = "L3Cache L3 shared"
@@ -378,7 +398,6 @@ fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
-nlprefetch        = 2
 
 [Shared_TLB]
 deviceType        = 'tlb'

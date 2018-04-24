@@ -54,6 +54,9 @@ class QEMUEmulInterface : public EmulInterface {
   void    executeHead(FlowID   fid);
   void    reexecuteTail(FlowID fid);
   void    syncHeadTail(FlowID  fid);
+#ifdef FETCH_TRACE
+  void markTrace(..);
+#endif
 
   FlowID  getNumFlows(void) const;
   FlowID  getNumEmuls(void) const;
@@ -66,8 +69,8 @@ class QEMUEmulInterface : public EmulInterface {
     reader->start();
   }
 
-  void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool inEmuTiming) {
-    reader->queueInstruction(pc,addr, fid, op, src1, src2, dest, dest2, inEmuTiming);
+  void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool inEmuTiming) {
+    reader->queueInstruction(pc,addr, data, fid, op, src1, src2, dest, dest2, inEmuTiming);
   }
 
   void syscall(uint32_t num, Time_t time, FlowID fid) {

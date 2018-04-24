@@ -15,6 +15,10 @@ ELSE(ESESC_SYSTEM)
   MESSAGE("  -DESESC_SYSTEM=0              Enable esesc/qemu user mode simulation")
 ENDIF(ESESC_SYSTEM)
   
+IF(ESESC_TRACE_DATA)
+  MESSAGE("  -DESESC_TRACE_DATA=1          Get qemu addr and data for dinst use")
+ENDIF(ESESC_TRACE_DATA)
+
 IF(ENABLE_LIVE)
   MESSAGE("  -DESESC_LIVE=1                Enable esesc live sampling support")
 ELSE(ENABLE_LIVE)

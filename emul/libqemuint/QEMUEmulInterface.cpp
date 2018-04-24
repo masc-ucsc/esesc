@@ -160,6 +160,8 @@ FlowID QEMUEmulInterface::getFid(FlowID last_fid)
   //pthread_mutex_lock(&mutex);
   I(fidFreePool.size() == nEmuls); 
 
+  MSG("getFid(%d)",last_fid);
+
   if (last_fid == FID_NULL) {
     // If it is the first time, try to assign in round robin
     if (fidFreePool[firstassign] != FID_TAKEN) {
@@ -211,8 +213,10 @@ FlowID QEMUEmulInterface::getFid(FlowID last_fid)
   
 }
 
-void QEMUEmulInterface::freeFid(FlowID fid)
-{
+void QEMUEmulInterface::freeFid(FlowID fid) {
+
+  MSG("freeFid(%d)",fid);
+
   //pthread_mutex_lock (&mutex);
 
   //I(fidFreePool[fid] == FID_TAKEN); // Sometimes removed whenthe queue is too small ahead

@@ -83,14 +83,6 @@ public:
 
   typedef boost::dynamic_bitset<> LongHistoryType; 
 
-protected:
-  const int32_t id;
-
-  GStatsCntr nHit;  // N.B. predictors should not update these counters directly
-  GStatsCntr nMiss; // in their predict() function.
-
-  int32_t addrShift;
-
   HistoryType calcHist(AddrType pc) const {
     HistoryType cid = pc>>2; // psudo-PC works, no need lower 2 bit
 
@@ -102,6 +94,14 @@ protected:
     return cid;
   }
 protected:
+  const int32_t id;
+
+  GStatsCntr nHit;  // N.B. predictors should not update these counters directly
+  GStatsCntr nMiss; // in their predict() function.
+
+  int32_t addrShift;
+  int32_t maxCores;
+
 public:
   BPred(int32_t i, const char *section, const char *sname, const char *name);
   virtual ~BPred();
@@ -110,9 +110,9 @@ public:
   virtual void fetchBoundaryBegin(DInst *dinst); // If the branch predictor support fetch boundary model, do it
   virtual void fetchBoundaryEnd(); // If the branch predictor support fetch boundary model, do it
 
-  PredType doPredict(DInst *dinst, bool doUpdate, bool doStats=true) {
-    PredType pred = predict(dinst, doUpdate, doStats);
-    if (!doUpdate || pred == NoPrediction)
+  PredType doPredict(DInst *dinst, bool doStats=true) {
+    PredType pred = predict(dinst, true, doStats);
+    if (pred == NoPrediction)
       return pred;
 
     if (dinst->getInst()->isJump())
@@ -144,7 +144,7 @@ public:
   ~BPRas();
   PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 
-  void tryPrefetch(MemObj *il1, bool doStats);
+  void tryPrefetch(MemObj *il1, bool doStats, int degree);
 };
 
 class BPBTB : public BPred {
@@ -279,6 +279,7 @@ private:
   IMLIBest *imli;
 
   const bool FetchPredict;
+  bool dataHistory;
 
 protected:
 public:
@@ -731,6 +732,34 @@ class BPTage : public BPred {
 };
 
 
+class BPTData:public BPred {
+private:
+  BPBTB btb;
+
+  SCTable tDataTable;
+
+  struct tDataTableEntry {
+    tDataTableEntry() {
+      tag = 0;
+      ctr = 0;
+    }
+
+    AddrType tag;
+    int8_t ctr;
+  };
+
+  HASH_MAP<AddrType,tDataTableEntry> tTable;
+
+protected:
+public:
+  BPTData(int32_t i, const char *section, const char *sname);
+  ~BPTData() {}
+
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
+
+};
+
+
 class BPredictor {
 private:
   const int32_t id;
@@ -740,11 +769,15 @@ private:
   BPRas *ras;
   BPred *pred1;
   BPred *pred2;
+  BPred *pred3;
+  BPred *meta;
   
-  int32_t BTACDelay;
   int32_t FetchWidth;
-  int32_t bpredDelay;
+  int32_t bpredDelay1;
+  int32_t bpredDelay2;
+  int32_t bpredDelay3;
 
+  bool  Miss_Pred_Bool;
   GStatsCntr nBTAC;
 
   GStatsCntr nBranches;
@@ -755,9 +788,20 @@ private:
   GStatsCntr nTaken2;
   GStatsCntr nMiss2;           // hits == nBranches - nMiss
 
+  GStatsCntr nBranches3;
+  GStatsCntr nTaken3;
+  GStatsCntr nMiss3;           // hits == nBranches - nMiss
+
+  GStatsCntr nFixes1;
+  GStatsCntr nFixes2;
+  GStatsCntr nFixes3;
+  GStatsCntr nUnFixes;
+  GStatsCntr nAgree3;
+
 protected:
-  PredType predict1(DInst *dinst, bool doUpdate);
-  PredType predict2(DInst *dinst, bool doUpdate);
+  PredType predict1(DInst *dinst);
+  PredType predict2(DInst *dinst);
+  PredType predict3(DInst *dinst);
 
 public:
   BPredictor(int32_t i, MemObj *il1, BPredictor *bpred=0);
@@ -768,8 +812,21 @@ public:
   void fetchBoundaryBegin(DInst *dinst);
   void fetchBoundaryEnd();
   TimeDelta_t predict(DInst *dinst, bool *fastfix);
-
+  bool Miss_Prediction(DInst *dinst);
   void dump(const char *str) const;
+
+  void set_Miss_Pred_Bool(){
+   Miss_Pred_Bool=1;//Correct_Prediction==0 in enum before
+     }
+ void unset_Miss_Pred_Bool(){
+   Miss_Pred_Bool=0;//Correct_Prediction==0 in enum before
+    }
+  
+  bool get_Miss_Pred_Bool_Val(){
+   return Miss_Pred_Bool;
+    }  
+
+
 };
 
 #endif   // BPRED_H

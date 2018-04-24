@@ -397,18 +397,18 @@ int32_t MRouter::sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat
 }
 /* }}} */
 
-void MRouter::tryPrefetch(AddrType addr, bool doStats)
+void MRouter::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
   /* propagate the prefetch to the lower level {{{1 */
 {
-  down_node[0]->tryPrefetch(addr, doStats);
+  down_node[0]->tryPrefetch(addr, doStats, degree, pref_sign, pc, cb);
 }
 /* }}} */
 
-void MRouter::tryPrefetchPos(uint32_t pos, AddrType addr, bool doStats)
+void MRouter::tryPrefetchPos(uint32_t pos, AddrType addr, int degree, bool doStats, AddrType pref_sign, AddrType pc, CallbackBase *cb)
   /* propagate the prefetch to the lower level {{{1 */
 {
   I(pos<down_node.size());
-  down_node[pos]->tryPrefetch(addr, doStats);
+  down_node[pos]->tryPrefetch(addr, doStats, degree, pref_sign, pc, cb);
 }
 /* }}} */
 

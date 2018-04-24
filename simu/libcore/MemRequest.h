@@ -44,7 +44,7 @@
 /* }}} */
 
 #ifdef DEBUG
-#define DEBUG_CALLPATH 1
+//#define DEBUG_CALLPATH 1
 #endif
 
 class MemRequest {
@@ -113,6 +113,7 @@ private:
   Time_t        startClock;
 
   bool          prefetch; // This means that can be dropped at will
+  bool          dropped; 
   bool          retrying;
   bool          needsDisp; // Once set, it keeps the value
   bool          doStats;
@@ -120,6 +121,9 @@ private:
   bool          nonCacheable;
 
   AddrType     pc;
+  DInst        *dinst;      // WARNING: valid IFF demand DL1
+  AddrType      pref_sign;  // WARNING: valid IFF prefetch is true
+  int32_t       degree;     // WARNING: valid IFF prefetch is true
   /* }}} */
 
   MemRequest();
@@ -165,9 +169,6 @@ protected:
 #endif
   static MemRequest *create(MemObj *m, AddrType addr, bool doStats, CallbackBase *cb);
  public:
-#ifdef ENABLE_NBSD
-  void *param;
-#endif
   void redoReq();
   void redoReqAck();
   void redoSetState();
@@ -211,22 +212,20 @@ protected:
     mreq->ma_orig    = mreq->ma;
 		m->req(mreq);
   }
-  static MemRequest *createReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
-    MemRequest *mreq = create(m,addr, doStats, cb);
-    mreq->mt         = mt_req;
-    mreq->ma         = ma_setValid; // For reads, MOES are valid states
-    mreq->ma_orig    = mreq->ma;
-    return mreq;
-  }
-  static MemRequest *createReqReadPrefetch(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
+  static MemRequest *createReqReadPrefetch(MemObj *m, bool doStats, AddrType addr, AddrType pref_sign, int32_t degree, AddrType pc, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->prefetch   = true;
-    mreq->topCoherentNode = m;
+    mreq->topCoherentNode = 0;
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
     mreq->ma_orig    = mreq->ma;
+    mreq->pc         = pc;
+    mreq->degree     = degree;
+    mreq->pref_sign  = pref_sign;
     return mreq;
   }
+  int32_t getDegree() const { return degree; } 
+  AddrType getSign() const { return pref_sign; } 
 
   static void sendNCReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr, doStats, cb);
@@ -236,50 +235,33 @@ protected:
     mreq->nonCacheable = true;
 		m->req(mreq);
   }
-  static void sendReqRead(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
-#ifdef ENABLE_NBSD
-      ,void *param=0
-#endif
-      ) {
-    MemRequest *mreq = create(m,addr, doStats, cb);
-    mreq->mt         = mt_req;
-    mreq->ma         = ma_setValid; // For reads, MOES are valid states
-    mreq->ma_orig    = mreq->ma;
-#ifdef ENABLE_NBSD
-    mreq->param      = param;
-#endif
-		m->req(mreq);
-  }
   static void sendReqReadPrefetch(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
-#ifdef ENABLE_NBSD
-      ,void *param=0
-#endif
       ) {
     MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
     mreq->ma_orig    = mreq->ma;
     mreq->prefetch   = true;
-    mreq->topCoherentNode = m;
-#ifdef ENABLE_NBSD
-    mreq->param      = param;
-#endif
+    mreq->topCoherentNode = 0;
 		m->req(mreq);
   }
 
-  static void sendReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, CallbackBase *cb=0
-#ifdef ENABLE_NBSD
-      ,void *param=0
-#endif
-      ) {
+  static MemRequest *createReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr, doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
     mreq->ma_orig    = mreq->ma;
-#ifdef ENABLE_NBSD
-    mreq->param      = param;
-#endif
     mreq->pc         = pc;
+    return mreq;
+  }
+
+  static void sendReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, CallbackBase *cb=0) {
+    MemRequest *mreq = createReqRead(m,doStats,addr,pc,cb);
+		m->req(mreq);
+  }
+  static void sendReqDL1Read(MemObj *m, bool doStats, AddrType addr, AddrType pc, DInst *dinst, CallbackBase *cb) {
+    MemRequest *mreq = createReqRead(m,doStats,addr,pc,cb);
+    mreq->dinst = dinst;
 		m->req(mreq);
   }
 
@@ -289,9 +271,6 @@ protected:
     mreq->ma         = ma_setValid; // For reads, MOES are valid states
     mreq->ma_orig    = mreq->ma;
     mreq->warmup     = true;
-#ifdef ENABLE_NBSD
-    mreq->param      = 0;
-#endif
 		m->req(mreq);
   }
 
@@ -301,9 +280,6 @@ protected:
     mreq->ma         = ma_setDirty; // For writes, only MO are valid states
     mreq->ma_orig    = mreq->ma;
     mreq->warmup     = true;
-#ifdef ENABLE_NBSD
-    mreq->param      = 0;
-#endif
 		m->req(mreq);
   }
   static void sendNCReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
@@ -315,18 +291,12 @@ protected:
 		m->req(mreq);
   }
 
-  static void sendReqWrite(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0
-#ifdef ENABLE_NBSD
-      ,void *param=0
-#endif
-      ) {
+  static void sendReqWrite(MemObj *m, bool doStats, AddrType addr, AddrType pc, CallbackBase *cb=0) {
     MemRequest *mreq = create(m,addr,doStats, cb);
     mreq->mt         = mt_req;
     mreq->ma         = ma_setDirty; // For writes, only MO are valid states
     mreq->ma_orig    = mreq->ma;
-#ifdef ENABLE_NBSD
-    mreq->param      = param;
-#endif
+    mreq->pc         = pc;
 		m->req(mreq);
   }
   static void sendReqWritePrefetch(MemObj *m, bool doStats, AddrType addr, CallbackBase *cb=0) {
@@ -362,7 +332,7 @@ protected:
     ma = _ma;
   }
   void recoverReqAction() {
-    I(mt == mt_reqAck);
+    I(mt == mt_reqAck || prefetch);
     if (firstCache != currMemObj)
       return;
     firstCache = 0;
@@ -389,6 +359,7 @@ protected:
     mreq->ma_orig    = mreq->ma;
     I(creator);
     mreq->creatorObj = creator;
+    mreq->topCoherentNode = creator;
 		m->disp(mreq);
   }
   static void sendCleanDisp(MemObj *m, MemObj *creator, AddrType addr, bool prefetch, bool doStats) {
@@ -399,6 +370,7 @@ protected:
     mreq->prefetch   = prefetch;
     I(creator);
     mreq->creatorObj = creator;
+    mreq->topCoherentNode = creator;
 		m->disp(mreq);
   }
 
@@ -418,10 +390,18 @@ protected:
 	bool isSetStateAck() const { return mt == mt_setStateAck; }
 	bool isSetStateAckDisp() const { return mt == mt_setStateAck && needsDisp; }
 	bool isDisp() const        { return mt == mt_disp; }
+
+  void setDropped() { I(prefetch); dropped = true; }
+	bool isDropped() const     {
+    return dropped;
+  }
 	bool isPrefetch() const    { 
     GI(prefetch, mt == mt_req || mt == mt_reqAck || mt == mt_disp);
     return prefetch; 
   }
+
+  // WARNING: Only available on DL1 demand miss
+  DInst *getDInst() const { return dinst; }
 
   void setNeedsDisp() {
     I(mt == mt_setStateAck);
@@ -429,6 +409,7 @@ protected:
   }
 
 //#ifdef DEBUG
+  void resetID(uint64_t _id) { id = _id; }
   uint64_t getID() { return id;}
 //#endif
   void destroy();
@@ -456,8 +437,12 @@ protected:
   bool isVPCWriteUpdate() const {return ma == ma_VPCWU; }
 
   void ack() {
-    if(cb)
+    if(cb) {
+      if (dropped)
+        cb->destroy();
+      else
       cb->call();
+    }
     if(mt == mt_setStateAck)
       setStateAckDone(0);
 

@@ -129,8 +129,8 @@ public:
   int32_t sendSetStateOthersPos(uint32_t pos, MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
   int32_t sendSetStateAll(MemRequest *mreq, MsgAction ma, TimeDelta_t lat=0);
 
-  void tryPrefetch(AddrType addr, bool doStats);
-  void tryPrefetchPos(uint32_t pos, AddrType addr, bool doStats);
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
+  void tryPrefetchPos(uint32_t pos, AddrType addr, int degree, bool doStats, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);

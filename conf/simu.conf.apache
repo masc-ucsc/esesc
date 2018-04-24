@@ -39,6 +39,7 @@ stForwardDelay    = 4  # +1 clk from the instruction latency
 maxMemory         = 24
 maxLoads          = 24
 maxStores         = 24
+prefetcher        = "PrefetchEngine"
 #DL1              = "DL1_core DL1"
 #IL1              = "IL1_core IL1"
 DL1               = "PerCore_DTLB PTLB"
@@ -53,6 +54,13 @@ opcodeWidth       = 11
 nArchRegs         = 32
 nTotalRegs        = 40 # Some delay penalty for recycling the registers
 scbSize           = 8
+
+[PrefetchEngine]
+type              = 'void'
+maxPrefetch       = 0
+minDistance       = 0
+pfStride          = 1
+blockName         = "PF"
 
 #########
 [AUNIT]

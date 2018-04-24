@@ -4,6 +4,7 @@ DEF_HELPER_1(raise_exception_debug, noreturn, env)
 
 DEF_HELPER_1(do_semihosting, void, env)
 #ifdef CONFIG_ESESC
+DEF_HELPER_5(esesc_load, void, env, i64, i64, i64, i64)
 DEF_HELPER_5(esesc_ctrl, void, env, i64, i64, i64, i64)
 DEF_HELPER_4(esesc_alu , void, env, i64, i64, i64)
 #endif

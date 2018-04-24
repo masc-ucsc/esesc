@@ -1397,6 +1397,14 @@ static TCGv_i64 msa_wr_d[64];
   tcg_temp_free_i64(hpc); \
   } while(0)
 
+#define ESESC_TRACE_LOAD(pc,addr,data,src1,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_load(cpu_env, hpc, addr, data, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
 #define ESESC_TRACE_ALU(pc,op,src1,src2,dest) do { \
   TCGv_i64 hpc     = tcg_const_i64(pc); \
   TCGv_i64 hop     = tcg_const_i64(op); \
@@ -1412,6 +1420,7 @@ static TCGv_i64 msa_wr_d[64];
 #define ESESC_TRACE_LCTRL(pc,target,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_RCTRL(pc,target,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_MEM(pc,addr,op,src1,src2,dest) do { }while(0)
+#define ESESC_TRACE_LOAD(pc,addr,data, src1,dest) do { }while(0)
 #endif
 #include "exec/gen-icount.h"
 
@@ -2199,7 +2208,10 @@ static void gen_ld(DisasContext *ctx, uint32_t opc,
     t0 = tcg_temp_new();
     gen_base_offset_addr(ctx, t0, base, offset);
 
-    ESESC_TRACE_MEM(ctx->pc,t0,iLALU_LD, base, 0, rt);
+#ifdef CONFIG_ESESC
+    TCGv taddr = tcg_temp_new();
+    tcg_gen_mov_tl(taddr,t0);
+#endif
     switch (opc) {
 #if defined(TARGET_MIPS64)
     case OPC_LWU:
@@ -2353,6 +2365,10 @@ static void gen_ld(DisasContext *ctx, uint32_t opc,
         gen_store_gpr(t0, rt);
         break;
     }
+#ifdef CONFIG_ESESC
+    ESESC_TRACE_LOAD(ctx->pc,taddr, cpu_gpr[rt], base, rt);
+    tcg_temp_free(taddr);
+#endif
     tcg_temp_free(t0);
 }
 
@@ -18914,6 +18930,13 @@ static void gen_msa_3r(CPUMIPSState *env, DisasContext *ctx)
     TCGv_i32 tws = tcg_const_i32(ws);
     TCGv_i32 twt = tcg_const_i32(wt);
 
+#ifdef CONFIG_ESESC
+    if (MASK_MSA_3R(ctx->opcode)== OPC_ILVL_df)
+      ESESC_TRACE_ALU(ctx->pc, iRALU , LREG_VECTOR0+ws, LREG_VECTOR0+wt, LREG_VECTOR0+wd);
+    else
+      ESESC_TRACE_ALU(ctx->pc, iCALU_FPALU , LREG_VECTOR0+ws, LREG_VECTOR0+wt, LREG_VECTOR0+wd);
+#endif
+
     switch (MASK_MSA_3R(ctx->opcode)) {
     case OPC_SLL_df:
         gen_helper_msa_sll_df(cpu_env, tdf, twd, tws, twt);
@@ -19152,6 +19175,7 @@ static void gen_msa_elm_3e(CPUMIPSState *env, DisasContext *ctx)
         gen_store_gpr(telm, dest);
         break;
     case OPC_MOVE_V:
+        ESESC_TRACE_ALU(ctx->pc, iRALU , LREG_VECTOR0+source, 0, LREG_VECTOR0+dest);
         gen_helper_msa_move_v(cpu_env, tdt, tsr);
         break;
     default:
@@ -19302,6 +19326,8 @@ static void gen_msa_3rf(CPUMIPSState *env, DisasContext *ctx)
         gen_helper_msa_fclt_df(cpu_env, tdf, twd, tws, twt);
         break;
     case OPC_FMADD_df:
+        ESESC_TRACE_ALU(ctx->pc, iCALU_MULT, LREG_VECTOR0+ws, LREG_VECTOR0+wt, LREG_TMP1); // FIXME:MADD
+        ESESC_TRACE_ALU(ctx->pc, iAALU , LREG_VECTOR0+wd, LREG_TMP1, LREG_VECTOR0+wd);
         gen_helper_msa_fmadd_df(cpu_env, tdf, twd, tws, twt);
         break;
     case OPC_MUL_Q_df:
@@ -19652,27 +19678,35 @@ static void gen_msa(CPUMIPSState *env, DisasContext *ctx)
 
             switch (MASK_MSA_MINOR(opcode)) {
             case OPC_LD_B:
+                ESESC_TRACE_LOAD(ctx->pc,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_b(cpu_env, twd, taddr);
                 break;
             case OPC_LD_H:
+                ESESC_TRACE_LOAD(ctx->pc,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_h(cpu_env, twd, taddr);
                 break;
             case OPC_LD_W:
+                ESESC_TRACE_LOAD(ctx->pc,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_w(cpu_env, twd, taddr);
                 break;
             case OPC_LD_D:
+                ESESC_TRACE_LOAD(ctx->pc,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_d(cpu_env, twd, taddr);
                 break;
             case OPC_ST_B:
+                ESESC_TRACE_MEM(ctx->pc,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_b(cpu_env, twd, taddr);
                 break;
             case OPC_ST_H:
+                ESESC_TRACE_MEM(ctx->pc,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_h(cpu_env, twd, taddr);
                 break;
             case OPC_ST_W:
+                ESESC_TRACE_MEM(ctx->pc,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_w(cpu_env, twd, taddr);
                 break;
             case OPC_ST_D:
+                ESESC_TRACE_MEM(ctx->pc,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_d(cpu_env, twd, taddr);
                 break;
             }

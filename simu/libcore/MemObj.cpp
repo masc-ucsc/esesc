@@ -111,6 +111,15 @@ void MemObj::blockFill(MemRequest *mreq)
 	// Most objects do nothing
 }
 
+#if 0
+void MemObj::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
+  /* forward tryPrefetch {{{1 */
+{ 
+  router->tryPrefetch(addr,doStats, degree, pref_sign, pc, cb);
+}
+/* }}} */
+#endif
+
 void MemObj::dump() const
 /* dump statistics {{{1 */
 {
@@ -176,12 +185,6 @@ bool DummyMemObj::isBusy(AddrType addr) const
 }
 // }}}
 
-void DummyMemObj::tryPrefetch(AddrType addr, bool doStats)
-  /* drop the try prefetch {{{1 */
-{ 
-}
-/* }}} */
-
 TimeDelta_t DummyMemObj::ffread(AddrType addr)
   /* fast forward read {{{1 */
 { 
@@ -193,6 +196,15 @@ TimeDelta_t DummyMemObj::ffwrite(AddrType addr)
   /* fast forward write {{{1 */
 { 
   return 1;   // 1 cycle does everything :)
+}
+/* }}} */
+
+void DummyMemObj::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
+  /* forward tryPrefetch {{{1 */
+{ 
+  if(cb)
+    cb->destroy();
+  
 }
 /* }}} */
 

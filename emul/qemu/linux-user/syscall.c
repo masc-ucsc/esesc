@@ -10152,7 +10152,7 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
         break;
 #endif
 
-#ifdef CONFIG_ESESC
+#ifdef CONFIG_ESESC2
     case TARGET_NR_start_roi:
         QEMUReader_start_roi(cpu->fid); 
         fprintf(stderr,"##QEMU syscall: start_roi\n");

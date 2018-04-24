@@ -20,6 +20,7 @@ public:
 	virtual void  blockFill(MemRequest *mreq)=0;
 
   virtual void req(MemRequest *mreq        ) = 0;
+  virtual void startPrefetch(MemRequest *mreq        ) = 0;
   virtual Time_t reqDone(MemRequest *mreq, bool retrying) = 0;
   virtual Time_t reqAckDone(MemRequest *mreq) = 0;
   virtual void reqRetire(MemRequest *mreq) = 0;
@@ -42,6 +43,11 @@ private:
 protected:
   PortGeneric **bkPort;
   PortGeneric *sendFillPort;
+
+  bool        dupPrefetchTag;
+  bool        dropPrefetchFill;
+  int32_t     maxPrefetch; // 0 means share with maxRequest
+  int32_t     curPrefetch;
 
   int32_t     maxRequests;
   int32_t     curRequests;
@@ -77,6 +83,7 @@ public:
 
 	void  blockFill(MemRequest *mreq);
   void req(MemRequest *mreq        );
+  void startPrefetch(MemRequest *mreq        );
   Time_t reqDone(MemRequest *mreq, bool retrying);
   Time_t reqAckDone(MemRequest *mreq);
   void  reqRetire(MemRequest *mreq);

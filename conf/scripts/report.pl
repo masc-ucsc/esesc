@@ -124,7 +124,8 @@ sub main {
 
     $cf = sesc->new($file);
 
-    $globalClock = $cf->getResultField("S(0)","globalClock_Timing")+1;
+    # $globalClock = $cf->getResultField("S(0)","globalClock_Timing")+1;
+    $globalClock = $cf->getResultField("OS","wallClock")+1;
     my $bench = $cf->getResultField("OSSim","bench");
 
     unless ($cf->getResultField("OSSim","msecs")) {
@@ -339,6 +340,7 @@ sub newMemStat {
 
     my $tmp  = $cf->getResultField("${cache}_avgMemLat","v");
     my $tmp1  = $cf->getResultField("${cache}_avgMemLat","n");
+    my $tmp1p  = $cf->getResultField("${cache}_avgPrefetchLat","n");
     printf "%-9.1f %-9d %6.1f%% %6.1f%%    ", $tmp,$tmp1,100*($miss)/$total, 100*($miss+$miss2)/$total;
 
     my $tmp  = $cf->getResultField("${cache}","readHit");
@@ -357,7 +359,8 @@ sub newMemStat {
     + $cf->getResultField("${cache}","busReadHalfMiss")
     + $cf->getResultField("${cache}","busReadHit")+1;
     printf ",%5.1f%) ", (100*$tmp/$tmp2);
-    printf " %5.1f GB/s ", 64*($tmp1*$freq/$globalClock_max)/1024;
+    printf " %5.1f ", 64*($tmp1*$freq/$globalClock_max)/1024;
+    printf " %5.1f GB/s ", 64*($tmp1p*$freq/$globalClock_max)/1024;
 
 
     if ($op_enPower eq "true") {
@@ -524,8 +527,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -578,8 +581,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     printf "#table17 Benchmark:             L1rate:  l2rate: ipc: szBB brMIss brTime filename:\n";
     printf "table17 %22s ", $name;
@@ -641,8 +644,8 @@ sub showStatReport {
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -660,9 +663,9 @@ sub showStatReport {
       @flist = @ARGV;
     }
 
-    printf "#table13                  Benchmark      IPC:       PercentInstReplay:     PercentWriteBacks:           filename:\n";
-    printf "table13 %26s ", $name;
-
+    #printf "#table13                  Benchmark      IPC:       PercentInstReplay:     PercentWriteBacks:           filename:\n";
+    #printf "table13 %26s ", $name;
+    #printf "\n";
 
     # IPC
     my $nInst = getProcnInst($i);
@@ -728,12 +731,18 @@ sub showStatReport {
     printf "                %6.3f%%", ($writeBack_ratio*100);
     printf "           %-20s\n ", $file;
     print "\n";
+
+    printf "#table13\tBenchmark\tIPC:\tnum_ld_st\tPercentInstReplay:\tPercentWriteBacks:\tfilename:\t";
+    printf "table13 %26s", $name;
+    printf "\tipc=%.3f", $nInst/$globalClock;
+    printf "\ttable13 %f", $iSALU+$iLALU;
+    printf "\n";
   }
 
 #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -792,8 +801,8 @@ sub showStatReport {
 
   #############################################################################
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     my @flist;
     if( $op_all ) {
@@ -856,8 +865,8 @@ sub showStatReport {
     }
 
     for(my $i=0;$i<$nCPUs;$i++) {
-      my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-      next unless( $nfetch > 1 );
+      my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+      next unless( $committed > 1 );
 
       my $cpuType = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
 
@@ -1140,8 +1149,8 @@ sub showStatReport {
 #############################################################################
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     printf "#table9a                            IPC : brMiss : szFB : szBB : brMissTime : wasteRatio : iMissRate\n";
     printf "table9a  %26s ", $name;
@@ -1481,8 +1490,8 @@ sub instStats {
   print "Proc :  nCommit   :   nInst   :  AALU   :  BALU   :  CALU   :  LALU   :  SALU   :  LD Fwd :    Replay    : Worst Unit  (clk)\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     printf " %3d :",$i;
 
@@ -1577,8 +1586,8 @@ sub branchStats {
   print "\n";
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     my $cpuType    = $cf->getConfigEntry(key=>"cpusimu",index=>$i);
     my $bpreddelay = $cf->getConfigEntry(key=>"bpredDelay", section=>$cpuType);
@@ -1684,7 +1693,7 @@ sub branchStats {
       my $nBranches2= $cf->getResultField("P(${i})_BPred","nBranches2");
       my $nMiss2    = $cf->getResultField("P(${i})_BPred","nMiss2");
 
-      printf "%7.2f%% :",100*($nBranches-$nMiss2)/($nBranches);
+      printf "%7.2f%% :",100*($nBranches2-$nMiss2)/($nBranches2);
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
       my $predHit2  = $cf->getResultField("P(${i})_BPred2_${type2}","nHit");
@@ -1704,8 +1713,51 @@ sub branchStats {
       my $btbHitLabel2  = $cf->getResultField("P(${i})_BPred2_BTB","nHitLabel");
       printf " %6.2f%% :",100*($btbHitLabel2)/$nBranches;
 
+      my $nFixes2  = $cf->getResultField("P(${i})_BPred","nFixes2");
+      printf " (%6.2f%% fixed) :",100*($nFixes2)/$nBranches;
+
       printf "\n";
     }
+    my $branchSect3 = $cf->getConfigEntry(key=>"bpred3", section=>$cpuType);
+    if ($branchSect3) {
+      my $type3       = $cf->getConfigEntry(key=>"type" , section=>$branchSect3);
+      my $bpreddelay3 = $cf->getConfigEntry(key=>"BTACDelay" , section=>$branchSect2);
+
+      printf " %3d : ",$i;
+      printf "  %3d : ",$bpreddelay3;
+      printf "%8.3f :  ",$avgBranchTime;
+      printf "%-16s :",$type3;
+
+      my $nBranches3= $cf->getResultField("P(${i})_BPred","nBranches3");
+      my $nMiss3    = $cf->getResultField("P(${i})_BPred","nMiss3");
+
+      printf "%7.2f%% :",100*($nBranches3-$nMiss3)/($nBranches3+1);
+      printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
+
+      my $predHit3  = $cf->getResultField("P(${i})_BPred3_${type3}","nHit");
+      my $predMiss3 = $cf->getResultField("P(${i})_BPred3_${type3}","nMiss");
+
+      my $predRatio3 = ($predMiss3+$predHit3) <= 0 ? 0 : ($predHit3/(1+$predMiss3+$predHit3)); # also the 1st level hits
+
+      printf " %6.2f%% of %5.2f%% :",100*$predRatio3, 100*($predHit3+$predMiss3)/$nBranches;
+
+      my $btbHit3  = $cf->getResultField("P(${i})_BPred3_BTB","nHit");
+      my $btbMiss3 = $cf->getResultField("P(${i})_BPred3_BTB","nMiss");
+
+      my $btbRatio3 = ($btbMiss3+$btbHit3) <= 0 ? 0 : ($btbHit3/($btbMiss3+$btbHit3+1));
+
+      printf " %6.2f%% of %5.2f%% :",100*$btbRatio3 ,100*($btbHit3+$btbMiss3)/($nBranches3+1);
+
+      my $btbHitLabel3  = $cf->getResultField("P(${i})_BPred3_BTB","nHitLabel");
+      printf " %6.2f%% :",100*($btbHitLabel3)/$nBranches;
+
+      my $nFixes3  = $cf->getResultField("P(${i})_BPred","nFixes3");
+      my $nUnFixes3  = $cf->getResultField("P(${i})_BPred","nUnFixes3");
+      printf " (%6.2f%%-%6.2f%% fixed) :",100*($nFixes3)/$nBranches, 100*($nUnFixes3)/$nBranches;
+
+      printf "\n";
+    }
+
 
   }
 }
@@ -1785,8 +1837,8 @@ sub thermStats_table {
   my $nuInst = 0;
 
   for(my $i=0;$i<$nCPUs;$i++) {
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     $nInst = $cf->getResultField("S(${i})","TimingInst");
     $nuInst  = getProcnInst($i);
@@ -1839,8 +1891,8 @@ sub tradCPUStats {
 
     my $sampler     = @Processors[$i]->[0];
 
-    my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-    next unless( $nfetch > 1 );
+    my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+    next unless( $committed > 1 );
 
     $gIPC += $cf->getResultField("P(${i})_uipc","v");
     $nActiveCores++;
@@ -1989,8 +2041,8 @@ sub cpupowerStats {
     printf("--------------------------------------------------------------------------------------------------------\n");
 
     for(my $i=0;$i<$nCPUs;$i++) {
-      my $nfetch = $cf->getResultField("P(${i})_FetchEngine_avgFetchTime","n");
-      next unless( $nfetch > 1 );
+      my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
+      next unless( $committed > 1 );
 
       my $sampler     = @Processors[$i]->[0];
       if (@SamplerType[$sampler] == 0){
@@ -2082,8 +2134,8 @@ sub gpupowerStats {
     printf("--------------------------------------------------------------------------------------------------------\n");
 
     for(my $cpu=0;$cpu<$nCPUs;$cpu++) {
-      my $nfetch = $cf->getResultField("P(${cpu})_FetchEngine_avgFetchTime","n");
-      next unless( $nfetch > 1 );
+      my $committed = ($cf->getResultField("P(${cpu})", "nCommitted"));
+      next unless( $committed > 1 );
 
       my $sampler     = @Processors[$cpu]->[0];
       if (@SamplerType[$sampler] == 1){

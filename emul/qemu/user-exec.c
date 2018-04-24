@@ -58,7 +58,7 @@ static void exception_action(CPUState *cpu)
 void cpu_resume_from_signal(CPUState *cpu, void *puc)
 {
 #ifdef __linux__
-    struct ucontext *uc = puc;
+    struct ucontext_t *uc = puc;
 #elif defined(__OpenBSD__)
     struct sigcontext *uc = puc;
 #endif
@@ -172,7 +172,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 #elif defined(__OpenBSD__)
     struct sigcontext *uc = puc;
 #else
-    struct ucontext *uc = puc;
+    struct ucontext_t *uc = puc;
 #endif
     unsigned long pc;
     int trapno;
@@ -227,7 +227,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 #elif defined(__OpenBSD__)
     struct sigcontext *uc = puc;
 #else
-    struct ucontext *uc = puc;
+    struct ucontext_t *uc = puc;
 #endif
 
     pc = PC_sig(uc);

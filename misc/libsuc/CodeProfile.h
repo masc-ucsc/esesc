@@ -20,6 +20,7 @@ private:
     double sum_wt;
     double sum_et;
     uint64_t sum_flush;
+    uint64_t sum_prefetch;
   };
 
   typedef HASH_MAP<uint64_t, ProfEntry> Prof;
@@ -34,7 +35,7 @@ protected:
 public:
   CodeProfile(const char *format,...);
 
-  void sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush);
+  void sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch);
 
   double  getDouble() const;
   int64_t getSamples() const;

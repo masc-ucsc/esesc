@@ -169,10 +169,11 @@ bool NICECache::isBusy(AddrType addr) const
 }
 /* }}} */
 
-void NICECache::tryPrefetch(AddrType addr, bool doStats)
-  /* trop prefetch {{{1 */
+void NICECache::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
+  /* drop prefetch {{{1 */
 {
-
+  if (cb)
+    cb->destroy();
 }
 /* }}} */
 

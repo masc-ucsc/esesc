@@ -311,17 +311,17 @@ void GStatsHist::reportValue() const
 {
   I(H.empty()); // call stop before
     
-  uint32_t maxKey = 0;
+  int32_t maxKey = 0;
 
   for(Histogram::const_iterator it=H.begin();it!=H.end();it++) {
-    Report::field("%s(%lu)=%f",name,it->first,it->second);
+    Report::field("%s(%d)=%f",name,it->first,it->second);
     if(it->first > maxKey)
       maxKey = it->first;
   }
   long double div = cumulative; // cummulative has 64bits (double has 54bits mantisa)
   div /= numSample;
 
-  Report::field("%s:max=%lu" ,name,maxKey);
+  Report::field("%s:max=%d" ,name,maxKey);
   Report::field("%s:v=%f"    ,name,(double)div);
   Report::field("%s:n=%f"   ,name,numSample);
 }
@@ -353,7 +353,7 @@ void GStatsHist::reportScheme() const
   Report::scheme(name, "{\"max\":8,\"v\":8,\"n\":8}");
 }
 
-void GStatsHist::sample(bool enable, uint32_t key, double weight)
+void GStatsHist::sample(bool enable, int32_t key, double weight)
 {
   if(enable) {
     if(H.find(key)==H.end())

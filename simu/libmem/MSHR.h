@@ -106,7 +106,7 @@ public:
   bool canIssue(AddrType addr) const;
   void addEntry(AddrType addr, CallbackBase *c, MemRequest *mreq);
   void blockEntry(AddrType addr, MemRequest *mreq);
-  void retire(AddrType addr, MemRequest *mreq);
+  bool retire(AddrType addr, MemRequest *mreq);
   void dump() const;
 };
 

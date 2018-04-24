@@ -106,6 +106,7 @@ GMemorySystem::GMemorySystem(int32_t processorId)
   DL1 = 0;
   IL1 = 0;
   vpc = 0;
+  pref = 0;
 
   priv_counter=0;
 }
@@ -120,6 +121,9 @@ GMemorySystem::~GMemorySystem() {
   if(vpc)
     delete vpc;
 
+  if(pref)
+    delete pref;
+
   delete localMemoryObjContainer;
 }
 
@@ -130,9 +134,9 @@ MemObj *GMemorySystem::buildMemoryObj(const char *type, const char *section, con
         || strcasecmp(type, "icache")  == 0
         || strcasecmp(type, "scache")  == 0
 /* prefetcher */
-        || strcasecmp(type, "stridePrefetcher")  == 0   
         || strcasecmp(type, "markovPrefetcher")  == 0
-     //   || strcasecmp(type, "taggedPrefetcher")  == 0
+        || strcasecmp(type, "stridePrefetcher")  == 0
+        || strcasecmp(type, "Prefetcher")  == 0
 /* #ifdef FERMI {{{1 */ 
         || strcasecmp(type, "splitter")  == 0
         || strcasecmp(type, "siftsplitter")  == 0
@@ -176,6 +180,8 @@ void GMemorySystem::buildMemorySystem() {
     DL1->getRouter()->fillRouteTables();
 		DL1->setCoreDL1(coreId);
     if (strcasecmp(DL1->getDeviceType(),"TLB")==0)
+      DL1->getRouter()->getDownNode()->setCoreDL1(coreId);
+    else if (strcasecmp(DL1->getDeviceType(),"Prefetcher")==0)
       DL1->getRouter()->getDownNode()->setCoreDL1(coreId);
   }
 
@@ -283,10 +289,7 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars, char* n
     }
 
   } else if (device_name) {
-
     if (strcasecmp(device_name, "shared") == 0) {
-      //delete[] device_name;
-      //device_name = 0;
       shared = true;
     }
   }
@@ -303,13 +306,13 @@ MemObj *GMemorySystem::finishDeclareMemoryObj(std::vector<char *> vPars, char* n
   if (device_name) {
 
     if (!privatized) {
-      if (shared)
+      if (shared) {
         device_name = privatizeDeviceName(device_name, 0);
-      else {
+      }else{
+        //device_name = privatizeDeviceName(device_name, priv_counter++);
         device_name = privatizeDeviceName(device_name, coreId);
       }
     }
-    //device_name = privatizeDeviceName(device_name, priv_counter++);
     char *final_dev_name = device_name;
 
     if (name_suffix != NULL){

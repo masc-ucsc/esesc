@@ -91,6 +91,7 @@ protected:
     return opcode >= iBALU_LBRANCH && opcode <= iBALU_RET;
   }
 
+  bool isALU() const          { return opcode == iAALU;    }
   bool isLoad() const         { return opcode == iLALU_LD; }
   bool isStore() const        { return opcode == iSALU_ST || opcode == iSALU_SC; }
   bool isStoreAddress() const { return opcode == iSALU_ADDR; }

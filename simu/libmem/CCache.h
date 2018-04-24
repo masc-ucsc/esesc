@@ -47,12 +47,16 @@
 #include "TaskHandler.h"
 #include "MSHR.h"
 #include "Snippets.h"
+#include "SCTable.h"
+//#include "Prefetcher.h"
 
 class PortManager;
 class MemRequest;
 /* }}} */
 
-#define CCACHE_MAXNSHARERS 16
+#define CCACHE_MAXNSHARERS 64
+
+//#define ENABLE_PTRCHASE 1
 
 class CCache: public MemObj {
 protected:
@@ -68,23 +72,13 @@ protected:
     StateType state;
     StateType shareState;
 
-    bool prefetch; // Line brought for prefetch, not used otherwise
-
     int16_t nSharers;
     int16_t share[CCACHE_MAXNSHARERS]; // Max number of shares to remember. If nshares >=8, then broadcast
+
   public:
     CState(int32_t lineSize) {
       state    = I;
-      prefetch = false;
       clearTag();
-    }
-
-    bool isPrefetch() const  { return prefetch;   }
-    void clearPrefetch() {
-      prefetch = false;
-    }
-    void setPrefetch() {
-      prefetch = true;
     }
 
     bool isModified() const  { return state == M; }
@@ -163,6 +157,8 @@ protected:
     void clearSharing() {
       nSharers = 0;
     }
+
+    void set(const MemRequest *mreq);
   };/*}}}*/
 
   typedef CacheGeneric<CState,AddrType> CacheType;
@@ -175,18 +171,25 @@ protected:
 
   Time_t      lastUpMsg; // can not bypass up messages (races)
   Time_t inOrderUpMessageAbs(Time_t when) {
+#if 1
     if (lastUpMsg>when)
       when = lastUpMsg;
     else
       lastUpMsg = when;
+#endif
+    I(when>=globalClock);
+    if (when==globalClock)
+      when++;
 
     return when;
   }
   TimeDelta_t inOrderUpMessage(TimeDelta_t lat=0) {
+#if 1
     if (lastUpMsg>globalClock)
       lat += (lastUpMsg-globalClock);
 
     lastUpMsg = globalClock + lat;
+#endif
 
     return lat;
   }
@@ -194,6 +197,12 @@ protected:
   int32_t     lineSize;
   int32_t     lineSizeBits;
   int32_t     nlprefetch;   // next line prefetch degree (0 == off)
+  int32_t     nlprefetchDistance;
+  int32_t     nlprefetchStride;
+  int32_t     prefetchDegree;
+
+  int32_t     moving_conf;
+  double      megaRatio;
 
   bool        coreCoupledFreq;
   bool        inclusive;
@@ -201,6 +210,7 @@ protected:
   bool        needsCoherence;
   bool        incoherent;
   bool        victim;
+  bool        allocateMiss;
   bool        justDirectory;
 
   // BEGIN Statistics
@@ -228,6 +238,16 @@ protected:
 	GStatsCntr  invalidateHit;
   GStatsCntr  invalidateMiss;
 
+  GStatsAvg   avgPrefetchLat;
+  GStatsCntr  nPrefetchUseful;
+  GStatsCntr  nPrefetchWasteful;
+  GStatsCntr  nPrefetchLineFill;
+  GStatsCntr  nPrefetchRedundant;
+  GStatsCntr  nPrefetchHitLine;
+  GStatsCntr  nPrefetchHitPending;
+  GStatsCntr  nPrefetchHitBusy;
+  GStatsCntr  nPrefetchDropped;
+
 	GStatsCntr  *s_reqHit[ma_MAX];
 	GStatsCntr  *s_reqMissLine[ma_MAX];
 	GStatsCntr  *s_reqMissState[ma_MAX];
@@ -239,6 +259,9 @@ protected:
   // Only defined here to prevent bogus warnings from the powermodel.
   GStatsCntr  writeExclusive;
 
+  AddrType     minMissAddr;
+  AddrType     maxMissAddr;
+
   // END Statistics
 	void displaceLine(AddrType addr, MemRequest *mreq, Line *l);
   Line *allocateLine(AddrType addr, MemRequest *mreq);
@@ -247,6 +270,10 @@ protected:
   bool notifyLowerLevels(Line *l, MemRequest *mreq);
   bool notifyHigherLevels(Line *l, MemRequest *mreq);
 
+  void dropPrefetch(MemRequest *mreq);
+
+  void cleanup(); // FIXME: Expose this to MemObj and call it from core on ctx switch or syscall (move to public and remove callback)
+  StaticCallbackMember0<CCache, &CCache::cleanup>          cleanupCB;
 public:
   CCache(MemorySystem *gms, const char *descr_section, const char *name = NULL);
   virtual ~CCache();
@@ -261,7 +288,8 @@ public:
 	void setStateAck(MemRequest *req);
 	void disp(MemRequest *req);
 
-  void tryPrefetch(AddrType paddr, bool doStats);
+
+  void tryPrefetch(AddrType paddr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
 
 	// This do the real work
 	void doReq(MemRequest *req);

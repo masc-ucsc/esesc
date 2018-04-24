@@ -46,6 +46,16 @@
 
 class MemRequest;
 
+
+#define PSIGN_NONE     0
+#define PSIGN_RAS      1
+#define PSIGN_NLINE    2
+#define PSIGN_STRIDE   3
+#define PSIGN_TAGE     4
+#define PSIGN_INDIRECT 5
+#define PSIGN_CHASE    6
+#define PSIGN_MEGA     7
+
 class MemObj {
 private:
 protected:
@@ -83,7 +93,7 @@ public:
 
   MRouter *getRouter()           { return router;  }
   
-  virtual void tryPrefetch(AddrType addr, bool doStats) = 0;
+  virtual void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0) = 0;
 
   // Interface for fast-forward (no BW, just warmup caches)
   virtual TimeDelta_t ffread(AddrType addr) = 0;
@@ -146,9 +156,10 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  void tryPrefetch(AddrType addr, bool doStats);
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
+
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
 
 	bool isBusy(AddrType addr) const;
 };

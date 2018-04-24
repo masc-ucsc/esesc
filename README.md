@@ -1,6 +1,8 @@
 ESESC
 =====
 
+[![Build Status](https://travis-ci.org/masc-ucsc/esesc.png)](https://travis-ci.org/masc-ucsc/esesc)
+
 * [ESESC Forum][1]
 * [ESESC Blog][2]
 * [ESESC Documentation](./docs)

@@ -55,6 +55,7 @@ class EmulInterface;
 class GProcessor;
 
 //#define ESESC_TRACE 1
+#define DINST_PARENT
 
 class DInstNext {
  private:
@@ -95,6 +96,47 @@ class DInstNext {
 #endif
 };
 
+enum DataSign {
+  DS_NoData = 0,
+  DS_V0     = 1,
+  DS_P1     = 2,
+  DS_P2     = 3,
+  DS_P3     = 4,
+  DS_P4     = 5,
+  DS_P5     = 6,
+  DS_P6     = 7,
+  DS_P7     = 8,
+  DS_P8     = 9,
+  DS_P9     = 10,
+  DS_P10     = 11,
+  DS_P11     = 12,
+  DS_P12     = 13,
+  DS_P13     = 14,
+  DS_P14     = 15,
+  DS_P15     = 16,  
+  DS_P16    = 17,
+  DS_P32    = 18,
+  DS_N1     = 19,
+  DS_N2     = 20,
+  DS_ONeg   = 21,
+  DS_EQ     = 22,
+  DS_GTEZ     = 23,
+  DS_LTC    = 24,
+  DS_GEC    = 25,
+  DS_LTZC    = 26,
+  DS_LEZC    = 27,
+  DS_GTZC    = 28,
+  DS_GEZC    = 29,
+  DS_EQZC     = 30,
+  DS_NEZC     = 31,
+  DS_GTZ     = 32,
+  DS_LEZ     = 33,
+  DS_LTZ     = 34,
+  DS_NE     = 35,
+  DS_PTR    = 36,
+  DS_OPos   = 37
+};
+
 class DInst {
 private:
   // In a typical RISC processor MAX_PENDING_SOURCES should be 2
@@ -112,20 +154,23 @@ private:
   Time_t fetched;
   Time_t renamed;
   Time_t issued;
+  Time_t executing;
   Time_t executed;
 
   bool  retired;
 
   bool loadForwarded;
-  bool delayedDispatch;
-
   bool replay;
+  bool branchMiss;
 
   bool performed;
 
   bool interCluster;
   bool keepStats;
   bool biasBranch;
+  bool prefetch;
+  bool dispatched;
+  bool fullMiss; // Only for DL1
 
   // END Boolean flags
 
@@ -134,6 +179,12 @@ private:
   Instruction  inst;
   AddrType     pc;    // PC for the dinst
   AddrType     addr;  // Either load/store address or jump/branch address
+#ifdef ESESC_TRACE_DATA
+  AddrType     ldpc;
+  DataType     data;
+  DataSign     data_sign;
+  int          chained;
+#endif
   Cluster    *cluster;
   Resource   *resource;
   DInst      **RAT1Entry;
@@ -162,6 +213,7 @@ private:
     RAT2Entry       = 0;
     serializeEntry  = 0;
     fetch           = 0;
+    branchMiss      = false;
     gproc           = 0;
     SSID            = -1;
     conflictStorePC = 0;
@@ -169,15 +221,18 @@ private:
     fetched       = 0;
     renamed       = 0;
     issued        = 0;
+    executing     = 0;
     executed      = 0;
     retired       = false;
 
-    delayedDispatch = false;
     loadForwarded   = false;
 
     replay        = false;
     performed     = false;
     interCluster  = false;
+    prefetch      = false;
+    dispatched    = false;
+    fullMiss      = false;
 
 #ifdef DINST_PARENT
     pend[0].setParentDInst(0);
@@ -207,6 +262,12 @@ public:
     i->inst      = *inst;
     i->pc        = pc;
     i->addr      = address;
+#ifdef ESESC_TRACE_DATA
+    i->data      = 0;
+    i->ldpc      = 0;
+    i->data_sign = DS_NoData;
+    i->chained   = 0;
+#endif
     i->fetched   = 0;
     i->keepStats = keepStats;
 
@@ -215,6 +276,36 @@ public:
 
     return i;
   }
+#ifdef ESESC_TRACE_DATA
+  static DataSign calcDataSign(int64_t data);
+  DataType getData() const { return data; }
+  DataSign getDataSign() const {return (DataSign)(int(data_sign)&0x1FF); } //FIXME:}
+  //DataSign getDataSign() const { return data_sign; }
+  void setDataSign(int64_t _data, AddrType ldpc);
+  void addDataSign(int ds, int64_t _data, AddrType ldpc);
+  void setData(uint64_t _data) {
+    data = _data;
+  }
+  AddrType getLDPC() const { return ldpc; }
+  void setChain(FetchEngine *fe, int c) {
+    I(fetch==0);
+    I(c);
+    I(fe);
+    fetch   = fe;
+    chained = c;
+  }
+  int getChained() const { return chained; }
+#else
+  static DataSign calcDataSign(int64_t data) { return DS_NoData; };
+  DataType getData() const { return 0; }
+  DataSign getDataSign() const {return DS_NoData; }
+  void setDataSign(int64_t _data, AddrType ldpc){ };
+  void addDataSign(int ds, int64_t _data, AddrType ldpc){ };
+  void setData(uint64_t _data) { }
+  AddrType getLDPC() const { return 0; }
+  void setChain(FetchEngine *fe, int c) { }
+  int getChained() const { return 0; }
+#endif
 
   void scrap(EmulInterface *eint); // Destroys the instruction without any other effects
   void destroy(EmulInterface *eint);
@@ -277,19 +368,26 @@ public:
 #endif
 
   void lockFetch(FetchEngine *fe) {
+    I(!branchMiss);
     I(fetch==0);
     fetch     = fe;
+    branchMiss = true;
     fetched = globalClock;
   }
 
   void setFetchTime() {
+#ifdef ESESC_TRACE_DATA
+    I(fetch==0 || chained);
+#else
     I(fetch==0);
+#endif
+    I(!branchMiss);
     fetched = globalClock;
   }
 
-  FetchEngine *getFetch() const {
-    return fetch;
-  }
+  bool isBranchMiss() const { return branchMiss; }
+  FetchEngine *getFetchEngine() const { return fetch; }
+
   Time_t getFetchTime() const {
     return fetched;
   }
@@ -381,6 +479,7 @@ public:
   }
 
   void setAddr(AddrType a)     { addr = a;               }
+  void setPC(AddrType a)       { pc = a;                 }
   AddrType getPC()       const { return pc;              }
   AddrType getAddr()     const { return addr;            }
   FlowID   getFlowId()   const { return fid;             }
@@ -404,15 +503,6 @@ public:
   void dump(const char *id);
 
   // methods required for LDSTBuffer
-  bool isDelayedDispatch() const { return delayedDispatch; }
-  void clearDelayedDispatch() {
-    I(delayedDispatch);
-    delayedDispatch=false;
-  }
-  void setDelayedDispatch() {
-    I(!delayedDispatch);
-    delayedDispatch=true;
-  }
   bool isLoadForwarded() const { return loadForwarded; }
   void setLoadForwarded() {
     I(!loadForwarded);
@@ -434,6 +524,7 @@ public:
 
   void markIssued() {
     I(issued==0);
+    I(executing==0);
     I(executed==0);
     issued = globalClock;
   }
@@ -443,6 +534,12 @@ public:
     I(issued!=0);
     I(executed==0);
     executed = globalClock;
+  }
+  bool isExecuting() const { return executing; }
+  void markExecuting() {
+    I(issued!=0);
+    I(executing==0);
+    executing = globalClock;
   }
 
   bool isReplay() const { return replay; }
@@ -470,10 +567,23 @@ public:
     I(inst.isStore());
     retired = true;
   }
+  bool isPrefetch() const { return prefetch; }
+  void markPrefetch() {
+    prefetch = true;
+  }
+  bool isDispatched() const { return dispatched; }
+  void markDispatched() {
+    dispatched = true;
+  }
+  bool isFullMiss() const { return fullMiss; }
+  void setFullMiss(bool t) {
+    fullMiss = t;
+  }
 
   Time_t getFetchedTime() const { return fetched; }
   Time_t getRenamedTime() const { return renamed; }
   Time_t getIssuedTime() const { return issued; }
+  Time_t getExecutingTime() const { return executing; }
   Time_t getExecutedTime() const { return executed; }
 
   Time_t getID() const { return ID; }

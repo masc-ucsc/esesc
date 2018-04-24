@@ -96,10 +96,10 @@ bool AccProcessor::advance_clock(FlowID fid)
   if( globalClock > 500 && ((globalClock % 10) == (fid)) ) {
     if( reqid & 1 ) {
       //MSG("@%lld: AccProcessor::advance_clock(fid=%d) memRequest write cpu_id=%d myAddr=%016llx\n",(long long int)globalClock,fid,cpu_id,(long long int)myAddr);
-      MemRequest::sendReqWrite(memorySystem->getDL1(), true, myAddr+=addrIncr, write_performedCB::create(this,reqid++,globalClock));
+      MemRequest::sendReqWrite(memorySystem->getDL1(), true, myAddr+=addrIncr, 0, write_performedCB::create(this,reqid++,globalClock));
     } else {
       //MSG("@%lld: AccProcessor::advance_clock(fid=%d) memRequest read cpu_id=%d myAddr=%016llx\n",(long long int)globalClock,fid,cpu_id,(long long int)myAddr);
-      MemRequest::sendReqRead(memorySystem->getDL1(), true, myAddr, read_performedCB::create(this,reqid++,globalClock));
+      MemRequest::sendReqRead(memorySystem->getDL1(), true, myAddr, 0, read_performedCB::create(this,reqid++,globalClock));
     }
   }
 
@@ -132,7 +132,6 @@ StallCause AccProcessor::addInst(DInst *dinst)
 void AccProcessor::retire()
   /* Try to retire instructions {{{1 */
 {
-  I(0);
 }
 /* }}} */
 

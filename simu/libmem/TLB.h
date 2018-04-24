@@ -161,12 +161,12 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  void tryPrefetch(AddrType addr, bool doStats);
-
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 
 	bool isBusy(AddrType addr) const;
+
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
 
   //TLB specific
   void readPage1(MemRequest *mreq);

@@ -144,7 +144,7 @@ QEMUReader::~QEMUReader() {
 }
 /* }}} */
 
-void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats)
+void QEMUReader::queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats)
 /* queue instruction (called by QEMU) {{{1 */
 {
   uint64_t conta=0;
@@ -189,6 +189,9 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op
   I(rinst);
 
   rinst->set(pc,addr,static_cast<InstOpcode>(op), static_cast<RegType>(src1),static_cast<RegType>(src2),static_cast<RegType>(dest), static_cast<RegType>(dest2), keepStats);
+#ifdef ESESC_TRACE_DATA
+  rinst->setData(data);
+#endif
   
   tsfifo[fid].push();
  }
@@ -279,6 +282,9 @@ bool QEMUReader::populate(FlowID fid) {
     DInst **dinsth = ruffer[fid].getInsertPointRef();
 
     *dinsth = DInst::create(rinst->getInst(), rinst->getPC(), rinst->getAddr(), fid, rinst->getStatsFlag());
+#ifdef ESESC_TRACE_DATA
+    (*dinsth)->setData(rinst->getData());
+#endif
 
     ruffer[fid].add();
     tsfifo[fid].pop();
@@ -301,8 +307,17 @@ DInst *QEMUReader::peekHead(FlowID fid) {
     if (!ruffer[fid].empty()) {
       DInst *dinst = ruffer[fid].getHead();
       I(dinst); // We just added, there should be one or more
+#ifdef FETCH_TRACE
+    if (trace.is_trace_entry(dinst)) {
+      // get trace, get next 256 or end trace (may need to call populate),
+      // check if matches trace.  If trace matches. Push OPTIMIZED trace.
+      // If missmatch, push optimized which should trigger an abort, and
+      // original after.
+    }
+#endif
       return dinst;
     }
+
 
     bool p = populate(fid);
     if (!p)

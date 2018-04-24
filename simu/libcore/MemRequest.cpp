@@ -49,7 +49,7 @@
 
 pool<MemRequest>  MemRequest::actPool(2048, "MemRequest");
 
-bool forcemsgdump=false;
+bool forcemsgdump=true;
 
 MemRequest::MemRequest()
   /* constructor  */
@@ -82,9 +82,9 @@ void MemRequest::redoSetStateAck() { upce(); currMemObj->doSetStateAck(this); }
 void MemRequest::redoDisp()        { upce(); currMemObj->doDisp(this);        }
 
 void MemRequest::startReq()         { I(mt == mt_req);         currMemObj->req(this);         }
-void MemRequest::startReqAck()      { I(mt == mt_reqAck);      currMemObj->reqAck(this);      }
-void MemRequest::startSetState()    { I(mt == mt_setState);    currMemObj->setState(this);    }
-void MemRequest::startSetStateAck() { I(mt == mt_setStateAck); currMemObj->setStateAck(this); }
+void MemRequest::startReqAck()      { I(mt == mt_reqAck || prefetch);        currMemObj->reqAck(this);      }
+void MemRequest::startSetState()    { I(mt == mt_setState);    I(!prefetch); currMemObj->setState(this);    }
+void MemRequest::startSetStateAck() { I(mt == mt_setStateAck); I(!prefetch); currMemObj->setStateAck(this); }
 void MemRequest::startDisp()        { I(mt == mt_disp);        currMemObj->disp(this);        }
 
 void MemRequest::addPendingSetStateAck(MemRequest *mreq)
@@ -148,9 +148,11 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
   r->calledge.clear();
   r->lastCallTime= globalClock;
 #endif
+  r->dinst       = 0;
   r->cb          = cb;
   r->startClock  = globalClock;
   r->prefetch    = false;
+  r->dropped     = false;
 	r->retrying    = false;
   r->needsDisp   = false;
 	r->doStats     = doStats;
@@ -158,9 +160,6 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
 	r->nonCacheable= false;
   r->pendingSetStateAck = 0;
   r->setStateAckOrig    = 0;
-#ifdef ENABLE_NBSD
-  r->param       = 0;
-#endif
   r->pc          = 0;
 
   return r;

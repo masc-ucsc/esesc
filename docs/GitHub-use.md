@@ -119,6 +119,7 @@ If you have any merge conflicts after the merge you should check and fix them
 first.  Then to push the merged changes to the public GitHub repo run:
 
     #NOTE: if git push fails, do "git pull" to get head of branch
+    git checkout github_master
     git push github
     Username for 'https://github.com': <your_username>
     Password for 'https://<your_username>@github.com': 

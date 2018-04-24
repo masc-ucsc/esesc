@@ -46,6 +46,7 @@
 
 #include "nanassert.h"
 #include "StoreSet.h"
+#include "Prefetcher.h"
 
 
 class PortGeneric;
@@ -154,20 +155,19 @@ protected:
   MemObj        *DL1;
   GMemorySystem *memorySystem;
   LSQ           *lsq;
+  Prefetcher    *pref;
 
   GStatsCntr    stldViolations;
 
   bool          LSQlateAlloc;
 
-  MemResource(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
+  MemResource(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, Prefetcher *pref, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad);
 public:
 };
 
 class FULoad : public MemResource {
 private:
   const TimeDelta_t LSDelay;
-
-  Time_t pendingLoadID;
 
   int32_t freeEntries;
   bool enableDcache;
@@ -180,7 +180,7 @@ protected:
   typedef CallbackMember1<FULoad, DInst *, &FULoad::cacheDispatched> cacheDispatchedCB;
 
 public:
-  FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
+  FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, Prefetcher *pref, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);
@@ -204,7 +204,7 @@ private:
 	SCBQueueType scbQueue;
 
 public:
-  FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
+  FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *lsq, StoreSet *ss, Prefetcher *pref, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad);
 
   StallCause canIssue(DInst  *dinst);
   void       executing(DInst *dinst);

@@ -54,7 +54,8 @@ class MemObjCaseeqstr {
 class MemoryObjContainer {
  private:
   std::vector<MemObj *> mem_node;
-  typedef HASH_MAP<const char *, MemObj *, HASH<const char*>, MemObjCaseeqstr> StrToMemoryObjMapper;
+  typedef std::map<std::string, MemObj *> StrToMemoryObjMapper;
+  //typedef HASH_MAP<const char *, MemObj *, HASH<const char*>, MemObjCaseeqstr> StrToMemoryObjMapper;
   StrToMemoryObjMapper intlMemoryObjContainer;
 
  public:
@@ -69,7 +70,8 @@ class MemoryObjContainer {
 class GMemorySystem {
  private:
 
-  typedef HASH_MAP<const char*, uint32_t, HASH<const char*>, MemObjCaseeqstr > StrCounterType;
+  typedef std::map<std::string, uint32_t> StrCounterType;
+  //typedef HASH_MAP<const char*, uint32_t, HASH<const char*>, MemObjCaseeqstr > StrCounterType;
   static StrCounterType usedNames;
   
   static MemoryObjContainer sharedMemoryObjContainer;
@@ -91,6 +93,7 @@ class GMemorySystem {
 
   MemObj   *DL1; // Data L1 cache
   MemObj   *IL1; // Instruction L1 cache
+  MemObj   *pref; // Prefetcher
   MemObj   *vpc; // Speculative virtual predictor cache
 
  protected:
@@ -129,6 +132,7 @@ class GMemorySystem {
   MemObj *getDL1() const { return DL1; };
   MemObj *getIL1() const { return IL1; };
   MemObj *getvpc() const { return vpc; };
+  MemObj *getPrefetcher() const { return pref; };
 };
 
 class DummyMemorySystem : public GMemorySystem {

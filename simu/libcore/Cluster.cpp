@@ -60,9 +60,12 @@ public:
   }
 };
 
-typedef HASH_MAP<const char *,UnitEntry , HASH<const char*>, eqstr>     UnitMapType;
-typedef HASH_MAP<const char *,Resource *, HASH<const char*>, eqstr> ResourceMapType;
-typedef HASH_MAP<const char *,Cluster  *, HASH<const char*>, eqstr>  ClusterMapType;
+//typedef HASH_MAP<const char *,UnitEntry , HASH<const char*>, eqstr>     UnitMapType;
+//typedef HASH_MAP<const char *,Resource *, HASH<const char*>, eqstr> ResourceMapType;
+//typedef HASH_MAP<const char *,Cluster  *, HASH<const char*>, eqstr>  ClusterMapType;
+typedef std::map<string,UnitEntry >     UnitMapType;
+typedef std::map<string,Resource *> ResourceMapType;
+typedef std::map<string,Cluster  *>  ClusterMapType;
 
 static UnitMapType         unitMap;
 static ResourceMapType resourceMap;
@@ -139,7 +142,32 @@ void Cluster::buildUnit(const char *clusterName
     gen = e.gen;
   }
   char resourceName[1024];
-  sprintf(resourceName,"P(%d)_%s%d_%s_%d",smt_ctx,clusterName,pos,sUnitName,type);
+  int unitID =0;
+  switch(type) {
+    case iBALU_LBRANCH:
+    case iBALU_LJUMP:
+    case iBALU_LCALL:
+    case iBALU_RBRANCH:
+    case iBALU_RJUMP:
+    case iBALU_RCALL:
+    case iBALU_RET:
+      unitID = 1;
+      break;
+    case iLALU_LD: 
+      unitID = 2;
+      break;
+    case iSALU_LL: 
+    case iSALU_SC:
+    case iSALU_ST:
+    case iSALU_ADDR:
+      unitID = 3;
+      break;
+    default:
+      unitID = 0;
+      break ;
+  }
+
+  sprintf(resourceName,"P(%d)_%s%d_%d_%s",smt_ctx,clusterName,pos,unitID,sUnitName);
   ResourceMapType::const_iterator it2 = resourceMap.find(resourceName);
 
   Resource *r=0;
@@ -184,7 +212,7 @@ void Cluster::buildUnit(const char *clusterName
           if( maxLoads == 0 )
             maxLoads = 256*1024;
 
-          r = new FULoad(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), ldstdelay, lat, ms, maxLoads, cpuid, "specld");
+          r = new FULoad(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), gproc->getPrefetcher(), ldstdelay, lat, ms, maxLoads, cpuid, "specld");
         }
         break;
       case iSALU_LL: 
@@ -198,7 +226,7 @@ void Cluster::buildUnit(const char *clusterName
           if( maxStores == 0 )
             maxStores = 256*1024;
 
-          r = new FUStore(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), lat, ms, maxStores, cpuid, Instruction::opcode2Name(type));
+          r = new FUStore(type, cluster, gen, gproc->getLSQ(), gproc->getSS(), gproc->getPrefetcher(), lat, ms, maxStores, cpuid, Instruction::opcode2Name(type));
         }
         break;
       default:
@@ -229,7 +257,7 @@ Cluster *Cluster::create(const char *clusterName, uint32_t pos, GMemorySystem *m
   int smt_ctx  = id - (id % smt);
 
   char cName[1024];
-  sprintf(cName,"cluster(%d)_%s%d",smt_ctx,cName,pos);
+  sprintf(cName,"cluster(%d)_%s%d",smt_ctx,clusterName,pos);
   ClusterMapType::const_iterator it = clusterMap.find(cName);
 
   Cluster *cluster=0;

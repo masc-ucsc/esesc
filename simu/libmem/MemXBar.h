@@ -72,7 +72,7 @@ public:
 	void doSetStateAck(MemRequest *req);
 	void doDisp(MemRequest *req);
 
-  void tryPrefetch(AddrType addr, bool doStats);
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);

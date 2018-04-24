@@ -1221,7 +1221,7 @@ namespace mu
 
       try
       {
-        std::auto_ptr<Parser> p1;
+        std::unique_ptr<Parser> p1;
         Parser  p2, p3;   // three parser objects
                           // they will be used for testing copy and assihnment operators
         // p1 is a pointer since i'm going to delete it in order to test if

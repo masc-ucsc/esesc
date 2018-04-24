@@ -30,20 +30,14 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "CCache.h"
 #include "NICECache.h"
-#include "SL0Cache.h"
-#include "VPC.h"
 #include "TLB.h"
 #include "Bus.h"
-#include "StridePrefetcher.h"
-#include "GlobalHistoryBuffer.h"
-#include "Splitter.h"
 #include "MemXBar.h"
 #include "UnMemXBar.h"
 #include "MemorySystem.h"
 #include "MemController.h"
-#include "MarkovPrefetcher.h"
-
 #include "DrawArch.h"
+
 extern DrawArch arch;
 
 
@@ -73,41 +67,18 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
   } else if (!strcasecmp(device_type, "nicecache")) {
     mdev = new NICECache(this, dev_section, dev_name);
     devtype = 1;
-  } else if (!strcasecmp(device_type, "SL0")) {
-    //mdev = new SL0Cache(this, dev_section, dev_name);
-		I(0);
-    devtype = 2;
-  } else if (!strcasecmp(device_type, "VPC")) {
-    //mdev = new VPC(this, dev_section, dev_name);
-		I(0);
-    devtype = 3;
-  } else if (!strcasecmp(device_type, "ghb")) {
-    //mdev = new GHB(this, dev_section, dev_name);
-		I(0);
-    devtype = 4;
-  } else if (!strcasecmp(device_type, "stridePrefetcher")) {
-    mdev = new StridePrefetcher(this, dev_section, dev_name);
-    devtype = 5;
-  } else if (!strcasecmp(device_type, "markovPrefetcher")) {
-    mdev = new MarkovPrefetcher(this, dev_section, dev_name);
-    devtype = 6;
-/*
-  } else if (!strcasecmp(device_type, "taggedPrefetcher")) {
-    mdev = new TaggedPrefetcher(this, dev_section, dev_name);
-    devtype = 7;
-*/
   }  else if (!strcasecmp(device_type, "bus")) {
     mdev = new Bus(this, dev_section, dev_name);
-    devtype = 8;
+    devtype = 2;
   } else if (!strcasecmp(device_type, "tlb")) {
-    devtype = 9;
+    devtype = 3;
     mdev = new TLB(this, dev_section, dev_name);
   } else if (!strcasecmp(device_type, "memxbar")) {
     mdev = new MemXBar(this, dev_section, dev_name);
-    devtype = 11;
+    devtype = 4;
   } else if (!strcasecmp(device_type, "memcontroller")) {
     mdev = new MemController(this, dev_section, dev_name);
-    devtype = 13;
+    devtype = 5;
   } else if (!strcasecmp(device_type, "void")) {
     return new DummyMemObj(dev_section,dev_name);
   } else {
@@ -115,38 +86,24 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
     return GMemorySystem::buildMemoryObj(device_type, dev_section, dev_name);
   }
 
-
-#if GOOGLE_GRAPH_API
-#else
   mystr += "\n\"";
   mystr += mdev->getName();
 
   switch(devtype){
     case 0: //CCache
     case 1: //NiceCache
-    case 2: //SL0
-    case 3: //VPC
       mystr += "\"[shape=record,sides=5,peripheries=2,color=darkseagreen,style=filled]";
-      //Fetch the CCache related parameters : Size, bsize, name, inclusive, ports
       break;
-    case 4: //GHB
-    case 5: //stridePrefetcher
-    case 6: //markovPrefetcher
-    case 7: //taggedPrefetcher
-      mystr += "\"[shape=record,sides=5,peripheries=1,color=lightcoral,style=filled]";
-      break;
-    case 8://bus
+    case 2://bus
       mystr += "\"[shape=record,sides=5,peripheries=1,color=lightpink,style=filled]";
       break;
-    case 9://tlb
+    case 3://tlb
       mystr += "\"[shape=record,sides=5,peripheries=1,color=lavender,style=filled]";
       break;
-    case 10: //ScratchXBar //ScratchUnXBar //PECacheXBar //PECacheUnXBar
-    case 11: //MemXBar
-    case 12: //MemXBar
+    case 4: //MemXBar
       mystr += "\"[shape=record,sides=5,peripheries=1,color=thistle,style=filled]";
       break;
-    case 13: //memcontroller
+    case 5: //void
       mystr += "\"[shape=record,sides=5,peripheries=1,color=skyblue,style=filled]";
       break;
     default:
@@ -154,7 +111,6 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type, const char *dev_se
       break;
   }
   arch.addObj(mystr);
-#endif
 
   I(mdev);
   addMemObjName(mdev->getName());

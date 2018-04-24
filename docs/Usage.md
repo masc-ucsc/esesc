@@ -54,6 +54,9 @@ These steps assume that the ESESC repo is checked out in the `~/projs/esesc` dir
     cmake ~/projs/esesc
     make
 
+# Track Load data
+    cmake -DESESC_TRACE_DATA=1 ~/projs/esesc
+
 # Release and System
     mkdir ~/build_system
     cd ~/build_release

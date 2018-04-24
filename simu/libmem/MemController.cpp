@@ -151,9 +151,11 @@ bool MemController::isBusy(AddrType addr) const
 }
 /* }}} */
 
-void MemController::tryPrefetch(AddrType addr, bool doStats)
+void MemController::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
   /* try to prefetch to openpage {{{1 */
 { 
+  if (cb)
+    cb->destroy();
   // FIXME:
 }
 /* }}} */

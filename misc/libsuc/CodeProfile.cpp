@@ -75,7 +75,7 @@ void CodeProfile::reportValue() const {
     //if (e.n/nTotal<0.001)
       //continue; // Just print things over 1%
 
-    Report::field("%s_%llx:n=%4.3f:cpi=%f:wt=%f:et=%f:flush=%lld",name,it->first,e.n/nTotal,e.sum_cpi/e.n,e.sum_wt/e.n,e.sum_et/e.n,e.sum_flush);
+    Report::field("%s_%llx:n=%4.3f:cpi=%f:wt=%f:et=%f:flush=%lld:prefetch=%lld",name,it->first,e.n/nTotal,e.sum_cpi/e.n,e.sum_wt/e.n,e.sum_et/e.n,e.sum_flush,e.sum_prefetch);
   }
 }
 
@@ -95,7 +95,7 @@ void CodeProfile::flushValue() {
   prof.clear();
 }
 
-void CodeProfile::sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush) {
+void CodeProfile::sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch) {
 
   double delta_nCommitted = nCommitted - last_nCommitted;
   double delta_clockTicks = clockTicks - last_clockTicks;
@@ -119,12 +119,14 @@ void CodeProfile::sample(const uint64_t pc, const double nCommitted, const doubl
     e.sum_wt  = wt;
     e.sum_et  = et;
     e.sum_flush  = flush?1:0;
+    e.sum_prefetch  = prefetch?1:0;
     prof[pc] = e;
   }else{
     prof[pc].sum_cpi += cpi;
     prof[pc].sum_wt  += wt;
     prof[pc].sum_et  += et;
     prof[pc].sum_flush  += flush?1:0;
+    prof[pc].sum_prefetch  += prefetch?1:0;
     prof[pc].n++;
   }
 

@@ -46,10 +46,6 @@
 #include "FastQueue.h"
 #include "GStats.h"
 
-#define MAX_REMEMBERED_VALUES 16384
-
-#define RCMEM 1
-
 class AccProcessor : public GProcessor {
 private:
 

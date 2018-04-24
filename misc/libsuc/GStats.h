@@ -179,7 +179,7 @@ class GStatsHist : public GStats {
 private:
 protected:
   
-  typedef HASH_MAP<uint32_t, double> Histogram;
+  typedef HASH_MAP<int32_t, double> Histogram;
 
   double numSample;
   double cumulative;
@@ -190,7 +190,7 @@ public:
   GStatsHist(const char *format,...);
   GStatsHist() { }
 
-  void sample(bool enable, uint32_t key, double weight=1);
+  void sample(bool enable, int32_t key, double weight=1);
   int64_t getSamples() const;
 
   void reportValue() const;

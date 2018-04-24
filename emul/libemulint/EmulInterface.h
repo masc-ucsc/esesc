@@ -80,6 +80,10 @@ class EmulInterface {
   // Advance the PC of the tail
   virtual void reexecuteTail(FlowID fid) = 0;
 
+#ifdef FETCH_TRACE
+  virtual void markTrace(..) = 0;
+#endif
+
   // Synchronize the head and tail. The head went through a wrong
   // path. The head should point to the current Tail. Sort of a
   // recovery from checkpoint where the checkpoint is the Tail.
@@ -91,7 +95,7 @@ class EmulInterface {
   virtual FlowID mapGlobalID(FlowID gid) const = 0;
 
   // Called from qemu/gpu thread
-  virtual void queueInstruction(AddrType pc, AddrType addr, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats) = 0;
+  virtual void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats) = 0;
   virtual void syscall(uint32_t num, Time_t time, FlowID fid) = 0;
 
   virtual void start()=0;

@@ -40,10 +40,11 @@
 #include "EmuSampler.h"
 #include "EmulInterface.h"
 #include <string.h>
+#include <iostream>
 /* }}} */
 
 std::vector<TaskHandler::EmulSimuMapping >   TaskHandler::allmaps;
-bool TaskHandler::terminate_all;
+volatile bool TaskHandler::terminate_all;
 pthread_mutex_t TaskHandler::mutex;
 
 FlowID* TaskHandler::running;
@@ -162,8 +163,6 @@ FlowID TaskHandler::resumeThread(FlowID uid, FlowID fid) {
   //I(uid<65535); // No more than 65K threads for the moment
   pthread_mutex_lock (&mutex);
 
-  //FlowID fid = emulas[0]->getFid(last_fid); 
-
   I(allmaps[fid].fid == fid);
   I(!allmaps[fid].active);
 
@@ -185,8 +184,20 @@ FlowID TaskHandler::resumeThread(FlowID uid, FlowID fid) {
   allmaps[fid].active       = true;
   allmaps[fid].deactivating = false;
   allmaps[fid].simu->setActive();
+  bool found = false;
+  for (int i = 0; i < running_size; i++) {
+    if (running[i] == fid) {
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    allmaps[fid].active = true;
+    I(running_size<allmaps.size());
   running[running_size] = fid;
   running_size++;
+  }
 
 #ifdef DEBUG2
   fprintf(stderr,"CPUResume: fid=%d running_size=%d running=",fid,running_size);
@@ -287,18 +298,17 @@ void TaskHandler::removeFromRunning(FlowID fid){
 
     break;
   }
-
-  if (allmaps[fid].active){
-    emulas[fid]->freeFid(fid); // FIXME: no vector for emulas?
-  }
 }
 /* }}} */
 
 void TaskHandler::pauseThread(FlowID fid){
   /* deactivae an fid {{{1 */
 
+  fprintf(stderr,"P");
   I(allmaps[fid].fid == fid);
   I(fid<65535);
+  if (terminate_all)
+    return;
 
   pthread_mutex_lock (&mutex);
 
@@ -328,7 +338,7 @@ void TaskHandler::terminate()
 {
   terminate_all = true;
 
-  //MSG("TaskHandler::terminate");
+  MSG("TaskHandler::terminate");
 
   for(size_t i = 0; i<allmaps.size();i++) {
     if (!allmaps[i].active)
@@ -341,9 +351,9 @@ void TaskHandler::terminate()
 
   //GStats::stopAll(1);
 
-  pthread_mutex_lock (&mutex);
+  //pthread_mutex_lock (&mutex);
   running_size = 0;
-  pthread_mutex_unlock (&mutex);
+  //pthread_mutex_unlock (&mutex);
 
 }
 /* }}} */
@@ -364,6 +374,8 @@ void TaskHandler::boot()
     if (unlikely(running_size == 0)) {
       bool needIncreaseClock = false;
       for(AllMapsType::iterator it=allmaps.begin();it!=allmaps.end();it++) {
+        if (it->emul==0)
+          continue;
         EmuSampler::EmuMode m = (*it).emul->getSampler()->getMode();
         if (m == EmuSampler::EmuDetail || m == EmuSampler::EmuTiming) {
           needIncreaseClock = true;
@@ -391,6 +403,10 @@ void TaskHandler::boot()
           all_failed = true;
           for(size_t i =0;i<running_size;i++) {
             FlowID fid = running[i];
+            if (allmaps[fid].emul==0) {
+              all_failed = false;
+              continue;
+            }
             bool p = allmaps[fid].emul->populate(fid);
             if (!p)
               one_failed = true;
@@ -409,9 +425,11 @@ void TaskHandler::boot()
               continue;
             }
 
+            if (allmaps[fid].emul) {
             bool p = allmaps[fid].emul->populate(fid);
             if (!p)
               pauseThread(fid);
+          }
           }
           break;
         }
@@ -529,6 +547,14 @@ void TaskHandler::plugEnd()
 void TaskHandler::unplug() 
   /* delete objects {{{1 */
 {
+#ifdef WAVESNAP_EN
+  for(size_t i=0; i<cpus.size() ; i++) {
+    if (i==0) {
+      cpus[i]->snap->dumpGraph("dump.txt");
+    }
+  }
+#endif
+
 #if 0
   for(size_t i=0; i<cpus.size() ; i++) {
     delete cpus[i];

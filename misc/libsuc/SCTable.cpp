@@ -82,6 +82,24 @@ bool SCTable::predict(uint32_t cid, bool taken)
   return ptaken;
 }
 
+void SCTable::inc(uint32_t cid, int d)
+{
+  uint8_t *entry = &table[cid & sizeMask];
+  if((d+*entry) < MaxValue)
+    *entry = (*entry) + d;
+  else
+    *entry = MaxValue;
+}
+
+void SCTable::dec(uint32_t cid, int d)
+{
+  uint8_t *entry = &table[cid & sizeMask];
+  if((d-*entry) > 0)
+    *entry = (*entry) + d;
+  else
+    *entry = 0;
+}
+
 void SCTable::update(uint32_t cid, bool taken)
 {
   uint8_t *entry = &table[cid & sizeMask];

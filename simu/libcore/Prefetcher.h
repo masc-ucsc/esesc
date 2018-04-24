@@ -1,4 +1,4 @@
-#if 0
+// copyright and includes {{{1
 // Contributed by Jose Renau
 //                Basilio Fraguela
 //
@@ -34,61 +34,59 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef SPLITTER_H
-#define SPLITTER_H
+#ifndef PREFETCHER_H
+#define PREFETCHER_H
+
+#include "callback.h"
+#include "estl.h"
 
 #include "GStats.h"
 #include "Port.h"
-#include "MemRequest.h"
-#include "MemObj.h"
+
+#include "CacheCore.h"
+#include "AddressPredictor.h"
 /* }}} */
 
-class Splitter: public MemObj {
-protected:
-  PortGeneric **scratchPort;
-  //MRouter *routerLeft; // For scratch memory
+class MemObj;
 
-  MemObj *lower_level;
-  MemObj *lower_levelLeft;
+class Prefetcher {
+private:
 
-  uint32_t numBanks;
-  uint32_t numBankMask;
+  GStatsAvg  avgPrefetchNum;
+  GStatsAvg  avgPrefetchConf;
+  GStatsHist histPrefetchDelta;
+
+  AddressPredictor *apred;
+
+  int32_t maxPrefetch;
+  int32_t minDistance;
+  int32_t pfStride;
+  int32_t curPrefetch;
+  uint32_t lineSizeBits;
+
+  AddrType pref_sign;
+
+  bool     pending_prefetch;
+  AddrType pending_preq_pc;
+  uint16_t pending_preq_conf;
+  bool     pending_statsFlag;
+  FetchEngine *pending_chain_fetch;
+
+  uint16_t conf = 0;
+  AddrType pending_preq_addr;
+
+  void nextPrefetch();
+
+  MemObj *DL1; // L1 cache
+
+  StaticCallbackMember0<Prefetcher, &Prefetcher::nextPrefetch> nextPrefetchCB;
 
 public:
-  Splitter(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
-  ~Splitter() {}
+  Prefetcher(MemObj *l1, int cpud_id);
+  ~Prefetcher() {}
 
-  Time_t nextReadSlot(       const MemRequest *mreq);
-  Time_t nextWriteSlot(      const MemRequest *mreq);
-  Time_t nextBusReadSlot(    const MemRequest *mreq);
-  Time_t nextPushDownSlot(   const MemRequest *mreq);
-  Time_t nextPushUpSlot(     const MemRequest *mreq);
-  Time_t nextInvalidateSlot( const MemRequest *mreq);
-
-  // processor direct requests
-  void read(MemRequest  *req);
-  void write(MemRequest *req);
-  void writeAddress(MemRequest *req);
-
-  // DOWN
-  void busRead(MemRequest *req);
-  void pushDown(MemRequest *req);
-  
-  // UP
-  void pushUp(MemRequest *req);
-  void invalidate(MemRequest *req);
-
-  // Status/state
-  uint16_t getLineSize() const;
-
-  bool canAcceptRead(DInst *dinst) const;
-  bool canAcceptWrite(DInst *dinst) const;
-
-  TimeDelta_t ffread(AddrType addr, DataType data);
-  TimeDelta_t ffwrite(AddrType addr, DataType data);
-  void        ffinvalidate(AddrType addr, int32_t lineSize);
-
+  void exe(DInst *dinst);
+  void ret(DInst *dinst);
 };
 
-#endif
 #endif

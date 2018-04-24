@@ -48,6 +48,9 @@ class RAWDInst {
 private:
   AddrType    pc;
   AddrType    addr;
+#ifdef ESESC_TRACE_DATA
+  DataType    data;
+#endif
   Instruction inst;
 
   bool keepStats;
@@ -58,6 +61,9 @@ public:
     addr      = p.addr;
     inst      = p.inst;
     keepStats = p.keepStats;
+#ifdef ESESC_TRACE_DATA
+    data      = p.data;
+#endif
   }
 
   RAWDInst() {
@@ -69,6 +75,13 @@ public:
     keepStats = _keepStats;
     inst.set(_op, _src1, _src2, _dest, _dest2);
   }
+
+#ifdef ESESC_TRACE_DATA
+  DataType getData()    const  { return data; };
+  void setData(DataType _data) {
+    data = _data;
+  }
+#endif
 
   AddrType    getPC()   const { return pc;   };
   AddrType    getAddr() const { return addr; };

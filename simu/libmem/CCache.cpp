@@ -1,40 +1,4 @@
-// copyright and includes {{{1
-// Contributed by Luis Ceze
-//                Jose Renau
-//                Karin Strauss
-//                Milos Prvulovic
-//
-// The ESESC/BSD License
-//
-// Copyright (c) 2005-2013, Regents of the University of California and
-// the ESESC Project.
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//   - Redistributions of source code must retain the above copyright notice,
-//   this list of conditions and the following disclaimer.
-//
-//   - Redistributions in binary form must reproduce the above copyright
-//   notice, this list of conditions and the following disclaimer in the
-//   documentation and/or other materials provided with the distribution.
-//
-//   - Neither the name of the University of California, Santa Cruz nor the
-//   names of its contributors may be used to endorse or promote products
-//   derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
+
 
 #include <stdlib.h>
 #include <string.h>
@@ -52,20 +16,21 @@
 #include "MemRequest.h"
 #include "PortManager.h"
 #include "../libsampler/BootLoader.h"
-/* }}} */
+
+extern "C" uint64_t esesc_mem_read(uint64_t addr);
 
 // {{{1 Debug information
 #ifdef DEBUG
 void CCache::trackAddress(MemRequest *mreq) {
   //I((mreq->getAddr() & 0xFFFF0) != 0x74f00);
-  //I(mreq->getID() != 17);
+  //I(mreq->getID() != 5);
   //I((mreq->getAddr() & 0xFFFF0) != 0x15e10);
 }
 #endif
 
-//#define MTRACE(a...)   do{ if (strcasecmp(getName(),"IL1V(0)") == 0) { fprintf(stderr,"@%lld %s %d 0x%x %s :",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr(), mreq->isPrefetch()?"pref":""); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
+//#define MTRACE(a...)   do{ if (strcasecmp(getName(),"DL1(0)") == 0) { fprintf(stderr,"@%lld %s %d 0x%x %s :",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr(), mreq->isPrefetch()?"pref":""); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 #define MTRACE(a...)
-//#define MTRACE(a...)   do{ if (mreq->getID()== 109428) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
+//#define MTRACE(a...)   do{ if (mreq->getID()==49) { I(0); fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 //#define MTRACE(a...)   do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 // 1}}}
 
@@ -84,13 +49,26 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
    ,avgMissLat      ("%s_avgMissLat",      name)
    ,avgMemLat       ("%s_avgMemLat",       name)
    ,avgHalfMemLat   ("%s_avgHalfMemLat",   name)
+   ,avgPrefetchLat  ("%s_avgPrefetchLat",  name)
    ,avgSnoopLat     ("%s_avgSnoopLat",     name)
    ,capInvalidateHit   ("%s_capInvalidateHit",   name)
    ,capInvalidateMiss  ("%s_capInvalidateMiss",  name)
    ,invalidateHit   ("%s_invalidateHit",   name)
    ,invalidateMiss  ("%s_invalidateMiss",  name)
    ,writeExclusive  ("%s:writeExclusive",  name)
+   ,nPrefetchUseful  ("%s:nPrefetchUseful",  name)
+   ,nPrefetchWasteful  ("%s:nPrefetchWasteful",  name)
+   ,nPrefetchLineFill  ("%s:nPrefetchLineFill",  name)
+   ,nPrefetchRedundant  ("%s:nPrefetchRedundant",  name)
+   ,nPrefetchHitLine  ("%s:nPrefetchHitLine",  name)
+   ,nPrefetchHitPending  ("%s:nPrefetchHitPending",  name)
+   ,nPrefetchHitBusy  ("%s:nPrefetchHitBusy",  name)
+   ,nPrefetchDropped  ("%s:nPrefetchDropped",  name)
+   ,cleanupCB(this)
 {
+
+  //cleanupCB.scheduleAbs(globalClock+32768);
+
   s_reqHit[ma_setInvalid]   = new GStatsCntr("%s:setInvalidHit",name);
   s_reqHit[ma_setValid]     = new GStatsCntr("%s:readHit",name);
   s_reqHit[ma_setDirty]     = new GStatsCntr("%s:writeHit",name);
@@ -146,25 +124,30 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
 
   if(SescConf->checkInt(section,"nlprefetch")) {
     nlprefetch = SescConf->getInt(section,"nlprefetch");
+    nlprefetchDistance = SescConf->getInt(section,"nlprefetchDistance");
+    nlprefetchStride   = SescConf->getInt(section,"nlprefetchStride");
   } else {
     nlprefetch = 0;
+    nlprefetchDistance = 0;
+    nlprefetchStride   = 1;
+  }
+  allocateMiss = true;
+  if(SescConf->checkBool(section,"allocateMiss")) {
+    allocateMiss = SescConf->getBool(section,"allocateMiss");
   }
 
-#if 1
   if(SescConf->checkBool(section,"incoherent")) {
     incoherent = SescConf->getBool(section,"incoherent");
-    //MSG("WARNING: coreCoupledFreq does not work yet");
   } else {
     incoherent = false;
   }
-#else
-
-  if(SescConf->checkBool(section,"incoherent")) {
-    if(SescConf->getBool(section,"incoherent")) {
+#if 1
+  if(incoherent)
       clearNeedsCoherence();
-    }
-  }
 #endif
+
+  minMissAddr = ULONG_MAX;
+  maxMissAddr = 0;
 
   if(SescConf->checkBool(section,"victim")) {
     victim = SescConf->getBool(section,"victim");
@@ -186,9 +169,33 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   uint32_t MaxRequests = SescConf->getInt(section, "maxRequests");
   if (MaxRequests > 2000)
     MaxRequests = 2000;
-  mshr  = new MSHR(tmpName, 128*MaxRequests, lineSize, MaxRequests);
+
+  if(SescConf->checkInt(section,"prefetchDegree")) {
+    prefetchDegree = SescConf->getInt(section, "prefetchDegree");
+  }else{
+    prefetchDegree = 4;
+  }
+  if(SescConf->checkDouble(section,"megaRatio")) {
+    megaRatio = SescConf->getDouble(section,"megaRatio");
+  }else{
+    megaRatio = 2.0; // >1 means never active
+  }
+
+  if (!allocateMiss && megaRatio < 1.0) {
+    MSG("ERROR: %s CCache megaRatio can be set only for allocateMiss caches",section);
+    SescConf->notCorrect();
+  }
+
+  {
+    int16_t lineSize2 = lineSize;
+    if (!allocateMiss) {
+      lineSize2 = 64; // FIXME: Do not hardcode upper level line size
+    }
+
+    mshr  = new MSHR(tmpName, 128*MaxRequests, lineSize2, MaxRequests);
   sprintf(tmpName, "%sp", name);
-  pmshr = new MSHR(tmpName, 128*MaxRequests, lineSize, MaxRequests);
+    pmshr = new MSHR(tmpName, 128*MaxRequests, lineSize2, MaxRequests);
+  }
 
   I(getLineSize() < 4096); // To avoid bank selection conflict (insane CCache line)
   I(gms);
@@ -210,6 +217,10 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   }
   if (justDirectory && !inclusive) {
     MSG("ERROR: justDirectory option is only possible with inclusive=true");
+    SescConf->notCorrect();
+  }
+  if (justDirectory && !allocateMiss) {
+    MSG("ERROR: justDirectory option is only possible with allocateMiss=false");
     SescConf->notCorrect();
   }
   if (justDirectory && !directory) {
@@ -238,6 +249,41 @@ CCache::~CCache()
 }
 // }}}
 
+void CCache::cleanup() {
+
+  int n = cacheBank->getNumLines();
+
+  int nInvalidated = 0;
+
+  for(int i =0;i<n;i++) {
+    Line *l = cacheBank->getPLine(n);
+    if (!l->isValid())
+      continue;
+
+    nInvalidated++;
+    l->invalidate();
+  }
+
+  MSG("Cleanup %d called for %s @%lld",nInvalidated, getName(), globalClock);
+
+  cleanupCB.scheduleAbs(globalClock+1000000);
+}
+
+void CCache::dropPrefetch(MemRequest *mreq)
+// dropPrefetch {{{1
+{
+  I(mreq->isPrefetch());
+
+  nPrefetchDropped.inc(mreq->getStatsFlag());
+  mreq->setDropped();
+  if(mreq->isHomeNode()) {
+    mreq->ack();
+  }else{
+    router->scheduleReqAck(mreq,0);
+  }
+}
+// 1}}}
+
 void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l) {
 /* displace a line from the CCache. writeback if necessary {{{1 */
   I(naddr != mreq->getAddr()); // naddr is the displace address, mreq is the trigger
@@ -245,12 +291,14 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l) {
 
   bool doStats = mreq->getStatsFlag();
 
-  if (inclusive) {
+  if (inclusive && !mreq->isTopCoherentNode()) {
     if (directory) {
       if (l->getSharingCount() == 0) {
         invNone.inc(doStats);
 
         // DONE! Nice directory tracking detected no higher level sharing
+        if (l->isPrefetch()) 
+          return; // No notification to lower level if prefetch (avoid overheads)
       }else if (l->getSharingCount() == 1) {
         invOne.inc(doStats);
 
@@ -278,6 +326,11 @@ void CCache::displaceLine(AddrType naddr, MemRequest *mreq, Line *l) {
       if (i==0)
         inv_req->ack();
     }
+  }else{
+    if (l->isPrefetch())  {
+      l->clearSharing();
+      return; // No notification to lower level if prefetch (avoid overheads)
+    }
   }
 
   displacedSend.inc(doStats);
@@ -302,20 +355,71 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
   I(mreq->getAddr() == addr);
 
   I(cacheBank->findLineDebug(addr) == 0);
-  Line *l = cacheBank->fillLine(addr, rpl_addr);
+  Line *l = cacheBank->fillLine_replace(addr, rpl_addr, mreq->getPC(), mreq->isPrefetch());
   lineFill.inc(mreq->getStatsFlag());
 
   I(l); // Ignore lock guarantees to find line
 
   if(l->isValid()) {
+    if (l->isPrefetch() && !mreq->isPrefetch())
+      nPrefetchWasteful.inc(mreq->getStatsFlag());
+
     // TODO: add a port for evictions. Schedule the displaceLine accordingly
     displaceLine(rpl_addr, mreq, l);
   }
 
-  if (mreq->isPrefetch())
-    l->setPrefetch();
-  else
-    l->clearPrefetch();
+  l->set(mreq);
+
+  if (mreq->isPrefetch()) {
+    nPrefetchLineFill.inc(mreq->getStatsFlag());
+  }
+
+#if 1
+  if (megaRatio<1) {
+    static int conta=0;
+    AddrType pendAddr[32];
+    int pendAddr_counter = 0;
+    if (conta++>8) { // Do not try all the time
+      conta = 0;
+
+      AddrType page_addr = (addr>>10)<<10;
+      int nHit  = 0;
+      int nMiss = 0;
+
+      for(int i=0;i<(1024>>lineSizeBits);i++) {
+        if(!mshr->canIssue(page_addr + lineSize*i*nlprefetchStride)) {
+          nHit++; // Pending request == hit, line already requested
+        }else if (cacheBank->findLineNoEffect(page_addr + lineSize*i*nlprefetchStride)) {
+          nHit++;
+        }else{
+          if (pendAddr_counter<32) {
+            pendAddr[pendAddr_counter++] = page_addr + lineSize*i*nlprefetchStride;
+          }
+          nMiss++;
+        }
+      }
+
+      double ratio = nHit;
+      ratio = ratio/(double)(nHit+nMiss);
+      //MSG("ratio %f %d %d trying 0x%llx",ratio,nHit,nMiss,addr);
+      if (ratio > megaRatio && ratio < 1.0) {
+#if 1
+        for(int i=0;i<pendAddr_counter;i++) {
+          tryPrefetch(pendAddr[i], mreq->getStatsFlag(), 1, PSIGN_MEGA, mreq->getPC(), 0);
+        }
+#else
+        // Mega next level
+        for(int i=0;i<pendAddr_counter;i++) {
+          router->tryPrefetch(pendAddr[i], mreq->getStatsFlag(), 1, PSIGN_MEGA, mreq->getPC(), 0);
+        }
+        if (pendAddr[0] != page_addr)
+          router->tryPrefetch(page_addr, mreq->getStatsFlag(), 1, PSIGN_MEGA, mreq->getPC(), 0);
+#endif
+      }
+    }
+  }
+#endif
+
 
   I(l->getSharingCount()==0);
 
@@ -326,8 +430,10 @@ CCache::Line *CCache::allocateLine(AddrType addr, MemRequest *mreq)
 void CCache::mustForwardReqDown(MemRequest *mreq, bool miss, Line *l)
   // pass a req down the hierarchy Check with MSR {{{1
 {
+  if (!mreq->isPrefetch()) {
   s_reqMissLine[mreq->getAction()]->inc(miss && mreq->getStatsFlag());
   s_reqMissState[mreq->getAction()]->inc(!miss && mreq->getStatsFlag());
+  }
 
   if (mreq->getAction() == ma_setDirty) {
     mreq->adjustReqAction(ma_setExclusive);
@@ -440,12 +546,14 @@ void CCache::CState::adjustState(MemRequest *mreq, int16_t portid)
 
   if (mreq->isDisp()) {
     I(state != I);
+    removeSharing(portid);
     if (mreq->getAction() == ma_setDirty) {
       state = M;
     }else{
       I(mreq->getAction() == ma_setValid);
+      if (nSharers == 0)
+        state = I;
     }
-    removeSharing(portid);
   }else if (mreq->isSetStateAck()) {
     if (mreq->getAction() == ma_setInvalid) {
       if (isBroadcastNeeded())
@@ -559,6 +667,10 @@ bool CCache::notifyHigherLevels(Line *l, MemRequest *mreq)
 
   int16_t portid = router->getCreatorPort(mreq);
   if (l->shouldNotifyHigherLevels(mreq, portid)) {
+    if (mreq->isPrefetch()) {
+      dropPrefetch(mreq);
+      return false;
+    }
     MsgAction ma = l->othersNeed(mreq->getOrigAction());
 
     if (ma == ma_setShared && mreq->isReqAck()) {
@@ -645,6 +757,16 @@ void CCache::CState::removeSharing(int16_t id)
 }
 // }}}
 
+void CCache::CState::set(const MemRequest *mreq) {
+  // {{{1 set Cstate
+  if (mreq->isPrefetch()) {
+    setPrefetch(mreq->getPC(), mreq->getSign(), mreq->getDegree());
+  }else{
+    clearPrefetch(mreq->getPC());
+  }
+}
+// 1}}}
+
 void CCache::doReq(MemRequest *mreq)
 /* processor/upper level issued read/write/busread {{{1 */
 {
@@ -661,6 +783,7 @@ void CCache::doReq(MemRequest *mreq)
     mreq->clearRetrying();
     //GI(mreq->isPrefetch() , !pmshr->canIssue(addr)); // the req is already queued if retrying
     GI(!mreq->isPrefetch(), !mshr->canIssue(addr)); // the req is already queued if retrying
+    I(!mreq->isPrefetch());
   }else{
     if(!mshr->canIssue(addr)) {
       MTRACE("doReq queued");
@@ -670,10 +793,13 @@ void CCache::doReq(MemRequest *mreq)
         MSG("%s @%lld merge preq 0x%llx (%d)",getName(), globalClock, mreq->getAddr(), mreq->getID());
       }
 #endif
-      //s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
 
+      if (mreq->isPrefetch()) {
+        dropPrefetch(mreq);
+      }else{
       mreq->setRetrying();
       mshr->addEntry(addr, &mreq->redoReqCB,mreq);
+      }
       return;
     }
     mshr->blockEntry(addr,mreq);
@@ -684,11 +810,46 @@ void CCache::doReq(MemRequest *mreq)
     return;
   }
 
-  Line *l = cacheBank->readLine(addr);
-  if (nlprefetch!=0 && !retrying && !mreq->isPrefetch()) {
-    for(int i=0;i<nlprefetch;i++) {
-      tryPrefetch(addr + (i+1)*lineSize, mreq->getStatsFlag());
+  Line *l = 0;
+  if (mreq->isPrefetch())
+    l = cacheBank->findLineNoEffect(addr, mreq->getPC());
+  else
+    l = cacheBank->readLine(addr, mreq->getPC());
+
+  if (!allocateMiss && l==0) {
+    AddrType page_addr = (addr>>10)<<10;
+    if (page_addr == addr && mreq->getSign() == PSIGN_MEGA) {
+      // Time to allocate a megaLine
+      MSG("Mega allocate 0x%llx",addr);
+    }else{
+      router->scheduleReq(mreq, 0); // miss latency already charged
+      return;
     }
+  }
+
+  if (nlprefetch!=0 && !retrying && !mreq->isPrefetch()) {
+    AddrType base = addr + nlprefetchDistance*lineSize;
+    for(int i=0;i<nlprefetch;i++) {
+#if 1
+      // Geometric stride
+      //static int prog[] = {1,3,7,15,31,63,127,255,511};
+      static int prog[] = {1,3,6,25,15,76,63,229,127,458};
+      int delta;
+      if (i<8)
+        delta = prog[i];
+      else
+        delta = i*67;
+      delta = delta*nlprefetchStride;
+      tryPrefetch(base + (delta*lineSize), mreq->getStatsFlag(), i, PSIGN_NLINE, mreq->getPC());
+#else
+      tryPrefetch(base + (i*nlprefetchStride*lineSize), mreq->getStatsFlag(), i, PSIGN_NLINE, mreq->getPC());
+#endif
+    }
+  }
+
+  if (l && mreq->isPrefetch() && mreq->isHomeNode()) {
+    nPrefetchDropped.inc(mreq->getStatsFlag());
+    mreq->setDropped(); // useless prefetch, already a hit
   }
 
   if (justDirectory && retrying && l==0) {
@@ -696,6 +857,11 @@ void CCache::doReq(MemRequest *mreq)
   }
 
   if (l == 0) {
+#if 0
+    if (!retrying && strcasecmp(getName(),"DL1(0)") == 0) { 
+      MSG("miss cl:%llx",mreq->getAddr());
+    }
+#endif
     //if (nlprefetch)
       //MSG("%s @%lld miss req 0x%llx (%d)",getName(), globalClock, mreq->getAddr(), mreq->getID());
     MTRACE("doReq cache miss");
@@ -704,9 +870,15 @@ void CCache::doReq(MemRequest *mreq)
   }
 
   if (l->isPrefetch() && !mreq->isPrefetch()) {
-    l->clearPrefetch();
+    nPrefetchUseful.inc(mreq->getStatsFlag());
     I(!victim); // Victim should not have prefetch lines
   }
+
+  if (l->isPrefetch() && mreq->isPrefetch()) {
+    nPrefetchRedundant.inc(mreq->getStatsFlag());
+  }
+
+  l->clearPrefetch(mreq->getPC());
 
   if (notifyLowerLevels(l,mreq)) {
     MTRACE("doReq change state down");
@@ -715,11 +887,19 @@ void CCache::doReq(MemRequest *mreq)
   }
 
   I(!mreq->hasPendingSetStateAck());
+  GI(mreq->isPrefetch(),!mreq->hasPendingSetStateAck());
   bool waitupper = notifyHigherLevels(l,mreq);
   if (waitupper) {
     MTRACE("doReq change state up others");
     I(mreq->hasPendingSetStateAck());
+    // Not easy to drop prefetch
     mreq->setRetrying();
+    return;
+  }
+  if (mreq->isDropped()) {
+    // NotifyHigherLevel can trigger and setDropped
+    port->reqRetire(mreq);
+    mshr->retire(addr,mreq);
     return;
   }
 
@@ -735,10 +915,18 @@ void CCache::doReq(MemRequest *mreq)
     //I(0);
     MTRACE("doReq restartReq");
     // Must restart request
+    if (mreq->isPrefetch()) {
+      dropPrefetch(mreq);
+      port->reqRetire(mreq);
+      mshr->retire(addr,mreq);
+    }else{
     mreq->setRetrying();
     mreq->restartReq();
+    }
     return;
   }
+
+  when = inOrderUpMessageAbs(when);
 
   if (justDirectory) {
     if (l->needsDisp())
@@ -746,13 +934,16 @@ void CCache::doReq(MemRequest *mreq)
     l->forceInvalid();
   }
 
+  if (!mreq->isPrefetch()) {
   if (retrying) {
     s_reqHalfMiss[mreq->getAction()]->inc(mreq->getStatsFlag());
   }else{
     s_reqHit[mreq->getAction()]->inc(mreq->getStatsFlag());
   }
+  }
 
   if (mreq->isDemandCritical() ) {
+    I(!mreq->isPrefetch());
     double lat = mreq->getTimeDelay()+(when-globalClock);
     avgMemLat.sample(lat, mreq->getStatsFlag());
     if (retrying)
@@ -762,21 +953,19 @@ void CCache::doReq(MemRequest *mreq)
     if (mreq->getPC())
       MSG("%s pc=%llx addr=%llx lat=%g @%lld", getName(), mreq->getPC(), mreq->getAddr(), lat, when);
 #endif
+  }else if(mreq->isPrefetch()) {
+    double lat = mreq->getTimeDelay()+(when-globalClock);
+    avgPrefetchLat.sample(lat, mreq->getStatsFlag());
   }
 
-  I(when>=globalClock);
+  I(when>globalClock);
   if(mreq->isHomeNode()) {
     mreq->ackAbs(when);
+    DInst *dinst = mreq->getDInst();
+    if (dinst)
+      dinst->setFullMiss(false);
   }else{
-#ifdef DEBUG_RABBIT
-    const char *name = mreq->getCurrMem()->getName();
-    if (strncasecmp(name,"L3",2)==0) {
-      I(l->reqAckNeeds() != ma_setShared);
-    }
-#endif
     mreq->convert2ReqAck(l->reqAckNeeds());
-    if (!mreq->isWarmup())
-      when = inOrderUpMessageAbs(when);
     router->scheduleReqAckAbs(mreq,when);
   }
 
@@ -794,8 +983,10 @@ void CCache::doDisp(MemRequest *mreq)
 
   AddrType addr = mreq->getAddr();
 
-  Line *l=cacheBank->findLineNoEffect(addr);
-  if (l==0 && victim && !mreq->isPrefetch()) {
+  // A disp being prefetch means that the line was prefetched but never used
+
+  Line *l=cacheBank->findLineNoEffect(addr, mreq->getPC() );
+  if (l==0 && victim && allocateMiss && !mreq->isPrefetch()) {
     MTRACE("doDisp allocateLine");
     l = allocateLine(addr,mreq);
   }
@@ -809,6 +1000,9 @@ void CCache::doDisp(MemRequest *mreq)
       if (l->getSharingCount() == 0)
         l->invalidate();
     }
+    router->scheduleDisp(mreq,1);
+    writeBack.inc(mreq->getStatsFlag());
+  }else if (!allocateMiss && l==0) {
     router->scheduleDisp(mreq,1);
     writeBack.inc(mreq->getStatsFlag());
   }else{
@@ -832,18 +1026,44 @@ void CCache::doReqAck(MemRequest *mreq)
 
   mreq->recoverReqAction();
 
+  Time_t when = globalClock;
+  if (!mreq->isDropped()) {
   if (!mreq->isNonCacheable()) {
     AddrType addr = mreq->getAddr();
-    Line *l = cacheBank->readLine(addr);
+      Line *l=0;
+      if (mreq->isPrefetch())
+        l = cacheBank->findLineNoEffect(addr, mreq->getPC());
+      else{
+        l = cacheBank->readLine(addr, mreq->getPC());
+
+#ifdef ENABLE_PTRCHASE
+        if (mreq->getAddr() < 0x4000000000ULL) { // filter stack addresses
+          if (minMissAddr > mreq->getAddr())
+            minMissAddr = mreq->getAddr();
+          if (maxMissAddr < mreq->getAddr())
+            maxMissAddr = mreq->getAddr();
+        }
+
+        AddrType base=(addr>>6)<<6;
+        for(int i =0;i<16;i++) {
+          AddrType data = esesc_mem_read(base+i);
+          if (data > minMissAddr && data < maxMissAddr)
+            tryPrefetch(data, mreq->getStatsFlag(), 1, PSIGN_CHASE, mreq->getPC(), 0);
+        }
+#endif
+      }
+
     // It could be l!=0 if we requested a check in the lower levels to change state.
     if (l == 0) {
-      if (!victim) {
+        if (!victim && allocateMiss) {
+          MTRACE("doReqAck allocateLine");
+          l = allocateLine(addr, mreq);
+        }else if (!allocateMiss && mreq->isHomeNode()) {
         MTRACE("doReqAck allocateLine");
         l = allocateLine(addr, mreq);
       }
     }else{
-      if (!mreq->isPrefetch())
-        l->clearPrefetch();
+        l->set(mreq);
 
       if (notifyHigherLevels(l,mreq)) {
         // FIXME I(0);
@@ -853,7 +1073,7 @@ void CCache::doReqAck(MemRequest *mreq)
       }
     }
 
-    s_reqSetState[mreq->getAction()]->inc(mreq->getStatsFlag());
+      //s_reqSetState[mreq->getAction()]->inc(mreq->getStatsFlag());
 
     int16_t portid = router->getCreatorPort(mreq);
     GI(portid<0,mreq->isTopCoherentNode());
@@ -864,41 +1084,53 @@ void CCache::doReqAck(MemRequest *mreq)
         l->forceInvalid();
       }
     }else{
-      I(victim); // Only victim can pass through
+        I(victim || !allocateMiss); // Only victim can pass through
+      }
     }
   }
 
-  Time_t when = port->reqAckDone(mreq);
+  when = port->reqAckDone(mreq);
   if (when==0) {
     MTRACE("doReqAck restartReqAck");
     // Must restart request
+    if (mreq->isPrefetch()) {
+      dropPrefetch(mreq);
+      port->reqRetire(mreq);
+      mshr->retire(mreq->getAddr(),mreq);
+    }else{
     mreq->setRetrying();
     mreq->restartReqAckAbs(globalClock+3);
+    }
     return;
   }
+  if (!mreq->isWarmup())
+    when = inOrderUpMessageAbs(when);
 
   port->reqRetire(mreq);
 
   if (mreq->isDemandCritical()) {
+    I(!mreq->isPrefetch());
     double lat = mreq->getTimeDelay(when);
-    avgMissLat.sample(lat, mreq->getStatsFlag());
-    avgMemLat.sample(lat, mreq->getStatsFlag());
+    //I(lat<200 || strcmp(getName(),"L4(0)")!=0);
+    avgMissLat.sample(lat, mreq->getStatsFlag() && !mreq->isPrefetch());
+    avgMemLat.sample(lat, mreq->getStatsFlag() && !mreq->isPrefetch());
 #if 0
     if (lat>30 && strcmp(getName(),"L2(0)")==0)
       MSG("%s id=%lld addr=%llx lat=%g @%lld when=%lld", getName(), mreq->getID(), mreq->getAddr(), lat, globalClock, when);
 #endif
+  }else if(mreq->isPrefetch()) {
+    double lat = mreq->getTimeDelay(when);
+    avgPrefetchLat.sample(lat, mreq->getStatsFlag());
   }
 
   if(mreq->isHomeNode()) {
     MTRACE("doReqAck isHomeNode, calling ackAbs %lld",when);
-    if (when==globalClock)
-      mreq->ack();
-    else
+    DInst *dinst = mreq->getDInst();
+    if (dinst)
+      dinst->setFullMiss(true);
       mreq->ackAbs(when);
   }else {
     MTRACE("doReqAck is Not HomeNode, calling ackAbsCB %u", when);
-    if (!mreq->isWarmup())
-      when = inOrderUpMessageAbs(when);
     router->scheduleReqAckAbs(mreq,when);
   }
 
@@ -1017,10 +1249,10 @@ void CCache::req(MemRequest *mreq)
     mreq->ack(1);
     return;
   }
+
   if (!incoherent)
     mreq->trySetTopCoherentNode(this);
 
-  //I(!mreq->isRetrying());
   port->req(mreq);
 }
 // }}}
@@ -1034,8 +1266,7 @@ void CCache::reqAck(MemRequest *mreq)
   if (mreq->isRetrying()){
     MTRACE("reqAck clearRetrying");
     mreq->clearRetrying();
-  }
-  else{
+  }else{
     s_reqAck[mreq->getAction()]->inc(mreq->getStatsFlag());
   }
 
@@ -1075,26 +1306,63 @@ void CCache::disp(MemRequest *mreq)
 }
 // }}}
 
-void CCache::tryPrefetch(AddrType paddr, bool doStats)
+void CCache::tryPrefetch(AddrType paddr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
 /* Try to prefetch this address (no guarantees) {{{1 */
 {
-  if ((paddr>>8)==0)
+  if ((paddr>>8)==0) {
+    if (cb)
+      cb->destroy();
     return;
+  }
+
+  I(degree<40);
 
   nTryPrefetch.inc(doStats);
 
-  if (cacheBank->findLineNoEffect(paddr))
+  if (cacheBank->findLineNoEffect(paddr)) {
+    nPrefetchHitLine.inc(doStats);
+    if (cb) {
+      //static_cast<IndirectAddressPredictor::performedCB *>(cb)->setParam1(this);
+      cb->call();
+    }
     return;
+  }
 
-  if (!mshr->canIssue(paddr))
+  if (!mshr->canIssue(paddr)) {
+    nPrefetchHitPending.inc(doStats);
+    if (cb)
+      cb->destroy();
     return;
+  }
 
-  if (port->isBusy(paddr))
+  if (!allocateMiss) {
+    AddrType page_addr = (paddr>>10)<<10;
+    if (pref_sign != PSIGN_MEGA || page_addr != paddr) {
+      nPrefetchHitBusy.inc(doStats);
+      router->tryPrefetch(paddr,doStats, degree, pref_sign, pc, cb);
     return;
+    }
+  }
+
+#ifdef DEBUG3
+  fprintf(stderr,"%s %s %s %s ",getName(),cb?"x":"",port->isBusy(paddr)?"B":"",degree>prefetchDegree?"y":"");
+#endif
+
+  if (port->isBusy(paddr) || degree > prefetchDegree || victim) {
+    nPrefetchHitBusy.inc(doStats);
+    router->tryPrefetch(paddr,doStats, degree, pref_sign, pc, cb);
+    return;
+  }
 
   nSendPrefetch.inc(doStats);
-  MemRequest *preq = MemRequest::createReqReadPrefetch(this, doStats, paddr);
+  if (cb) {
+    //I(pref_sign==PSIGN_STRIDE);
+    //static_cast<IndirectAddressPredictor::performedCB *>(cb)->setParam1(this);
+  }
+  MemRequest *preq = MemRequest::createReqReadPrefetch(this, doStats, paddr, pref_sign, degree, pc, cb);
+  preq->trySetTopCoherentNode(this);
   //MSG("%s @%lld try 0x%llx (%d)",getName(), globalClock, preq->getAddr(), preq->getID());
+  port->startPrefetch(preq);
   router->scheduleReq(preq, 1);
   mshr->blockEntry(paddr,preq);
 }
@@ -1127,7 +1395,7 @@ TimeDelta_t CCache::ffread(AddrType addr)
   if (l)
     return 1;   // done!
 
-  l = cacheBank->fillLine(addr, addr_r);
+  l = cacheBank->fillLine_replace(addr, addr_r, 0xbeefbeef);
   l->setExclusive(); // WARNING, can create random inconsistencies (no inv others)
 
   return router->ffread(addr) + 1;
@@ -1140,9 +1408,8 @@ TimeDelta_t CCache::ffwrite(AddrType addr)
   AddrType addr_r=0;
 
   Line *l = cacheBank->writeLine(addr);
-  if (l) {
-  }else{
-    l = cacheBank->fillLine(addr, addr_r);
+  if (l==0) {
+    l = cacheBank->fillLine_replace(addr, addr_r, 0xbeefbeef);
   }
   if (router->isTopLevel())
     l->setModified(); // WARNING, can create random inconsistencies (no inv others)

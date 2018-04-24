@@ -103,7 +103,7 @@ void TLB::doReq(MemRequest *mreq)
   Line *l = tlbBank->readLine(mreq->getAddr());
 #endif
   if (l==0 && mreq->isWarmup()) {
-    l = tlbBank->fillLine(mreq->getAddr());
+    l = tlbBank->fillLine(mreq->getAddr(), 0xdeadbeef);
     if (lowerTLB) {
       lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
     }
@@ -128,7 +128,7 @@ void TLB::doReq(MemRequest *mreq)
     //Check the lowerTLB for a miss. 
     if (lowerTLB->checkL2TLBHit(mreq) == true){
 
-      tlbBank->fillLine(mreq->getAddr());
+      tlbBank->fillLine(mreq->getAddr(), 0xdeadbeef);
       tlblowerReadHit.inc(mreq->getStatsFlag());
 
       router->scheduleReq(mreq, lowerTLBdelay);
@@ -150,6 +150,7 @@ void TLB::doReq(MemRequest *mreq)
         lowerCache,
         mreq->getStatsFlag(),
         calcPage1Addr(mreq->getAddr()),
+        0xbeefbeef, // PC signature for TLB
         readPage1CB::create(this,mreq)
         );
   }
@@ -215,12 +216,20 @@ bool TLB::isBusy(AddrType addr) const
 }
 /* }}} */
 
+void TLB::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
+  /* forward tryPrefetch {{{1 */
+{ 
+  router->tryPrefetch(addr,doStats, degree, pref_sign, pc, cb);
+}
+/* }}} */
+
 void TLB::readPage1(MemRequest *mreq) 
 {
   MemRequest::sendReqRead(
       lowerCache,
       mreq->getStatsFlag(),
       calcPage2Addr(mreq->getAddr()),
+      0xbeefbeef, // PC signature for TLB
       readPage2CB::create(this,mreq)
       );
 }
@@ -231,6 +240,7 @@ void TLB::readPage2(MemRequest *mreq)
       lowerCache,
       mreq->getStatsFlag(),
       calcPage3Addr(mreq->getAddr()),
+      0xbeefbeef, // PC signature for TLB
       readPage3CB::create(this,mreq)
       );
 }
@@ -249,7 +259,7 @@ void TLB::wakeupNext()
 
 void TLB::readPage3(MemRequest *mreq) 
 {
-  tlbBank->fillLine(mreq->getAddr());
+  tlbBank->fillLine(mreq->getAddr(), 0xdeadbeef);
   TimeDelta_t lat = 0;
   if (lowerTLB)
     lat += lowerTLB->ffread(mreq->getAddr()); // Fill the L2 too
@@ -264,13 +274,6 @@ void TLB::readPage3(MemRequest *mreq)
   wakeupNext();
 }
 
-void TLB::tryPrefetch(AddrType addr, bool doStats) {
-  if (!tlbBank->readLine(addr))
-    return;   // no prefetch if TLB miss
-
-  router->tryPrefetch(addr, doStats);
-}
-
 TimeDelta_t TLB::ffread(AddrType addr)
   // {{{1 rabbit read
 { 
@@ -280,7 +283,7 @@ TimeDelta_t TLB::ffread(AddrType addr)
   if (lowerTLB)
     lowerTLB->ffread(addr);
  
-  tlbBank->fillLine(addr);
+  tlbBank->fillLine(addr, 0xdeadbeef);
   if (lowerCache)
     return router->ffread(addr) + lowerTLBdelay;
   return delay;
@@ -296,7 +299,7 @@ TimeDelta_t TLB::ffwrite(AddrType addr)
   if (lowerTLB)
     lowerTLB->ffwrite(addr);
  
-  tlbBank->fillLine(addr);
+  tlbBank->fillLine(addr, 0xdeadbeef);
   if (lowerCache)
     return router->ffwrite(addr) + delay;
   return delay;
