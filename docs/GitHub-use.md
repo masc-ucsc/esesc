@@ -46,11 +46,12 @@ an empty repository (esesc-private), then run this to close esesc
     cd ..
     rm -rf esesc.git
 
+
 ### Typical usage
 
 The workflow in the [MASC lab][masc] is as follows:
 
-1. Work in the esesc-masc repo, and commit to master branch
+Work in the esesc-masc repo, and commit to master branch
 
     git clone https://github.com/yourname/esesc-private.git esesc
     cd esesc
@@ -58,24 +59,25 @@ The workflow in the [MASC lab][masc] is as follows:
     git commit
     git push origin master
 
-2. To pull latest version of code from esesc public repository
+
+To pull latest version of code from esesc public repository
 
     cd esesc
     git remote add public https://github.com/masc-ucsc/esesc
     git pull public master # Creates a merge commit
     git push origin master
 
-3. To push your edits to the main public esesc repo
+To push your edits to the main public esesc repo (replace XXX by your github name)
 
-    git clone https://github.com/masc-ucsc/esesc
-    cd esesc
-    git remote add esesc-private https://github.com/yourname/esesc-private.git
-    git checkout -b pull_request_yourname
+    git clone https://github.com/masc-ucsc/esesc esesc-public
+    cd esesc-public
+    git remote add esesc-private git@github.com:masc-ucsc/esesc-masc.git  # Replace for your private repo
+    git checkout -b pull_request_XXX
     git pull esesc-private master
-    git push origin pull_request_yourname
+    git push origin pull_request_XXX
 
 Now create a [pull][pull] request through github, and the UCSC/MASC team will review it.
 
 
-[pull] https://help.github.com/articles/creating-a-pull-request/
+[pull]: https://help.github.com/articles/creating-a-pull-request
 [masc]: http://masc.soe.ucsc.edu/
