@@ -471,18 +471,7 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 /////////////////////////////////////////
 // RECORD DEPENDENCIES
 /////////////////////////////////////////
-if (inst->isMemory()) {
-  if (inst->isStore()) {
-    snap->addStore(dinst);
-  }
-  if (inst->isLoad()) {
-    snap->addLoad(dinst);
-  }
-} else if (inst->isControl()) {
-  //TODO
-} else {
-  snap->add(dinst);  
-}
+//snap->add_to_RAT(dinst);
 #endif
 
   return NoStall;
@@ -680,9 +669,12 @@ void OoOProcessor::retire()
     if (!dinst->getInst()->isStore()) // Stores can perform after retirement
       I(dinst->isPerformed());
 
-    if (dinst->isPerformed()) // Stores can perform after retirement
+    if (dinst->isPerformed()) {// Stores can perform after retirement
+      #ifdef WAVESNAP_EN
+      snap->update_window(dinst);
+      #endif
       dinst->destroy(eint);
-    else{
+    } else {
       eint->reexecuteTail(fid);
     }
 

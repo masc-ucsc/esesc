@@ -550,7 +550,7 @@ void TaskHandler::unplug()
 #ifdef WAVESNAP_EN
   for(size_t i=0; i<cpus.size() ; i++) {
     if (i==0) {
-      cpus[i]->snap->dumpGraph("dump.txt");
+      cpus[i]->snap->dump_address("dump.txt");
     }
   }
 #endif

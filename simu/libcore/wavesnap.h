@@ -2,10 +2,7 @@
   USAGE:
     1. In GProcessor.h uncomment: #define WAVESNAP_EN
 
-    2. In GProcessor.cpp, in the constructor change the range of instruction you want to capture.
-       Example: this->capture = new wavesnap(0, 100);
-
-    3. In TaskHandler.cpp, in TaskHandler::unplug() specify the format and the file where you
+    2. In TaskHandler.cpp, in TaskHandler::unplug() specify the format and the file where you
        want to dump the traces. In case wavedrom format is picked, copy and paste generated
        file into Wavedrom edittor to visualize. 
 */
