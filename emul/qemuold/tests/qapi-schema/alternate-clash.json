@@ -1,3 +1,0 @@
-# we detect C enum collisions in an alternate
-{ 'alternate': 'Alt1',
-  'data': { 'one': 'str', 'ONE': 'int' } }
