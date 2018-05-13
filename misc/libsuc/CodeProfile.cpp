@@ -79,14 +79,6 @@ void CodeProfile::reportValue() const {
   }
 }
 
-void CodeProfile::reportBinValue() const {
-  Report::binField(0);
-}
-
-void CodeProfile::reportScheme() const {
-  Report::scheme(name, "8");
-}
-
 int64_t CodeProfile::getSamples() const { 
   return 0;
 }

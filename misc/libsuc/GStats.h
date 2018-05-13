@@ -74,8 +74,6 @@ public:
   int32_t gd;
 
   static void report(const char *str);
-  static void reportBin();
-  static void reportSchema();
   
   static GStats *getRef(const char *str);
 
@@ -85,8 +83,6 @@ public:
   void prepareTrace();
 
   virtual void reportValue() const = 0;
-  virtual void reportBinValue() const = 0;
-  virtual void reportScheme() const = 0;
 
   virtual void flushValue();
   static void flush();
@@ -128,8 +124,6 @@ public:
   int64_t getSamples() const;
 
   void reportValue() const;
-  void reportBinValue() const;
-  void reportScheme() const;
 
   void flushValue();
 };
@@ -150,8 +144,6 @@ public:
   int64_t getSamples() const;
 
   virtual void reportValue() const;
-  virtual void reportBinValue() const;
-  void reportScheme() const;
 
   void flushValue();
 };
@@ -169,8 +161,6 @@ public:
   int64_t getSamples() const;
 
   void reportValue() const;
-  void reportBinValue() const;
-  void reportScheme() const;
 
   void flushValue();
 };
@@ -194,8 +184,6 @@ public:
   int64_t getSamples() const;
 
   void reportValue() const;
-  void reportBinValue() const;
-  void reportScheme() const;
 
   void flushValue();
 };

@@ -57,9 +57,6 @@
 #include "Report.h"
 #include "SescConf.h"
 #include "DrawArch.h"
-#include "Transporter.h"
-
-//#define DEBUG_LIVE
 
 extern DrawArch arch;
 
@@ -104,17 +101,6 @@ char       *BootLoader::reportFile;
 timeval     BootLoader::stTime;
 PowerModel *BootLoader::pwrmodel;
 bool        BootLoader::doPower;
-
-int64_t BootLoader::checkpoint_id;
-bool BootLoader::is_live = false;
-int BootLoader::live_group = 0;
-int BootLoader::live_group_cntr = 0;
-int64_t BootLoader::sample_count = 0;
-int64_t BootLoader::live_warmup = 0;
-int64_t BootLoader::genwarm = 0;
-uint64_t BootLoader::live_warmup_cnt = 0;
-uint64_t BootLoader::live_ninst = 0;
-bool BootLoader::schema_sent = false;
 
 void BootLoader::check() 
 {
@@ -185,62 +171,6 @@ void BootLoader::report(const char *str) {
 }
 
 void BootLoader::reportSample() {
-  //live stuff check if we are in live mode
-  if (!is_live)
-    return;
-
-  //check if in warmup mode (live cache)
-  if(live_warmup_cnt > 0) {
-    if(live_warmup_cnt > live_ninst)
-      live_warmup_cnt -= live_ninst;
-    else
-      live_warmup_cnt = 0;
-    GStats::flush();
-    return;
-  }
-
-  //increase sample index
-  sample_count++;
-  live_group_cntr++;
-  if(live_group_cntr < live_group)
-    return;
-  else
-    live_group_cntr = 0;
-
-  //check if schema is sent
-  if(!schema_sent) {
-    GStats::reportSchema();
-    Report::sendSchema();
-    schema_sent = true;
-  }
-
-#ifdef DEBUG_LIVE
-  GStats::report("reportSample");
-  sleep(1); //TODO: remove debugging HACK
-#endif
-  Report::setBinField(sample_count);
-  GStats::reportBin();
-  Report::binFlush();
-  GStats::flush();
-
-  //Wait for resume or kill
-#ifdef ESESC_LIVE
-
-
-  // TODO: actually listen for a message and possibly take a different
-  // action.
-  int k, skp;
-  Transporter::receive_fast("continue", "%d,%d", &k, &skp);
-  if(k == 1) {
-    MSG("LiveSim sample done. Exiting");
-    quick_exit(0);
-  } else {
-    MSG("LiveSim: start simulating another sample");
-    return;
-  }
-#endif
-
-  return;
 }
 
 void BootLoader::plugEmulInterfaces() {
@@ -250,7 +180,7 @@ void BootLoader::plugEmulInterfaces() {
   // nemul will give me the total number of flows (cpuemuls)  in the system. 
   // out of these, some can be CPU, some can be GPU. (interleaved as well) 
   I(nemul>0);
-  
+
   LOG("I: cpuemul size [%d]",nemul);
 
   // For now, we will assume the simplistic case where there is one QEMU and one GPU. 
@@ -385,16 +315,6 @@ void BootLoader::createSimuInterface(const char *section, FlowID i) {
   TaskHandler::addSimu(gproc);
 }
 
-void BootLoader::plugSocket(int64_t cpid, int64_t fwu, int64_t gw, uint64_t lwcnt) {
-  //live stuff
-  checkpoint_id = cpid;
-  sample_count = 0;
-  live_warmup = fwu;
-  genwarm = gw;
-  live_warmup_cnt = lwcnt;
-  live_ninst = static_cast<uint64_t>(SescConf->getDouble("live","nInstTiming"));
-}
-
 void BootLoader::plug(int argc, const char **argv) {
   // Before boot
   SescConf = new SConfig(argc, argv);
@@ -425,12 +345,8 @@ void BootLoader::plug(int argc, const char **argv) {
     sprintf(reportFile,"esesc_%s.XXXXXX",tmp);
   }
 
-  //live stuff
-  is_live = SescConf->getBool("","live");
-  live_group = SescConf->getBool("","live_group");
-
   Report::openFile(reportFile);
-  
+
   SescConf->getDouble("technology","frequency"); // Just read it to get it in the dump
 
   check();

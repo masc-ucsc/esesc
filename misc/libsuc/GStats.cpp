@@ -93,23 +93,8 @@ void GStats::report(const char *str)
   Report::field("#END GStats::report %s", str);
 }
 
-void GStats::reportBin()
-{
-  for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
-    it->second->reportBinValue();
-  }
-}
+void GStats::flushValue() {
 
-void GStats::reportSchema()
-{
-  for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
-    it->second->reportScheme();
-  }
-}
-
-void GStats::flushValue()
-{
-  
 }
 
 void GStats::flush()
@@ -151,28 +136,15 @@ GStatsCntr::GStatsCntr(const char *format,...)
   subscribe();
 }
 
-double GStatsCntr::getDouble() const
-{
+double GStatsCntr::getDouble() const {
   return data;
 }
 
-void GStatsCntr::reportValue() const
-{
+void GStatsCntr::reportValue() const {
   Report::field("%s=%f", name, data);
 }
 
-void GStatsCntr::reportBinValue() const
-{
-  Report::binField(data);
-}
-
-void GStatsCntr::reportScheme() const
-{
-  Report::scheme(name, "8");
-}
-
-int64_t GStatsCntr::getSamples() const 
-{ 
+int64_t GStatsCntr::getSamples() const {
   return (int64_t)data;
 }
 
@@ -215,18 +187,7 @@ void GStatsAvg::reportValue() const
   Report::field("%s:n=%lld::v=%f", name, nData, getDouble()); // n first for power
 }
 
-void GStatsAvg::reportBinValue() const
-{
-  Report::binField((double)nData, getDouble());
-}
-
-void GStatsAvg::reportScheme() const
-{
-  Report::scheme(name, "{\"n\":8,\"v\":8}");
-}
-
-int64_t GStatsAvg::getSamples() const 
-{
+int64_t GStatsAvg::getSamples() const {
   return nData;
 }
 
@@ -258,16 +219,6 @@ GStatsMax::GStatsMax(const char *format,...)
 void GStatsMax::reportValue() const
 {
   Report::field("%s:max=%f:n=%lld", name, maxValue, nData);
-}
-
-void GStatsMax::reportBinValue() const
-{
-  Report::binField((double)nData, maxValue);
-}
-
-void GStatsMax::reportScheme() const
-{
-  Report::scheme(name, "{\"n\":8,\"v\":8}");
 }
 
 void GStatsMax::sample(const double v, bool en) 
@@ -324,33 +275,6 @@ void GStatsHist::reportValue() const
   Report::field("%s:max=%d" ,name,maxKey);
   Report::field("%s:v=%f"    ,name,(double)div);
   Report::field("%s:n=%f"   ,name,numSample);
-}
-
-void GStatsHist::reportBinValue() const
-{
-  I(H.empty()); // call stop before
-    
-  uint32_t maxKey = 0;
-
-  for(Histogram::const_iterator it=H.begin();it!=H.end();it++) {
-    Report::binField(it->second);
-    if(it->first > maxKey)
-      maxKey = it->first;
-  }
-  long double div = cumulative; // cummulative has 64bits (double has 54bits mantisa)
-  div /= numSample;
-
-  Report::binField((double)maxKey, (double)div, numSample);
-}
-
-void GStatsHist::reportScheme() const
-{
-  for(Histogram::const_iterator it=H.begin();it!=H.end();it++) {
-    char nm[100];
-    sprintf(nm, "%s(%u)", name, it->first);
-    Report::scheme(nm, "8");
-  }
-  Report::scheme(name, "{\"max\":8,\"v\":8,\"n\":8}");
 }
 
 void GStatsHist::sample(bool enable, int32_t key, double weight)

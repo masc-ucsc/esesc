@@ -179,19 +179,7 @@ void SamplerSync::nextMode(bool rotate, FlowID fid, EmuMode mod){
     fetchNextMode();
     I(next_mode != EmuInit);
 
-    //If in live mode and warmup is to be forced
-    if(BootLoader::genwarm > 0 && next_mode == EmuTiming) {
-      BootLoader::genwarm--;
-      setMode(EmuWarmup, fid);
-      //setMode(EmuDetail, fid);
-    } else if(BootLoader::live_warmup > 0 && next_mode == EmuTiming) {
-      BootLoader::live_warmup--;
-      //BootLoader::sample_count++;
-      setMode(EmuDetail, fid);
-      //setMode(EmuRabbit, fid);
-    } else {
-      setMode(next_mode, fid);
-    }
+    setMode(next_mode, fid);
 
     if (next_mode == EmuRabbit){
       setModeNativeRabbit();
