@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
    Copyright (C) 2009 University of California, Santa Cruz.
@@ -34,58 +34,54 @@ File name:      SescConf.h
 
 #include "Config.h"
 
-class SConfig:public Config {
-  private:
-  protected:
+class SConfig : public Config {
+private:
+protected:
+  // Redefine the following two methods so that the class works a
+  // little bit different.
+  //
+  // Instead of the original Config interface I have something a
+  // little bit more specific for the sesc configuration file.  The
+  // first section of the configuration file has variables that
+  // point to sections. Example:
+  //
+  // bpred = 'myBPredSection'
+  // a = 1
+  // b = 1
+  // [myBPredSection]
+  // a = 2
+  // c = 2
+  //
+  // Results for getInt:
+  // getInt("bpred","a") = 1 // main section overides private section
+  // getInt("bpred","b") = 1 // only defined in main
+  // getInt("bpred","c") = 2 // only defined in section
+  //
+  // Remeber that the environment variable ALWAYS overides local variables:
+  // ESESC_a = 7 // highest priority overide (a=7)
+  // ESESC_bpred_a = 8 // whould use a = 7 instead. If ESESC_a is not defined a = 8
+  // ESESC_bpred_c = 7 // highest
+  // ESESC_b = 7
+  // ESESC_bpred_b = 7 // unless getInt("bpred","b") it is ignored
+  //
 
-    // Redefine the following two methods so that the class works a
-    // little bit different.
-    // 
-    // Instead of the original Config interface I have something a
-    // little bit more specific for the sesc configuration file.  The
-    // first section of the configuration file has variables that
-    // point to sections. Example:
-    // 
-    // bpred = 'myBPredSection'
-    // a = 1
-    // b = 1 
-    // [myBPredSection]
-    // a = 2
-    // c = 2
-    // 
-    // Results for getInt:
-    // getInt("bpred","a") = 1 // main section overides private section
-    // getInt("bpred","b") = 1 // only defined in main
-    // getInt("bpred","c") = 2 // only defined in section
-    // 
-    // Remeber that the environment variable ALWAYS overides local variables:
-    // ESESC_a = 7 // highest priority overide (a=7)
-    // ESESC_bpred_a = 8 // whould use a = 7 instead. If ESESC_a is not defined a = 8
-    // ESESC_bpred_c = 7 // highest
-    // ESESC_b = 7 
-    // ESESC_bpred_b = 7 // unless getInt("bpred","b") it is ignored
-    // 
+  virtual const char *getEnvVar(const char *block, const char *name);
 
-    virtual const char *getEnvVar(const char *block,
-        const char *name);
+  virtual const Record *getRecord(const char *block, const char *name, int32_t vectorPos);
 
-    virtual const Record *getRecord(const char *block,
-        const char *name,
-        int32_t vectorPos);
+  static const char *getConfName(int argc, const char **argv);
+  static char *      auxstrndup(const char *source, int32_t len);
+  static const char *jump_spaces(const char *p);
 
-    static const char *getConfName(int argc, const char **argv);
-    static char *auxstrndup(const char *source, int32_t len);
-    static const char *jump_spaces(const char *p);
+public:
+  SConfig(int argc, const char **argv);
 
-  public:
-    SConfig(int argc, const char **argv);
-
-    std::vector<char *> getSplitCharPtr(const char *block,
-        const char *name,
-        int32_t vectorPos=0);
-    char *getFpname(){ return strdup(fpname); };
+  std::vector<char *> getSplitCharPtr(const char *block, const char *name, int32_t vectorPos = 0);
+  char *              getFpname() {
+    return strdup(fpname);
+  };
 };
 
-extern SConfig *SescConf;       // declared in SescConf.cpp
+extern SConfig *SescConf; // declared in SescConf.cpp
 
-#endif   // ESESCCONF_H
+#endif // ESESCCONF_H

@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,18 +39,16 @@
 
 #include "nanassert.h"
 
-#include "callback.h"
-#include "GOoOProcessor.h"
-#include "Pipeline.h"
-#include "FetchEngine.h"
 #include "FastQueue.h"
+#include "FetchEngine.h"
+#include "GOoOProcessor.h"
 #include "GStats.h"
+#include "Pipeline.h"
+#include "callback.h"
 
 class AccProcessor : public GProcessor {
 private:
-
   bool busy;
-
 
 protected:
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
@@ -58,34 +56,34 @@ protected:
 
   // Not needed for Acc
   StallCause addInst(DInst *dinst);
-  void retire();
-  void fetch(FlowID fid);
-  LSQ *getLSQ();
-  bool isFlushing();
-  bool isReplayRecovering();
-  Time_t getReplayID();
-  void executing(DInst *dinst);
-  void executed(DInst *dinst);
+  void       retire();
+  void       fetch(FlowID fid);
+  LSQ *      getLSQ();
+  bool       isFlushing();
+  bool       isReplayRecovering();
+  Time_t     getReplayID();
+  void       executing(DInst *dinst);
+  void       executed(DInst *dinst);
 
-  virtual void replay(DInst *target) { };// = 0;
+  virtual void replay(DInst *target){}; // = 0;
 
   // END VIRTUAL FUNCTIONS of GProcessor
-  
+
   AddrType myAddr;
   AddrType addrIncr;
-  int reqid;
-  int total_accesses;
-  int outstanding_accesses;
+  int      reqid;
+  int      total_accesses;
+  int      outstanding_accesses;
 
   GStatsCntr accReads;
   GStatsCntr accWrites;
 
-  GStatsAvg  accReadLatency;
-  GStatsAvg  accWriteLatency;
+  GStatsAvg accReadLatency;
+  GStatsAvg accWriteLatency;
 
-  void read_performed( uint32_t id, Time_t startTime);
-  void write_performed( uint32_t id, Time_t startTime);
-  typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::read_performed> read_performedCB;
+  void read_performed(uint32_t id, Time_t startTime);
+  void write_performed(uint32_t id, Time_t startTime);
+  typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::read_performed>  read_performedCB;
   typedef CallbackMember2<AccProcessor, uint32_t, Time_t, &AccProcessor::write_performed> write_performedCB;
 
 public:

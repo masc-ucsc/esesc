@@ -19,23 +19,21 @@ ESESC; see the file COPYING. If not, write to the Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-
 #ifndef LDSTQ_H
 #define LDSTQ_H
 
-#include <vector>
-#include <set>
 #include <map>
+#include <set>
+#include <vector>
 
-#include "estl.h"
 #include "GStats.h"
+#include "estl.h"
 
 #include "DInst.h"
 
 class LSQ {
 private:
 protected:
-
   int32_t freeEntries;
   int32_t unresolved;
 
@@ -44,13 +42,13 @@ protected:
     unresolved  = 0;
   }
 
-  virtual ~LSQ() { }
+  virtual ~LSQ() {
+  }
 
 public:
-
-  virtual bool insert(DInst *dinst)      = 0;
+  virtual bool   insert(DInst *dinst)    = 0;
   virtual DInst *executing(DInst *dinst) = 0;
-  virtual void remove(DInst *dinst)      = 0;
+  virtual void   remove(DInst *dinst)    = 0;
 
   void incFreeEntries() {
     freeEntries++;
@@ -59,19 +57,21 @@ public:
     unresolved++;
     freeEntries--;
   }
-  bool  hasFreeEntries()       const { return freeEntries>0; }
-  bool  hasPendingResolution() const { return unresolved >0; }
-
+  bool hasFreeEntries() const {
+    return freeEntries > 0;
+  }
+  bool hasPendingResolution() const {
+    return unresolved > 0;
+  }
 };
 
 class LSQFull : public LSQ {
 private:
-
   class AddrTypeHashFunc {
-    public:
-      size_t operator()(const DataType p) const {
-        return((uint64_t) p);
-      }
+  public:
+    size_t operator()(const DataType p) const {
+      return ((uint64_t)p);
+    }
   };
 
   typedef HASH_MULTIMAP<AddrType, DInst *, AddrTypeHashFunc> AddrDInstQMap;
@@ -85,11 +85,12 @@ private:
 
 public:
   LSQFull(const int32_t id, int32_t size);
-  ~LSQFull() { }
+  ~LSQFull() {
+  }
 
-  bool insert(DInst *dinst);
+  bool   insert(DInst *dinst);
   DInst *executing(DInst *dinst);
-  void remove(DInst *dinst);
+  void   remove(DInst *dinst);
 };
 
 class LSQNone : public LSQ {
@@ -97,21 +98,22 @@ private:
   DInst *addrTable[128];
 
   int getEntry(AddrType addr) const {
-    return ((addr>>1) ^ (addr>>17)) & 127;
+    return ((addr >> 1) ^ (addr >> 17)) & 127;
   }
 
 public:
   LSQNone(const int32_t id, int32_t size);
-  ~LSQNone() { }
+  ~LSQNone() {
+  }
 
-  bool insert(DInst *dinst);
+  bool   insert(DInst *dinst);
   DInst *executing(DInst *dinst);
-  void remove(DInst *dinst);
+  void   remove(DInst *dinst);
 };
 
 class LSQVPC : public LSQ {
 private:
-  std::multimap<AddrType, DInst*> instMap;
+  std::multimap<AddrType, DInst *> instMap;
 
   GStatsCntr LSQVPC_replays;
 
@@ -121,11 +123,12 @@ private:
 
 public:
   LSQVPC(int32_t size);
-  ~LSQVPC() { }
+  ~LSQVPC() {
+  }
 
-  bool insert(DInst *dinst);
-  DInst * executing(DInst *dinst);
-  void remove(DInst *dinst);
+  bool     insert(DInst *dinst);
+  DInst *  executing(DInst *dinst);
+  void     remove(DInst *dinst);
   AddrType replayCheck(DInst *dinst);
 };
 #endif

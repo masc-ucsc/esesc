@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -34,21 +34,21 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #if 0
-#include <pthread.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdio.h>
 #include <ctype.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #ifdef USE_RTL
-#include "vpi_user.h"
 #include "veriuser.h"
+#include "vpi_user.h"
 #endif
 
-#include "qemumin.h"
 #include "nanassert.h"
+#include "qemumin.h"
 extern "C" void QEMUReader_goto_sleep(void *env);
 extern "C" void QEMUReader_wakeup_from_sleep(void *env);
 extern "C" int qemuesesc_main(int argc, char **argv, char **envp);

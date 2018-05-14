@@ -48,7 +48,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 /*
  * Example:
  *  int32_t a[100];
- *      ID(int32_t i;)  // See that the ; is inside. Required only in C, not C++ 
+ *      ID(int32_t i;)  // See that the ; is inside. Required only in C, not C++
  *      ID(int32_t j;)
  *      int32_t k;
  *
@@ -71,96 +71,110 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #ifndef _NANASSERT_H_
 #define _NANASSERT_H_
 
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 
 /* By default cerr, but you can redefine it. */
 #ifndef ASSERTSTREAM
-#define ASSERTSTREAM    stderr
+#define ASSERTSTREAM stderr
 #endif
 
 /* You can redefine ASSERTACTION to to something different than exit */
 #ifndef ASSERTACTION
 void nanassertexit();
 
-#define ASSERTACTION    nanassertexit()
+#define ASSERTACTION nanassertexit()
 #endif
 
 /* Not nested forall and exists */
 
-#define forall(asstFor,asstCond) \
-    do {                         \
-          aRes =1;                   \
-          for asstFor {              \
-                  if( !(asstCond) ){     \
-                          aRes = 0;          \
-                          break;             \
-                  }                      \
-          }                          \
-        }while(0)
+#define forall(asstFor, asstCond) \
+  do {                            \
+    aRes = 1;                     \
+          for                     \
+      asstFor {                   \
+        if(!(asstCond)) {         \
+          aRes = 0;               \
+          break;                  \
+        }                         \
+      }                           \
+  } while(0)
 
-#define exists(asstFor,asstCond) \
-    do {                         \
-          for asstFor {              \
-                  if( (asstCond) ){      \
-                          aRes = 1;    \
-                          break;             \
-                  }                      \
-          }                          \
-        }while(0)
+#define exists(asstFor, asstCond) \
+  do {                            \
+          for                     \
+      asstFor {                   \
+        if((asstCond)) {          \
+          aRes = 1;               \
+          break;                  \
+        }                         \
+      }                           \
+  } while(0)
 
 /* Nested forall and exists */
 
-#define foralln(asstFor,asstCond)\
-    do {                         \
-      int32_t result=1;              \
-          for asstFor {              \
-          asstCond;              \
-                  if( !aRes ){     \
-                  result = 0;        \
-                          break;             \
-                  }                      \
-          }                          \
-      aRes = result;       \
-        }while(0)
+#define foralln(asstFor, asstCond) \
+  do {                             \
+    int32_t result = 1;            \
+          for                      \
+      asstFor {                    \
+        asstCond;                  \
+        if(!aRes) {                \
+          result = 0;              \
+          break;                   \
+        }                          \
+      }                            \
+    aRes = result;                 \
+  } while(0)
 
-#define existsn(asstFor,asstCond)\
-    do {                         \
-      int32_t result=0;              \
-          for asstFor {              \
-          asstCond;              \
-                  if( aRes ){      \
-                  result = 1;        \
-                          break;             \
-                  }                      \
-          }                          \
-      aRes = result;       \
-        }while(0)
+#define existsn(asstFor, asstCond) \
+  do {                             \
+    int32_t result = 0;            \
+          for                      \
+      asstFor {                    \
+        asstCond;                  \
+        if(aRes) {                 \
+          result = 1;              \
+          break;                   \
+        }                          \
+      }                            \
+    aRes = result;                 \
+  } while(0)
 
 extern const char *NanassertID;
 
 #ifdef NANASSERTFILE
-#define doassert()               \
-    do {                                   \
-      fprintf(ASSERTSTREAM,"%s (%s),%s line %d failed for ",__FILE__,NANASSERTFILE,NanassertID,__LINE__); \
-      fprintf(ASSERTSTREAM,"\n");          \
-      ASSERTACTION;                        \
-    }while(0)
+#define doassert()                                                                                           \
+  do {                                                                                                       \
+    fprintf(ASSERTSTREAM, "%s (%s),%s line %d failed for ", __FILE__, NANASSERTFILE, NanassertID, __LINE__); \
+    fprintf(ASSERTSTREAM, "\n");                                                                             \
+    ASSERTACTION;                                                                                            \
+  } while(0)
 #else
-#define doassert()               \
-    do {                                   \
-      fprintf(ASSERTSTREAM,"%s,%s line %d failed for ",__FILE__,NanassertID,__LINE__);\
-      fprintf(ASSERTSTREAM,"\n");          \
-      ASSERTACTION;                        \
-    }while(0)
+#define doassert()                                                                       \
+  do {                                                                                   \
+    fprintf(ASSERTSTREAM, "%s,%s line %d failed for ", __FILE__, NanassertID, __LINE__); \
+    fprintf(ASSERTSTREAM, "\n");                                                         \
+    ASSERTACTION;                                                                        \
+  } while(0)
 #endif
 
-
-#if (defined __GNUC__)
-#define MSG(a...)   do{ fprintf(ASSERTSTREAM,##a); fprintf(ASSERTSTREAM,"\n"); }while(0)
-#define GMSG(g,a...) do{ if(g) do{ fprintf(ASSERTSTREAM,##a); fprintf(ASSERTSTREAM,"\n"); }while(0); }while(0)
+#if(defined __GNUC__)
+#define MSG(a...)                \
+  do {                           \
+    fprintf(ASSERTSTREAM, ##a);  \
+    fprintf(ASSERTSTREAM, "\n"); \
+  } while(0)
+#define GMSG(g, a...)                \
+  do {                               \
+    if(g)                            \
+      do {                           \
+        fprintf(ASSERTSTREAM, ##a);  \
+        fprintf(ASSERTSTREAM, "\n"); \
+      } while(0);                    \
+  } while(0)
 #else
 
 /* Without GGC is not so nice, but works */
@@ -172,8 +186,8 @@ void NoGCCGMSG(int32_t g, const char *format, ...);
 void VoidNoGCCMSG(const char *format, ...);
 void VoidNoGCCGMSG(int32_t g, const char *format, ...);
 
-#define MSG   NoGCCMSG
-#define GMSG  NoGCCGMSG
+#define MSG NoGCCMSG
+#define GMSG NoGCCGMSG
 
 #endif
 
@@ -182,64 +196,99 @@ void VoidNoGCCGMSG(int32_t g, const char *format, ...);
  */
 
 #ifdef NDEBUG
-#define PREN(aC)                /* NDEBUG */
-#define PRE(aC)                 /* NDEBUG */
-#else    /* !NDEBUG */
-#define PREN(aC)   do{ int32_t aRes=0; aC; if(!aRes) doassert(); }while(0)
-#define PRE(aC)    do{                 if(!(aC)) doassert(); }while(0)
-#endif   /* NDEBUG */
+#define PREN(aC) /* NDEBUG */
+#define PRE(aC)  /* NDEBUG */
+#else            /* !NDEBUG */
+#define PREN(aC)      \
+  do {                \
+    int32_t aRes = 0; \
+    aC;               \
+    if(!aRes)         \
+      doassert();     \
+  } while(0)
+#define PRE(aC)   \
+  do {            \
+    if(!(aC))     \
+      doassert(); \
+  } while(0)
+#endif /* NDEBUG */
 
 /********************************************************
- * DEBUG Only section 
+ * DEBUG Only section
  */
 
 #ifdef DEBUG
-#define IN(aC)   do{ int32_t aRes=0; aC; if(!aRes) doassert(); }while(0)
-#define I(aC)    do{                 if(!(aC)) doassert(); }while(0)
-#define GIN(g,e) do{ if(g) IN(e); }while(0)
-#define GI(g,e)  do{ if(g)  I(e); }while(0)
-#define GIS(g,e) do{ if(g)   e;   }while(0)
-#define ID(e)        e
-#define ID2(e)        e
-#define IS(e)    do{ e;           }while(0)
+#define IN(aC)        \
+  do {                \
+    int32_t aRes = 0; \
+    aC;               \
+    if(!aRes)         \
+      doassert();     \
+  } while(0)
+#define I(aC)     \
+  do {            \
+    if(!(aC))     \
+      doassert(); \
+  } while(0)
+#define GIN(g, e) \
+  do {            \
+    if(g)         \
+      IN(e);      \
+  } while(0)
+#define GI(g, e) \
+  do {           \
+    if(g)        \
+      I(e);      \
+  } while(0)
+#define GIS(g, e) \
+  do {            \
+    if(g)         \
+      e;          \
+  } while(0)
+#define ID(e) e
+#define ID2(e) e
+#define IS(e) \
+  do {        \
+    e;        \
+  } while(0)
 
 #ifdef DEBUG_SILENT
 #ifdef __GNUC__
-#define LOG(a...)               /* nodebug */
-#define GLOG(g,a...)            /* nodebug */
-#else    /* !__GNUC__ */
-#define LOG         VoidNoGCCMSG
-#define GLOG        VoidNoGCCGMSG
-#endif   /* __GNUC__ */
+#define LOG(a...)     /* nodebug */
+#define GLOG(g, a...) /* nodebug */
+#else                 /* !__GNUC__ */
+#define LOG VoidNoGCCMSG
+#define GLOG VoidNoGCCGMSG
+#endif /* __GNUC__ */
 #else
-#define LOG    MSG
-#define GLOG   GMSG
+#define LOG MSG
+#define GLOG GMSG
 #endif
 
-#else    /* !DEBUG */
-#define IN(asstCond)            /* nodebug */
-#define I(asstCond)             /* nodebug */
-#define GIN(g,e)                /* nodebug */
-#define GI(g,e)                 /* nodebug */
-#define GIS(g,e)                /* nodebug */
+#else                /* !DEBUG */
+#define IN(asstCond) /* nodebug */
+#define I(asstCond)  /* nodebug */
+#define GIN(g, e)    /* nodebug */
+#define GI(g, e)     /* nodebug */
+#define GIS(g, e)    /* nodebug */
 #ifdef __GNUC__
-#define ID(e)                   /* nodebug */
-#define ID2(e)                   /* nodebug */
+#define ID(e)  /* nodebug */
+#define ID2(e) /* nodebug */
 #else
-#define ID(e)        e
-#define ID2(e)     /*  e */
+#define ID(e) e
+#define ID2(e) /*  e */
 #endif
-#define IS(e)                   /* nodebug */
+#define IS(e) /* nodebug */
 
 #ifdef __GNUC__
-#define LOG(a...)               /* nodebug */
-#define GLOG(g,a...)            /* nodebug */
-#else    /* !__GNUC__ */
-#define LOG         VoidNoGCCMSG
-#define GLOG        VoidNoGCCGMSG
-#endif   /* __GNUC__ */
+#define LOG(a...)     /* nodebug */
+#define GLOG(g, a...) /* nodebug */
+#else                 /* !__GNUC__ */
+#define LOG VoidNoGCCMSG
+#define GLOG VoidNoGCCGMSG
+#endif /* __GNUC__ */
 
-#endif   /* DEBUG */
+#endif /* DEBUG */
 
 /********************************************************
  * SAFE Only section: Code in nanasssert.c
@@ -248,19 +297,15 @@ void VoidNoGCCGMSG(int32_t g, const char *format, ...);
 #ifdef __GNUC__
 #ifdef SAFE
 #define TRACE nanassertTRACE
-void nanassertTRACE(const char *envvar,
-                    const char *format,
-                    ...);
+void nanassertTRACE(const char *envvar, const char *format, ...);
 #else
-#define TRACE(a...)             /* nothing */
+#define TRACE(a...) /* nothing */
 #endif
-#else    /* !__GNUC__ */
+#else /* !__GNUC__ */
 #define TRACE nanassertTRACE
-void nanassertTRACE(const char *envvar,
-                    const char *format,
-                    ...);
+void nanassertTRACE(const char *envvar, const char *format, ...);
 
 /* in nanassert.c there is a null function for non gcc */
-#endif   /* __GNUC__ */
+#endif /* __GNUC__ */
 
-#endif   /* _NANASSERT_H_ */
+#endif /* _NANASSERT_H_ */

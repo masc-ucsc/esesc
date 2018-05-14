@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
 
@@ -23,11 +23,11 @@
    Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <math.h>
 
 #include "GStats.h"
 #include "Report.h"
@@ -35,23 +35,20 @@
 
 /*********************** GStats */
 
-GStats::Container *GStats::store=0;
+GStats::Container *GStats::store = 0;
 
 GStats::GStats()
-  :name(NULL)
-{
-  if (store==0)
+    : name(NULL) {
+  if(store == 0)
     store = new Container;
 }
 
-GStats::~GStats() 
-{
+GStats::~GStats() {
   unsubscribe();
   free(name);
 }
 
-char *GStats::getText(const char *format, va_list ap)
-{
+char *GStats::getText(const char *format, va_list ap) {
   char strid[1024];
 
   vsprintf(strid, format, ap);
@@ -59,31 +56,28 @@ char *GStats::getText(const char *format, va_list ap)
   return strdup(strid);
 }
 
-void GStats::subscribe() 
-{
+void GStats::subscribe() {
 
-  I(strcmp(getName(),"")!=0);
+  I(strcmp(getName(), "") != 0);
 
   if((*store).find(getName()) != (*store).end()) {
-    MSG("ERROR: gstats is added twice with name [%s]. Use another name",getName());
+    MSG("ERROR: gstats is added twice with name [%s]. Use another name", getName());
     I(0);
   }
 
   (*store)[getName()] = this;
 }
 
-void GStats::unsubscribe() 
-{
+void GStats::unsubscribe() {
   I(name);
 
   ContainerIter it = (*store).find(name);
-  if( it != (*store).end()) {
+  if(it != (*store).end()) {
     (*store).erase(it);
   }
 }
 
-void GStats::report(const char *str)
-{
+void GStats::report(const char *str) {
   Report::field("#BEGIN GStats::report %s", str);
 
   for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
@@ -94,11 +88,9 @@ void GStats::report(const char *str)
 }
 
 void GStats::flushValue() {
-
 }
 
-void GStats::flush()
-{
+void GStats::flush() {
   for(ContainerIter it = (*store).begin(); it != (*store).end(); it++) {
     it->second->flushValue();
   }
@@ -107,32 +99,29 @@ void GStats::flush()
 GStats *GStats::getRef(const char *str) {
 
   ContainerIter it = (*store).find(str);
-  if( it != (*store).end())
+  if(it != (*store).end())
     return it->second;
 
   return 0;
 }
 
-
-
 /*********************** GStatsCntr */
 
-GStatsCntr::GStatsCntr(const char *format,...)
-{
-  I(format!=0);      // Mandatory to pass a description
+GStatsCntr::GStatsCntr(const char *format, ...) {
+  I(format != 0);    // Mandatory to pass a description
   I(format[0] != 0); // Empty string not valid
 
-  char *str;
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
   str = getText(format, ap);
   va_end(ap);
 
-  data    = 0;
+  data = 0;
 
   name = str;
-  I(*name!=0);
+  I(*name != 0);
   subscribe();
 }
 
@@ -148,17 +137,14 @@ int64_t GStatsCntr::getSamples() const {
   return (int64_t)data;
 }
 
-void GStatsCntr::flushValue()
-{
+void GStatsCntr::flushValue() {
   data = 0;
 }
 
-
 /*********************** GStatsAvg */
 
-GStatsAvg::GStatsAvg(const char *format,...)
-{
-  char *str;
+GStatsAvg::GStatsAvg(const char *format, ...) {
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
@@ -172,18 +158,16 @@ GStatsAvg::GStatsAvg(const char *format,...)
   subscribe();
 }
 
-double GStatsAvg::getDouble() const
-{
-  return ((double)data)/nData;
+double GStatsAvg::getDouble() const {
+  return ((double)data) / nData;
 }
 
 void GStatsAvg::sample(const double v, bool en) {
-  data  += en ? v : 0;
+  data += en ? v : 0;
   nData += en ? 1 : 0;
 }
 
-void GStatsAvg::reportValue() const
-{
+void GStatsAvg::reportValue() const {
   Report::field("%s:n=%lld::v=%f", name, nData, getDouble()); // n first for power
 }
 
@@ -191,17 +175,15 @@ int64_t GStatsAvg::getSamples() const {
   return nData;
 }
 
-void GStatsAvg::flushValue()
-{
-  data = 0;
+void GStatsAvg::flushValue() {
+  data  = 0;
   nData = 0;
 }
 
 /*********************** GStatsMax */
 
-GStatsMax::GStatsMax(const char *format,...)
-{
-  char *str;
+GStatsMax::GStatsMax(const char *format, ...) {
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
@@ -211,40 +193,37 @@ GStatsMax::GStatsMax(const char *format,...)
   maxValue = 0;
   nData    = 0;
 
-  name     = str;
+  name = str;
 
   subscribe();
 }
 
-void GStatsMax::reportValue() const
-{
+void GStatsMax::reportValue() const {
   Report::field("%s:max=%f:n=%lld", name, maxValue, nData);
 }
 
-void GStatsMax::sample(const double v, bool en) 
-{
-  if (!en)
+void GStatsMax::sample(const double v, bool en) {
+  if(!en)
     return;
   maxValue = v > maxValue ? v : maxValue;
   nData++;
 }
 
-int64_t GStatsMax::getSamples() const 
-{
+int64_t GStatsMax::getSamples() const {
   return nData;
 }
 
-void GStatsMax::flushValue()
-{
+void GStatsMax::flushValue() {
   maxValue = 0;
-  nData = 0;
+  nData    = 0;
 }
 
 /*********************** GStatsHist */
 
-GStatsHist::GStatsHist(const char *format,...) : numSample(0), cumulative(0)
-{
-  char *str;
+GStatsHist::GStatsHist(const char *format, ...)
+    : numSample(0)
+    , cumulative(0) {
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
@@ -258,45 +237,41 @@ GStatsHist::GStatsHist(const char *format,...) : numSample(0), cumulative(0)
   subscribe();
 }
 
-void GStatsHist::reportValue() const
-{
+void GStatsHist::reportValue() const {
   I(H.empty()); // call stop before
-    
+
   int32_t maxKey = 0;
 
-  for(Histogram::const_iterator it=H.begin();it!=H.end();it++) {
-    Report::field("%s(%d)=%f",name,it->first,it->second);
+  for(Histogram::const_iterator it = H.begin(); it != H.end(); it++) {
+    Report::field("%s(%d)=%f", name, it->first, it->second);
     if(it->first > maxKey)
       maxKey = it->first;
   }
   long double div = cumulative; // cummulative has 64bits (double has 54bits mantisa)
   div /= numSample;
 
-  Report::field("%s:max=%d" ,name,maxKey);
-  Report::field("%s:v=%f"    ,name,(double)div);
-  Report::field("%s:n=%f"   ,name,numSample);
+  Report::field("%s:max=%d", name, maxKey);
+  Report::field("%s:v=%f", name, (double)div);
+  Report::field("%s:n=%f", name, numSample);
 }
 
-void GStatsHist::sample(bool enable, int32_t key, double weight)
-{
+void GStatsHist::sample(bool enable, int32_t key, double weight) {
   if(enable) {
-    if(H.find(key)==H.end())
-      H[key]=0;
+    if(H.find(key) == H.end())
+      H[key] = 0;
 
-    H[key]+=weight;
+    H[key] += weight;
 
     numSample += weight;
     cumulative += weight * key;
   }
 }
 
-int64_t GStatsHist::getSamples() const 
-{
+int64_t GStatsHist::getSamples() const {
   return static_cast<int64_t>(numSample);
 }
 
-void GStatsHist::flushValue()
-{
+void GStatsHist::flushValue() {
   H.clear();
 
   numSample  = 0;

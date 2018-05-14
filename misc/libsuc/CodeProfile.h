@@ -9,16 +9,16 @@ private:
   class ProfEntry {
   public:
     ProfEntry() {
-      n   = 0;
-      sum_cpi = 0;
-      sum_wt  = 0;
-      sum_et  = 0;
-      sum_flush  = 0;
+      n         = 0;
+      sum_cpi   = 0;
+      sum_wt    = 0;
+      sum_et    = 0;
+      sum_flush = 0;
     }
-    double n;
-    double sum_cpi;
-    double sum_wt;
-    double sum_et;
+    double   n;
+    double   sum_cpi;
+    double   sum_wt;
+    double   sum_et;
     uint64_t sum_flush;
     uint64_t sum_prefetch;
   };
@@ -33,7 +33,7 @@ private:
 
 protected:
 public:
-  CodeProfile(const char *format,...);
+  CodeProfile(const char *format, ...);
 
   void sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch);
 

@@ -1,10 +1,10 @@
 /* License & includes {{{1 */
 // Contributed by David Munday
-//                Jose Renau                  
+//                Jose Renau
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -38,33 +38,29 @@
 #define GXBAR_H
 
 #include "GStats.h"
-#include "Port.h"
-#include "MemRequest.h"
 #include "MemObj.h"
+#include "MemRequest.h"
+#include "Port.h"
 /* }}} */
 
-class GXBar: public MemObj {
+class GXBar : public MemObj {
 
-  protected:
-    enum BypassMode {
-      bypass_none,
-      bypass_global,
-      bypass_shared
-    } bypassMode;
+protected:
+  enum BypassMode { bypass_none, bypass_global, bypass_shared } bypassMode;
 
-    virtual uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const{
-      uint32_t numLineBits = log2i(LineSize);
+  virtual uint32_t addrHash(AddrType addr, uint32_t LineSize, uint32_t Modfactor, uint32_t numLowerBanks) const {
+    uint32_t numLineBits = log2i(LineSize);
 
-      addr = addr >> numLineBits;
+    addr = addr >> numLineBits;
 
-      return(addr&(numLowerBanks-1));
-    }
+    return (addr & (numLowerBanks - 1));
+  }
 
-    static uint32_t Xbar_unXbar_balance;
+  static uint32_t Xbar_unXbar_balance;
 
-  public:
-    GXBar(const char *device_descr_section, const char *device_name = NULL);
-    ~GXBar() {}
-
+public:
+  GXBar(const char *device_descr_section, const char *device_name = NULL);
+  ~GXBar() {
+  }
 };
 #endif

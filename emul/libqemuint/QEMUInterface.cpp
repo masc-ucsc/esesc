@@ -27,40 +27,40 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "Instruction.h"
 #include "Snippets.h"
 
+#include "EmuSampler.h"
 #include "QEMUInterface.h"
 #include "QEMUReader.h"
-#include "EmuSampler.h"
 
 EmuSampler *qsamplerlist[128];
-//EmuSampler *qsampler = 0;
-bool* globalFlowStatus = 0;
+// EmuSampler *qsampler = 0;
+bool *globalFlowStatus = 0;
 
 extern "C" void QEMUReader_goto_sleep(void *env);
 extern "C" void QEMUReader_wakeup_from_sleep(void *env);
-extern "C" int qemuesesc_main(int argc, char **argv, char **envp);
+extern "C" int  qemuesesc_main(int argc, char **argv, char **envp);
 
 extern "C" void *qemuesesc_main_bootstrap(void *threadargs) {
 
   static bool qemuStarted = false;
-  if (!qemuStarted) {
-    qemuStarted = true;
-    QEMUArgs *qdata = (struct QEMUArgs *) threadargs;
+  if(!qemuStarted) {
+    qemuStarted     = true;
+    QEMUArgs *qdata = (struct QEMUArgs *)threadargs;
 
     int    qargc = qdata->qargc;
     char **qargv = qdata->qargv;
 
     MSG("Starting qemu with");
     for(int i = 0; i < qargc; i++)
-      MSG("arg[%d] is: %s",i,qargv[i]);
+      MSG("arg[%d] is: %s", i, qargv[i]);
 
-    qemuesesc_main(qargc,qargv,NULL);
+    qemuesesc_main(qargc, qargv, NULL);
 
     MSG("qemu done");
 
     QEMUReader_finish(0);
 
     pthread_exit(0);
-  }else{
+  } else {
     MSG("QEMU already started! Ignoring the new start.");
   }
 
@@ -76,78 +76,74 @@ extern "C" uint64_t QEMUReader_get_time() {
 }
 
 extern "C" uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t data, uint16_t fid, uint16_t src1, uint16_t dest) {
-  I(fid<128); // qsampler statically sized to 128 at most
+  I(fid < 128); // qsampler statically sized to 128 at most
 
-  //I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
+  // I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
 
   // MSG("pc=%llx addr=%llx op=%d cpu=%d src:%d dst:%d",pc,addr,iLALU_LD,fid,src1,dest);
-  uint64_t res = qsamplerlist[fid]->queue(pc,addr,data,fid,iLALU_LD,src1, 0, dest, LREG_InvalidOutput);
+  uint64_t res = qsamplerlist[fid]->queue(pc, addr, data, fid, iLALU_LD, src1, 0, dest, LREG_InvalidOutput);
   return res;
 }
-extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest) {
-  I(fid<128); // qsampler statically sized to 128 at most
+extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2,
+                                          uint16_t dest) {
+  I(fid < 128); // qsampler statically sized to 128 at most
 
-  //I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
+  // I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
 
-  //MSG("pc=%llx addr=%llx op=%d cpu=%d",pc,addr,op,fid);
-  uint64_t res = qsamplerlist[fid]->queue(pc,addr,0,fid,op,src1, src2, dest, LREG_InvalidOutput);
+  // MSG("pc=%llx addr=%llx op=%d cpu=%d",pc,addr,op,fid);
+  uint64_t res = qsamplerlist[fid]->queue(pc, addr, 0, fid, op, src1, src2, dest, LREG_InvalidOutput);
   return res;
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid) {
-  MSG("QEMUReader_finish(%d)",fid);
+  MSG("QEMUReader_finish(%d)", fid);
   qsamplerlist[fid]->stop();
   qsamplerlist[fid]->pauseThread(fid);
   qsamplerlist[fid]->terminate();
 }
 
 extern "C" void QEMUReader_finish_thread(uint32_t fid) {
-  MSG("QEMUReader_finish_thread(%d)",fid);
+  MSG("QEMUReader_finish_thread(%d)", fid);
   qsamplerlist[fid]->stop();
   qsamplerlist[fid]->pauseThread(fid);
   qsamplerlist[0]->freeFid(fid);
 }
 
-extern "C" void QEMUReader_start_roi(uint32_t fid)
-{
+extern "C" void QEMUReader_start_roi(uint32_t fid) {
   qsamplerlist[fid]->start_roi();
 }
 
-extern "C" void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid)
-{
+extern "C" void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid) {
   qsamplerlist[fid]->syscall(num, usecs, fid);
 }
 
 extern "C" FlowID QEMUReader_resumeThreadGPU(FlowID uid) {
-  return(qsamplerlist[uid]->resumeThread(uid));
+  return (qsamplerlist[uid]->resumeThread(uid));
 }
 
-extern "C" FlowID QEMUReader_cpu_start(uint32_t cpuid) { 
-  qsamplerlist[0]->setFid(cpuid); 
-  //MSG("cpu_start %d",cpuid);
-  return(qsamplerlist[cpuid]->resumeThread(cpuid, cpuid));
+extern "C" FlowID QEMUReader_cpu_start(uint32_t cpuid) {
+  qsamplerlist[0]->setFid(cpuid);
+  // MSG("cpu_start %d",cpuid);
+  return (qsamplerlist[cpuid]->resumeThread(cpuid, cpuid));
 }
-extern "C" FlowID QEMUReader_cpu_stop(uint32_t cpuid) { 
-  //MSG("cpu_stop %d",cpuid);
+extern "C" FlowID QEMUReader_cpu_stop(uint32_t cpuid) {
+  // MSG("cpu_stop %d",cpuid);
   qsamplerlist[cpuid]->pauseThread(cpuid);
 }
 
-extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid) { 
-  uint32_t fid = qsamplerlist[0]->getFid(last_fid); 
-  MSG("resume %d -> %d",last_fid,fid);
-  return(qsamplerlist[fid]->resumeThread(uid, fid));
+extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid) {
+  uint32_t fid = qsamplerlist[0]->getFid(last_fid);
+  MSG("resume %d -> %d", last_fid, fid);
+  return (qsamplerlist[fid]->resumeThread(uid, fid));
 }
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
   qsamplerlist[fid]->pauseThread(fid);
   qsamplerlist[0]->freeFid(fid);
 }
 
-extern "C" void QEMUReader_setFlowCmd(bool* flowStatus) {
-
+extern "C" void QEMUReader_setFlowCmd(bool *flowStatus) {
 }
 
-extern "C" int32_t QEMUReader_setnoStats(FlowID fid){
+extern "C" int32_t QEMUReader_setnoStats(FlowID fid) {
   return 0;
 }
-
-

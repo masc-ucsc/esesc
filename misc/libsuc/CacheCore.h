@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -41,40 +41,39 @@
 
 #include "GStats.h"
 
-#include "nanassert.h"
 #include "Snippets.h"
+#include "nanassert.h"
 
 //-------------------------------------------------------------
-#define RRIP_M 4         // max value = 2^M   | 4 | 8   | 16   |
+#define RRIP_M 4 // max value = 2^M   | 4 | 8   | 16   |
 //-------------------------------------------------------------
-#define DISTANT_REF 3    // 2^M - 1           | 3 | 7   | 15  |
-#define IMM_REF     1    // nearimm<imm<dist  | 1 | 1-6 | 1-14|
-#define NEAR_IMM_REF  0  // 0                 | 0 | 0   | 0   |
-#define LONG_REF 1       // 2^M - 2           | 1 | 6   | 14  |
+#define DISTANT_REF 3  // 2^M - 1           | 3 | 7   | 15  |
+#define IMM_REF 1      // nearimm<imm<dist  | 1 | 1-6 | 1-14|
+#define NEAR_IMM_REF 0 // 0                 | 0 | 0   | 0   |
+#define LONG_REF 1     // 2^M - 2           | 1 | 6   | 14  |
 //-------------------------------------------------------------
 
-enum    ReplacementPolicy  {LRU, LRUp, RANDOM, SHIP, PAR, UAR, HAWKEYE};  //SHIP is RRIP with SHIP (ISCA 2010)
+enum ReplacementPolicy { LRU, LRUp, RANDOM, SHIP, PAR, UAR, HAWKEYE }; // SHIP is RRIP with SHIP (ISCA 2010)
 
-#define RRIP_MAX  15
+#define RRIP_MAX 15
 #define RRIP_PREF_MAX 2
 
-template<class State, class Addr_t>
-  class CacheGeneric {
-  private:
-  static const int32_t STR_BUF_SIZE=1024;
- 
-  protected:
-  const uint32_t  size;
-  const uint32_t  lineSize;
-  const uint32_t  addrUnit; //Addressable unit: for most caches = 1 byte
-  const uint32_t  assoc;
-  const uint32_t  log2Assoc;
-  const uint64_t  log2AddrLs;
-  const uint64_t  maskAssoc;
-  const uint32_t  sets;
-  const uint32_t  maskSets;
-  const uint32_t  log2Sets;
-  const uint32_t  numLines;
+template <class State, class Addr_t> class CacheGeneric {
+private:
+  static const int32_t STR_BUF_SIZE = 1024;
+
+protected:
+  const uint32_t size;
+  const uint32_t lineSize;
+  const uint32_t addrUnit; // Addressable unit: for most caches = 1 byte
+  const uint32_t assoc;
+  const uint32_t log2Assoc;
+  const uint64_t log2AddrLs;
+  const uint64_t maskAssoc;
+  const uint32_t sets;
+  const uint32_t maskSets;
+  const uint32_t log2Sets;
+  const uint32_t numLines;
 
   const bool xorIndex;
 
@@ -97,12 +96,13 @@ template<class State, class Addr_t>
   GStatsCntr *trackerDown3n;
   GStatsCntr *trackerDown4n;
 
-  public:
+public:
   class CacheLine : public State {
-    public:
-    bool recent; // used by skew cache
-    uint8_t  rrip;   // used by hawkeye and PAR
-    CacheLine(int32_t lineSize) : State(lineSize) {
+  public:
+    bool    recent; // used by skew cache
+    uint8_t rrip;   // used by hawkeye and PAR
+    CacheLine(int32_t lineSize)
+        : State(lineSize) {
     }
     // Pure virtual class defines interface
     //
@@ -111,47 +111,49 @@ template<class State, class Addr_t>
     // Addr_t getTag() const;
     // void setTag(Addr_t a);
     // void clearTag();
-    // 
+    //
     //
     // bool isValid() const;
     // void invalidate();
   };
 
   // findLine returns a cache line that has tag == addr, NULL otherwise
-  virtual CacheLine *findLineNoEffectPrivate(Addr_t addr)=0;
-  virtual CacheLine *findLinePrivate(Addr_t addr, Addr_t pc)=0;
-  protected:
+  virtual CacheLine *findLineNoEffectPrivate(Addr_t addr)    = 0;
+  virtual CacheLine *findLinePrivate(Addr_t addr, Addr_t pc) = 0;
 
+protected:
   CacheGeneric(uint32_t s, uint32_t a, uint32_t b, uint32_t u, bool xr)
-  : size(s)
-  ,lineSize(b)
-  ,addrUnit(u)
-  ,assoc(a)
-  ,log2Assoc(log2i(a))
-  ,log2AddrLs(log2i(b/u))
-  ,maskAssoc(a-1)
-  ,sets((s/b)/a)
-  ,maskSets(sets-1)
-  ,log2Sets(log2i(sets))
-  ,numLines(s/b)
-  ,xorIndex(xr)
-  {
+      : size(s)
+      , lineSize(b)
+      , addrUnit(u)
+      , assoc(a)
+      , log2Assoc(log2i(a))
+      , log2AddrLs(log2i(b / u))
+      , maskAssoc(a - 1)
+      , sets((s / b) / a)
+      , maskSets(sets - 1)
+      , log2Sets(log2i(sets))
+      , numLines(s / b)
+      , xorIndex(xr) {
     // TODO : assoc and sets must be a power of 2
   }
 
-  virtual ~CacheGeneric() {}
+  virtual ~CacheGeneric() {
+  }
 
   void createStats(const char *section, const char *name);
 
-  public:
+public:
   // Do not use this interface, use other create
-  static CacheGeneric<State, Addr_t> *create(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool skew, bool xr, uint32_t shct_size = 13); //13 is the optimal size specified in the paper
+  static CacheGeneric<State, Addr_t> *create(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr,
+                                             bool skew, bool xr,
+                                             uint32_t shct_size = 13); // 13 is the optimal size specified in the paper
   static CacheGeneric<State, Addr_t> *create(const char *section, const char *append, const char *format, ...);
-  void destroy() {
+  void                                destroy() {
     delete this;
   }
 
-  virtual CacheLine *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch)=0;
+  virtual CacheLine *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch) = 0;
 
   // TO DELETE if flush from Cache.cpp is cleared.  At least it should have a
   // cleaner interface so that Cache.cpp does not touch the internals.
@@ -159,47 +161,47 @@ template<class State, class Addr_t>
   // Access the line directly without checking TAG
   virtual CacheLine *getPLine(uint32_t l) = 0;
 
-  //ALL USERS OF THIS CLASS PLEASE READ:
+  // ALL USERS OF THIS CLASS PLEASE READ:
   //
-  //readLine and writeLine MUST have the same functionality as findLine. The only
-  //difference is that readLine and writeLine update power consumption
-  //statistics. So, only use these functions when you want to model a physical
-  //read or write operation.
+  // readLine and writeLine MUST have the same functionality as findLine. The only
+  // difference is that readLine and writeLine update power consumption
+  // statistics. So, only use these functions when you want to model a physical
+  // read or write operation.
 
   // Use this is for debug checks. Otherwise, a bad interface can be detected
 
   CacheLine *findLineDebug(Addr_t addr, Addr_t pc = 0) {
-    IS(goodInterface=true);
+    IS(goodInterface = true);
     CacheLine *line = findLine(addr);
-    IS(goodInterface=false);
+    IS(goodInterface = false);
     return line;
   }
 
   CacheLine *findLineNoEffect(Addr_t addr, Addr_t pc = 0) {
-    IS(goodInterface=true);
+    IS(goodInterface = true);
     CacheLine *line = findLineNoEffectPrivate(addr);
-    IS(goodInterface=false);
+    IS(goodInterface = false);
     return line;
   }
 
   CacheLine *findLine(Addr_t addr, Addr_t pc = 0) {
-    return findLinePrivate(addr,pc);
+    return findLinePrivate(addr, pc);
   }
 
   CacheLine *readLine(Addr_t addr, Addr_t pc = 0) {
 
-    IS(goodInterface=true);
-    CacheLine *line = findLine(addr,pc);
-    IS(goodInterface=false);
+    IS(goodInterface = true);
+    CacheLine *line = findLine(addr, pc);
+    IS(goodInterface = false);
 
     return line;
   }
 
   CacheLine *writeLine(Addr_t addr, Addr_t pc = 0) {
 
-    IS(goodInterface=true);
+    IS(goodInterface = true);
     CacheLine *line = findLine(addr, pc);
-    IS(goodInterface=false);
+    IS(goodInterface = false);
 
     return line;
   }
@@ -207,9 +209,9 @@ template<class State, class Addr_t>
   CacheLine *fillLine(Addr_t addr, Addr_t pc) {
     CacheLine *l = findLine2Replace(addr, pc, false);
     I(l);
-    
+
     l->setTag(calcTag(addr));
-    
+
     return l;
   }
 
@@ -219,9 +221,9 @@ template<class State, class Addr_t>
     rplcAddr = 0;
 
     Addr_t newTag = calcTag(addr);
-    if (l->isValid()) {
+    if(l->isValid()) {
       Addr_t curTag = l->getTag();
-      if (curTag != newTag) {
+      if(curTag != newTag) {
         rplcAddr = calcAddr4Tag(curTag);
       }
     }
@@ -235,55 +237,73 @@ template<class State, class Addr_t>
     CacheLine *l = findLine2Replace(addr, pc, prefetch);
     I(l);
     rplcAddr = 0;
-    
+
     Addr_t newTag = calcTag(addr);
-    if (l->isValid()) {
+    if(l->isValid()) {
       Addr_t curTag = l->getTag();
-      if (curTag != newTag) {
+      if(curTag != newTag) {
         rplcAddr = calcAddr4Tag(curTag);
       }
     }
-    
+
     l->setTag(newTag);
-    
+
     return l;
   }
 
-  uint32_t  getLineSize() const   { return lineSize;    }
-  uint32_t  getAssoc() const      { return assoc;       }
-  uint32_t  getLog2AddrLs() const { return log2AddrLs;  }
-  uint32_t  getLog2Assoc() const  { return log2Assoc;   }
-  uint32_t  getMaskSets() const   { return maskSets;    }
-  uint32_t  getNumLines() const   { return numLines;    }
-  uint32_t  getNumSets() const    { return sets;        }
+  uint32_t getLineSize() const {
+    return lineSize;
+  }
+  uint32_t getAssoc() const {
+    return assoc;
+  }
+  uint32_t getLog2AddrLs() const {
+    return log2AddrLs;
+  }
+  uint32_t getLog2Assoc() const {
+    return log2Assoc;
+  }
+  uint32_t getMaskSets() const {
+    return maskSets;
+  }
+  uint32_t getNumLines() const {
+    return numLines;
+  }
+  uint32_t getNumSets() const {
+    return sets;
+  }
 
-  Addr_t calcTag(Addr_t addr)          const { return (addr >> log2AddrLs);              }
+  Addr_t calcTag(Addr_t addr) const {
+    return (addr >> log2AddrLs);
+  }
 
-  //Addr_t calcSet4Tag(Addr_t tag)     const { return (tag & maskSets);                  }
-  //Addr_t calcSet4Addr(Addr_t addr)   const { return calcSet4Tag(calcTag(addr));        }
+  // Addr_t calcSet4Tag(Addr_t tag)     const { return (tag & maskSets);                  }
+  // Addr_t calcSet4Addr(Addr_t addr)   const { return calcSet4Tag(calcTag(addr));        }
 
-  //Addr_t calcIndex4Set(Addr_t set) const { return (set << log2Assoc);                }
-  //Addr_t calcIndex4Tag(Addr_t tag) const { return calcIndex4Set(calcSet4Tag(tag));   }
-  //uint32_t calcIndex4Addr(Addr_t addr) const { return calcIndex4Set(calcSet4Addr(addr)); }
-  Addr_t calcIndex4Tag(Addr_t tag) const { 
+  // Addr_t calcIndex4Set(Addr_t set) const { return (set << log2Assoc);                }
+  // Addr_t calcIndex4Tag(Addr_t tag) const { return calcIndex4Set(calcSet4Tag(tag));   }
+  // uint32_t calcIndex4Addr(Addr_t addr) const { return calcIndex4Set(calcSet4Addr(addr)); }
+  Addr_t calcIndex4Tag(Addr_t tag) const {
     Addr_t set;
-    if (xorIndex) {
-      //tag        = tag ^ (tag>>log2Sets);
-      tag        = tag ^ (tag>>5) ^ (tag>>log2Sets);
-      //Addr_t odd = (tag&1) | ((tag>>2) & 1) | ((tag>>4)&1) | ((tag>>6)&1) | ((tag>>8)&1) | ((tag>>10)&1) | ((tag>>12)&1) | ((tag>>14)&1) | ((tag>>16)&1) | ((tag>>18)&1) | ((tag>>20)&1); // over 20 bit index???
-      set   = tag & maskSets;
-    }else{
-      set   = tag & maskSets;
+    if(xorIndex) {
+      // tag        = tag ^ (tag>>log2Sets);
+      tag = tag ^ (tag >> 5) ^ (tag >> log2Sets);
+      // Addr_t odd = (tag&1) | ((tag>>2) & 1) | ((tag>>4)&1) | ((tag>>6)&1) | ((tag>>8)&1) | ((tag>>10)&1) | ((tag>>12)&1) |
+      // ((tag>>14)&1) | ((tag>>16)&1) | ((tag>>18)&1) | ((tag>>20)&1); // over 20 bit index???
+      set = tag & maskSets;
+    } else {
+      set = tag & maskSets;
     }
     Addr_t index = set << log2Assoc;
     return index;
   }
 
-  Addr_t calcAddr4Tag(Addr_t tag)      const { return (tag << log2AddrLs);               }
+  Addr_t calcAddr4Tag(Addr_t tag) const {
+    return (tag << log2AddrLs);
+  }
 };
 
-template<class State, class Addr_t>
-class HawkCache : public CacheGeneric<State, Addr_t> {
+template <class State, class Addr_t> class HawkCache : public CacheGeneric<State, Addr_t> {
   using CacheGeneric<State, Addr_t>::numLines;
   using CacheGeneric<State, Addr_t>::assoc;
   using CacheGeneric<State, Addr_t>::maskAssoc;
@@ -294,10 +314,9 @@ public:
   typedef typename CacheGeneric<State, Addr_t>::CacheLine Line;
 
 protected:
-
-  Line *mem;
-  Line **content;
-  uint16_t irand;
+  Line *            mem;
+  Line **           content;
+  uint16_t          irand;
   ReplacementPolicy policy;
   // hawkeye
   std::vector<uint8_t> prediction;
@@ -307,19 +326,19 @@ protected:
   uint32_t             usageIntervalMask;
 
   std::vector<uint8_t> occupancyVector;
-  int                 trackedAddresses_ptr;
-  std::vector<Addr_t> trackedAddresses;
+  int                  trackedAddresses_ptr;
+  std::vector<Addr_t>  trackedAddresses;
 
-  int      occVectIterator;
+  int occVectIterator;
 
   int getUsageIntervalHash(Addr_t addr) const {
-    addr = addr>>CacheGeneric<State, Addr_t>::log2AddrLs; // Drop lower bits (line size)
+    addr = addr >> CacheGeneric<State, Addr_t>::log2AddrLs; // Drop lower bits (line size)
     addr = (addr >> 5) ^ (addr);
-    return addr & (numLines-1);
+    return addr & (numLines - 1);
   }
 
   int getPredictionHash(Addr_t pc) const {
-    pc = pc>>2; // psudo-PC works, no need lower 2 bit
+    pc = pc >> 2; // psudo-PC works, no need lower 2 bit
 
     pc = (pc >> 17) ^ (pc);
 
@@ -330,25 +349,25 @@ protected:
   HawkCache(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
   Line *findLineNoEffectPrivate(Addr_t addr);
-  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0 );
+  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0);
+
 public:
   virtual ~HawkCache() {
-    delete [] content;
-    delete [] mem;
+    delete[] content;
+    delete[] mem;
   }
 
   // TODO: do an iterator. not this junk!!
   Line *getPLine(uint32_t l) {
     // Lines [l..l+assoc] belong to the same set
-    I(l<numLines);
+    I(l < numLines);
     return content[l];
   }
 
   Line *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch);
 };
 
-template<class State, class Addr_t>
-class CacheAssoc : public CacheGeneric<State, Addr_t> {
+template <class State, class Addr_t> class CacheAssoc : public CacheGeneric<State, Addr_t> {
   using CacheGeneric<State, Addr_t>::numLines;
   using CacheGeneric<State, Addr_t>::assoc;
   using CacheGeneric<State, Addr_t>::maskAssoc;
@@ -374,10 +393,9 @@ public:
   typedef typename CacheGeneric<State, Addr_t>::CacheLine Line;
 
 protected:
- 
-  Line *mem;
-  Line **content;
-  uint16_t irand;
+  Line *            mem;
+  Line **           content;
+  uint16_t          irand;
   ReplacementPolicy policy;
 
   struct Tracker {
@@ -385,20 +403,20 @@ protected:
     int conf;
     Tracker() {
       demand_trend = -1;
-      conf = 0;
+      conf         = 0;
     }
     void done(int nDemand) {
-      if (demand_trend<0) {
+      if(demand_trend < 0) {
         demand_trend = nDemand;
-      }else if (demand_trend == nDemand) {
-        if (conf<15)
+      } else if(demand_trend == nDemand) {
+        if(conf < 15)
           conf++;
-      }else{
-        if (conf>0 && (demand_trend>>1) != (nDemand>>1)) {
+      } else {
+        if(conf > 0 && (demand_trend >> 1) != (nDemand >> 1)) {
           conf--;
         }
-        demand_trend = (nDemand+demand_trend)/2;
-        if (nDemand && nDemand > demand_trend)
+        demand_trend = (nDemand + demand_trend) / 2;
+        if(nDemand && nDemand > demand_trend)
           demand_trend++;
       }
     }
@@ -410,22 +428,22 @@ protected:
   CacheAssoc(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
   void adjustRRIP(Line **theSet, Line **setEnd, Line *change_line, uint16_t next_rrip) {
-    if ((change_line)->rrip == next_rrip)
+    if((change_line)->rrip == next_rrip)
       return;
 
-    if ((change_line)->rrip > next_rrip) {
+    if((change_line)->rrip > next_rrip) {
       change_line->rrip = next_rrip;
-      Line **l = setEnd -1;
+      Line **l          = setEnd - 1;
       while(l >= theSet) {
-        if ((*l)->rrip<change_line->rrip && (*l)->rrip >= next_rrip)
+        if((*l)->rrip < change_line->rrip && (*l)->rrip >= next_rrip)
           (*l)->rrip++;
         l--;
       }
-    }else{
+    } else {
       change_line->rrip = next_rrip;
-      Line **l = setEnd -1;
+      Line **l          = setEnd - 1;
       while(l >= theSet) {
-        if ((*l)->rrip>change_line->rrip && (*l)->rrip <= next_rrip)
+        if((*l)->rrip > change_line->rrip && (*l)->rrip <= next_rrip)
           (*l)->rrip--;
         l--;
       }
@@ -433,25 +451,25 @@ protected:
   }
 
   Line *findLineNoEffectPrivate(Addr_t addr);
-  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0 );
+  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0);
+
 public:
   virtual ~CacheAssoc() {
-    delete [] content;
-    delete [] mem;
+    delete[] content;
+    delete[] mem;
   }
 
   // TODO: do an iterator. not this junk!!
   Line *getPLine(uint32_t l) {
     // Lines [l..l+assoc] belong to the same set
-    I(l<numLines);
+    I(l < numLines);
     return content[l];
   }
 
   Line *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch);
 };
 
-template<class State, class Addr_t>
-class CacheDM : public CacheGeneric<State, Addr_t> {
+template <class State, class Addr_t> class CacheDM : public CacheGeneric<State, Addr_t> {
   using CacheGeneric<State, Addr_t>::numLines;
   using CacheGeneric<State, Addr_t>::goodInterface;
 
@@ -460,33 +478,32 @@ public:
   typedef typename CacheGeneric<State, Addr_t>::CacheLine Line;
 
 protected:
-  
-  Line *mem;
+  Line * mem;
   Line **content;
 
   friend class CacheGeneric<State, Addr_t>;
   CacheDM(int32_t size, int32_t blksize, int32_t addrUnit, const char *pStr, bool xr);
 
   Line *findLineNoEffectPrivate(Addr_t addr);
-  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0 );
+  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0);
+
 public:
   virtual ~CacheDM() {
-    delete [] content;
-    delete [] mem;
+    delete[] content;
+    delete[] mem;
   };
 
   // TODO: do an iterator. not this junk!!
   Line *getPLine(uint32_t l) {
     // Lines [l..l+assoc] belong to the same set
-    I(l<numLines);
+    I(l < numLines);
     return content[l];
   }
 
   Line *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch);
 };
 
-template<class State, class Addr_t>
-class CacheDMSkew : public CacheGeneric<State, Addr_t> {
+template <class State, class Addr_t> class CacheDMSkew : public CacheGeneric<State, Addr_t> {
   using CacheGeneric<State, Addr_t>::numLines;
   using CacheGeneric<State, Addr_t>::goodInterface;
 
@@ -495,8 +512,7 @@ public:
   typedef typename CacheGeneric<State, Addr_t>::CacheLine Line;
 
 protected:
-  
-  Line *mem;
+  Line * mem;
   Line **content;
 
   friend class CacheGeneric<State, Addr_t>;
@@ -504,24 +520,24 @@ protected:
 
   Line *findLineNoEffectPrivate(Addr_t addr);
   Line *findLinePrivate(Addr_t addr, Addr_t pc = 0);
+
 public:
   virtual ~CacheDMSkew() {
-    delete [] content;
-    delete [] mem;
+    delete[] content;
+    delete[] mem;
   };
 
   // TODO: do an iterator. not this junk!!
   Line *getPLine(uint32_t l) {
     // Lines [l..l+assoc] belong to the same set
-    I(l<numLines);
+    I(l < numLines);
     return content[l];
   }
 
   Line *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch);
 };
 
-template<class State, class Addr_t>
-class CacheSHIP : public CacheGeneric<State, Addr_t> {
+template <class State, class Addr_t> class CacheSHIP : public CacheGeneric<State, Addr_t> {
   using CacheGeneric<State, Addr_t>::numLines;
   using CacheGeneric<State, Addr_t>::assoc;
   using CacheGeneric<State, Addr_t>::maskAssoc;
@@ -532,172 +548,221 @@ public:
   typedef typename CacheGeneric<State, Addr_t>::CacheLine Line;
 
 protected:
- 
-  Line *mem;
-  Line **content;
-  uint16_t irand;
+  Line *            mem;
+  Line **           content;
+  uint16_t          irand;
   ReplacementPolicy policy;
 
   /***** SHIP ******/
-  uint8_t *SHCT;    // (2^log2shct) entries
-  uint32_t  log2shct;
+  uint8_t *SHCT; // (2^log2shct) entries
+  uint32_t log2shct;
   /*****************/
 
   friend class CacheGeneric<State, Addr_t>;
-  CacheSHIP(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr, uint32_t shct_size = 13); //13 was the optimal size in the paper
+  CacheSHIP(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr,
+            uint32_t shct_size = 13); // 13 was the optimal size in the paper
 
   Line *findLineNoEffectPrivate(Addr_t addr);
-  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0 );
+  Line *findLinePrivate(Addr_t addr, Addr_t pc = 0);
+
 public:
   virtual ~CacheSHIP() {
-    delete [] content;
-    delete [] mem;
-    delete [] SHCT;
+    delete[] content;
+    delete[] mem;
+    delete[] SHCT;
   }
 
   // TODO: do an iterator. not this junk!!
   Line *getPLine(uint32_t l) {
     // Lines [l..l+assoc] belong to the same set
-    I(l<numLines);
+    I(l < numLines);
     return content[l];
   }
 
   Line *findLine2Replace(Addr_t addr, Addr_t pc, bool prefetch);
 };
 
-
-
-template<class Addr_t>
-class StateGenericShip {
+template <class Addr_t> class StateGenericShip {
 private:
   Addr_t tag;
-/* SHIP */  
-  uint8_t rrpv;     // One per cache line
-  Addr_t  signature;// One per cache line
-  bool    outcome;  // One per cache line
-/* **** */  
+  /* SHIP */
+  uint8_t rrpv;      // One per cache line
+  Addr_t  signature; // One per cache line
+  bool    outcome;   // One per cache line
+  /* **** */
 
 public:
   virtual ~StateGenericShip() {
     tag = 0;
   }
- 
- Addr_t getTag() const { return tag; }
- void setTag(Addr_t a) {
-   I(a);
-   tag = a; 
- }
- void clearTag() { tag = 0; initSHIP(); }
- void initialize(void *c) { 
-   clearTag(); 
- }
 
- void initSHIP(){
-   rrpv      = RRIP_M -1;
-   signature = 0;
-   outcome   = false;
- }
+  Addr_t getTag() const {
+    return tag;
+  }
+  void setTag(Addr_t a) {
+    I(a);
+    tag = a;
+  }
+  void clearTag() {
+    tag = 0;
+    initSHIP();
+  }
+  void initialize(void *c) {
+    clearTag();
+  }
 
- Addr_t getSignature() const { return signature; }
- void setSignature(Addr_t a) {
-   signature = a; 
- }
- bool getOutcome() const { return outcome; }
- void setOutcome(bool a) {
-   outcome = a; 
- }
- uint8_t getRRPV() const { return rrpv; }
+  void initSHIP() {
+    rrpv      = RRIP_M - 1;
+    signature = 0;
+    outcome   = false;
+  }
 
- void setRRPV(uint8_t a) {
-   rrpv = a; 
-   if (rrpv > (RRIP_M-1)) rrpv = RRIP_M-1;
-   if (rrpv < 0) rrpv = 0;
- }
+  Addr_t getSignature() const {
+    return signature;
+  }
+  void setSignature(Addr_t a) {
+    signature = a;
+  }
+  bool getOutcome() const {
+    return outcome;
+  }
+  void setOutcome(bool a) {
+    outcome = a;
+  }
+  uint8_t getRRPV() const {
+    return rrpv;
+  }
 
- void incRRPV() {
-   if (rrpv < (RRIP_M-1)) rrpv++;
- }
+  void setRRPV(uint8_t a) {
+    rrpv = a;
+    if(rrpv > (RRIP_M - 1))
+      rrpv = RRIP_M - 1;
+    if(rrpv < 0)
+      rrpv = 0;
+  }
 
- virtual bool isValid() const { return tag; }
+  void incRRPV() {
+    if(rrpv < (RRIP_M - 1))
+      rrpv++;
+  }
 
- virtual void invalidate() { clearTag(); }
+  virtual bool isValid() const {
+    return tag;
+  }
 
- virtual void dump(const char *str) {
- }
+  virtual void invalidate() {
+    clearTag();
+  }
+
+  virtual void dump(const char *str) {
+  }
 };
 
-template<class Addr_t>
-class StateGeneric {
+template <class Addr_t> class StateGeneric {
 private:
   Addr_t tag;
-  bool prefetch; // Line brought for prefetch, not used otherwise
+  bool   prefetch; // Line brought for prefetch, not used otherwise
 
-  Addr_t pc;     // For statistic tracking
-  Addr_t sign;
-  uint8_t   degree;
-  int nDemand;
+  Addr_t  pc; // For statistic tracking
+  Addr_t  sign;
+  uint8_t degree;
+  int     nDemand;
+
 public:
   virtual ~StateGeneric() {
     tag = 0;
   }
-  void setPC(Addr_t _pc) { pc = _pc; }
-  Addr_t getPC() const { return pc; }
-  Addr_t getSign() const { return sign; }
-  uint8_t getDegree() const { return degree; }
+  void setPC(Addr_t _pc) {
+    pc = _pc;
+  }
+  Addr_t getPC() const {
+    return pc;
+  }
+  Addr_t getSign() const {
+    return sign;
+  }
+  uint8_t getDegree() const {
+    return degree;
+  }
 
-  bool isPrefetch() const  { return prefetch;   }
+  bool isPrefetch() const {
+    return prefetch;
+  }
   void clearPrefetch(Addr_t _pc) {
     prefetch = false;
-    //pc       = _pc;
-    sign     = 0;
-    degree   = 0;
+    // pc       = _pc;
+    sign   = 0;
+    degree = 0;
   }
   void setPrefetch(Addr_t _pc, Addr_t _sign, uint8_t _degree) {
     prefetch = true;
-    //pc       = _pc;
-    sign     = _sign;
-    degree   = _degree;
+    // pc       = _pc;
+    sign   = _sign;
+    degree = _degree;
   }
- 
- Addr_t getTag() const { return tag; }
- void setTag(Addr_t a) {
-   I(a);
-   tag = a; 
+
+  Addr_t getTag() const {
+    return tag;
+  }
+  void setTag(Addr_t a) {
+    I(a);
+    tag     = a;
     nDemand = 0;
- }
-  void clearTag() { tag = 0; nDemand = 0; }
- void initialize(void *c) { 
+  }
+  void clearTag() {
+    tag     = 0;
+    nDemand = 0;
+  }
+  void initialize(void *c) {
     prefetch = false;
-   clearTag(); 
- }
+    clearTag();
+  }
 
- virtual bool isValid() const { return tag; }
+  virtual bool isValid() const {
+    return tag;
+  }
 
-  virtual void invalidate() { clearTag(); pc = 0; sign = 0; degree = 0; prefetch=false; }
+  virtual void invalidate() {
+    clearTag();
+    pc       = 0;
+    sign     = 0;
+    degree   = 0;
+    prefetch = false;
+  }
 
- virtual void dump(const char *str) {
- }
+  virtual void dump(const char *str) {
+  }
 
-  int getnDemand() const { return nDemand; }
-  void incnDemand() { nDemand++; }
+  int getnDemand() const {
+    return nDemand;
+  }
+  void incnDemand() {
+    nDemand++;
+  }
 
- Addr_t getSignature() const { return 0; }
- void setSignature(Addr_t a) {
+  Addr_t getSignature() const {
+    return 0;
+  }
+  void setSignature(Addr_t a) {
     I(0);
- }
- bool getOutcome() const { return 0; }
- void setOutcome(bool a) {
+  }
+  bool getOutcome() const {
+    return 0;
+  }
+  void setOutcome(bool a) {
     I(0);
- }
- uint8_t getRRPV() const { return 0; }
+  }
+  uint8_t getRRPV() const {
+    return 0;
+  }
 
- void setRRPV(uint8_t a) {
+  void setRRPV(uint8_t a) {
     I(0);
- }
+  }
 
- void incRRPV() {
+  void incRRPV() {
     I(0);
- }
+  }
 };
 
 #ifndef CACHECORE_CPP

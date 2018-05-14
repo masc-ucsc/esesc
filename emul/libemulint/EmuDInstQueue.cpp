@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -32,25 +32,25 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "Snippets.h"
 #include "EmuDInstQueue.h"
+#include "Snippets.h"
 
 /*
-  The idea behind the head and tail pointer is to support replays eventually. 
-  The head will point to the instruction that will be executed, and the tail will 
-  point to the instruction that will be retired. So, the tail will always follow 
-  the head. The insertpoint is the place where the new instruction will be inserted. 
+  The idea behind the head and tail pointer is to support replays eventually.
+  The head will point to the instruction that will be executed, and the tail will
+  point to the instruction that will be retired. So, the tail will always follow
+  the head. The insertpoint is the place where the new instruction will be inserted.
 
   The head pointer will always lie between the tail pointer and the insertpoint.
-  
+
 */
 
 EmuDInstQueue::EmuDInstQueue() {
-  head = 0;
-  tail = 0;
+  head        = 0;
+  tail        = 0;
   insertpoint = 0; // Starts inserting in the insertpoint + 1 position.
-  nFreeElems = 1024;
-  ndrop = 0;
+  nFreeElems  = 1024;
+  ndrop       = 0;
   trace.resize(1024);
 
   I(ISPOWER2(trace.size()));
@@ -60,23 +60,22 @@ void EmuDInstQueue::adjust_trace() {
 
   // T...H...I
   uint32_t new_tail = trace.size();
-  trace.resize(trace.size()*2);
-  I(new_tail<1024*64);
+  trace.resize(trace.size() * 2);
+  I(new_tail < 1024 * 64);
 
   I(ISPOWER2(trace.size()));
   I(ISPOWER2(new_tail));
 
-  for(uint32_t i=0;i<new_tail;i++) {
-    trace[new_tail+i] = trace[(tail + i) & (new_tail-1)];
+  for(uint32_t i = 0; i < new_tail; i++) {
+    trace[new_tail + i] = trace[(tail + i) & (new_tail - 1)];
   }
 
-  if (head>=tail)
-    head = new_tail + head-tail;
+  if(head >= tail)
+    head = new_tail + head - tail;
   else
-    head = new_tail + new_tail - (tail-head);
+    head = new_tail + new_tail - (tail - head);
 
-  tail = new_tail;
+  tail        = new_tail;
   insertpoint = 0;
-  nFreeElems = new_tail;
+  nFreeElems  = new_tail;
 }
-

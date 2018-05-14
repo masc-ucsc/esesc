@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,11 +39,11 @@
 #include "estl.h"
 #include <queue>
 
+#include "DInst.h"
+#include "GStats.h"
 #include "callback.h"
 #include "nanassert.h"
-#include "GStats.h"
 #include "pool.h"
-#include "DInst.h"
 
 #include "MSHRentry.h"
 
@@ -54,22 +54,24 @@ class MemRequest;
 class MSHR {
 private:
 protected:
-  const char    *name;
+  const char *   name;
   const uint32_t Log2LineSize;
   const int32_t  nEntries;
   const int32_t  nSubEntries;
 
-  int32_t        nFreeEntries;
+  int32_t nFreeEntries;
 
-  GStatsAvg      avgUse;
-  GStatsAvg      avgSubUse;
+  GStatsAvg avgUse;
+  GStatsAvg avgSubUse;
 
-  AddrType calcLineAddr(AddrType addr) const { return addr >> Log2LineSize; }
+  AddrType calcLineAddr(AddrType addr) const {
+    return addr >> Log2LineSize;
+  }
 
   GStatsCntr nStallConflict;
 
-  const int32_t    MSHRSize;
-  const int32_t    MSHRMask;
+  const int32_t MSHRSize;
+  const int32_t MSHRMask;
 
   // If a non-integer type is defined, the MSHR template should accept
   // a hash function as a parameter
@@ -79,27 +81,27 @@ protected:
   // performs only 5% worse than an oversize prime number (noise).
   uint32_t calcEntry(AddrType paddr) const {
     uint64_t p = paddr >> Log2LineSize;
-    return (p ^ (p>>11)) & MSHRMask;
+    return (p ^ (p >> 11)) & MSHRMask;
   }
 
   class EntryType {
   public:
     CallbackContainer cc;
-    int32_t nUse;
+    int32_t           nUse;
 #ifdef DEBUG
     std::deque<MemRequest *> pending_mreq;
-    MemRequest *block_mreq;
+    MemRequest *             block_mreq;
 #endif
   };
 
   std::vector<EntryType> entry;
-public:
 
+public:
   MSHR(const char *name, int32_t size, int16_t lineSize, int16_t nSubEntries);
-  virtual ~MSHR() { 
+  virtual ~MSHR() {
   }
   bool hasFreeEntries() const {
-     return (nFreeEntries > 0);
+    return (nFreeEntries > 0);
   }
 
   bool canAccept(AddrType paddr) const;

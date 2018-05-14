@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -34,8 +34,8 @@
 
 #if 0
 #include "SamplerGPUSim.h"
-#include "EmulInterface.h"
 #include "BootLoader.h"
+#include "EmulInterface.h"
 #include "SescConf.h"
 #include <set>
 
@@ -149,6 +149,5 @@ uint64_t SamplerGPUSim::getTime() const
   return nsticks;
 }
 /* }}} */
-
 
 #endif

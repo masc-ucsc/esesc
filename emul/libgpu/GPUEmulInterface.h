@@ -23,64 +23,65 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #ifndef GPUEMULINTERFACE_H
 #define GPUEMULINTERFACE_H
 
-#include "nanassert.h"
 #include "EmulInterface.h"
 #include "GPUInterface.h"
-#include "GPUThreadManager.h"
 #include "GPUReader.h"
+#include "GPUThreadManager.h"
+#include "nanassert.h"
 
-class GPUEmulInterface:public EmulInterface {
+class GPUEmulInterface : public EmulInterface {
 private:
-  FlowID nFlows;
-  FlowID nEmuls;
+  FlowID     nFlows;
+  FlowID     nEmuls;
   GPUReader *reader;
-  FlowID numPEs;
+  FlowID     numPEs;
 
 protected:
-  std::vector<FlowID> fidFreePool; 
+  std::vector<FlowID> fidFreePool;
+
 public:
-    GPUEmulInterface (const char *section);
-   ~GPUEmulInterface ();
+  GPUEmulInterface(const char *section);
+  ~GPUEmulInterface();
 
-  DInst *executeHead (FlowID fid);
-  void reexecuteTail (FlowID fid);
-  void syncHeadTail (FlowID fid);
+  DInst *executeHead(FlowID fid);
+  void   reexecuteTail(FlowID fid);
+  void   syncHeadTail(FlowID fid);
 
-  FlowID getNumFlows (void) const;
-  FlowID getNumEmuls (void) const;
+  FlowID getNumFlows(void) const;
+  FlowID getNumEmuls(void) const;
 
-  void start () {
-    reader->start ();
-  } 
-  
-  void queueInstruction (uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool inEmuTiming = false) {
-    reader->queueInstruction (insn, pc, addr, thumb, fid, env, inEmuTiming);
+  void start() {
+    reader->start();
   }
 
-  uint32_t getKernelId() { return reader->getKernelId(); };
-
-  void syscall (uint32_t num, Time_t time, FlowID fid) {
+  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool inEmuTiming = false) {
+    reader->queueInstruction(insn, pc, addr, thumb, fid, env, inEmuTiming);
   }
 
-  void startRabbit (FlowID fid);
-  void startWarmup (FlowID fid);
-  void startDetail (FlowID fid);
-  void startTiming (FlowID fid);
+  uint32_t getKernelId() {
+    return reader->getKernelId();
+  };
+
+  void syscall(uint32_t num, Time_t time, FlowID fid) {
+  }
+
+  void startRabbit(FlowID fid);
+  void startWarmup(FlowID fid);
+  void startDetail(FlowID fid);
+  void startTiming(FlowID fid);
 
   FlowID getFid(FlowID last_fid);
   void   freeFid(FlowID);
-  FlowID mapGlobalID (FlowID gid) const {
-    return gpuTM->mapGlobalID (gid);
+  FlowID mapGlobalID(FlowID gid) const {
+    return gpuTM->mapGlobalID(gid);
   }
   FlowID mapLid(FlowID lid);
 
-  void setSampler (EmuSampler * a_sampler, FlowID fid = 0);
-  void drainFIFO();
-  FlowID getNumPEs() const
-  {
+  void   setSampler(EmuSampler *a_sampler, FlowID fid = 0);
+  void   drainFIFO();
+  FlowID getNumPEs() const {
     return numPEs;
   }
-
 };
 
 #endif // GPUEMULINTERFACE_H

@@ -1,9 +1,9 @@
 // Contributed by David Munday
-//                Jose Renau                  
+//                Jose Renau
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -40,37 +40,46 @@
 
 /* }}} */
 
-class UnMemXBar: public GXBar {
+class UnMemXBar : public GXBar {
 protected:
-
-  MemObj *lower_level;
+  MemObj * lower_level;
   uint32_t numLowerLevelBanks;
   uint32_t LineSize;
   uint32_t Modfactor;
 
 public:
-  UnMemXBar(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
-  ~UnMemXBar() {}
+  UnMemXBar(MemorySystem *current, const char *device_descr_section, const char *device_name = NULL);
+  ~UnMemXBar() {
+  }
 
-	// Entry points to schedule that may schedule a do?? if needed
-	void req(MemRequest *req)         { doReq(req); };
-	void reqAck(MemRequest *req)      { doReqAck(req); };
-	void setState(MemRequest *req)    { doSetState(req); };
-	void setStateAck(MemRequest *req) { doSetStateAck(req); };
-	void disp(MemRequest *req)        { doDisp(req); }
+  // Entry points to schedule that may schedule a do?? if needed
+  void req(MemRequest *req) {
+    doReq(req);
+  };
+  void reqAck(MemRequest *req) {
+    doReqAck(req);
+  };
+  void setState(MemRequest *req) {
+    doSetState(req);
+  };
+  void setStateAck(MemRequest *req) {
+    doSetStateAck(req);
+  };
+  void disp(MemRequest *req) {
+    doDisp(req);
+  }
 
-	// This do the real work
-	void doReq(MemRequest *r);
-	void doReqAck(MemRequest *req);
-	void doSetState(MemRequest *req);
-	void doSetStateAck(MemRequest *req);
-	void doDisp(MemRequest *req);
+  // This do the real work
+  void doReq(MemRequest *r);
+  void doReqAck(MemRequest *req);
+  void doSetState(MemRequest *req);
+  void doSetStateAck(MemRequest *req);
+  void doDisp(MemRequest *req);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 
-	bool isBusy(AddrType addr) const;
-
+  bool isBusy(AddrType addr) const;
 };
 
 #endif

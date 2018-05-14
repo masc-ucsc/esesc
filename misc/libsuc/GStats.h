@@ -7,7 +7,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -51,30 +51,29 @@
 
 class GStats_strcasecmp {
 public:
-  inline bool operator()(const char* s1, const char* s2) const {
+  inline bool operator()(const char *s1, const char *s2) const {
     return strcasecmp(s1, s2) == 0;
   }
 };
 
-
 class GStats {
 private:
-  typedef HASH_MAP<const char *, GStats *, HASH<const char*>, GStats_strcasecmp > Container;
-  typedef HASH_MAP<const char *, GStats *, HASH<const char*>, GStats_strcasecmp >::iterator ContainerIter;
-  static Container *store;
+  typedef HASH_MAP<const char *, GStats *, HASH<const char *>, GStats_strcasecmp>           Container;
+  typedef HASH_MAP<const char *, GStats *, HASH<const char *>, GStats_strcasecmp>::iterator ContainerIter;
+  static Container *                                                                        store;
 
 protected:
   char *name;
 
   char *getText(const char *format, va_list ap);
-  void subscribe();
-  void unsubscribe();
+  void  subscribe();
+  void  unsubscribe();
 
 public:
   int32_t gd;
 
   static void report(const char *str);
-  
+
   static GStats *getRef(const char *str);
 
   GStats();
@@ -85,14 +84,16 @@ public:
   virtual void reportValue() const = 0;
 
   virtual void flushValue();
-  static void flush();
+  static void  flush();
 
   virtual double getDouble() const {
-    MSG("getDouble Not supported by this class %s",name);
+    MSG("getDouble Not supported by this class %s", name);
     return 0;
   }
 
-  const char *getName() const { return name; }
+  const char *getName() const {
+    return name;
+  }
   virtual int64_t getSamples() const = 0;
 };
 
@@ -102,9 +103,9 @@ private:
 
 protected:
 public:
-  GStatsCntr(const char *format,...);
+  GStatsCntr(const char *format, ...);
 
-  GStatsCntr & operator += (const double v) {
+  GStatsCntr &operator+=(const double v) {
     data += v;
     return *this;
   }
@@ -131,17 +132,22 @@ public:
 class GStatsAvg : public GStats {
 private:
 protected:
-  double data;
+  double  data;
   int64_t nData;
-public:
-  GStatsAvg(const char *format,...);
-  GStatsAvg() { }
 
-  void    reset() { data = 0; nData = 0; };
-  double  getDouble() const;
+public:
+  GStatsAvg(const char *format, ...);
+  GStatsAvg() {
+  }
+
+  void reset() {
+    data  = 0;
+    nData = 0;
+  };
+  double getDouble() const;
 
   virtual void sample(const double v, bool en);
-  int64_t getSamples() const;
+  int64_t      getSamples() const;
 
   virtual void reportValue() const;
 
@@ -151,13 +157,13 @@ public:
 class GStatsMax : public GStats {
 private:
 protected:
-  double maxValue;
+  double  maxValue;
   int64_t nData;
 
 public:
-  GStatsMax(const char *format,...);
+  GStatsMax(const char *format, ...);
 
-  void sample(const double v, bool en);
+  void    sample(const double v, bool en);
   int64_t getSamples() const;
 
   void reportValue() const;
@@ -168,7 +174,6 @@ public:
 class GStatsHist : public GStats {
 private:
 protected:
-  
   typedef HASH_MAP<int32_t, double> Histogram;
 
   double numSample;
@@ -177,10 +182,11 @@ protected:
   Histogram H;
 
 public:
-  GStatsHist(const char *format,...);
-  GStatsHist() { }
+  GStatsHist(const char *format, ...);
+  GStatsHist() {
+  }
 
-  void sample(bool enable, int32_t key, double weight=1);
+  void    sample(bool enable, int32_t key, double weight = 1);
   int64_t getSamples() const;
 
   void reportValue() const;
@@ -188,4 +194,4 @@ public:
   void flushValue();
 };
 
-#endif   // GSTATSD_H
+#endif // GSTATSD_H

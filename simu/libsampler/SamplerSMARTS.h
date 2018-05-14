@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,14 +37,12 @@
 
 #include <vector>
 
-#include "nanassert.h"
 #include "SamplerBase.h"
-
+#include "nanassert.h"
 
 class SamplerSMARTS : public SamplerBase {
 private:
 protected:
-
 public:
   SamplerSMARTS(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerSMARTS();
@@ -52,10 +50,8 @@ public:
   uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest, int dest2);
 
   void updateCPI(uint32_t fid);
-  void syncStats(){
-  };
+  void syncStats(){};
   void nextMode(bool rotate, FlowID fid, EmuMode mod = EmuRabbit);
   void setStatsFlag(DInst *dinst);
 };
 #endif
-

@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,25 +37,25 @@
 
 #include <sys/time.h>
 
-#include "nanassert.h"
 #include "PowerModel.h"
+#include "nanassert.h"
 
 class BootLoader {
- private:
-  static char *reportFile;
-  static timeval stTime;
-  static PowerModel  *pwrmodel; 
-  static bool doPower;
+private:
+  static char *      reportFile;
+  static timeval     stTime;
+  static PowerModel *pwrmodel;
+  static bool        doPower;
 
   static void check();
 
- protected:
+protected:
   static void plugEmulInterfaces();
   static void plugSimuInterfaces();
-  static void createEmulInterface(const char *section, FlowID fid=0);
+  static void createEmulInterface(const char *section, FlowID fid = 0);
   static void createSimuInterface(const char *section, FlowID i);
 
- public:
+public:
   static int64_t sample_count;
 
   static EmuSampler *getSampler(const char *section, const char *keyword, EmulInterface *eint, FlowID fid);
@@ -69,11 +69,13 @@ class BootLoader {
   static void unplug();
 
   // Dump statistics while the program is still running
-  static void reportOnTheFly(const char *file=0); //eka, to be removed.
+  static void reportOnTheFly(const char *file = 0); // eka, to be removed.
   static void startReportOnTheFly();
   static void stopReportOnTheFly();
 
-  static PowerModel *getPowerModelPtr() { return pwrmodel; }
+  static PowerModel *getPowerModelPtr() {
+    return pwrmodel;
+  }
 };
 
 #endif

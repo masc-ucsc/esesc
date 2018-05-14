@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,51 +35,50 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <vector>
-#include <map>
 #include "TaskHandler.h"
+#include <map>
 #include <string>
+#include <vector>
 
 class ChipEnergyBundle;
 class SescThermWrapper;
 
 class PowerGlue {
 
-  private:
+private:
+  const char *      pwr_sec;
+  ChipEnergyBundle *energyBundle;
+  bool              reFloorplan;
+  uint32_t          nStats;
 
-    const char     *pwr_sec;
-    ChipEnergyBundle *energyBundle;
-    bool reFloorplan;
-    uint32_t nStats;
+  GProcessor *getSimu(FlowID fid) {
+    return TaskHandler::getSimu(fid);
+  };
+  void     initStatCounters();
+  void     closeStatCounters();
+  void     createCoreStats();
+  void     createCoreLayoutDescr();
+  void     createMemLayoutDescr();
+  void     createCoreStats(const char *section, uint32_t i);
+  void     createCoreDescr(const char *section, uint32_t i);
+  void     autoCreateCoreDescr(const char *section);
+  void     createMemStats();
+  void     createMemStats(const char *section, uint32_t i);
+  void     createMemObjStats(const char *temp_sec, const char *pname, const char *name);
+  char *   getText(const char *format, ...);
+  char *   replicateVar(const char *format, const char *s1, const char *s);
+  uint32_t size(const char *str);
+  char *   getStr(const char *str, uint32_t i);
+  char *   privateName(const std::string *name);
+  void     checkStatCounters(const char *section);
+  void     addVRecord(const char *sec, const char *str);
 
-    GProcessor *getSimu(FlowID fid)              { return TaskHandler::getSimu(fid); };
-    void initStatCounters();
-    void closeStatCounters();
-    void createCoreStats();
-    void createCoreLayoutDescr();
-    void createMemLayoutDescr();
-    void createCoreStats(const char *section, uint32_t i);
-    void createCoreDescr(const char *section, uint32_t i);
-    void autoCreateCoreDescr(const char *section);
-    void createMemStats();
-    void createMemStats(const char *section, uint32_t i);
-    void createMemObjStats(const char *temp_sec, const char *pname, const char *name); 
-    char *getText(const char *format,...);
-    char *replicateVar(const char *format, const char *s1, const char *s);
-    uint32_t size(const char *str);
-    char *getStr(const char *str, uint32_t i); 
-    char *privateName(const std::string *name);
-    void checkStatCounters(const char *section);
-    void addVRecord(const char *sec, const char *str);
-
-
-  public:
-
-    PowerGlue();
-    void createStatCounters();
-    void dumpFlpDescr(uint32_t coreEIdx); 
-    void plug(const char *section, ChipEnergyBundle *eBundle);
-    void unplug();
+public:
+  PowerGlue();
+  void createStatCounters();
+  void dumpFlpDescr(uint32_t coreEIdx);
+  void plug(const char *section, ChipEnergyBundle *eBundle);
+  void unplug();
 };
 
-#endif //POWERGLUE_H
+#endif // POWERGLUE_H

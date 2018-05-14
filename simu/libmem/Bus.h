@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -38,47 +38,58 @@
 #define BUS_H
 
 #include "GStats.h"
-#include "Port.h"
-#include "MemRequest.h"
 #include "MemObj.h"
+#include "MemRequest.h"
+#include "Port.h"
 /* }}} */
 
-class Bus: public MemObj {
+class Bus : public MemObj {
 protected:
   TimeDelta_t delay;
-  //Time_t busyUpto;
+  // Time_t busyUpto;
 
   PortGeneric *dataPort;
   PortGeneric *cmdPort;
 
 #ifdef ENABLE_NBSD
-	bool dcache;
+  bool dcache;
 #endif
 
 public:
-  Bus(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
-  ~Bus() {}
+  Bus(MemorySystem *current, const char *device_descr_section, const char *device_name = NULL);
+  ~Bus() {
+  }
 
-	// Entry points to schedule that may schedule a do?? if needed
-	void req(MemRequest *req)         { doReq(req); };
-	void reqAck(MemRequest *req)      { doReqAck(req); };
-	void setState(MemRequest *req)    { doSetState(req); };
-	void setStateAck(MemRequest *req) { doSetStateAck(req); };
-	void disp(MemRequest *req)        { doDisp(req); }
+  // Entry points to schedule that may schedule a do?? if needed
+  void req(MemRequest *req) {
+    doReq(req);
+  };
+  void reqAck(MemRequest *req) {
+    doReqAck(req);
+  };
+  void setState(MemRequest *req) {
+    doSetState(req);
+  };
+  void setStateAck(MemRequest *req) {
+    doSetStateAck(req);
+  };
+  void disp(MemRequest *req) {
+    doDisp(req);
+  }
 
-	// This do the real work
-	void doReq(MemRequest *r);
-	void doReqAck(MemRequest *req);
-	void doSetState(MemRequest *req);
-	void doSetStateAck(MemRequest *req);
-	void doDisp(MemRequest *req);
+  // This do the real work
+  void doReq(MemRequest *r);
+  void doReqAck(MemRequest *req);
+  void doSetState(MemRequest *req);
+  void doSetStateAck(MemRequest *req);
+  void doDisp(MemRequest *req);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 
-  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb = 0);
 
-	bool isBusy(AddrType addr) const;
+  bool isBusy(AddrType addr) const;
 };
 
 #endif

@@ -35,115 +35,112 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <sys/time.h>
-#include <unistd.h>
 #include "GProcessor.h"
-#include "Report.h"
 #include "FetchEngine.h"
 #include "GMemorySystem.h"
+#include "Report.h"
+#include <sys/time.h>
+#include <unistd.h>
 
-GStatsCntr *GProcessor::wallClock=0;
-Time_t GProcessor::lastWallClock=0;
+GStatsCntr *GProcessor::wallClock     = 0;
+Time_t      GProcessor::lastWallClock = 0;
 
 GProcessor::GProcessor(GMemorySystem *gm, CPU_t i)
-  :cpu_id(i)
-   ,FetchWidth(SescConf->getInt("cpusimu", "fetchWidth",i))
-   ,IssueWidth(SescConf->getInt("cpusimu", "issueWidth",i))
-  ,RetireWidth(SescConf->getInt("cpusimu", "retireWidth",i))
-   ,RealisticWidth(RetireWidth < IssueWidth ? RetireWidth : IssueWidth)
-  ,InstQueueSize(SescConf->getInt("cpusimu", "instQueueSize",i))
-  ,MaxROBSize(SescConf->getInt("cpusimu", "robSize",i))
-  ,memorySystem(gm)
-  ,storeset(i)
-  ,prefetcher(gm->getDL1(),i)
-  ,rROB(SescConf->getInt("cpusimu", "robSize", i))
-  ,ROB(MaxROBSize)
-  ,rrobUsed("P(%d)_rrobUsed", i) // avg
-  ,robUsed("P(%d)_robUsed", i) // avg
-  ,nReplayInst("P(%d)_nReplayInst", i)
-  ,nCommitted("P(%d):nCommitted", i) // Should be the same as robUsed - replayed
-  ,noFetch("P(%d):noFetch", i)
-  ,noFetch2("P(%d):noFetch2", i)
-  ,nFreeze("P(%d):nFreeze",i)
-  ,clockTicks("P(%d):clockTicks",i)
-{
-  if (i ==0)
+    : cpu_id(i)
+    , FetchWidth(SescConf->getInt("cpusimu", "fetchWidth", i))
+    , IssueWidth(SescConf->getInt("cpusimu", "issueWidth", i))
+    , RetireWidth(SescConf->getInt("cpusimu", "retireWidth", i))
+    , RealisticWidth(RetireWidth < IssueWidth ? RetireWidth : IssueWidth)
+    , InstQueueSize(SescConf->getInt("cpusimu", "instQueueSize", i))
+    , MaxROBSize(SescConf->getInt("cpusimu", "robSize", i))
+    , memorySystem(gm)
+    , storeset(i)
+    , prefetcher(gm->getDL1(), i)
+    , rROB(SescConf->getInt("cpusimu", "robSize", i))
+    , ROB(MaxROBSize)
+    , rrobUsed("P(%d)_rrobUsed", i) // avg
+    , robUsed("P(%d)_robUsed", i)   // avg
+    , nReplayInst("P(%d)_nReplayInst", i)
+    , nCommitted("P(%d):nCommitted", i) // Should be the same as robUsed - replayed
+    , noFetch("P(%d):noFetch", i)
+    , noFetch2("P(%d):noFetch2", i)
+    , nFreeze("P(%d):nFreeze", i)
+    , clockTicks("P(%d):clockTicks", i) {
+  if(i == 0)
     active = true;
   else
     active = false;
 
   smt = 1;
-  if (SescConf->checkInt("cpusimu","smt",(int)i)) 
-    smt = SescConf->getInt("cpusimu","smt",(int)i);
-  smt_ctx  = i - (i % smt);
+  if(SescConf->checkInt("cpusimu", "smt", (int)i))
+    smt = SescConf->getInt("cpusimu", "smt", (int)i);
+  smt_ctx = i - (i % smt);
 
   // maxFlows are REAL THreads IDs inside core (GPU SMT)
-  if (SescConf->checkInt("cpusimu","smt")) {
-    maxFlows = SescConf->getInt("cpusimu","smt");
-    SescConf->isBetween("cpusimu","smt",1,32);
-  }else{
+  if(SescConf->checkInt("cpusimu", "smt")) {
+    maxFlows = SescConf->getInt("cpusimu", "smt");
+    SescConf->isBetween("cpusimu", "smt", 1, 32);
+  } else {
     maxFlows = 1;
   }
 
   lastReplay = 0;
-  if (wallClock ==0)
+  if(wallClock == 0)
     wallClock = new GStatsCntr("OS:wallClock");
   activeclock_start = lastWallClock;
   activeclock_end   = lastWallClock;
 
-  throttlingRatio = SescConf->getDouble("cpusimu", "throttlingRatio" , i);
+  throttlingRatio = SescConf->getDouble("cpusimu", "throttlingRatio", i);
   throttling_cntr = 0;
-  bool scooremem = false;
-  if (SescConf->checkBool("cpusimu"    , "scooreMemory" , gm->getCoreId()))
-    scooremem = SescConf->getBool("cpusimu", "scooreMemory",gm->getCoreId());
+  bool scooremem  = false;
+  if(SescConf->checkBool("cpusimu", "scooreMemory", gm->getCoreId()))
+    scooremem = SescConf->getBool("cpusimu", "scooreMemory", gm->getCoreId());
 
   if(scooremem) {
-    if((!SescConf->checkCharPtr("cpusimu", "SL0", i))&&(!SescConf->checkCharPtr("cpusimu", "VPC", i))){
+    if((!SescConf->checkCharPtr("cpusimu", "SL0", i)) && (!SescConf->checkCharPtr("cpusimu", "VPC", i))) {
       printf("ERROR: scooreMemory requested but no SL0 or VPC specified\n");
       fflush(stdout);
       exit(15);
     }
-    if((SescConf->checkCharPtr("cpusimu", "SL0", i))&&(SescConf->checkCharPtr("cpusimu", "VPC", i))){
+    if((SescConf->checkCharPtr("cpusimu", "SL0", i)) && (SescConf->checkCharPtr("cpusimu", "VPC", i))) {
       printf("ERROR: scooreMemory requested, cannot have BOTH SL0 and VPC specified\n");
       fflush(stdout);
       exit(15);
     }
   }
 
+  SescConf->isInt("cpusimu", "issueWidth", i);
+  SescConf->isLT("cpusimu", "issueWidth", 1025, i);
 
-  SescConf->isInt("cpusimu"    , "issueWidth" , i);
-  SescConf->isLT("cpusimu"     , "issueWidth" , 1025, i);
+  SescConf->isInt("cpusimu", "retireWidth", i);
+  SescConf->isBetween("cpusimu", "retireWidth", 0, 32700, i);
 
-  SescConf->isInt("cpusimu"    , "retireWidth", i);
-  SescConf->isBetween("cpusimu", "retireWidth", 0   , 32700 , i);
+  SescConf->isInt("cpusimu", "robSize", i);
+  SescConf->isBetween("cpusimu", "robSize", 2, 262144, i);
 
-  SescConf->isInt("cpusimu"    , "robSize"    , i);
-  SescConf->isBetween("cpusimu", "robSize"    , 2   , 262144, i);
-
-  nStall[0] = 0 ; // crash if used
-  nStall[SmallWinStall]      = new GStatsCntr("P(%d)_ExeEngine:nSmallWinStall",i);
-  nStall[SmallROBStall]      = new GStatsCntr("P(%d)_ExeEngine:nSmallROBStall",i);
-  nStall[SmallREGStall]      = new GStatsCntr("P(%d)_ExeEngine:nSmallREGStall",i);
-  nStall[DivergeStall]      = new GStatsCntr("P(%d)_ExeEngine:nDivergeStall",i);
-  nStall[OutsLoadsStall]    = new GStatsCntr("P(%d)_ExeEngine:nOutsLoadsStall",i);
-  nStall[OutsStoresStall]   = new GStatsCntr("P(%d)_ExeEngine:nOutsStoresStall",i);
-  nStall[OutsBranchesStall] = new GStatsCntr("P(%d)_ExeEngine:nOutsBranchesStall",i);
-  nStall[ReplaysStall]      = new GStatsCntr("P(%d)_ExeEngine:nReplaysStall",i);
-  nStall[SyscallStall]      = new GStatsCntr("P(%d)_ExeEngine:nSyscallStall",i);
+  nStall[0]                 = 0; // crash if used
+  nStall[SmallWinStall]     = new GStatsCntr("P(%d)_ExeEngine:nSmallWinStall", i);
+  nStall[SmallROBStall]     = new GStatsCntr("P(%d)_ExeEngine:nSmallROBStall", i);
+  nStall[SmallREGStall]     = new GStatsCntr("P(%d)_ExeEngine:nSmallREGStall", i);
+  nStall[DivergeStall]      = new GStatsCntr("P(%d)_ExeEngine:nDivergeStall", i);
+  nStall[OutsLoadsStall]    = new GStatsCntr("P(%d)_ExeEngine:nOutsLoadsStall", i);
+  nStall[OutsStoresStall]   = new GStatsCntr("P(%d)_ExeEngine:nOutsStoresStall", i);
+  nStall[OutsBranchesStall] = new GStatsCntr("P(%d)_ExeEngine:nOutsBranchesStall", i);
+  nStall[ReplaysStall]      = new GStatsCntr("P(%d)_ExeEngine:nReplaysStall", i);
+  nStall[SyscallStall]      = new GStatsCntr("P(%d)_ExeEngine:nSyscallStall", i);
 
   I(ROB.size() == 0);
 
   eint = 0;
 
   buildInstStats(nInst, "ExeEngine");
-  #ifdef WAVESNAP_EN
+#ifdef WAVESNAP_EN
   this->snap = new wavesnap();
-  #endif
+#endif
 }
 
 GProcessor::~GProcessor() {
 }
-
 
 void GProcessor::buildInstStats(GStatsCntr *i[iMAX], const char *txt) {
   bzero(i, sizeof(GStatsCntr *) * iMAX);
@@ -152,20 +149,20 @@ void GProcessor::buildInstStats(GStatsCntr *i[iMAX], const char *txt) {
     i[t] = new GStatsCntr("P(%d)_%s_%s:n", cpu_id, txt, Instruction::opcode2Name(static_cast<InstOpcode>(t)));
   }
 
-  IN(forall((int32_t a=1;a<(int)iMAX;a++), i[a] != 0));
+  IN(forall((int32_t a = 1; a < (int)iMAX; a++), i[a] != 0));
 }
 
 int32_t GProcessor::issue(PipeQueue &pipeQ) {
-  int32_t i=0; // Instructions executed counter
+  int32_t i = 0; // Instructions executed counter
 
   I(!pipeQ.instQueue.empty());
 
-  do{
+  do {
     IBucket *bucket = pipeQ.instQueue.top();
-    //MSG("@%lld  CPU[%d]: Trying to issue instructions from bucket[%p]",(long long int)globalClock,cpu_id,bucket);
-    do{
+    // MSG("@%lld  CPU[%d]: Trying to issue instructions from bucket[%p]",(long long int)globalClock,cpu_id,bucket);
+    do {
       I(!bucket->empty());
-      if( i >= IssueWidth ) {
+      if(i >= IssueWidth) {
         return i;
       }
 
@@ -174,14 +171,15 @@ int32_t GProcessor::issue(PipeQueue &pipeQ) {
       DInst *dinst = bucket->top();
       //  GMSG(getCoreId()==1,"push to pipe %p", bucket);
 
-      //MSG("@%lld issue dinstID=%lld",globalClock, dinst->getID());
+      // MSG("@%lld issue dinstID=%lld",globalClock, dinst->getID());
 
       dinst->setGProc(this);
       StallCause c = addInst(dinst);
-      if (c != NoStall) {
-        //MSG("@%lld CPU[%d]: stalling dinstID=%lld for %d cycles, reason= %d PE[%d]",globalClock,cpu_id,dinst->getID(),(RealisticWidth-i),c,dinst->getPE());
-        if (i < RealisticWidth)
-          //nStall[c]->add(1, dinst->getStatsFlag());
+      if(c != NoStall) {
+        // MSG("@%lld CPU[%d]: stalling dinstID=%lld for %d cycles, reason= %d
+        // PE[%d]",globalClock,cpu_id,dinst->getID(),(RealisticWidth-i),c,dinst->getPE());
+        if(i < RealisticWidth)
+          // nStall[c]->add(1, dinst->getStatsFlag());
           nStall[c]->add(RealisticWidth - i, dinst->getStatsFlag());
         return i;
       }
@@ -189,16 +187,14 @@ int32_t GProcessor::issue(PipeQueue &pipeQ) {
 
       bucket->pop();
 
-    }while(!bucket->empty());
+    } while(!bucket->empty());
 
     pipeQ.pipeLine.doneItem(bucket);
     pipeQ.instQueue.pop();
-  }while(!pipeQ.instQueue.empty());
+  } while(!pipeQ.instQueue.empty());
 
   return i;
 }
 
-
-void GProcessor::retire(){
-
+void GProcessor::retire() {
 }

@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,47 +39,51 @@
 #include "scstate.h" // for FlowID
 #include <pthread.h>
 
-#define AtomicCompareSwap(ptr, tst_ptr, new_ptr) __sync_bool_compare_and_swap(ptr, tst_ptr, new_ptr) 
+#define AtomicCompareSwap(ptr, tst_ptr, new_ptr) __sync_bool_compare_and_swap(ptr, tst_ptr, new_ptr)
 
-#define   HASH_SIZE 128 
+#define HASH_SIZE 128
 
-typedef struct{
-  bool valid;
+typedef struct {
+  bool   valid;
   FlowID fid;
-  bool scPassed; 
+  bool   scPassed;
 } atomicHash;
 
 class AHash {
 
-  private:
+private:
+  atomicHash atomic_hash[HASH_SIZE];
+  int32_t    marked;
 
-    atomicHash atomic_hash[HASH_SIZE]; 
-    int32_t marked;
+  // pthread_mutex_t hash_lock;
+  bool hash_lock[HASH_SIZE];
 
-    //pthread_mutex_t hash_lock;
-    bool hash_lock[HASH_SIZE];
+  void     init_atomicHash();
+  uint32_t hash(uint32_t hval) {
+    uint32_t tmp = hval ^ (hval >> 5);
+    return tmp & (HASH_SIZE - 1);
+  }
+  void ahashLock(bool *ptr);
+  void ahashUnlock(bool *ptr);
 
-    void init_atomicHash();
-    uint32_t hash(uint32_t hval){
-      uint32_t tmp = hval ^ (hval >>5 );
-      return tmp & (HASH_SIZE-1) ;
-    }
-    void ahashLock(bool *ptr);
-    void ahashUnlock(bool *ptr);
-  public:
-    void insert(FlowID fid, AddrType addr);
-    void insert_nolock(FlowID fid, AddrType addr);
-    bool setSC(FlowID fid, AddrType addr);
-    bool checkSC(FlowID fid, AddrType addr);
-    int32_t isMarked(){ return marked; };
-    void remove(FlowID fid, AddrType addr);
-    void ahashLock(AddrType addr){ ahashLock(&hash_lock[hash(addr)]); };
-    void ahashUnlock(AddrType addr){ ahashUnlock(&hash_lock[hash(addr)]); };
+public:
+  void    insert(FlowID fid, AddrType addr);
+  void    insert_nolock(FlowID fid, AddrType addr);
+  bool    setSC(FlowID fid, AddrType addr);
+  bool    checkSC(FlowID fid, AddrType addr);
+  int32_t isMarked() {
+    return marked;
+  };
+  void remove(FlowID fid, AddrType addr);
+  void ahashLock(AddrType addr) {
+    ahashLock(&hash_lock[hash(addr)]);
+  };
+  void ahashUnlock(AddrType addr) {
+    ahashUnlock(&hash_lock[hash(addr)]);
+  };
 
-
-    AHash();
-    ~AHash();
-
+  AHash();
+  ~AHash();
 };
 
 #endif

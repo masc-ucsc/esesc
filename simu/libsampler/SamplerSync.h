@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,14 +37,12 @@
 
 #include <vector>
 
-#include "nanassert.h"
 #include "SamplerBase.h"
-
+#include "nanassert.h"
 
 class SamplerSync : public SamplerBase {
 private:
 protected:
-
 public:
   SamplerSync(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerSync();
@@ -58,4 +56,3 @@ public:
   void setStatsFlag(DInst *dinst);
 };
 #endif
-

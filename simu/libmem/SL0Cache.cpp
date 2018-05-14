@@ -37,17 +37,17 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <iostream>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
-#include <iostream>
 
 #include "nanassert.h"
 
-#include "SescConf.h"
+#include "MSHR.h"
 #include "MemorySystem.h"
 #include "SL0Cache.h"
-#include "MSHR.h"
+#include "SescConf.h"
 /* }}} */
 
 SL0Cache::SL0Cache(MemorySystem *gms, const char *section, const char *name)

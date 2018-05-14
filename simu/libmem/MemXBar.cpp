@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -34,80 +34,77 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
-#include "MemorySystem.h"
 #include "MemXBar.h"
+#include "MemorySystem.h"
+#include "SescConf.h"
 
 /* }}} */
 
-MemXBar::MemXBar(const char *section ,const char *name)
-  : GXBar(section, name)
-{/*{{{*/
+MemXBar::MemXBar(const char *section, const char *name)
+    : GXBar(section, name) { /*{{{*/
 
   setParam(section, name);
 
-}/*}}}*/
+} /*}}}*/
 
-MemXBar::MemXBar(MemorySystem* current ,const char *section ,const char *name)
-  /* {{{ constructor */
-  : GXBar(section, name) {
-  
+MemXBar::MemXBar(MemorySystem *current, const char *section, const char *name)
+    /* {{{ constructor */
+    : GXBar(section, name) {
+
   I(current);
-  lower_level_banks = NULL; 
-  
+  lower_level_banks = NULL;
+
   setParam(section, name);
 
-  lower_level_banks = new MemObj     *[numLowerLevelBanks];
+  lower_level_banks = new MemObj *[numLowerLevelBanks];
   XBar_rw_req       = new GStatsCntr *[numLowerLevelBanks];
 
-  std::vector<char *> vPars = SescConf->getSplitCharPtr(section, "lowerLevel");
-  const char *lower_name = "";
-  if (vPars.size()>1)
+  std::vector<char *> vPars      = SescConf->getSplitCharPtr(section, "lowerLevel");
+  const char *        lower_name = "";
+  if(vPars.size() > 1)
     lower_name = vPars[1];
 
-  for(size_t i=0;i<numLowerLevelBanks;i++) {    
-    char *tmp = (char*)malloc(255);
-    if (numLowerLevelBanks>1)
-      sprintf(tmp,"%s%s(%lu)",name,lower_name,i);
+  for(size_t i = 0; i < numLowerLevelBanks; i++) {
+    char *tmp = (char *)malloc(255);
+    if(numLowerLevelBanks > 1)
+      sprintf(tmp, "%s%s(%lu)", name, lower_name, i);
     else
-      sprintf(tmp,"%s%s",name,lower_name,i);
-    lower_level_banks[i] = current->declareMemoryObj_uniqueName(tmp,vPars[0]);         
+      sprintf(tmp, "%s%s", name, lower_name, i);
+    lower_level_banks[i] = current->declareMemoryObj_uniqueName(tmp, vPars[0]);
     addLowerLevel(lower_level_banks[i]);
 
-    XBar_rw_req[i]   = new GStatsCntr("%s_to_%s:rw_req",name,lower_level_banks[i]->getName());
+    XBar_rw_req[i] = new GStatsCntr("%s_to_%s:rw_req", name, lower_level_banks[i]->getName());
   }
-
 }
 /* }}} */
 
-void MemXBar::setParam(const char *section, const char *name)
-{/*{{{*/
+void MemXBar::setParam(const char *section, const char *name) { /*{{{*/
   SescConf->isInt(section, "dropBits");
 
-  dropBits  = SescConf->getInt(section, "dropBits");
+  dropBits = SescConf->getInt(section, "dropBits");
 
   numLowerLevelBanks = SescConf->getRecordSize(section, "lowerLevel");
 
-}/*}}}*/
+} /*}}}*/
 
-uint32_t MemXBar::addrHash(AddrType addr) const 
+uint32_t MemXBar::addrHash(AddrType addr) const
 // {{{ drop lower bits in address
 {
   addr = addr >> dropBits;
-  return(addr % numLowerLevelBanks);
+  return (addr % numLowerLevelBanks);
 }
 // }}}
 
 void MemXBar::doReq(MemRequest *mreq)
-  /* read if splitter above L1 (down) {{{1 */
+/* read if splitter above L1 (down) {{{1 */
 {
   if(mreq->getAddr() == 0) {
     mreq->ack();
     return;
-  } 
+  }
 
   uint32_t pos = addrHash(mreq->getAddr());
-  I(pos<numLowerLevelBanks);
+  I(pos < numLowerLevelBanks);
 
   mreq->resetStart(lower_level_banks[pos]);
   XBar_rw_req[pos]->inc(mreq->getStatsFlag());
@@ -117,7 +114,7 @@ void MemXBar::doReq(MemRequest *mreq)
 /* }}} */
 
 void MemXBar::doReqAck(MemRequest *mreq)
-  /* req ack (up) {{{1 */
+/* req ack (up) {{{1 */
 {
   I(0);
 
@@ -125,36 +122,36 @@ void MemXBar::doReqAck(MemRequest *mreq)
     mreq->ack();
     return;
   }
-  router->scheduleReqAck(mreq); 
+  router->scheduleReqAck(mreq);
 }
 /* }}} */
 
 void MemXBar::doSetState(MemRequest *mreq)
-  /* setState (up) {{{1 */
-{  
-  //FIXME
+/* setState (up) {{{1 */
+{
+  // FIXME
   I(0); // You should check the L1 as incoherent, so that it does not send invalidated to higher levels
-    router->sendSetStateAll(mreq, mreq->getAction());
+  router->sendSetStateAll(mreq, mreq->getAction());
 }
 /* }}} */
 
 void MemXBar::doSetStateAck(MemRequest *mreq)
-  /* setStateAck (down) {{{1 */
+/* setStateAck (down) {{{1 */
 {
   uint32_t pos = addrHash(mreq->getAddr());
   router->scheduleSetStateAckPos(pos, mreq);
-	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
-	// I(0); 
+  // FIXME: use dinst->getPE() to decide who to send up if GPU mode
+  // I(0);
 }
 /* }}} */
 
 void MemXBar::doDisp(MemRequest *mreq)
-  /* disp (down) {{{1 */
+/* disp (down) {{{1 */
 {
   uint32_t pos = addrHash(mreq->getAddr());
   router->scheduleDispPos(pos, mreq);
-	I(0); 
-	// FIXME: use dinst->getPE() to decide who to send up if GPU mode
+  I(0);
+  // FIXME: use dinst->getPE() to decide who to send up if GPU mode
 }
 /* }}} */
 
@@ -167,26 +164,25 @@ bool MemXBar::isBusy(AddrType addr) const
 /* }}} */
 
 void MemXBar::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
-  /* fast forward reads {{{1 */
-{ 
+/* fast forward reads {{{1 */
+{
   uint32_t pos = addrHash(addr);
   router->tryPrefetchPos(pos, addr, degree, doStats, pref_sign, pc, cb);
 }
 /* }}} */
 
 TimeDelta_t MemXBar::ffread(AddrType addr)
-  /* fast forward reads {{{1 */
-{ 
+/* fast forward reads {{{1 */
+{
   uint32_t pos = addrHash(addr);
   return router->ffreadPos(pos, addr);
 }
 /* }}} */
 
 TimeDelta_t MemXBar::ffwrite(AddrType addr)
-  /* fast forward writes {{{1 */
-{ 
+/* fast forward writes {{{1 */
+{
   uint32_t pos = addrHash(addr);
   return router->ffwritePos(pos, addr);
 }
 /* }}} */
-

@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,15 +37,15 @@
 
 #include "nanassert.h"
 
-#include "Resource.h"
 #include "Port.h"
+#include "Resource.h"
 
 class DInst;
 class Cluster;
 
 class DepWindow {
 private:
-  Cluster    *srcCluster;
+  Cluster *srcCluster;
 
   const int32_t Id;
 
@@ -66,8 +66,8 @@ public:
   void select(DInst *dinst);
 
   StallCause canIssue(DInst *dinst) const;
-  void addInst(DInst *dinst);
-  void executed(DInst *dinst);
+  void       addInst(DInst *dinst);
+  void       executed(DInst *dinst);
 };
 
 #endif // DEPWINDOW_H

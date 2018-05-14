@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -38,12 +38,12 @@
 
 #include <vector>
 
-#include "estl.h"
 #include "GStats.h"
-#include "nanassert.h"
 #include "PMessage.h"
 #include "Router.h"
 #include "Snippets.h"
+#include "estl.h"
+#include "nanassert.h"
 
 class ProtocolCBBase;
 class RoutingPolicy;
@@ -52,37 +52,35 @@ class RoutingPolicy;
 // content is to be compared
 class SectionComp {
 public:
-  inline bool operator()(const char* s1, const char* s2) const {
+  inline bool operator()(const char *s1, const char *s2) const {
     return (strcasecmp(s1, s2) == 0);
   }
-}; 
+};
 
 class InterConnection {
 private:
   const char *descrSection;
-  GStatsAvg msgLatency;
-  
-  ushort linkBits; // link width in bits [1..32700)
-  float linkBytes; // linkBits / 8
-  
+  GStatsAvg   msgLatency;
+
+  ushort linkBits;  // link width in bits [1..32700)
+  float  linkBytes; // linkBits / 8
+
   // stores how many routers were already attached to by type of
   // object in the network
-  typedef HASH_MAP<const char *, uint32_t, 
-                   HASH<const char*>, SectionComp> ValHash;
+  typedef HASH_MAP<const char *, uint32_t, HASH<const char *>, SectionComp> ValHash;
 
-  ValHash routersCtr; 
+  ValHash routersCtr;
 
   // stores which port to use based on the object that is attached to
   // the network
-  typedef HASH_MAP<const char *, PortID_t, 
-                   HASH<const char*>, SectionComp> PortHash;
+  typedef HASH_MAP<const char *, PortID_t, HASH<const char *>, SectionComp> PortHash;
 
   PortHash portsCtr;
 
   PortID_t portCtr;
 
 protected:
-  const char   *netType;
+  const char *netType;
 
   RoutingPolicy *rPolicy;
 
@@ -100,10 +98,10 @@ public:
   }
 
   uint32_t getMaxRouters() {
-    return (uint32_t) routers.size();
+    return (uint32_t)routers.size();
   }
 
-  uint32_t getNextFreeRouter(const char *section); 
+  uint32_t getNextFreeRouter(const char *section);
 
   ushort getLinkBits() {
     return linkBits;
@@ -126,45 +124,47 @@ public:
   size_t getnRouters() const {
     return routers.size();
   }
-  
+
   // To be removed
   PortID_t getnRemotePorts() const;
 
   void registerProtocol(ProtocolCBBase *pcb //!< \param protocol callback to be invoqued when a msg
-					    //arrives to the "device" netID
-			,MessageType msgType//!< \param message type that netID is listening
-			,RouterID_t rID     //!< \param router where netID is mapped
-			,PortID_t pID       //!< \param port where netID is mapped
-			,NetDevice_t netID  //!< \param device (== protocol) identifier netID
-    );
+                                            // arrives to the "device" netID
+                        ,
+                        MessageType msgType //!< \param message type that netID is listening
+                        ,
+                        RouterID_t rID //!< \param router where netID is mapped
+                        ,
+                        PortID_t pID //!< \param port where netID is mapped
+                        ,
+                        NetDevice_t netID //!< \param device (== protocol) identifier netID
+  );
 
   void sendMsg(Message *msg) {
     RouterID_t rID = msg->getSrcRouterID();
     msg->launchMsg(routers[rID]);
   }
 
-  void sendMsg(TimeDelta_t xlat, Message *msg ) {
+  void sendMsg(TimeDelta_t xlat, Message *msg) {
     RouterID_t rID = msg->getSrcRouterID();
-    msg->launchMsg(xlat,routers[rID]);
+    msg->launchMsg(xlat, routers[rID]);
   }
 
   void sendMsgAbs(Time_t when, Message *msg) {
     RouterID_t rID = msg->getSrcRouterID();
-    msg->launchMsgAbs(when,routers[rID]);
+    msg->launchMsgAbs(when, routers[rID]);
   }
 
   void dumpRouters();
   void dump();
-
 };
 
 class InterconnectionHashFunc {
-public: 
+public:
   size_t operator()(const InterConnection *ip) const {
-	 HASH<uint64_t> H;
-	 return H((uint64_t) ip);
+    HASH<uint64_t> H;
+    return H((uint64_t)ip);
   }
 };
-
 
 #endif //_INTER_CONN_H

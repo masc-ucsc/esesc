@@ -23,45 +23,44 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include <map>
 
-#include "nanassert.h"
 #include "EmulInterface.h"
 #include "QEMUReader.h"
-
+#include "nanassert.h"
 
 #define FID_NOT_AVAILABLE 0
-#define FID_FREE     1
-#define FID_FREED    3
-#define FID_TAKEN         2
-#define FID_NULL          std::numeric_limits<uint32_t>::max ()
-
+#define FID_FREE 1
+#define FID_FREED 3
+#define FID_TAKEN 2
+#define FID_NULL std::numeric_limits<uint32_t>::max()
 
 class QEMUEmulInterface : public EmulInterface {
- private:
+private:
   FlowID      nFlows;
   FlowID      nEmuls;
   QEMUReader *reader;
   FlowID      firstassign;
 
- protected:
-  static std::vector<FlowID> fidFreePool; 
-  static std::map<FlowID, FlowID> fidMap; 
- public:
+protected:
+  static std::vector<FlowID>      fidFreePool;
+  static std::map<FlowID, FlowID> fidMap;
+
+public:
   QEMUEmulInterface(const char *section);
   ~QEMUEmulInterface();
 
-  bool    populate(FlowID   fid);
-  DInst  *peekHead(FlowID   fid);
-  void    executeHead(FlowID   fid);
-  void    reexecuteTail(FlowID fid);
-  void    syncHeadTail(FlowID  fid);
+  bool   populate(FlowID fid);
+  DInst *peekHead(FlowID fid);
+  void   executeHead(FlowID fid);
+  void   reexecuteTail(FlowID fid);
+  void   syncHeadTail(FlowID fid);
 #ifdef FETCH_TRACE
   void markTrace(..);
 #endif
 
-  FlowID  getNumFlows(void) const;
-  FlowID  getNumEmuls(void) const;
+  FlowID getNumFlows(void) const;
+  FlowID getNumEmuls(void) const;
 
-  FlowID  mapGlobalID(FlowID gid) const{
+  FlowID mapGlobalID(FlowID gid) const {
     return gid;
   }
 
@@ -69,29 +68,29 @@ class QEMUEmulInterface : public EmulInterface {
     reader->start();
   }
 
-  void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool inEmuTiming) {
-    reader->queueInstruction(pc,addr, data, fid, op, src1, src2, dest, dest2, inEmuTiming);
+  void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2,
+                        bool inEmuTiming) {
+    reader->queueInstruction(pc, addr, data, fid, op, src1, src2, dest, dest2, inEmuTiming);
   }
 
   void syscall(uint32_t num, Time_t time, FlowID fid) {
     reader->syscall(num, time, fid);
   }
-  
+
   void startRabbit(FlowID fid);
   void startWarmup(FlowID fid);
   void startDetail(FlowID fid);
   void startTiming(FlowID fid);
 
-  FlowID getFirstFlow() const; 
+  FlowID getFirstFlow() const;
   void   setFid(FlowID cpuid);
   FlowID getFid(FlowID last_fid);
-  void freeFid(FlowID fid);
-  void setFirstFlow(FlowID fid);
-  
-  void setSampler(EmuSampler *a_sampler, FlowID fid=0);
-  void drainFIFO();
-  FlowID mapLid(FlowID fid);
+  void   freeFid(FlowID fid);
+  void   setFirstFlow(FlowID fid);
 
+  void   setSampler(EmuSampler *a_sampler, FlowID fid = 0);
+  void   drainFIFO();
+  FlowID mapLid(FlowID fid);
 };
 
 #endif // QEMUEMULINTERFACE_H

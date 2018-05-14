@@ -34,27 +34,27 @@ extern EmuSampler *qsamplerlist[];
 extern EmuSampler *qsampler;
 
 extern "C" {
-  typedef struct QEMUArgs {
-    int qargc;
-    char **qargv;
-  } QEMUArgs;
+typedef struct QEMUArgs {
+  int    qargc;
+  char **qargv;
+} QEMUArgs;
 
-  void *qemuesesc_main_bootstrap(void *threadargs);
-  void QEMUReader_goto_sleep(void *env);
-  void QEMUReader_wakeup_from_sleep(void *env);
+void *qemuesesc_main_bootstrap(void *threadargs);
+void  QEMUReader_goto_sleep(void *env);
+void  QEMUReader_wakeup_from_sleep(void *env);
 
-  uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t data, uint16_t fid, uint16_t src1, uint16_t dest);
-  uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest);
+uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t data, uint16_t fid, uint16_t src1, uint16_t dest);
+uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2, uint16_t dest);
 
-  void QEMUReader_finish(uint32_t fid);
-  void QEMUReader_finish_thread(uint32_t fid);
+void QEMUReader_finish(uint32_t fid);
+void QEMUReader_finish_thread(uint32_t fid);
 
-  void QEMUReader_start_roi(uint32_t fid);
+void QEMUReader_start_roi(uint32_t fid);
 
-  void esesc_set_rabbit(uint32_t fid);
-  void esesc_set_warmup(uint32_t fid);
-  void esesc_set_timing(uint32_t fid);
-  void loadSampler(uint32_t fid);
+void esesc_set_rabbit(uint32_t fid);
+void esesc_set_warmup(uint32_t fid);
+void esesc_set_timing(uint32_t fid);
+void loadSampler(uint32_t fid);
 }
 
 #endif

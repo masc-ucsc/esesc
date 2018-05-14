@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -43,7 +43,6 @@
 
 class GOoOProcessor : public GProcessor {
 private:
-
 protected:
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
 
@@ -55,9 +54,9 @@ protected:
   // END VIRTUAL FUNCTIONS of GProcessor
 public:
   GOoOProcessor(GMemorySystem *gm, CPU_t i);
-  virtual ~GOoOProcessor() { }
+  virtual ~GOoOProcessor() {
+  }
   //  virtual LSQ *getLSQ();
-
 };
 
-#endif   // SPROCESSOR_H
+#endif // SPROCESSOR_H

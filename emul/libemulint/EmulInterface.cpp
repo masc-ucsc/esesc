@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 // modification, are permitted provided that the following conditions are met:
@@ -33,47 +33,39 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "SescConf.h"
 #include "EmuSampler.h"
 #include "EmulInterface.h"
+#include "SescConf.h"
 
 /* }}} */
 
-  EmulInterface::EmulInterface(const char *sect)
-: section(strdup( sect ))
-  /* Base class EmulInterface constructor  */
+EmulInterface::EmulInterface(const char *sect)
+    : section(strdup(sect))
+/* Base class EmulInterface constructor  */
 {
-  sampler  = 0;
-  numFlows = 0;
-  cputype = CPU;
-  const char* emultype = SescConf->getCharPtr(section,"type");
+  sampler              = 0;
+  numFlows             = 0;
+  cputype              = CPU;
+  const char *emultype = SescConf->getCharPtr(section, "type");
 
-
-  FlowID nemul = SescConf->getRecordSize("","cpuemul");
-  for(FlowID i=0;i<nemul;i++) {
-    const char *section = SescConf->getCharPtr("","cpuemul",i);
-    const char *type    = SescConf->getCharPtr(section,"type");
-    if(strcasecmp(type,emultype) == 0 ) {
+  FlowID nemul = SescConf->getRecordSize("", "cpuemul");
+  for(FlowID i = 0; i < nemul; i++) {
+    const char *section = SescConf->getCharPtr("", "cpuemul", i);
+    const char *type    = SescConf->getCharPtr(section, "type");
+    if(strcasecmp(type, emultype) == 0) {
       numFlows++;
     }
   }
-
-
-
 }
 /*  */
 
-EmulInterface::~EmulInterface() 
-  /* EmulInterface destructor  */
+EmulInterface::~EmulInterface()
+/* EmulInterface destructor  */
 {
 }
 /*  */
 
-void EmulInterface::setSampler(EmuSampler *a_sampler, FlowID fid)
-{
-  //I(sampler==0);
+void EmulInterface::setSampler(EmuSampler *a_sampler, FlowID fid) {
+  // I(sampler==0);
   sampler = a_sampler;
 }
-
-
-

@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -42,7 +42,6 @@
 
 class EmuDInstQueue {
 private:
-
   uint32_t head;
   uint32_t tail;
   uint32_t ndrop;
@@ -60,7 +59,7 @@ public:
   void popHead() {
     I(!empty());
 
-    head = (head + 1) & (trace.size()-1);
+    head = (head + 1) & (trace.size() - 1);
   };
 
   DInst *getHead() {
@@ -82,10 +81,10 @@ public:
   void add() {
     I(nFreeElems);
 
-    insertpoint = (insertpoint + 1) & (trace.size()-1);
+    insertpoint = (insertpoint + 1) & (trace.size() - 1);
     nFreeElems--;
 
-    if (nFreeElems == 0)
+    if(nFreeElems == 0)
       adjust_trace();
   }
 
@@ -95,15 +94,15 @@ public:
   }
 
   bool advanceTail() {
-    if (ndrop) {
+    if(ndrop) {
       ndrop--;
       return true;
     }
-    if (insertpoint == tail)
+    if(insertpoint == tail)
       return false;
 
-//    I(tail!=head);
-    tail = (tail + 1) & (trace.size()-1);
+    //    I(tail!=head);
+    tail = (tail + 1) & (trace.size() - 1);
     nFreeElems++;
 
     return true;
@@ -111,9 +110,9 @@ public:
 
   void moveHead2Tail() {
     uint32_t tail_copy = tail;
-    while( head != tail ) {
+    while(head != tail) {
       trace[tail] = trace[tail]->clone();
-      tail        = (tail + 1) & (trace.size()-1);
+      tail        = (tail + 1) & (trace.size() - 1);
       ndrop++;
     }
     head = tail_copy;
@@ -121,7 +120,7 @@ public:
   }
 
   uint32_t size() const {
-    return (trace.size()-nFreeElems);
+    return (trace.size() - nFreeElems);
   }
 
   bool empty() const {
@@ -130,4 +129,3 @@ public:
 };
 
 #endif
-

@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,24 +39,21 @@
 // Comment out to enable Instruction Based Sampling (Original SMARTS)
 #define TBS 0
 
-
-#include "SamplerBase.h"
 #include "GStats.h"
-
+#include "SamplerBase.h"
 
 class SamplerPeriodic : public SamplerBase {
 private:
 protected:
-
   uint64_t totalnInstForcedDetail;
   float    intervalRatio;
   uint32_t TempToPerfRatio;
 
   FlowID winnerFid;
 
-  GStatsCntr  *dsync;
+  GStatsCntr *dsync;
 
-  static int32_t PerfSampleLeftForTemp; 
+  static int32_t PerfSampleLeftForTemp;
 
   void coordinateWithOthersAndNextMode(FlowID fid);
   void syncTimeAndTimingModes(FlowID fid);
@@ -80,13 +77,11 @@ protected:
   void dumpTime();
 
 public:
-
   SamplerPeriodic(const char *name, const char *section, EmulInterface *emu, FlowID fid);
   virtual ~SamplerPeriodic();
 
   uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest, int dest2);
-  void setStatsFlag(DInst *dinst);
+  void     setStatsFlag(DInst *dinst);
 };
 
 #endif
-

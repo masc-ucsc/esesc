@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,41 +35,35 @@
 #ifndef EMU_SAMPLER_H
 #define EMU_SAMPLER_H
 
-
 #include <stdint.h>
-#include <vector>
 #include <time.h>
+#include <vector>
 
-#include "nanassert.h"
 #include "DInst.h"
 #include "GStats.h"
+#include "nanassert.h"
 
 #include "EmulInterface.h"
 extern uint64_t cuda_inst_skip;
 
 class EmuSampler {
 public:
-  enum EmuMode {
-    EmuInit,
-    EmuRabbit,
-    EmuWarmup,
-    EmuDetail,
-    EmuTiming,
-    EmuMax
-  };
+  enum EmuMode { EmuInit, EmuRabbit, EmuWarmup, EmuDetail, EmuTiming, EmuMax };
 
 private:
   uint64_t nextSwitch;
 
 protected:
-  void setNextSwitch(uint64_t instNum);
-  uint64_t getNextSwitch() const { return nextSwitch; }
+  void     setNextSwitch(uint64_t instNum);
+  uint64_t getNextSwitch() const {
+    return nextSwitch;
+  }
 
   void syncTime();
 
-  const char *name;
-  FlowID sFid;
-  FILE *syscall_file;
+  const char *    name;
+  FlowID          sFid;
+  FILE *          syscall_file;
   struct timespec startTime;
 
   EmulInterface *emul;
@@ -83,61 +77,63 @@ protected:
   uint64_t phasenInst; // ninst since the current mode started
   uint64_t lastPhasenInst;
 
-  bool     syscall_enable;
-  bool     syscall_generate;
-  bool     syscall_runtime;
-  bool     stopJustCalled;
+  bool syscall_enable;
+  bool syscall_generate;
+  bool syscall_runtime;
+  bool stopJustCalled;
 
-  EmuMode  mode;
-  EmuMode  next_mode;
+  EmuMode mode;
+  EmuMode next_mode;
 
-  double   freq; // CPU/GPU frequency
-  double   meaCPI;
-  double   meauCPI;
-  bool     calcCPIJustCalled;
+  double freq; // CPU/GPU frequency
+  double meaCPI;
+  double meauCPI;
+  bool   calcCPIJustCalled;
 
   GStatsCntr *nSwitches;
   GStatsCntr *tusage[EmuMax];
   GStatsCntr *iusage[EmuMax];
   GStatsCntr *globalClock_Timing;
 
-  GStats *nCommitted;
-  GStatsAvg *ipc;
-  GStatsAvg *uipc;
-  Time_t globalClock_Timing_prev;
-  uint64_t prevnCommitted;
+  GStats *        nCommitted;
+  GStatsAvg *     ipc;
+  GStatsAvg *     uipc;
+  Time_t          globalClock_Timing_prev;
+  uint64_t        prevnCommitted;
   pthread_mutex_t stop_lock;
   pthread_mutex_t mode_lock;
 
   static std::vector<bool> done;
-  static volatile bool terminated;
-  static uint64_t *instPrev;
-  static uint64_t *clockPrev;
-  static uint64_t *fticksPrev;
-
+  static volatile bool     terminated;
+  static uint64_t *        instPrev;
+  static uint64_t *        clockPrev;
+  static uint64_t *        fticksPrev;
 
   void markDone();
 
   void beginTiming(EmuMode mod);
 
-  void setMode(EmuMode mod, FlowID fid);
-  bool restartRabbit;
+  void     setMode(EmuMode mod, FlowID fid);
+  bool     restartRabbit;
   uint32_t numFlow;
 
   static bool roi_skip;
 
   static float turboRatio;
+
 public:
   uint64_t totalnInst; // total # instructions
-  EmuMode getMode() const { return mode;}
+  EmuMode  getMode() const {
+    return mode;
+  }
 
   void start_roi();
 
-  void setModeNativeRabbit(){
-    restartRabbit = true; //This flag is only set by the sampler
+  void setModeNativeRabbit() {
+    restartRabbit = true; // This flag is only set by the sampler
   }
 
-  void stopNativeRabbit(){
+  void stopNativeRabbit() {
     restartRabbit = false;
   }
 
@@ -145,10 +141,9 @@ public:
     return terminated;
   }
 
-  bool getrestartrabbitstatus(){
+  bool getrestartrabbitstatus() {
     return restartRabbit;
   }
-
 
   EmuSampler(const char *name, EmulInterface *emu, FlowID fid);
   virtual ~EmuSampler();
@@ -164,47 +159,54 @@ public:
   // timing  : full timing modeling
 
   void stop();
-  void stopClockTicks(FlowID fid, double weigth=1);
+  void stopClockTicks(FlowID fid, double weigth = 1);
   void startInit(FlowID fid);
   void startRabbit(FlowID fid);
   void startWarmup(FlowID fid);
   void startDetail(FlowID fid);
   void startTiming(FlowID fid);
 
-  static void setTurboRatio(float turbor) { turboRatio = turbor; };
-  static float getTurboRatio() { return turboRatio; };
+  static void setTurboRatio(float turbor) {
+    turboRatio = turbor;
+  };
+  static float getTurboRatio() {
+    return turboRatio;
+  };
 
-  uint64_t getTotalnInst() const { return totalnInst; }
+  uint64_t getTotalnInst() const {
+    return totalnInst;
+  }
 
   // Return the time from the beginning of simulation in nanoseconds
   virtual uint64_t getTime() = 0;
 
   bool execute(FlowID fid, uint64_t icount);
 
-  void AtomicDecrPhasenInst(uint64_t i){
+  void AtomicDecrPhasenInst(uint64_t i) {
     AtomicSub(&phasenInst, i);
   }
-  void AtomicDecrTotalnInst(uint64_t i){
+  void AtomicDecrTotalnInst(uint64_t i) {
     AtomicSub(&totalnInst, i);
   }
 
-  uint64_t do_native_ffwd(){
-    //FIXME
-    //Set nInstrabbit = 0:
-    //Switch mode to warmup directly.. or cause it to switch (in GPUThread Manager?)
+  uint64_t do_native_ffwd() {
+    // FIXME
+    // Set nInstrabbit = 0:
+    // Switch mode to warmup directly.. or cause it to switch (in GPUThread Manager?)
     return 0;
   }
 
   virtual bool isActive(FlowID fid) = 0;
 
-  virtual uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest, int dest2) = 0;
-  virtual void getGPUCycles(FlowID fid, float ratio = 1.0) = 0;
-  void syscall(uint32_t num, uint64_t usecs, FlowID fid);
+  virtual uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest,
+                         int dest2)                            = 0;
+  virtual void     getGPUCycles(FlowID fid, float ratio = 1.0) = 0;
+  void             syscall(uint32_t num, uint64_t usecs, FlowID fid);
 
   virtual FlowID resumeThread(FlowID uid, FlowID last_fid) = 0;
-  virtual FlowID resumeThread(FlowID uid) = 0;
-  virtual void pauseThread(FlowID fid) = 0;
-  virtual void terminate() = 0;
+  virtual FlowID resumeThread(FlowID uid)                  = 0;
+  virtual void   pauseThread(FlowID fid)                   = 0;
+  virtual void   terminate()                               = 0;
 
   virtual void setStatsFlag(DInst *dinst) = 0;
 
@@ -219,7 +221,7 @@ public:
   void calcCPI();
 
   FlowID getNumFlows();
-  //FlowID getFirstFlow();
+  // FlowID getFirstFlow();
 
   FlowID getFid(FlowID last_fid) {
     return emul->getFid(last_fid);
@@ -231,7 +233,9 @@ public:
     emul->setFid(cpudid);
   }
 
-  FlowID getsFid() const { return sFid; }
+  FlowID getsFid() const {
+    return sFid;
+  }
 
   FlowID mapLid(FlowID lid) const {
     return emul->mapLid(lid);
@@ -241,7 +245,11 @@ public:
   void drainFIFO() {
     emul->drainFIFO();
   }
-  virtual int64_t getThreads2Simulate(){ return 0; }
-  bool getStatsFlag() const { return mode == EmuTiming; }
+  virtual int64_t getThreads2Simulate() {
+    return 0;
+  }
+  bool getStatsFlag() const {
+    return mode == EmuTiming;
+  }
 };
 #endif

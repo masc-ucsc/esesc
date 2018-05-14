@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -33,38 +33,25 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <stdio.h>
 #include "Instruction.h"
 #include "nanassert.h"
+#include <stdio.h>
 
 static const char *opcode2NameTable[] = {
-  "iSubInvalid",
-  //-----------------
-  "iRALU",
-  //-----------------
-  "iAALU",
-  //-----------------
-  "iBALU_LBRANCH",
-  "iBALU_RBRANCH",
-  "iBALU_LJUMP",
-  "iBALU_RJUMP",
-  "iBALU_LCALL",
-  "iBALU_RCALL",
-  "iBALU_RET",
-  //-----------------
-  "iLALU_LD",
-  //-----------------
-  "iSALU_ST",
-  "iSALU_LL",
-  "iSALU_SC",
-  "iSALU_ADDR",
-  //-----------------
-  "iCALU_FPMULT",
-  "iCALU_FPDIV",
-  "iCALU_FPALU",
-  "iCALU_MULT",
-  "iCALU_DIV",
-  //-----------------
+    "iSubInvalid",
+    //-----------------
+    "iRALU",
+    //-----------------
+    "iAALU",
+    //-----------------
+    "iBALU_LBRANCH", "iBALU_RBRANCH", "iBALU_LJUMP", "iBALU_RJUMP", "iBALU_LCALL", "iBALU_RCALL", "iBALU_RET",
+    //-----------------
+    "iLALU_LD",
+    //-----------------
+    "iSALU_ST", "iSALU_LL", "iSALU_SC", "iSALU_ADDR",
+    //-----------------
+    "iCALU_FPMULT", "iCALU_FPDIV", "iCALU_FPALU", "iCALU_MULT", "iCALU_DIV",
+    //-----------------
 };
 
 const char *Instruction::opcode2Name(InstOpcode op) {
@@ -72,26 +59,23 @@ const char *Instruction::opcode2Name(InstOpcode op) {
 }
 
 void Instruction::dump(const char *str) const {
-  fprintf(stderr,"%s: reg%d, reg%d = reg%d %11s reg%d",
-      str, dst1, dst2, src1, opcode2NameTable[opcode], src2);
+  fprintf(stderr, "%s: reg%d, reg%d = reg%d %11s reg%d", str, dst1, dst2, src1, opcode2NameTable[opcode], src2);
 }
 
-void Instruction::set(InstOpcode opcode_, RegType src1_, RegType src2_, RegType dst1_, RegType dst2_) 
-{
+void Instruction::set(InstOpcode opcode_, RegType src1_, RegType src2_, RegType dst1_, RegType dst2_) {
   I(opcode_ != iOpInvalid);
 
-  opcode    = opcode_;
-  src1      = src1_;
-  src2      = src2_;
-  if (dst1_ == LREG_NoDependence) { 
+  opcode = opcode_;
+  src1   = src1_;
+  src2   = src2_;
+  if(dst1_ == LREG_NoDependence) {
     dst1 = LREG_InvalidOutput;
-  }else{
+  } else {
     dst1 = dst1_;
   }
-  if (dst2_ == LREG_NoDependence) { 
+  if(dst2_ == LREG_NoDependence) {
     dst2 = LREG_InvalidOutput;
-  }else{
+  } else {
     dst2 = dst2_;
   }
 }
-

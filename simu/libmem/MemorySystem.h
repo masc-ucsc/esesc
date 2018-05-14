@@ -26,8 +26,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #ifndef MEMORYSYSTEM_H
 #define MEMORYSYSTEM_H
 
-#include "nanassert.h"
 #include "GMemorySystem.h"
+#include "nanassert.h"
 /* }}} */
 
 class MemObj;
@@ -39,7 +39,6 @@ protected:
 
 public:
   MemorySystem(int32_t processorId);
-
 };
 
 #endif

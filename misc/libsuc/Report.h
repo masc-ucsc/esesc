@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
 
@@ -31,21 +31,22 @@ class Report {
 private:
   static const int32_t MAXREPORTSTACK = 32;
 
-  static FILE *rfd[MAXREPORTSTACK];
+  static FILE *      rfd[MAXREPORTSTACK];
   static const char *fns[MAXREPORTSTACK];
-  static int32_t tos;
+  static int32_t     tos;
 
-  //static FILE *createTmp(const char *name);
+  // static FILE *createTmp(const char *name);
   Report();
+
 public:
   // Creates a new report file. Notice that if the name has the syntax
   // .XXXXXX it would modify the XXXXXX for the final file name.
-  static void openFile(const char *name);
-  static void field(int32_t fn, const char *format,...);
+  static void        openFile(const char *name);
+  static void        field(int32_t fn, const char *format, ...);
   static const char *getNameID();
-  static void field(const char *format,...);
-  static void close();
-  static void flush();
+  static void        field(const char *format, ...);
+  static void        close();
+  static void        flush();
 };
 
 // Report::field("bla bla bla:",a);

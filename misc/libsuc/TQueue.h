@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
 
@@ -38,19 +38,14 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  *
  */
 
-template < class Data, class Time > class TQueue {
+template <class Data, class Time> class TQueue {
 public:
-
   class User {
   private:
-    Time time;              // when the instruction finishes
+    Time time; // when the instruction finishes
     Data next;
-    enum QueueType {
-      InNoQueue,
-      InFastQueue,
-      InTooFarQueue
-    } qType;
-  
+    enum QueueType { InNoQueue, InFastQueue, InTooFarQueue } qType;
+
   public:
     User() {
       qType = InNoQueue;
@@ -62,7 +57,7 @@ public:
     bool isInQueue() const {
       return qType != InNoQueue;
     };
-  
+
     void setInFastQueue() {
       qType = InFastQueue;
     };
@@ -76,7 +71,7 @@ public:
     bool isInTooFarQueue() const {
       return qType == InTooFarQueue;
     };
-  
+
     void setTQTime(Time t) {
       time = t;
     };
@@ -94,7 +89,7 @@ public:
   };
 
 private:
-  Time minTime;
+  Time    minTime;
   int32_t minPos;
 
   int32_t nNodes;
@@ -107,20 +102,20 @@ private:
 
   class DLess {
   public:
-    bool operator() (const Data x, const Data y) const {
+    bool operator()(const Data x, const Data y) const {
       return x->getTQTime() > y->getTQTime();
     };
   } dLess;
 
-  std::vector< Data > tooFar;
-    
+  std::vector<Data> tooFar;
+
   Time minTooFar;
 
   void adjustTooFar() {
 
     I(!tooFar.empty());
 
-    while (((uint32_t)(tooFar.front()->getTQTime() - minTime)) < AccessSize) {
+    while(((uint32_t)(tooFar.front()->getTQTime() - minTime)) < AccessSize) {
 
       addNode(tooFar.front(), tooFar.front()->getTQTime());
 
@@ -132,7 +127,7 @@ private:
         return;
       }
     }
-  
+
     minTooFar = tooFar.front()->getTQTime();
   };
 
@@ -170,11 +165,11 @@ public:
       addNode(data, time);
     } else {
       // Some nodes already exists, and this is too distant in
-      // time.  
+      // time.
       data->setInTooFarQueue();
 
       tooFar.push_back(data);
-      std::push_heap(tooFar.begin(),tooFar.end(),dLess);
+      std::push_heap(tooFar.begin(), tooFar.end(), dLess);
 
       if(minTooFar > time)
         minTooFar = time;
@@ -196,13 +191,13 @@ public:
 
     if(nNodes == 0) {
       minTime = cTime;
-      minPos = 0;
+      minPos  = 0;
       return 0;
     }
 
     Data node = access[minPos];
 
-    while (node == 0 && minTime < cTime) {
+    while(node == 0 && minTime < cTime) {
       minPos = (minPos + 1) & AccessMask;
       minTime++;
       node = access[minPos];
@@ -222,54 +217,54 @@ public:
   };
 
   void remove(Data node) {
-    if( node->isInTooFarQueue() ) {
-      if( tooFar.front() == node ) {
-        std::pop_heap(tooFar.begin(),tooFar.end(),dLess);
+    if(node->isInTooFarQueue()) {
+      if(tooFar.front() == node) {
+        std::pop_heap(tooFar.begin(), tooFar.end(), dLess);
         tooFar.pop_back();
 
-        if( tooFar.empty() )
+        if(tooFar.empty())
           minTooFar = MaxTime;
         else
           minTooFar = tooFar.front()->getTQTime();
-    
-      }else{
+
+      } else {
         typedef typename std::vector<Data>::iterator DataIter;
-        DataIter it = std::find(tooFar.begin(),tooFar.end(),node);
+        DataIter                                     it = std::find(tooFar.begin(), tooFar.end(), node);
 
         I(it != tooFar.end());
         tooFar.erase(it);
-        I(std::find(tooFar.begin(),tooFar.end(),node) == tooFar.end());
-        std::make_heap(tooFar.begin(),tooFar.end(),dLess);
+        I(std::find(tooFar.begin(), tooFar.end(), node) == tooFar.end());
+        std::make_heap(tooFar.begin(), tooFar.end(), dLess);
       }
-    }else if( node->isInFastQueue() ) {
+    } else if(node->isInFastQueue()) {
       Time time = node->getTQTime();
-      
-      if( access[minPos] == node ) {
+
+      if(access[minPos] == node) {
         // First in FastQueue
         nNodes--;
         access[minPos] = access[minPos]->getTQNext();
         node->removeFromQueue();
-      }else{
+      } else {
         uint32_t pos = ((uint32_t)(minPos + time - minTime)) & AccessMask;
 
         Data prev = 0;
         Data curr = access[pos];
 
-        while( curr != node ) {
+        while(curr != node) {
           prev = curr;
           curr = curr->getTQNext();
         }
-        I( curr == node );
+        I(curr == node);
 
-        if( prev == 0 ) {
+        if(prev == 0) {
           access[pos] = access[pos]->getTQNext();
-        }else{
+        } else {
           prev->setTQNext(curr->getTQNext());
         }
 
-        if( accessTail[pos] == node ) {
+        if(accessTail[pos] == node) {
           prev = access[pos];
-          while( prev ) {
+          while(prev) {
             prev = prev->getTQNext();
           }
           accessTail[pos] = prev;
@@ -277,7 +272,7 @@ public:
 
         nNodes--;
       }
-    }else {
+    } else {
       I(!node->isInQueue());
     }
   };
@@ -285,9 +280,9 @@ public:
   void reschedule(Data node, Time rTime) {
     remove(node);
 
-    I( !node->isInQueue() );
+    I(!node->isInQueue());
 
-    insert(node,rTime);
+    insert(node, rTime);
   };
 
   size_t size() const {
@@ -300,9 +295,9 @@ public:
   void dump();
 };
 
-#define exportTemplate          /* export not impl */
+#define exportTemplate /* export not impl */
 #ifndef TQUEUE_CPP
 #include "TQueue.cpp"
 #endif
 
-#endif   /* TQUEUEMODULE_H */
+#endif /* TQUEUEMODULE_H */

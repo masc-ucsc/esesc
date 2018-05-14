@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,43 +37,43 @@
 
 #include <vector>
 
-#include "nanassert.h"
 #include "SamplerBase.h"
-
+#include "nanassert.h"
 
 class SamplerGPUSpacial : public SamplerBase {
 private:
 protected:
   int64_t max_exec_threads;
   int64_t max_exec_threads_conf_file;
-  int timeFactor;
-  bool fullTiming;
+  int     timeFactor;
+  bool    fullTiming;
   EmuMode lastMode;
-  //bool endSimSiged;
+  // bool endSimSiged;
 
   void allDone();
+
 public:
   SamplerGPUSpacial(const char *name, const char *section, EmulInterface *emul, FlowID fid);
   virtual ~SamplerGPUSpacial();
 
   void queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fid, char op);
 
-  float getSamplingRatio() {return 0;} //FIXME
+  float getSamplingRatio() {
+    return 0;
+  } // FIXME
 
-  void updateIPC(uint32_t fid);
-  int64_t getThreads2Simulate(){
+  void    updateIPC(uint32_t fid);
+  int64_t getThreads2Simulate() {
     return max_exec_threads;
   };
 
-  int64_t getOrigThreads2Simulate(){
+  int64_t getOrigThreads2Simulate() {
     return max_exec_threads_conf_file;
   };
 
-  void syncStats(){
-  };
-  bool noActiveCPU();
+  void     syncStats(){};
+  bool     noActiveCPU();
   uint64_t getGPUTime();
-  void doPWTH();
+  void     doPWTH();
 };
 #endif
-

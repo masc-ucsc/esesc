@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,15 +35,15 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <stdint.h>
 #include "scstate.h"
+#include <stdint.h>
 
 extern "C" {
-  typedef struct QEMUArgs {
-    int qargc;
-    char **qargv;
-    void * env; //handle to CPUState to be used in syscalls
-  } QEMUArgs;
+typedef struct QEMUArgs {
+  int    qargc;
+  char **qargv;
+  void * env; // handle to CPUState to be used in syscalls
+} QEMUArgs;
 };
 extern QEMUArgs *qargs;
 
@@ -53,24 +53,22 @@ void start_qemu(int argc, char **argv);
 void syscall_wrapper();
 
 extern "C" {
-  uint32_t esesc_iload(uint32_t addr);
+uint32_t esesc_iload(uint32_t addr);
 
-  uint64_t esesc_ldu64(uint32_t addr);
+uint64_t esesc_ldu64(uint32_t addr);
 
-  uint32_t esesc_ldu32(uint32_t addr);
-  uint16_t esesc_ldu16(uint32_t addr);
-   int16_t esesc_lds16(uint32_t addr);
-  uint8_t  esesc_ldu08(uint32_t addr);
-   int8_t  esesc_lds08(uint32_t addr);
+uint32_t esesc_ldu32(uint32_t addr);
+uint16_t esesc_ldu16(uint32_t addr);
+int16_t  esesc_lds16(uint32_t addr);
+uint8_t  esesc_ldu08(uint32_t addr);
+int8_t   esesc_lds08(uint32_t addr);
 
-   void esesc_st64(uint32_t addr, uint64_t data);
-   void esesc_st32(uint32_t addr, uint32_t data);
-   void esesc_st16(uint32_t addr, uint16_t data);
-   void esesc_st08(uint32_t addr, uint8_t data);
-
+void esesc_st64(uint32_t addr, uint64_t data);
+void esesc_st32(uint32_t addr, uint32_t data);
+void esesc_st16(uint32_t addr, uint16_t data);
+void esesc_st08(uint32_t addr, uint8_t data);
 }
 
 extern uint32_t starting_pc;
 
 #endif
-

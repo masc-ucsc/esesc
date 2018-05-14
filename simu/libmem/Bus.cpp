@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -34,21 +34,20 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
-#include "MemorySystem.h"
 #include "Bus.h"
+#include "MemorySystem.h"
+#include "SescConf.h"
 /* }}} */
 #ifdef ENABLE_NBSD
-void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *mreq); 
+void meminterface_start_snoop_req(uint64_t addr, bool inv, uint16_t coreid, bool dcache, void *mreq);
 void meminterface_req_done(void *req, int mesi);
 #endif
 
-Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
-  /* constructor {{{1 */
-  : MemObj(section, name)
-  ,delay(SescConf->getInt(section, "delay"))
-{
-  //busyUpto = 0;
+Bus::Bus(MemorySystem *current, const char *section, const char *name)
+    /* constructor {{{1 */
+    : MemObj(section, name)
+    , delay(SescConf->getInt(section, "delay")) {
+  // busyUpto = 0;
 
   SescConf->isInt(section, "numPorts");
   SescConf->isInt(section, "portOccp");
@@ -58,61 +57,61 @@ Bus::Bus(MemorySystem* current ,const char *section ,const char *name)
   TimeDelta_t occ = SescConf->getInt(section, "portOccp");
 
   char cadena[100];
-  sprintf(cadena,"Data%s", name);
+  sprintf(cadena, "Data%s", name);
   dataPort = PortGeneric::create(cadena, num, occ);
-  sprintf(cadena,"Cmd%s", name);
-  cmdPort  = PortGeneric::create(cadena, num, 1);
+  sprintf(cadena, "Cmd%s", name);
+  cmdPort = PortGeneric::create(cadena, num, 1);
 
   I(current);
-  MemObj *lower_level = current->declareMemoryObj(section, "lowerLevel");   
-  if (lower_level) {
+  MemObj *lower_level = current->declareMemoryObj(section, "lowerLevel");
+  if(lower_level) {
     addLowerLevel(lower_level);
   }
 }
 /* }}} */
 
 void Bus::doReq(MemRequest *mreq)
-  /* forward bus read {{{1 */
+/* forward bus read {{{1 */
 {
-  //MSG("@%lld bus %s 0x%lx %d",globalClock, mreq->getCurrMem()->getName(), mreq->getAddr(), mreq->getAction());
-  TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag())+delay;
-	router->scheduleReq(mreq, when);
+  // MSG("@%lld bus %s 0x%lx %d",globalClock, mreq->getCurrMem()->getName(), mreq->getAddr(), mreq->getAction());
+  TimeDelta_t when = cmdPort->nextSlotDelta(mreq->getStatsFlag()) + delay;
+  router->scheduleReq(mreq, when);
 }
 /* }}} */
 
 void Bus::doDisp(MemRequest *mreq)
-  /* forward bus read {{{1 */
+/* forward bus read {{{1 */
 {
-  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
-	router->scheduleDisp(mreq, when);
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag()) + delay;
+  router->scheduleDisp(mreq, when);
 }
 /* }}} */
 
 void Bus::doReqAck(MemRequest *mreq)
-  /* data is coming back {{{1 */
+/* data is coming back {{{1 */
 {
-  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag())+delay;
+  TimeDelta_t when = dataPort->nextSlotDelta(mreq->getStatsFlag()) + delay;
 
-  if (mreq->isHomeNode()) {
+  if(mreq->isHomeNode()) {
 #if ENABLE_NBSD
-    enum MESI {Invalid=0,Shared,SharedDirty,Exclusive,Modified};
+    enum MESI { Invalid = 0, Shared, SharedDirty, Exclusive, Modified };
     int mesi;
-    if (mreq->getAction() == ma_setInvalid)
+    if(mreq->getAction() == ma_setInvalid)
       mesi = Invalid;
-    else if (mreq->getAction() == ma_setShared)
+    else if(mreq->getAction() == ma_setShared)
       mesi = Shared;
-    else if (mreq->getAction() == ma_setExclusive)
+    else if(mreq->getAction() == ma_setExclusive)
       mesi = Exclusive;
-    else if (mreq->getAction() == ma_setDirty)
+    else if(mreq->getAction() == ma_setDirty)
       mesi = Modified;
-    else{
+    else {
       I(0);
     }
 
-    if (!dcache) {
-      if (mesi == Exclusive)
+    if(!dcache) {
+      if(mesi == Exclusive)
         mesi = Shared;
-      else if (mesi != Shared)
+      else if(mesi != Shared)
         I(0);
     }
 
@@ -127,14 +126,14 @@ void Bus::doReqAck(MemRequest *mreq)
 /* }}} */
 
 void Bus::doSetState(MemRequest *mreq)
-  /* forward set state to all the upper nodes {{{1 */
+/* forward set state to all the upper nodes {{{1 */
 {
-  if (router->isTopLevel()) {
+  if(router->isTopLevel()) {
 #if ENABLE_NBSD
     meminterface_start_snoop_req(mreq->getAddr(), mreq->getAction() == ma_setInvalid, getCoreID(), dcache, mreq);
 #else
-    mreq->convert2SetStateAck(ma_setInvalid,false); // same as a miss (not sharing here)
-    router->scheduleSetStateAck(mreq,1);
+    mreq->convert2SetStateAck(ma_setInvalid, false); // same as a miss (not sharing here)
+    router->scheduleSetStateAck(mreq, 1);
 #endif
     return;
   }
@@ -143,7 +142,7 @@ void Bus::doSetState(MemRequest *mreq)
 /* }}} */
 
 void Bus::doSetStateAck(MemRequest *mreq)
-  /* forward set state to all the lower nodes {{{1 */
+/* forward set state to all the lower nodes {{{1 */
 {
   if(mreq->isHomeNode()) {
     mreq->ack();
@@ -161,23 +160,22 @@ bool Bus::isBusy(AddrType addr) const
 /* }}} */
 
 void Bus::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
-  /* forward tryPrefetch {{{1 */
-{ 
-  router->tryPrefetch(addr,doStats, degree, pref_sign, pc, cb);
+/* forward tryPrefetch {{{1 */
+{
+  router->tryPrefetch(addr, doStats, degree, pref_sign, pc, cb);
 }
 /* }}} */
 
 TimeDelta_t Bus::ffread(AddrType addr)
-  /* fast forward reads {{{1 */
-{ 
+/* fast forward reads {{{1 */
+{
   return delay;
 }
 /* }}} */
 
 TimeDelta_t Bus::ffwrite(AddrType addr)
-  /* fast forward writes {{{1 */
-{ 
+/* fast forward writes {{{1 */
+{
   return delay;
 }
 /* }}} */
-

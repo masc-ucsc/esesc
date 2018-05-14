@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,27 +37,27 @@
 
 #include <pthread.h>
 
-#include "Instruction.h"
-#include "ThreadSafeFIFO.h"
 #include "DInst.h"
-#include "SescConf.h"
 #include "EmuDInstQueue.h"
 #include "GStats.h"
+#include "Instruction.h"
+#include "SescConf.h"
+#include "ThreadSafeFIFO.h"
 
 class Reader {
 private:
 protected:
-  static FlowID nemul;
+  static FlowID                    nemul;
   static ThreadSafeFIFO<RAWDInst> *tsfifo;
-  static pthread_mutex_t          *tsfifo_snd_mutex; 
-  static volatile int             *tsfifo_snd_mutex_blocked; 
-  static pthread_mutex_t          tsfifo_rcv_mutex; 
-  static volatile int             tsfifo_rcv_mutex_blocked; 
-  static EmuDInstQueue            *ruffer;
+  static pthread_mutex_t *         tsfifo_snd_mutex;
+  static volatile int *            tsfifo_snd_mutex_blocked;
+  static pthread_mutex_t           tsfifo_rcv_mutex;
+  static volatile int              tsfifo_rcv_mutex_blocked;
+  static EmuDInstQueue *           ruffer;
+
 public:
-  Reader(const char* section);
-  virtual ~Reader() {
-  };
+  Reader(const char *section);
+  virtual ~Reader(){};
 
   virtual bool   populate(FlowID fid)      = 0;
   virtual DInst *peekHead(FlowID fid)      = 0;
@@ -65,8 +65,9 @@ public:
   virtual void   reexecuteTail(FlowID fid) = 0;
   virtual void   syncHeadTail(FlowID fid)  = 0;
 
-  FlowID getnemul() const { return nemul; }
+  FlowID getnemul() const {
+    return nemul;
+  }
 };
-
 
 #endif

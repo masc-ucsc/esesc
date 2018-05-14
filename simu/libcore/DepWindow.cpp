@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -38,31 +38,29 @@
 #include "DepWindow.h"
 
 #include "DInst.h"
+#include "GProcessor.h"
 #include "Resource.h"
 #include "SescConf.h"
-#include "GProcessor.h"
 
 DepWindow::DepWindow(uint32_t cpuid, Cluster *aCluster, const char *clusterName, uint32_t pos)
-  :srcCluster(aCluster)
-  ,Id(cpuid)
-  ,wrForwardBus("P(%d)_%s%d_wrForwardBus",cpuid, clusterName,pos)
-{
+    : srcCluster(aCluster)
+    , Id(cpuid)
+    , wrForwardBus("P(%d)_%s%d_wrForwardBus", cpuid, clusterName, pos) {
   char cadena[1024];
 
-  sprintf(cadena,"P(%d)_%s%d_sched", cpuid, clusterName,pos);
-  schedPort = PortGeneric::create(cadena
-                                  ,SescConf->getInt(clusterName, "SchedNumPorts")
-                                  ,SescConf->getInt(clusterName, "SchedPortOccp"));
+  sprintf(cadena, "P(%d)_%s%d_sched", cpuid, clusterName, pos);
+  schedPort =
+      PortGeneric::create(cadena, SescConf->getInt(clusterName, "SchedNumPorts"), SescConf->getInt(clusterName, "SchedPortOccp"));
 
-  InterClusterLat = SescConf->getInt("cpusimu", "interClusterLat",cpuid);
+  InterClusterLat = SescConf->getInt("cpusimu", "interClusterLat", cpuid);
   SchedDelay      = SescConf->getInt(clusterName, "schedDelay");
 
   // Constraints
-  SescConf->isInt(clusterName    , "schedDelay");
-  SescConf->isBetween(clusterName , "schedDelay", 0, 1024);
+  SescConf->isInt(clusterName, "schedDelay");
+  SescConf->isBetween(clusterName, "schedDelay", 0, 1024);
 
-  SescConf->isInt("cpusimu"    , "interClusterLat",cpuid);
-  SescConf->isBetween("cpusimu" , "interClusterLat", SchedDelay, 1024,cpuid);
+  SescConf->isInt("cpusimu", "interClusterLat", cpuid);
+  SescConf->isBetween("cpusimu", "interClusterLat", SchedDelay, 1024, cpuid);
 }
 
 DepWindow::~DepWindow() {
@@ -77,7 +75,7 @@ void DepWindow::addInst(DInst *dinst) {
 
   I(dinst->getCluster() != 0); // Resource::schedule must set the resource field
 
-  if (!dinst->hasDeps()) {
+  if(!dinst->hasDeps()) {
     preSelect(dinst);
   }
 }
@@ -95,7 +93,7 @@ void DepWindow::preSelect(DInst *dinst) {
 void DepWindow::select(DInst *dinst) {
 
   Time_t schedTime = schedPort->nextSlot(dinst->getStatsFlag());
-  if (dinst->hasInterCluster())
+  if(dinst->hasInterCluster())
     schedTime += InterClusterLat;
   else
     schedTime += SchedDelay;
@@ -112,9 +110,9 @@ void DepWindow::executed(DInst *dinst) {
   I(!dinst->hasDeps());
 
   dinst->markExecuted();
-  dinst->clearRATEntry(); 
+  dinst->clearRATEntry();
 
-  if (!dinst->hasPending())
+  if(!dinst->hasPending())
     return;
 
   // NEVER HERE FOR in-order cores
@@ -123,19 +121,19 @@ void DepWindow::executed(DInst *dinst) {
   I(srcCluster == dinst->getCluster());
 
   I(dinst->isIssued());
-  while (dinst->hasPending()) {
+  while(dinst->hasPending()) {
     DInst *dstReady = dinst->getNextPending();
     I(dstReady);
 
     I(!dstReady->isExecuted());
 
-    if (!dstReady->hasDeps()) {
+    if(!dstReady->hasDeps()) {
       // Check dstRes because dstReady may not be issued
       I(dstReady->getCluster());
       const Cluster *dstCluster = dstReady->getCluster();
       I(dstCluster);
 
-      if (dstCluster != srcCluster) {
+      if(dstCluster != srcCluster) {
         wrForwardBus.inc(dstReady->getStatsFlag());
         dstReady->markInterCluster();
       }
@@ -144,4 +142,3 @@ void DepWindow::executed(DInst *dinst) {
     }
   }
 }
-

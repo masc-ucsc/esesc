@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
 
@@ -23,10 +23,9 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 EventScheduler::TimedCallbacksQueue EventScheduler::cbQ(256);
 
-volatile Time_t globalClock=0;
-volatile Time_t deadClock=0;
+volatile Time_t globalClock = 0;
+volatile Time_t deadClock   = 0;
 
-void EventScheduler::dump() const
-{
+void EventScheduler::dump() const {
   I(0);
 }

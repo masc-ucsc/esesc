@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,10 +36,10 @@
 #ifndef NICECACHE_H
 #define NICECACHE_H
 
-#include "nanassert.h"
-#include "MemObj.h"
 #include "GStats.h"
+#include "MemObj.h"
 #include "estl.h"
+#include "nanassert.h"
 /* }}} */
 
 class NICECache : public MemObj {
@@ -49,29 +49,28 @@ private:
   const uint32_t bsize;
   const uint32_t bsizeLog2;
 
-  bool     coldWarmup;
+  bool coldWarmup;
 
   HASH_SET<uint32_t> warmup;
-  uint32_t  warmupStepStart;
-  uint32_t  warmupStep;
-  uint32_t  warmupNext;
-  uint32_t  warmupSlowEvery;
+  uint32_t           warmupStepStart;
+  uint32_t           warmupStep;
+  uint32_t           warmupNext;
+  uint32_t           warmupSlowEvery;
+
 protected:
-
   // BEGIN Statistics
-  GStatsCntr  readHit;
-  GStatsCntr  pushDownHit;
-  GStatsCntr  writeHit;
+  GStatsCntr readHit;
+  GStatsCntr pushDownHit;
+  GStatsCntr writeHit;
 
-
-  // The following statistics don't make any sense for a niceCache, but are instantiated 
+  // The following statistics don't make any sense for a niceCache, but are instantiated
   // for compatibility, and to supress bogus warnings from the PowerModel about missing
-  // statistics for the NICECache. 
-  
+  // statistics for the NICECache.
+
   GStatsCntr readMiss;
-  GStatsCntr readHalfMiss; 
-  GStatsCntr writeMiss; 
-  GStatsCntr writeHalfMiss; 
+  GStatsCntr readHalfMiss;
+  GStatsCntr writeMiss;
+  GStatsCntr writeHalfMiss;
   GStatsCntr writeExclusive;
   GStatsCntr writeBack;
   GStatsAvg  avgMemLat;
@@ -79,26 +78,36 @@ protected:
 public:
   NICECache(MemorySystem *gms, const char *section, const char *name = NULL);
 
-	// Entry points to schedule that may schedule a do?? if needed
-	void req(MemRequest *req)         { doReq(req); };
-	void reqAck(MemRequest *req)      { doReqAck(req); };
-	void setState(MemRequest *req)    { doSetState(req); };
-	void setStateAck(MemRequest *req) { doSetStateAck(req); };
-	void disp(MemRequest *req)        { doDisp(req); }
+  // Entry points to schedule that may schedule a do?? if needed
+  void req(MemRequest *req) {
+    doReq(req);
+  };
+  void reqAck(MemRequest *req) {
+    doReqAck(req);
+  };
+  void setState(MemRequest *req) {
+    doSetState(req);
+  };
+  void setStateAck(MemRequest *req) {
+    doSetStateAck(req);
+  };
+  void disp(MemRequest *req) {
+    doDisp(req);
+  }
 
-	// This do the real work
-	void doReq(MemRequest *r);
-	void doReqAck(MemRequest *req);
-	void doSetState(MemRequest *req);
-	void doSetStateAck(MemRequest *req);
-	void doDisp(MemRequest *req);
+  // This do the real work
+  void doReq(MemRequest *r);
+  void doReqAck(MemRequest *req);
+  void doSetState(MemRequest *req);
+  void doSetStateAck(MemRequest *req);
+  void doDisp(MemRequest *req);
 
-  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb = 0);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 
-	bool isBusy(AddrType addr) const;
+  bool isBusy(AddrType addr) const;
 };
 
 #endif

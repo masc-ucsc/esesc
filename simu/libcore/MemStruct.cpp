@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -33,24 +33,22 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "MemStruct.h"
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 /* }}} */
 
-
-CacheDebugAccess* CacheDebugAccess::getInstance() {
-  static CacheDebugAccess* c = new CacheDebugAccess(); 
+CacheDebugAccess *CacheDebugAccess::getInstance() {
+  static CacheDebugAccess *c = new CacheDebugAccess();
   return c;
 }
 
-void CacheDebugAccess::setCacheAccess(char* cacheLevel) {
+void CacheDebugAccess::setCacheAccess(char *cacheLevel) {
   string s = string(cacheLevel);
-  if (s.compare("DL10") == 0 || s.compare("niceCache0") == 0 ||
-      s.compare("L3")   == 0 || s.compare("L20")        == 0) 
+  if(s.compare("DL10") == 0 || s.compare("niceCache0") == 0 || s.compare("L3") == 0 || s.compare("L20") == 0)
     debugMap[s] = true;
 }
 
-//Careful! Returns false for non-existing entry in map.
+// Careful! Returns false for non-existing entry in map.
 bool CacheDebugAccess::readCacheAccess(string cacheLevel) {
   return debugMap[cacheLevel];
 }
@@ -64,10 +62,10 @@ int CacheDebugAccess::readAddrsAccessed(void) {
 }
 
 int CacheDebugAccess::cacheAccessSum(void) {
-  int sum = 0;
+  int                         sum = 0;
   map<string, bool>::iterator it;
-  for (it = debugMap.begin(); it != debugMap.end(); it++) {
-    if (it->second)
+  for(it = debugMap.begin(); it != debugMap.end(); it++) {
+    if(it->second)
       sum++;
   }
   return sum;
@@ -76,4 +74,3 @@ int CacheDebugAccess::cacheAccessSum(void) {
 void CacheDebugAccess::mapReset(void) {
   debugMap.clear();
 }
-

@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,13 +36,13 @@
 #ifndef SCEXEC_H
 #define SCEXEC_H
 
-#include "CrackBase.h"
 #include "ARMCrack.h"
-#include "ThumbCrack.h"
+#include "CrackBase.h"
 #include "SPARCCrack.h"
+#include "ThumbCrack.h"
 #include "sccore.h"
-#include <sys/time.h>
 #include <iostream>
+#include <sys/time.h>
 
 #define CRACK_CACHE_SIZE 1024
 
@@ -52,30 +52,30 @@ private:
 
   ProgramBase *prog;
 
-  CrackBase   *crackInst;
-  ARMCrack    *crackInstARM;
-  ThumbCrack  *crackInstThumb;
+  CrackBase * crackInst;
+  ARMCrack *  crackInstARM;
+  ThumbCrack *crackInstThumb;
 #ifdef SPARC32
-  SPARCCrack  *crackInstSPARC;
+  SPARCCrack *crackInstSPARC;
 #endif
 
   RAWDInst *rinst; // FIXME: do not use pointer. Inline
 
-  FILE *fp; // File pointer to ARM Log file, used to validate ISA
-  bool dmb_sy_flag; //data memory barrier instruction flag to keep track of
+  FILE *fp;          // File pointer to ARM Log file, used to validate ISA
+  bool  dmb_sy_flag; // data memory barrier instruction flag to keep track of
                     // dmb_sy, ldrex, strex and dmb_sy block of instructions
-  bool ldrex_block; // flag to keep track of ldrex/strex block
-  bool validate_insn; // flag to validate/not validate an instruction
-  uint64_t vInst; // number of validated instructions
+  bool     ldrex_block;   // flag to keep track of ldrex/strex block
+  bool     validate_insn; // flag to validate/not validate an instruction
+  uint64_t vInst;         // number of validated instructions
 
-  RAWDInst crackCache[CRACK_CACHE_SIZE]; 
-  TranslationType crackCacheTType[CRACK_CACHE_SIZE]; 
-  uint64_t nInst;
-  uint64_t nUops;
-  uint64_t nHit;
+  RAWDInst        crackCache[CRACK_CACHE_SIZE];
+  TranslationType crackCacheTType[CRACK_CACHE_SIZE];
+  uint64_t        nInst;
+  uint64_t        nUops;
+  uint64_t        nHit;
 
   uint32_t tls2;
-  FlowID fid;
+  FlowID   fid;
 
   void fetch_crack();
   void execute();
@@ -85,19 +85,18 @@ private:
 
   bool firstIteration;
 
-  uint32_t hash(uint32_t hval){
-    uint32_t tmp = hval ^ (hval >> 5 );
-    return tmp ;
+  uint32_t hash(uint32_t hval) {
+    uint32_t tmp = hval ^ (hval >> 5);
+    return tmp;
   }
+
 public:
   Scexec(FlowID _fid, void *syscall_mem, TranslationType ttype, ProgramBase *prog, FILE *fp, FILE *syscallTrace);
 
-  void exec_loop(); 
+  void exec_loop();
 
-  virtual ~Scexec(){
+  virtual ~Scexec() {
   }
 };
-
-
 
 #endif

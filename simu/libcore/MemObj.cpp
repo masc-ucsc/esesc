@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -32,8 +32,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <string.h>
 #include <set>
+#include <string.h>
 
 #include "GMemorySystem.h"
 
@@ -46,7 +46,7 @@
 /* Debug class to search for duplicate names {{{1 */
 class Setltstr {
 public:
-  bool operator()(const char* s1, const char* s2) const {
+  bool operator()(const char *s1, const char *s2) const {
     return strcasecmp(s1, s2) < 0;
   }
 };
@@ -56,14 +56,13 @@ public:
 uint16_t MemObj::id_counter = 0;
 
 MemObj::MemObj(const char *sSection, const char *sName)
-   /* constructor {{{1 */
-  :section(sSection)
-  ,name(sName)
-  ,id(id_counter++)
-{
-  deviceType = SescConf->getCharPtr(section,"deviceType");
+    /* constructor {{{1 */
+    : section(sSection)
+    , name(sName)
+    , id(id_counter++) {
+  deviceType = SescConf->getCharPtr(section, "deviceType");
 
-	coreid = -1; // No first Level cache by default
+  coreid        = -1; // No first Level cache by default
   firstLevelIL1 = false;
   firstLevelDL1 = false;
   // Create router (different objects may override the default router)
@@ -71,11 +70,11 @@ MemObj::MemObj(const char *sSection, const char *sName)
 
 #ifdef DEBUG
   static std::set<const char *, Setltstr> usedNames;
-  if( sName ) {
+  if(sName) {
     // Verify that one else uses the same name
-    if( usedNames.find(sName) != usedNames.end() ) {
-      MSG("Creating multiple memory objects with the same name '%s' (rename one of them)",sName);
-    }else{
+    if(usedNames.find(sName) != usedNames.end()) {
+      MSG("Creating multiple memory objects with the same name '%s' (rename one of them)", sName);
+    } else {
       usedNames.insert(sName);
     }
   }
@@ -83,32 +82,30 @@ MemObj::MemObj(const char *sSection, const char *sName)
 }
 /* }}} */
 
-MemObj::~MemObj() 
-  /* destructor {{{1 */
+MemObj::~MemObj()
+/* destructor {{{1 */
 {
-  if(section != 0) 
-    delete [] section;
-  if(name != 0) 
-    delete [] name;
+  if(section != 0)
+    delete[] section;
+  if(name != 0)
+    delete[] name;
 }
 /* }}} */
 
-
-void MemObj::addLowerLevel(MemObj *obj) { 
-	router->addDownNode(obj);
-	I( obj );
-	obj->addUpperLevel(this);
-	//printf("%s with lower level %s\n",getName(),obj->getName());
+void MemObj::addLowerLevel(MemObj *obj) {
+  router->addDownNode(obj);
+  I(obj);
+  obj->addUpperLevel(this);
+  // printf("%s with lower level %s\n",getName(),obj->getName());
 }
 
-void MemObj::addUpperLevel(MemObj *obj) { 
-	//printf("%s upper level is %s\n",getName(),obj->getName());
-	router->addUpNode(obj);
+void MemObj::addUpperLevel(MemObj *obj) {
+  // printf("%s upper level is %s\n",getName(),obj->getName());
+  router->addUpNode(obj);
 }
 
-void MemObj::blockFill(MemRequest *mreq)
-{
-	// Most objects do nothing
+void MemObj::blockFill(MemRequest *mreq) {
+  // Most objects do nothing
 }
 
 #if 0
@@ -123,88 +120,85 @@ void MemObj::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_
 void MemObj::dump() const
 /* dump statistics {{{1 */
 {
-  LOG("MemObj name [%s]",name);
+  LOG("MemObj name [%s]", name);
 }
 /* }}} */
 
-DummyMemObj::DummyMemObj() 
-  /* dummy constructor {{{1 */
-  : MemObj("dummySection", "dummyMem")
-{ 
+DummyMemObj::DummyMemObj()
+    /* dummy constructor {{{1 */
+    : MemObj("dummySection", "dummyMem") {
 }
 /* }}} */
 
 DummyMemObj::DummyMemObj(const char *section, const char *sName)
-  /* dummy constructor {{{1 */
-  : MemObj(section, sName)
-{
+    /* dummy constructor {{{1 */
+    : MemObj(section, sName) {
 }
 /* }}} */
 
-void DummyMemObj::doReq(MemRequest *req)    
-  /* req {{{1 */
-{ 
+void DummyMemObj::doReq(MemRequest *req)
+/* req {{{1 */
+{
   I(0);
   req->ack();
 }
 /* }}} */
 
-void DummyMemObj::doReqAck(MemRequest *req)    
-  /* reqAck {{{1 */
-{ 
+void DummyMemObj::doReqAck(MemRequest *req)
+/* reqAck {{{1 */
+{
   I(0);
 }
 /* }}} */
 
-void DummyMemObj::doSetState(MemRequest *req)    
-  /* setState {{{1 */
-{ 
+void DummyMemObj::doSetState(MemRequest *req)
+/* setState {{{1 */
+{
   I(0);
-  req->ack(); 
+  req->ack();
 }
 /* }}} */
 
-void DummyMemObj::doSetStateAck(MemRequest *req)    
-  /* setStateAck {{{1 */
-{ 
-  I(0);
-}
-/* }}} */
-
-void DummyMemObj::doDisp(MemRequest *req)    
-  /* disp {{{1 */
-{ 
+void DummyMemObj::doSetStateAck(MemRequest *req)
+/* setStateAck {{{1 */
+{
   I(0);
 }
 /* }}} */
 
-bool DummyMemObj::isBusy(AddrType addr) const 
+void DummyMemObj::doDisp(MemRequest *req)
+/* disp {{{1 */
+{
+  I(0);
+}
+/* }}} */
+
+bool DummyMemObj::isBusy(AddrType addr) const
 // Can it accept more requests {{{1
 {
-	return false;
+  return false;
 }
 // }}}
 
 TimeDelta_t DummyMemObj::ffread(AddrType addr)
-  /* fast forward read {{{1 */
-{ 
-  return 1;   // 1 cycle does everything :)
+/* fast forward read {{{1 */
+{
+  return 1; // 1 cycle does everything :)
 }
 /* }}} */
 
 TimeDelta_t DummyMemObj::ffwrite(AddrType addr)
-  /* fast forward write {{{1 */
-{ 
-  return 1;   // 1 cycle does everything :)
+/* fast forward write {{{1 */
+{
+  return 1; // 1 cycle does everything :)
 }
 /* }}} */
 
 void DummyMemObj::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
-  /* forward tryPrefetch {{{1 */
-{ 
+/* forward tryPrefetch {{{1 */
+{
   if(cb)
     cb->destroy();
-  
 }
 /* }}} */
 
@@ -215,22 +209,22 @@ bool MemObj::checkL2TLBHit(MemRequest *req) {
   return false;
 }
 void MemObj::replayCheckLSQ_removeStore(DInst *) {
-	I(0);
+  I(0);
 }
 void MemObj::updateXCoreStores(AddrType addr) {
-	I(0);
+  I(0);
 }
 void MemObj::replayflush() {
-	I(0);
+  I(0);
 }
-void MemObj::setTurboRatio(float r) { 
-	I(0);
+void MemObj::setTurboRatio(float r) {
+  I(0);
 }
 void MemObj::plug() {
-	I(0);
+  I(0);
 }
 void MemObj::setNeedsCoherence() {
-	// Only cache uses this
+  // Only cache uses this
 }
 void MemObj::clearNeedsCoherence() {
 }

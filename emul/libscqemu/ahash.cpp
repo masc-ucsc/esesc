@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,89 +35,84 @@
 
 #include "ahash.h"
 
-AHash::AHash()
-{
+AHash::AHash() {
 
   init_atomicHash();
-  //pthread_mutex_init(&hash_lock, NULL);
+  // pthread_mutex_init(&hash_lock, NULL);
   marked = 0;
 }
 
 void AHash::init_atomicHash() {
-  for (int i = 0; i < HASH_SIZE; i++) {
-    atomic_hash[i].valid = false;
+  for(int i = 0; i < HASH_SIZE; i++) {
+    atomic_hash[i].valid    = false;
     atomic_hash[i].scPassed = false;
 
     hash_lock[i] = false;
   }
 }
 
-void AHash::ahashLock(bool * ptr) {
-  while (!AtomicCompareSwap(ptr, false, true)) ;
+void AHash::ahashLock(bool *ptr) {
+  while(!AtomicCompareSwap(ptr, false, true))
+    ;
 }
 
-void AHash::ahashUnlock(bool * ptr)
-{
+void AHash::ahashUnlock(bool *ptr) {
   AtomicCompareSwap(ptr, true, false);
 }
 
 void AHash::insert(FlowID fid, AddrType addr) {
-  //pthread_mutex_lock(&hash_lock);
+  // pthread_mutex_lock(&hash_lock);
   ahashLock(addr);
   insert_nolock(fid, addr);
-  //pthread_mutex_unlock(&hash_lock);
+  // pthread_mutex_unlock(&hash_lock);
   ahashUnlock(addr);
 }
 
 void AHash::insert_nolock(FlowID fid, AddrType addr) {
   atomic_hash[hash(addr)].valid = true;
-  atomic_hash[hash(addr)].fid = fid;
+  atomic_hash[hash(addr)].fid   = fid;
   marked++;
 }
 
 bool AHash::setSC(FlowID fid, AddrType addr) {
-  //pthread_mutex_lock(&hash_lock);
+  // pthread_mutex_lock(&hash_lock);
   ahashLock(addr);
-  if (atomic_hash[hash(addr)].valid == true &&
-      atomic_hash[hash(addr)].fid == fid) {
+  if(atomic_hash[hash(addr)].valid == true && atomic_hash[hash(addr)].fid == fid) {
     atomic_hash[hash(addr)].scPassed = true;
-    //pthread_mutex_unlock(&hash_lock);
+    // pthread_mutex_unlock(&hash_lock);
     ahashUnlock(addr);
     return true;
   } else {
-    //pthread_mutex_unlock(&hash_lock);
+    // pthread_mutex_unlock(&hash_lock);
     ahashUnlock(addr);
     return false;
   }
 }
 
 bool AHash::checkSC(FlowID fid, AddrType addr) {
-  //pthread_mutex_lock(&hash_lock);
+  // pthread_mutex_lock(&hash_lock);
   ahashLock(addr);
-  if (atomic_hash[hash(addr)].valid == true &&
-      atomic_hash[hash(addr)].scPassed == true &&
-      atomic_hash[hash(addr)].fid == fid) {
-    //pthread_mutex_unlock(&hash_lock);
+  if(atomic_hash[hash(addr)].valid == true && atomic_hash[hash(addr)].scPassed == true && atomic_hash[hash(addr)].fid == fid) {
+    // pthread_mutex_unlock(&hash_lock);
     ahashUnlock(addr);
     return true;
   } else {
-    //pthread_mutex_unlock(&hash_lock);
+    // pthread_mutex_unlock(&hash_lock);
     ahashUnlock(addr);
     return false;
   }
 }
 
 void AHash::remove(FlowID fid, AddrType addr) {
-  //pthread_mutex_lock(&hash_lock);
+  // pthread_mutex_lock(&hash_lock);
   ahashLock(addr);
-  atomic_hash[hash(addr)].valid = false;
+  atomic_hash[hash(addr)].valid    = false;
   atomic_hash[hash(addr)].scPassed = false;
   marked--;
   I(marked >= 0);
-  //pthread_mutex_unlock(&hash_lock);
+  // pthread_mutex_unlock(&hash_lock);
   ahashUnlock(addr);
 }
 
 AHash::~AHash() {
 }
-
