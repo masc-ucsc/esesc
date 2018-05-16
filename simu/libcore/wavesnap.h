@@ -2,24 +2,25 @@
   USAGE:
     1. In GProcessor.h uncomment: #define WAVESNAP_EN
 
-    2. In GProcessor.cpp, in the constructor change the range of instruction you want to capture.
-       Example: this->capture = new wavesnap(0, 100);
-
-    3. In TaskHandler.cpp, in TaskHandler::unplug() specify the format and the file where you
+    2. In TaskHandler.cpp, in TaskHandler::unplug() specify the format and the file where you
        want to dump the traces. In case wavedrom format is picked, copy and paste generated
        file into Wavedrom edittor to visualize.
 */
 
 #ifndef _WAVESNAP_
 #define _WAVESNAP_
+// functional defines
+//#define REMOVE_REDUNDANT_EDGES
 
 // signature defines
 #define REGISTER_NUM 32
-#define HASH_SIZE 65536
+#define HASH_SIZE 4 * 65536
 
 // node list defines
 #define MAX_NODE_NUM 1000
-#define MAX_EDGE_NUM 100000
+#define MAX_EDGE_NUM 1000000
+#define MAX_MOVING_GRAPH_NODES 64
+#define COUNT_ALLOW 9
 
 // dump path
 #define EDGE_DUMP_PATH "./edge_list/"
