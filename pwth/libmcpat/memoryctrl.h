@@ -53,6 +53,7 @@
 #include "parameter.h"
 //#include "io.h"
 #include "array.h"
+#include "logic.h"
 //#include "Undifferentiated_Core_Area.h"
 #include "GStats.h"
 #include "basic_components.h"

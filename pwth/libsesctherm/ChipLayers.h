@@ -45,6 +45,8 @@ Classes:        ChipLayers
 #include <map>
 #include <vector>
 
+#include "Utilities.h"
+
 class ModelUnit;
 
 class ChipLayers {

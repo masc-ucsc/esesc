@@ -79,9 +79,9 @@ selection_logic::selection_logic(bool _is_default, int win_entries_, int issue_w
 }
 
 void selection_logic::selection_power() { // based on cost effective superscalar processor TR pp27-31
-  doubleCtotal, Cor, Cpencode;
-  intnum_arbiter;
-  doubleWSelORn, WSelORprequ, WSelPn, WSelPp, WSelEnn, WSelEnp;
+  double Ctotal, Cor, Cpencode;
+  int num_arbiter;
+  double WSelORn, WSelORprequ, WSelPn, WSelPp, WSelEnn, WSelEnp;
 
   // TODO: the 0.8um process data is used.
   WSelORn     = 12.5 * l_ip.F_sz_um;  // this was 10 micron for the 0.8 micron process

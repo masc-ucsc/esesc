@@ -35,7 +35,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "Bus.h"
-#include "MemorySystem.h"
 #include "SescConf.h"
 /* }}} */
 #ifdef ENABLE_NBSD

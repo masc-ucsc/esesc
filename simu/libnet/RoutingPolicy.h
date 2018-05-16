@@ -4,9 +4,8 @@
 #include <vector>
 
 #include "nanassert.h"
-
 #include "Snippets.h"
-
+#include "SescConf.h"
 #include "RoutingTable.h"
 
 // This class builds the routing tables. There should be an instance per network. The reason why is

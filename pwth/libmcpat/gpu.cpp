@@ -1122,7 +1122,7 @@ void RegFUG::computeEnergy(bool is_tdp) { /*{{{*/
 } /*}}}*/
 
 void EXECUG::computeEnergy(bool is_tdp) { /*{{{*/
-  doublepppm_t[4] = {1, 1, 1, 1};
+  double pppm_t[4] = {1, 1, 1, 1};
 
   rfu->computeEnergy(is_tdp);
   if(is_tdp) {

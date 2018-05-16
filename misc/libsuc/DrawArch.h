@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <string>
 #include <vector>
+
+#include "nanassert.h"
+
 #define GOOGLE_GRAPH_API 0
 using namespace std;
 

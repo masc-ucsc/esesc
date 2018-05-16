@@ -40,6 +40,7 @@
 #include "GStats.h"
 #include "MemObj.h"
 #include "MemRequest.h"
+#include "MemorySystem.h"
 #include "Port.h"
 /* }}} */
 
