@@ -40,7 +40,7 @@
 #include <sys/syscall.h>
 #include <asm/unistd.h>
 
-static int memfd_create(const char *name, unsigned int flags)
+static int memfd_create2(const char *name, unsigned int flags)
 {
 #ifdef __NR_memfd_create
     return syscall(__NR_memfd_create, name, flags);
@@ -74,12 +74,12 @@ void *qemu_memfd_alloc(const char *name, size_t size, unsigned int seals,
 
 #ifdef CONFIG_LINUX
     if (seals) {
-        mfd = memfd_create(name, MFD_ALLOW_SEALING | MFD_CLOEXEC);
+        mfd = memfd_create2(name, MFD_ALLOW_SEALING | MFD_CLOEXEC);
     }
 
     if (mfd == -1) {
         /* some systems have memfd without sealing */
-        mfd = memfd_create(name, MFD_CLOEXEC);
+        mfd = memfd_create2(name, MFD_CLOEXEC);
         seals = 0;
     }
 #endif

@@ -47,6 +47,7 @@ Classes:        Material
 #include <map>
 
 class ChipLayers;
+class DataLibrary;
 
 class Material {
 public:

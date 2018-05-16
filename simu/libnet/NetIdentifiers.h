@@ -1,6 +1,8 @@
 #ifndef _NETIDENTIFIERS_H
 #define _NETIDENTIFIERS_H
 
+#include "nanassert.h"
+
 typedef ushort RouterID_t;
 
 enum PortID_t {

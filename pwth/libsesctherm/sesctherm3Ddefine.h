@@ -41,6 +41,8 @@ Description:    This is the only place where defines occur throughout the framew
 
 #include <stdint.h>
 
+#include "sescthermMacro.h"
+
 #ifndef ESESCTHERM3D_DEFINE_H
 #define ESESCTHERM3D_DEFINE_H
 
