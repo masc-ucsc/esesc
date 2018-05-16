@@ -1227,16 +1227,16 @@ void output_UCA(uca_org_t *fr) {
     cout << "    Data array, H-tree wire type: Delay optimized global wires\n";
     break;
   case(1):
-    cout << "    Data array, H-tree wire type: Global wires with 5\% delay penalty\n";
+    cout << "    Data array, H-tree wire type: Global wires with 5% delay penalty\n";
     break;
   case(2):
-    cout << "    Data array, H-tree wire type: Global wires with 10\% delay penalty\n";
+    cout << "    Data array, H-tree wire type: Global wires with 10% delay penalty\n";
     break;
   case(3):
-    cout << "    Data array, H-tree wire type: Global wires with 20\% delay penalty\n";
+    cout << "    Data array, H-tree wire type: Global wires with 20% delay penalty\n";
     break;
   case(4):
-    cout << "    Data array, H-tree wire type: Global wires with 30\% delay penalty\n";
+    cout << "    Data array, H-tree wire type: Global wires with 30% delay penalty\n";
     break;
   case(5):
     cout << "    Data array, wire type: Low swing wires\n";
@@ -1252,16 +1252,16 @@ void output_UCA(uca_org_t *fr) {
       cout << "    Tag array, H-tree wire type: Delay optimized global wires\n";
       break;
     case(1):
-      cout << "    Tag array, H-tree wire type: Global wires with 5\% delay penalty\n";
+      cout << "    Tag array, H-tree wire type: Global wires with 5% delay penalty\n";
       break;
     case(2):
-      cout << "    Tag array, H-tree wire type: Global wires with 10\% delay penalty\n";
+      cout << "    Tag array, H-tree wire type: Global wires with 10% delay penalty\n";
       break;
     case(3):
-      cout << "    Tag array, H-tree wire type: Global wires with 20\% delay penalty\n";
+      cout << "    Tag array, H-tree wire type: Global wires with 20% delay penalty\n";
       break;
     case(4):
-      cout << "    Tag array, H-tree wire type: Global wires with 30\% delay penalty\n";
+      cout << "    Tag array, H-tree wire type: Global wires with 30% delay penalty\n";
       break;
     case(5):
       cout << "    Tag array, wire type: Low swing wires\n";
