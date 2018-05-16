@@ -1,13 +1,13 @@
 #!/usr/bin/ruby -i
 #
 #
-# Use this script to generate a new floorplan and update the config files 
+# Use this script to generate a new floorplan and update the config files
 # accordingly.
 #
 # By Ehsan K. Ardestani
 
 if ARGV.size != 4
-  puts "Usage #{$0} BuildDirPath SrcDirPath  RunDirPath nameMangle" 
+  puts "Usage #{$0} BuildDirPath SrcDirPath  RunDirPath nameMangle"
   exit
 end
 
@@ -62,7 +62,7 @@ res = `#{cmd}`
 puts "reconvering the original config files (except for flp.conf)"
 cmd = "mv esesc.bak #{esescConf}"
 res = `#{cmd}`
-      
+
 
 
 # run reFloorplan.rb

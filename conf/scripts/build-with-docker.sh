@@ -27,7 +27,7 @@ GID=`id -rg`
 # on the generated files to the current user rather than root.  There
 # is not an option in Docker yet to do this automatically, but there is
 # an open issue in GitHub: https://github.com/docker/docker/issues/7198
-# so there may be a better way in the future 
+# so there may be a better way in the future
 
 docker run  -t \
   -v $ESESC_SRC:$DOCKER_ESESC_SRC \

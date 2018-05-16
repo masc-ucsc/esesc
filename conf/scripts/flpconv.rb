@@ -34,11 +34,11 @@ File.open(ARGV[0], "r") { |iflp|
 
 
 	while(line = iflp.gets)
-		
+
 		line = line.lstrip
 		line = line.chomp
-		
-		
+
+
 		if line[0] == 35 # '#'
 			puts line
 			next;
@@ -65,12 +65,12 @@ File.open(ARGV[0], "r") { |iflp|
 	puts "# densities are scaled based upon average chip transistor density"
 	puts "# NOTE: all values HAVE to be normalized to 1 (nothing less than 1)"
 
-	for ii in 0..(i-1) 
+	for ii in 0..(i-1)
 		puts "blockchipDensity[" + ii.to_s + "] = 1.00"
 	end
 
 	puts "# densities are scaled based upon average chip interconnect transistor density"
-	for ii in 0..(i-1) 
+	for ii in 0..(i-1)
 		puts "blockinterconnectDensity[" + ii.to_s + "] = 1.00"
 	end
 	#
@@ -79,7 +79,7 @@ File.open(ARGV[0], "r") { |iflp|
 	puts "[layoutDescr#{str}]"
 	i = 0
 	blocks.each{ |block|
-		puts "blockMatch[#{i}] = \"#{block}\"" 
+		puts "blockMatch[#{i}] = \"#{block}\""
 		i+=1
 	}
 	puts

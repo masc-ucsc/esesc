@@ -34,5 +34,5 @@ docker run  \
   -e ESESC_BUILD_TYPE=${BUILD_TYPE} \
   -e ESESC_HOST_PROCS=${ESESC_HOST_PROCS} \
   -e ESESC_ENABLE_LIVE=${ENABLE_LIVE} \
-  ${DOCKER_IMAGE} /esesc/conf/scripts/build-and-run.sh 
+  ${DOCKER_IMAGE} /esesc/conf/scripts/build-and-run.sh
 
