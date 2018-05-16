@@ -74,34 +74,6 @@ ADD_SUBDIRECTORY(misc/libsuc)
 
 include(ExternalProject)
 
-ExternalProject_Add(regression
-  SOURCE_DIR ${esesc_SOURCE_DIR}/gold
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/gold/configure ${esesc_SOURCE_DIR}/gold ${CMAKE_CURRENT_BINARY_DIR}/gold
-  PREFIX ${esesc_SOURCE_DIR}/gold
-  BUILD_COMMAND sh gen-regression.sh ${BENCHSUITS_DIR}
-  BUILD_IN_SOURCE "" 
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/gold
-  TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/gold/tmp
-  STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/gold/stampdir
-  DOWNLOAD_COMMAND ""
-  INSTALL_COMMAND ""
-  )
-set_target_properties(regression PROPERTIES EXCLUDE_FROM_ALL TRUE)
-
-ExternalProject_Add(gold
-  SOURCE_DIR ${esesc_SOURCE_DIR}/gold
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/gold/configure ${esesc_SOURCE_DIR}/gold ${CMAKE_CURRENT_BINARY_DIR}/gold
-  PREFIX ${esesc_SOURCE_DIR}/gold
-  BUILD_COMMAND sh gen-gold.sh ${BENCHSUITS_DIR}
-  BUILD_IN_SOURCE "" 
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/gold
-  TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/gold/tmp
-  STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/gold/stampdir
-  DOWNLOAD_COMMAND ""
-  INSTALL_COMMAND ""
-  )
-set_target_properties(gold PROPERTIES EXCLUDE_FROM_ALL TRUE)
-
 ExternalProject_Add(floorplan
   SOURCE_DIR ${esesc_SOURCE_DIR}/pwth/floorplan
   CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/pwth/floorplan/configure ${esesc_SOURCE_DIR}/pwth/floorplan ${CMAKE_CURRENT_BINARY_DIR}/floorplan
@@ -115,50 +87,6 @@ ExternalProject_Add(floorplan
   INSTALL_COMMAND ""
   )
 set_target_properties(floorplan PROPERTIES EXCLUDE_FROM_ALL TRUE)
-
-ExternalProject_Add(bfd
-  SOURCE_DIR ${esesc_SOURCE_DIR}/misc/bfd
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/misc/bfd/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/bfd CFLAGS=${CMAKE_C_FLAGS}\ -g\ -I${esesc_SOURCE_DIR}/misc/include --enable-64-bit-bfd
-  PREFIX ${esesc_SOURCE_DIR}/misc/bfd
-  BUILD_COMMAND ${MAKE}
-  BUILD_IN_SOURCE 0
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bfd
-  TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/bfd/tmp
-  STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/bfd/stampdir
-  DOWNLOAD_COMMAND ""
-  )
-set_target_properties(bfd PROPERTIES EXCLUDE_FROM_ALL TRUE)
-set(bfd_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/bfd/libbfd.a)
-
-ExternalProject_Add(opcodes
-  SOURCE_DIR ${esesc_SOURCE_DIR}/misc/opcodes
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/misc/opcodes/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/opcodes CFLAGS=${CMAKE_C_FLAGS}\ -I${esesc_SOURCE_DIR}/misc/include
-  PREFIX ${esesc_SOURCE_DIR}/misc/opcodes
-  DEPENDS bfd
-  BUILD_COMMAND ${MAKE}
-  BUILD_IN_SOURCE 0
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/opcodes
-  TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/opcodes/tmp
-  STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/opcodes/stampdir
-  DOWNLOAD_COMMAND ""
-  )
-set_target_properties(opcodes PROPERTIES EXCLUDE_FROM_ALL TRUE)
-set(opcodes_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/opcodes/libopcodes.a)
-
-ExternalProject_Add(libiberty
-  SOURCE_DIR ${esesc_SOURCE_DIR}/misc/libiberty
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/misc/libiberty/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/libiberty CFLAGS=${CMAKE_C_FLAGS}\ -I${esesc_SOURCE_DIR}/misc/include
-  PREFIX ${esesc_SOURCE_DIR}/misc/libiberty
-  DEPENDS bfd
-  BUILD_COMMAND ${MAKE}
-  BUILD_IN_SOURCE 0
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libiberty
-  TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/libiberty/tmp
-  STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/libiberty/stampdir
-  DOWNLOAD_COMMAND ""
-  )
-set_target_properties(libiberty PROPERTIES EXCLUDE_FROM_ALL TRUE)
-set(libiberty_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/libiberty/libiberty.a)
 
 IF(CMAKE_BUILD_TYPE MATCHES "Debug")
   SET(QEMU_EXTRA --enable-debug --cc=${CMAKE_C_COMPILER})
@@ -190,7 +118,6 @@ ExternalProject_Add(qemu
 set_target_properties(qemu PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 #################################
-#ADD_SUBDIRECTORY(misc/libmigdb)
 ADD_SUBDIRECTORY(emul/libemulint)
 ADD_SUBDIRECTORY(emul/libqemuint)
 #################################

@@ -1,10 +1,9 @@
 #include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-extern "C" int foo()
-{
-	 printf("Hey Foo\n");
-	 return 0;
+extern "C" int foo() {
+  printf("Hey Foo\n");
+  return 0;
 }

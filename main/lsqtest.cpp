@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2009 University of California, Santa Cruz.
 
@@ -26,27 +26,27 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  * This launches the ESESC simulator environment with an ideal memory
  */
 
+#include <signal.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <signal.h>
 
 #include "nanassert.h"
 
-#include "Instruction.h"
 #include "DInst.h"
+#include "Instruction.h"
 
 //*********** BEGIN CREATE FAKE PROCESSOR CLASS
 uint64_t nReplays = 0;
 #define GPROCESSOR_H 1
 class GProcessor {
-  public:
+public:
   void replay(DInst *dinst) {
     nReplays++;
   }
 };
 //*********** END CREATE FAKE PROCESSOR CLASS
-#include "SescConf.h"
 #include "LSQ.h"
+#include "SescConf.h"
 
 long long instTotal = 0;
 
@@ -62,27 +62,27 @@ void doTest() {
 #endif
 }
 
-int main(int argc, const char **argv) { 
+int main(int argc, const char **argv) {
   SescConf = new SConfig(argc, argv);
 
   GProcessor gproc;
-  //lsq = new LSQFull(&gproc,0);
-  lsq = new LSQFull(0);I(0);
+  // lsq = new LSQFull(&gproc,0);
+  lsq = new LSQFull(0);
+  I(0);
 
   timeval startTime;
-  gettimeofday(&startTime,0);
+  gettimeofday(&startTime, 0);
 
   doTest();
 
   timeval endTime;
-  gettimeofday(&endTime,0);
-  double msecs = ( endTime.tv_sec - startTime.tv_sec ) * 1000
-    + ( endTime.tv_usec - startTime.tv_usec ) / 1000;
+  gettimeofday(&endTime, 0);
+  double msecs = (endTime.tv_sec - startTime.tv_sec) * 1000 + (endTime.tv_usec - startTime.tv_usec) / 1000;
 
-  long double res = instTotal/1000;
+  long double res = instTotal / 1000;
   res /= msecs;
   MSG("------------------");
-  MSG ( "LSQ MIPS = %g secs = %g insts = %lld", (double) res, msecs/1000,(long long) instTotal );
+  MSG("LSQ MIPS = %g secs = %g insts = %lld", (double)res, msecs / 1000, (long long)instTotal);
   MSG("------------------");
 
   return 0;
