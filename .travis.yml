@@ -13,7 +13,6 @@ env:
 before_install:
   - docker pull mascucsc/esescbase
 
-script: 
+script:
   - conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE 0
-
 
