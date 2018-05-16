@@ -28,15 +28,8 @@ cp ${ESESC_SRC}/bins/inputs/* .
 
 
 # Testing with crafty as default app for now
-../main/esesc < crafty.in
-#cp /bench/data/spec06/429.mcf/* .
-#cp /bench/bins/spec06_mcf.mips64 .
-#ls -a
-#pwd
-#sleep 2
-#../main/esesc
-
-if [ $? -eq '0' ]; then
+if ! ../main/esesc < crafty.in
+then
   ${ESESC_SRC}/conf/scripts/report.pl -last
 else
   exit $?
