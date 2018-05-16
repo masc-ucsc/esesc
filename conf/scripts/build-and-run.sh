@@ -8,8 +8,8 @@ if [ ! -e ${ESESC_SRC}/CMakeLists.txt ]; then
   exit -1
 fi
 
-${ESESC_SRC}/conf/scripts/build.sh
-if [ ! $? -eq 0 ]; then
+if ! ${ESESC_SRC}/conf/scripts/build.sh
+then
   echo "ESESC build error"
   exit -1
 fi
