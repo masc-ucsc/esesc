@@ -79,8 +79,8 @@ public:
   double   max_unpipelined_link_delay;
   powerDef power_bit;
 
-  double         wire_bw;
-  double         init_wire_bw; // bus width at root
+  //double         wire_bw;
+  //double         init_wire_bw; // bus width at root
   double         base_width;
   double         base_height;
   int            data_width;
