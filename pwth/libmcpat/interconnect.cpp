@@ -46,47 +46,45 @@
  *
  ***************************************************************************/
 
-
 #include "interconnect.h"
 #include "wire.h"
 #include <assert.h>
 #include <iostream>
 
-interconnect::interconnect(
-    string name_,
-	double base_w, double base_h,
-    int data_w, double len,const InputParameter *configure_interface,
-    int start_wiring_level_,
-    enum Wire_type wire_model,double width_s, double space_s,
-    TechnologyParameter::DeviceType *dt)
- :name(name_),
-  in_rise_time(0), out_rise_time(0),
-  base_width(base_w), base_height(base_h),
-  data_width(data_w), wt(wire_model),
-  width_scaling(width_s), space_scaling(space_s),
-  start_wiring_level(start_wiring_level_), length(len),
-  interconnect_latency(10.0),
-  deviceType(dt)
-{
+interconnect::interconnect(string name_, double base_w, double base_h, int data_w, double len,
+                           const InputParameter *configure_interface, int start_wiring_level_, enum Wire_type wire_model,
+                           double width_s, double space_s, TechnologyParameter::DeviceType *dt)
+    : name(name_)
+    , in_rise_time(0)
+    , out_rise_time(0)
+    , base_width(base_w)
+    , base_height(base_h)
+    , data_width(data_w)
+    , wt(wire_model)
+    , width_scaling(width_s)
+    , space_scaling(space_s)
+    , start_wiring_level(start_wiring_level_)
+    , length(len)
+    , interconnect_latency(10.0)
+    , deviceType(dt) {
 
-  l_ip=*configure_interface;
-  max_unpipelined_link_delay = 0; //TODO
-  min_w_nmos = g_tp.min_w_nmos_;
-  min_w_pmos = deviceType->n_to_p_eff_curr_drv_ratio * min_w_nmos;
+  l_ip                       = *configure_interface;
+  max_unpipelined_link_delay = 0; // TODO
+  min_w_nmos                 = g_tp.min_w_nmos_;
+  min_w_pmos                 = deviceType->n_to_p_eff_curr_drv_ratio * min_w_nmos;
 
   wt = Global;
 
-  latency               = l_ip.latency;
-  throughput            = l_ip.throughput;
-  latency_overflow=false;//throughput_overflow=false,
+  latency          = l_ip.latency;
+  throughput       = l_ip.throughput;
+  latency_overflow = false; // throughput_overflow=false,
 
   compute();
-  while (delay > latency && width_scaling<5.0)
-  	{
-     width_scaling *= 2;
-     space_scaling *= 2;
-     compute();
-  	}
+  while(delay > latency && width_scaling < 5.0) {
+    width_scaling *= 2;
+    space_scaling *= 2;
+    compute();
+  }
   power_bit = power;
   power.readOp.dynamic *= data_width;
   power.readOp.leakage *= data_width;
@@ -94,8 +92,8 @@ interconnect::interconnect(
 
   area.h *= data_width;
 
-  if (latency_overflow==true)
-  		cout<< "Warning: "<< name <<" wire structure cannot satisfy latency constraint." << endl;
+  if(latency_overflow == true)
+    cout << "Warning: " << name << " wire structure cannot satisfy latency constraint." << endl;
 
   assert(power.readOp.dynamic > 0);
   assert(power.readOp.leakage > 0);
@@ -103,31 +101,22 @@ interconnect::interconnect(
   power.readOp.dynamic *= sckRation;
   power.writeOp.dynamic *= sckRation;
   power.searchOp.dynamic *= sckRation;
-	local_result.power = power;
-	local_result.area  = area.h * area.w;
-
+  local_result.power = power;
+  local_result.area  = area.h * area.w;
 }
 
-
-
-void
-interconnect::compute()
-{
+void interconnect::compute() {
   Wire *wtemp1 = 0;
 
   local_result = init_interface(&l_ip);
 
-  wtemp1 = new Wire(wt, length, 1, width_scaling, space_scaling);
-  delay = wtemp1->delay;
-  power.readOp.dynamic = wtemp1->power.readOp.dynamic;
-  power.readOp.leakage = wtemp1->power.readOp.leakage;
+  wtemp1                    = new Wire(wt, length, 1, width_scaling, space_scaling);
+  delay                     = wtemp1->delay;
+  power.readOp.dynamic      = wtemp1->power.readOp.dynamic;
+  power.readOp.leakage      = wtemp1->power.readOp.leakage;
   power.readOp.gate_leakage = wtemp1->power.readOp.gate_leakage;
-  area.h = width_scaling*(wtemp1->wire_width + wtemp1->wire_spacing);
-  area.w = length;
-  if (wtemp1)
-   delete wtemp1;
-
+  area.h                    = width_scaling * (wtemp1->wire_width + wtemp1->wire_spacing);
+  area.w                    = length;
+  if(wtemp1)
+    delete wtemp1;
 }
-
-
-

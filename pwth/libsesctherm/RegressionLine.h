@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,24 +39,24 @@ File name:      RegressionLine.h
 Classes:        RegressionLine
 ********************************************************************************/
 
-#ifndef REGRESSION_LINE_H 
-#define REGRESSION_LINE_H 
+#ifndef REGRESSION_LINE_H
+#define REGRESSION_LINE_H
 
 class RegressionLine {
-  public:
-    typedef std::map<double, double> Points;
-    typedef std::map<double,double>::iterator Points_iter;
+public:
+  typedef std::map<double, double>           Points;
+  typedef std::map<double, double>::iterator Points_iter;
 
-    double slope_;
-    double yIntercept_;
-    double regressionCoefficient_;
+  double slope_;
+  double yIntercept_;
+  double regressionCoefficient_;
 
-    RegressionLine(Points & points);
+  RegressionLine(Points &points);
 
-    const double slope() const;
-    const double yIntercept() const;
-    const double regressionCoefficient() const;
+  const double slope() const;
+  const double yIntercept() const;
+  const double regressionCoefficient() const;
 
-    static double quad_interpolate(Points & points, double x);
+  static double quad_interpolate(Points &points, double x);
 };
 #endif

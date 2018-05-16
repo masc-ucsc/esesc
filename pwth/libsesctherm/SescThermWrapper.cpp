@@ -1,10 +1,10 @@
-//  Contributed by Ehsan K.Ardestani 
+//  Contributed by Ehsan K.Ardestani
 //                 Ian Lee
 //                 Jose Renau
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -46,19 +46,17 @@ Description:    Wrapper class for integration with Esesc / McPat Power Simulatio
 
 class ChipEnergyBundle;
 
-SescThermWrapper::SescThermWrapper (){
+SescThermWrapper::SescThermWrapper() {
 }
 
-
-void SescThermWrapper::plug(const char* section, ChipEnergyBundle *energyBundle) {
+void SescThermWrapper::plug(const char *section, ChipEnergyBundle *energyBundle) {
   sesctherm.configure(energyBundle);
-}  
-   
-int SescThermWrapper::calcTemp(ChipEnergyBundle *energyBundle,
-		std::vector<float> * temperatures, uint64_t timeinterval, uint32_t &throttleLength){
-	int return_signal = 0;
-	return_signal = sesctherm.computeTemp(energyBundle,temperatures,timeinterval);
-	throttleLength = sesctherm.get_throttleLength();
-	return (return_signal);
 }
 
+int SescThermWrapper::calcTemp(ChipEnergyBundle *energyBundle, std::vector<float> *temperatures, uint64_t timeinterval,
+                               uint32_t &throttleLength) {
+  int return_signal = 0;
+  return_signal     = sesctherm.computeTemp(energyBundle, temperatures, timeinterval);
+  throttleLength    = sesctherm.get_throttleLength();
+  return (return_signal);
+}

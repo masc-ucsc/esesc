@@ -40,12 +40,12 @@
  * SOFTWARE.
  *------------------------------------------------------------*/
 
-#include "io.h"
-#include <iostream>
-#include "xmlParser.h"
 #include "XML_Parse.h"
+#include "io.h"
 #include "processor.h"
 #include "time.h"
+#include "xmlParser.h"
+#include <iostream>
 
 using namespace std;
 

@@ -49,87 +49,88 @@
 #define PROCESSOR_H_
 
 #include "XML_Parse.h"
-#include "area.h"
-#include "decoder.h"
-#include "parameter.h"
-#include "array.h"
 #include "arbiter.h"
-#include <vector>
+#include "area.h"
+#include "array.h"
 #include "basic_components.h"
 #include "cacti_interface.h"
 #include "core.h"
+#include "decoder.h"
 #include "gpu.h"
 #include "memoryctrl.h"
+#include "noc.h"
+#include "parameter.h"
 #include "router.h"
 #include "sharedcache.h"
-#include "noc.h"
+#include <vector>
 
 //#ifndef CONFIG_STANDALONE
-#include <vector>
 #include <string>
+#include <vector>
 //#endif
 
 #include "Bundle.h"
 
-class Processor : public Component
-{
-  public:
-    vector<Core *> cores;
-    vector<SharedCache *> l2array;
-    vector<SharedCache *> stlbarray;
-    vector<SharedCache *> l3array;
-    vector<SharedCache *> l1dirarray;
-    vector<SharedCache *> l2dirarray;
-    GPUU *gpu;
-    vector<NoC *>  nocs;
-    MemoryController * mc;
-    ParseXML *XML;
-    InputParameter interface_ip;
-    ProcParam procdynp;
-		float POW_SCALE_DYN;
-		float POW_SCALE_LKG;
+class Processor : public Component {
+public:
+  vector<Core *>        cores;
+  vector<SharedCache *> l2array;
+  vector<SharedCache *> stlbarray;
+  vector<SharedCache *> l3array;
+  vector<SharedCache *> l1dirarray;
+  vector<SharedCache *> l2dirarray;
+  GPUU *                gpu;
+  vector<NoC *>         nocs;
+  MemoryController *    mc;
+  ParseXML *            XML;
+  InputParameter        interface_ip;
+  ProcParam             procdynp;
+  float                 POW_SCALE_DYN;
+  float                 POW_SCALE_LKG;
 
-    vector<uint32_t> *coreIndex;
-    vector<uint32_t> *gpuIndex;
-    std::vector<uint32_t> idx_iRF;
-    uint32_t idx_start_L2;
-    uint32_t idx_end_L2;
-    uint32_t idx_start_STLB;
-    uint32_t idx_end_STLB;
-    uint32_t idx_start_L3;
-    uint32_t idx_end_L3;
+  vector<uint32_t> *    coreIndex;
+  vector<uint32_t> *    gpuIndex;
+  std::vector<uint32_t> idx_iRF;
+  uint32_t              idx_start_L2;
+  uint32_t              idx_end_L2;
+  uint32_t              idx_start_STLB;
+  uint32_t              idx_end_STLB;
+  uint32_t              idx_start_L3;
+  uint32_t              idx_end_L3;
 
-    std::vector<std::vector <float> > *dynCntrs;
-    ChipEnergyBundle *energyBundle;
-    std::vector< uint64_t > *clockInterval;
-    uint32_t cnt;
-   
-    //eka, elnaz 
-    //wire	globalInterconnect;
-    //clock_network globalClock;
-    Component core, l2, l3, stlb, l1dir, l2dir, noc, mcs, cc;
-    int  numCore, numL2, numSTLB, numL3, numNOC, numL1Dir, numL2Dir;
-    Processor(); 
-    Processor(ParseXML *XML_interface); 
-    void Processor2(ParseXML *XML_interface); 
-    void DeleteProcessor(); 
-    void compute();
-    void set_proc_param();
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
+  std::vector<std::vector<float>> *dynCntrs;
+  ChipEnergyBundle *               energyBundle;
+  std::vector<uint64_t> *          clockInterval;
+  uint32_t                         cnt;
 
-		void dumpStatics(ChipEnergyBundle *eBundle);
-    void load(std::vector<uint64_t> *clockInterv) { cnt= 0; clockInterval = clockInterv; };
-    void dumpCoreDyn(int i);
-    void dumpGPUDyn(int i);
-    void dumpL2Dyn(int i);
-    void dumpL3Dyn(int i);
-    void dumpSTLBDyn(int i);
-    void dumpL2GDyn();
-    void dumpMCDyn();
-    void dumpNoCDyn(int i);
+  // eka, elnaz
+  // wire	globalInterconnect;
+  // clock_network globalClock;
+  Component core, l2, l3, stlb, l1dir, l2dir, noc, mcs, cc;
+  int       numCore, numL2, numSTLB, numL3, numNOC, numL1Dir, numL2Dir;
+  Processor();
+  Processor(ParseXML *XML_interface);
+  void Processor2(ParseXML *XML_interface);
+  void DeleteProcessor();
+  void compute();
+  void set_proc_param();
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
 
-    ~Processor();
+  void dumpStatics(ChipEnergyBundle *eBundle);
+  void load(std::vector<uint64_t> *clockInterv) {
+    cnt           = 0;
+    clockInterval = clockInterv;
+  };
+  void dumpCoreDyn(int i);
+  void dumpGPUDyn(int i);
+  void dumpL2Dyn(int i);
+  void dumpL3Dyn(int i);
+  void dumpSTLBDyn(int i);
+  void dumpL2GDyn();
+  void dumpMCDyn();
+  void dumpNoCDyn(int i);
+
+  ~Processor();
 };
-
 
 #endif /* PROCESSOR_H_ */

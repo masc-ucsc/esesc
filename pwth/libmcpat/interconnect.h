@@ -48,62 +48,54 @@
 #ifndef __INTERCONNECT_H__
 #define __INTERCONNECT_H__
 
+#include "assert.h"
 #include "basic_circuit.h"
+#include "cacti_interface.h"
 #include "component.h"
 #include "parameter.h"
-#include "assert.h"
 #include "subarray.h"
-#include "cacti_interface.h"
 #include "wire.h"
 
 // leakge power includes entire htree in a bank (when uca_tree == false)
 // leakge power includes only part to one bank when uca_tree == true
 
-class interconnect : public Component
-{
-  public:
-    interconnect(
-        string  name_,
-    	double base_w, double base_h, int data_w, double len,
-        const InputParameter *configure_interface, int start_wiring_level_,
-        enum Wire_type wire_model=Global,
-        double width_s=1.0, double space_s=1.0,
-        TechnologyParameter::DeviceType *dt = &(g_tp.peri_global));
+class interconnect : public Component {
+public:
+  interconnect(string name_, double base_w, double base_h, int data_w, double len, const InputParameter *configure_interface,
+               int start_wiring_level_, enum Wire_type wire_model = Global, double width_s = 1.0, double space_s = 1.0,
+               TechnologyParameter::DeviceType *dt = &(g_tp.peri_global));
 
-    ~interconnect() {};
+  ~interconnect(){};
 
-    void compute();
-	string   name;
-    double in_rise_time, out_rise_time;
-	InputParameter l_ip;
-	uca_org_t local_result;
-    void set_in_rise_time(double rt)
-    {
-      in_rise_time = rt;
-    }
+  void           compute();
+  string         name;
+  double         in_rise_time, out_rise_time;
+  InputParameter l_ip;
+  uca_org_t      local_result;
+  void           set_in_rise_time(double rt) {
+    in_rise_time = rt;
+  }
 
-    double max_unpipelined_link_delay;
-    powerDef power_bit;
+  double   max_unpipelined_link_delay;
+  powerDef power_bit;
 
-    double wire_bw;
-    double init_wire_bw;  // bus width at root
-    double base_width;
-    double base_height;
-    int data_width;
-    enum Wire_type wt;
-    double width_scaling, space_scaling;
-    int start_wiring_level;
-    double length;
-    double min_w_nmos;
-    double min_w_pmos;
-    double latency, throughput;
-    bool 	latency_overflow;//throughput_overflow=false,
-    double  interconnect_latency;// interconnect_throughput;
+  double         wire_bw;
+  double         init_wire_bw; // bus width at root
+  double         base_width;
+  double         base_height;
+  int            data_width;
+  enum Wire_type wt;
+  double         width_scaling, space_scaling;
+  int            start_wiring_level;
+  double         length;
+  double         min_w_nmos;
+  double         min_w_pmos;
+  double         latency, throughput;
+  bool           latency_overflow;     // throughput_overflow=false,
+  double         interconnect_latency; // interconnect_throughput;
 
-  private:
-    TechnologyParameter::DeviceType *deviceType;
-
+private:
+  TechnologyParameter::DeviceType *deviceType;
 };
 
 #endif
-

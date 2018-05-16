@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -41,59 +41,58 @@ Classes:        Metrics
 #ifndef METRICS_H
 #define METRICS_H
 
-
-#include "ThermTrace.h"
 #include "GStatsTherm.h"
+#include "ThermTrace.h"
 
 class Metrics {
-	private:
-		std::vector <GStatsMax * > * MaxT;
-		std::vector <GStatsAvg* > * EM_fit;
-		std::vector <GStatsAvg* > * SM_fit;
-		std::vector <GStatsAvg* > * TDDB_fit;
-		std::vector <GStatsAvg* > * TC_fit;
-		std::vector <GStatsAvg* > * NBTI_fit;
-		GStatsAvg *ChipPower;
-		GStatsAvg *ChipLeak;
-		GStatsMax * chipMaxT;
-		GStatsMax * chipGradT;
-		GStatsAvg * chipAvgT;
-		GStatsMax * sescThermTime;
-		GStatsMax * simulatedTime;
-		GStatsMax * Throttling;
+private:
+  std::vector<GStatsMax *> *MaxT;
+  std::vector<GStatsAvg *> *EM_fit;
+  std::vector<GStatsAvg *> *SM_fit;
+  std::vector<GStatsAvg *> *TDDB_fit;
+  std::vector<GStatsAvg *> *TC_fit;
+  std::vector<GStatsAvg *> *NBTI_fit;
+  GStatsAvg *               ChipPower;
+  GStatsAvg *               ChipLeak;
+  GStatsMax *               chipMaxT;
+  GStatsMax *               chipGradT;
+  GStatsAvg *               chipAvgT;
+  GStatsMax *               sescThermTime;
+  GStatsMax *               simulatedTime;
+  GStatsMax *               Throttling;
 
-		GStatsAvg * LSQPower;
-		GStatsAvg * DCPower;
-		uint32_t nCall;
-		std::vector < MATRIX_DATA > * Temperature;
+  GStatsAvg *               LSQPower;
+  GStatsAvg *               DCPower;
+  uint32_t                  nCall;
+  std::vector<MATRIX_DATA> *Temperature;
 
-		// parameters,FIXME: define as constant
-		int MDT       ; 
-		float IMC     ; 
-		int AMBT      ; 
-		float CMC     ; 
-		float VDE     ; 
-		float KLVOFST ; 
-		float EM1     ; 
-		float SM1     ; 
-		int TD1       ; 
-		float TD2     ; 
-		float TD3     ; 
-		float TD4     ; 
-		float NB1     ; 
-		float NB2     ; 
-		float NB3     ; 
-		float NB4     ; 
-		float NB5     ; 
+  // parameters,FIXME: define as constant
+  int   MDT;
+  float IMC;
+  int   AMBT;
+  float CMC;
+  float VDE;
+  float KLVOFST;
+  float EM1;
+  float SM1;
+  int   TD1;
+  float TD2;
+  float TD3;
+  float TD4;
+  float NB1;
+  float NB2;
+  float NB3;
+  float NB4;
+  float NB5;
 
-		void updateTiming();
-    void updateFITs(double timeinterval, ThermTrace *trace);
-	public:
-		Metrics(size_t flpSize);
-		~Metrics();
-		void updateAllMetrics(const std::vector < MATRIX_DATA > * Temp, double interval,
-			 	ThermTrace *trace, uint64_t throttleTotal, double time, double simTime);
+  void updateTiming();
+  void updateFITs(double timeinterval, ThermTrace *trace);
 
+public:
+  Metrics(size_t flpSize);
+  ~Metrics();
+  void updateAllMetrics(const std::vector<MATRIX_DATA> *Temp, double interval, ThermTrace *trace, uint64_t throttleTotal,
+                        double time, double simTime);
 };
 
 #endif

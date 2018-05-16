@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -38,40 +38,40 @@
 
 #include <vector>
 
-#include "nanassert.h"
 #include "GStats.h"
+#include "nanassert.h"
 
 /* }}} */
 
 class PowerStats {
   /* PowerStats class definition  */
-  private:
-	  const char *name; 
-	  uint64_t    last_value;
+private:
+  const char *name;
+  uint64_t    last_value;
 
-	  class Container {
-	    public:
-		    Container(GStats *g, int32_t s) {
-			    gstat  = g;
-			    scalar = s;
-		    }
-		    int32_t getValue() const {
-			    return gstat->getSamples() * scalar;
-		    }
-		    GStats *gstat;
-		    int32_t scalar;
-	  };
-
-	  std::vector<Container> stats;
-  
+  class Container {
   public:
-	  PowerStats(const char* str);
-	  ~PowerStats();
-	  void addGStat(const char *str, const int32_t scale);
-	  uint32_t getActivity();
-	  const char* getName() const {
-		  return name;
-	  }
+    Container(GStats *g, int32_t s) {
+      gstat  = g;
+      scalar = s;
+    }
+    int32_t getValue() const {
+      return gstat->getSamples() * scalar;
+    }
+    GStats *gstat;
+    int32_t scalar;
+  };
+
+  std::vector<Container> stats;
+
+public:
+  PowerStats(const char *str);
+  ~PowerStats();
+  void        addGStat(const char *str, const int32_t scale);
+  uint32_t    getActivity();
+  const char *getName() const {
+    return name;
+  }
 };
 /*  */
 

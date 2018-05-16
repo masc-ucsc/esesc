@@ -1,10 +1,10 @@
-//  Contributed by Ehsan K.Ardestani 
+//  Contributed by Ehsan K.Ardestani
 //                 Ian Lee
 //                 Jose Renau
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -44,26 +44,23 @@ Classes:        SescThermWrapper
 
 #include "SescTherm.h"
 
-
 class ChipEnergyBundle;
 
-//eka TODO:
-//1- make the class definition cleaner in terms of
-//public and private variables and methods
+// eka TODO:
+// 1- make the class definition cleaner in terms of
+// public and private variables and methods
 class SescThermWrapper {
 
-  public: 
-    SescThermWrapper();
-    SescTherm sesctherm;
-    //eka, plugs the sesctherm, energyCntrNames is passed so that the maping 
-    //can be made during initialization as well as floorplaning
-    void plug(const char *section, 
-              ChipEnergyBundle *energyBundle);
-    //deallocate structures, empty for now     
-    void unplug() {
-      return;
-    }
-    int calcTemp(ChipEnergyBundle *energyBundle, std::vector<float> *temperatures, 
-				uint64_t timeinterval, uint32_t &throttleLength);
+public:
+  SescThermWrapper();
+  SescTherm sesctherm;
+  // eka, plugs the sesctherm, energyCntrNames is passed so that the maping
+  // can be made during initialization as well as floorplaning
+  void plug(const char *section, ChipEnergyBundle *energyBundle);
+  // deallocate structures, empty for now
+  void unplug() {
+    return;
+  }
+  int calcTemp(ChipEnergyBundle *energyBundle, std::vector<float> *temperatures, uint64_t timeinterval, uint32_t &throttleLength);
 };
 #endif

@@ -49,35 +49,34 @@
 #ifndef NOC_H_
 #define NOC_H_
 #include "XML_Parse.h"
+#include "array.h"
+#include "basic_components.h"
+#include "interconnect.h"
 #include "logic.h"
 #include "parameter.h"
-#include "array.h"
-#include "interconnect.h"
-#include "basic_components.h"
 #include "router.h"
 
-class NoC :public Component {
-  public:
+class NoC : public Component {
+public:
+  ParseXML *     XML;
+  int            ithNoC;
+  InputParameter interface_ip;
+  double         executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
+  Router *       router;
+  NoCParam       nocdynp;
+  uca_org_t      local_result;
+  statsDef       tdp_stats;
+  statsDef       rtp_stats;
+  statsDef       stats_t;
+  powerDef       power_t;
+  NoC(ParseXML *XML_interface, int ithNoC_, InputParameter *interface_ip_);
+  void set_noc_param();
+  void update_rtparam(ParseXML *XML_interface, int ithCache_, InputParameter *interface_ip_); // eka
 
-	ParseXML *XML;
-	int  ithNoC;
-	InputParameter interface_ip;
-	double executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	Router * router;
-	NoCParam  nocdynp;
-	uca_org_t local_result;
-	statsDef       tdp_stats;
-	statsDef       rtp_stats;
-	statsDef       stats_t;
-	powerDef       power_t;
-	NoC(ParseXML *XML_interface, int ithNoC_, InputParameter* interface_ip_);
-	void set_noc_param(); 
-	void update_rtparam(ParseXML *XML_interface, int ithCache_, InputParameter* interface_ip_); //eka
-
-	void computeEnergy(bool is_tdp=true);
-	void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~NoC();
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~NoC();
 };
 
 #endif /* NOC_H_ */

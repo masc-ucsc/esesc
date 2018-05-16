@@ -48,101 +48,100 @@
 #ifndef LOGIC_H_
 #define LOGIC_H_
 
-#include "const.h"
-#include "component.h"
+#include "XML_Parse.h"
 #include "basic_components.h"
 #include "cacti_interface.h"
+#include "component.h"
+#include "const.h"
 #include "parameter.h"
 #include "xmlParser.h"
 #include <string.h>
-#include "XML_Parse.h"
 
 using namespace std;
 
-class selection_logic : public Component{
+class selection_logic : public Component {
 public:
-	selection_logic(bool _is_default, int    win_entries_,
-		            int  issue_width_, const InputParameter *configure_interface);//, const ParseXML *_XML_interface);
-	bool is_default;
-	InputParameter l_ip;
-	uca_org_t local_result;
-	const ParseXML *XML_interface;
-	int win_entries;
-	int issue_width;
-	int num_threads;
+  selection_logic(bool _is_default, int win_entries_, int issue_width_,
+                  const InputParameter *configure_interface); //, const ParseXML *_XML_interface);
+  bool            is_default;
+  InputParameter  l_ip;
+  uca_org_t       local_result;
+  const ParseXML *XML_interface;
+  int             win_entries;
+  int             issue_width;
+  int             num_threads;
 
-	void selection_power();
+  void selection_power();
 };
 
-class dep_resource_conflict_check : public Component{
+class dep_resource_conflict_check : public Component {
 public:
-	dep_resource_conflict_check(const InputParameter *configure_interface, const CoreDynParam & dyn_p_, int compare_bits_, bool _is_default=true);
-	InputParameter l_ip;
-	uca_org_t local_result;
-	double WNORn, WNORp, Wevalinvp, Wevalinvn, Wcompn, Wcompp, Wcomppreequ;
-	CoreDynParam  coredynp;
-	int compare_bits;
-	bool is_default;
-	statsDef       tdp_stats;
-	statsDef       rtp_stats;
-	statsDef       stats_t;
-	powerDef       power_t;
+  dep_resource_conflict_check(const InputParameter *configure_interface, const CoreDynParam &dyn_p_, int compare_bits_,
+                              bool _is_default = true);
+  InputParameter l_ip;
+  uca_org_t      local_result;
+  double         WNORn, WNORp, Wevalinvp, Wevalinvn, Wcompn, Wcompp, Wcomppreequ;
+  CoreDynParam   coredynp;
+  int            compare_bits;
+  bool           is_default;
+  statsDef       tdp_stats;
+  statsDef       rtp_stats;
+  statsDef       stats_t;
+  powerDef       power_t;
 
-	void conflict_check_power();
-	double compare_cap();
-
+  void   conflict_check_power();
+  double compare_cap();
 };
 
 class DFFCell : public Component {
 public:
-	DFFCell(bool _is_dram, double _WdecNANDn, double _WdecNANDp,double _cell_load,
-			  const InputParameter *configure_interface);
-	InputParameter l_ip;
-	bool is_dram;
-	double cell_load;
-	double WdecNANDn;
-	double WdecNANDp;
-	double clock_cap;
-	int    model;
-	int    n_switch;
-	int    n_keep_1;
-	int    n_keep_0;
-	int    n_clock;
-	powerDef e_switch;
-	powerDef e_keep_1;
-	powerDef e_keep_0;
-	powerDef e_clock;
+  DFFCell(bool _is_dram, double _WdecNANDn, double _WdecNANDp, double _cell_load, const InputParameter *configure_interface);
+  InputParameter l_ip;
+  bool           is_dram;
+  double         cell_load;
+  double         WdecNANDn;
+  double         WdecNANDp;
+  double         clock_cap;
+  int            model;
+  int            n_switch;
+  int            n_keep_1;
+  int            n_keep_0;
+  int            n_clock;
+  powerDef       e_switch;
+  powerDef       e_keep_1;
+  powerDef       e_keep_0;
+  powerDef       e_clock;
 
-	double fpfp_node_cap(unsigned int fan_in, unsigned int fan_out);
-	void compute_DFF_cell(void);
-	};
-
-class PipelinePower : public Component{
-public:
-	PipelinePower(const InputParameter *configure_interface, const CoreDynParam & dyn_p_, bool _is_core_pipeline=true, bool _is_default=true);
-	InputParameter l_ip;
-	uca_org_t local_result;
-	CoreDynParam  coredynp;
-	bool is_core_pipeline, is_default;
-	double num_piperegs;
-//	int pipeline_stages;
-//	int tot_stage_vector, per_stage_vector;
-	bool process_ind;
-	double WNANDn ;
-	double WNANDp;
-	double load_per_pipeline_stage;
-//	int  Hthread,  num_thread, fetchWidth, decodeWidth, issueWidth, commitWidth, instruction_length;
-//	int  PC_width, opcode_length, num_arch_reg_tag, data_width,num_phsical_reg_tag, address_width;
-//	bool thread_clock_gated;
-//	bool in_order, multithreaded;
-	void compute_stage_vector();
-	void compute();
-	~PipelinePower(){};
-
+  double fpfp_node_cap(unsigned int fan_in, unsigned int fan_out);
+  void   compute_DFF_cell(void);
 };
 
-//class core_pipeline :public pipeline{
-//public:
+class PipelinePower : public Component {
+public:
+  PipelinePower(const InputParameter *configure_interface, const CoreDynParam &dyn_p_, bool _is_core_pipeline = true,
+                bool _is_default = true);
+  InputParameter l_ip;
+  uca_org_t      local_result;
+  CoreDynParam   coredynp;
+  bool           is_core_pipeline, is_default;
+  double         num_piperegs;
+  //	int pipeline_stages;
+  //	int tot_stage_vector, per_stage_vector;
+  bool   process_ind;
+  double WNANDn;
+  double WNANDp;
+  double load_per_pipeline_stage;
+  //	int  Hthread,  num_thread, fetchWidth, decodeWidth, issueWidth, commitWidth, instruction_length;
+  //	int  PC_width, opcode_length, num_arch_reg_tag, data_width,num_phsical_reg_tag, address_width;
+  //	bool thread_clock_gated;
+  //	bool in_order, multithreaded;
+  void compute_stage_vector();
+  void compute();
+  ~PipelinePower(){};
+};
+
+// class core_pipeline :public pipeline{
+// public:
 //	int  Hthread,  num_thread, fetchWidth, decodeWidth, issueWidth, commitWidth, instruction_length;
 //	int  PC_width, opcode_length, num_arch_reg_tag, data_width,num_phsical_reg_tag, address_width;
 //	bool thread_clock_gated;
@@ -152,28 +151,28 @@ public:
 //
 //};
 
-class FunctionalUnit :public Component{
+class FunctionalUnit : public Component {
 public:
-	FunctionalUnit(const InputParameter *configure_interface, enum FU_type fu_type, int n_fu, bool _is_default = true);
-	InputParameter l_ip;
-	uca_org_t local_result;
-	const ParseXML *XML_interface;
-	double num_fu, FU_height;
-	bool  is_default;
-	
-	bool exist;
+  FunctionalUnit(const InputParameter *configure_interface, enum FU_type fu_type, int n_fu, bool _is_default = true);
+  InputParameter  l_ip;
+  uca_org_t       local_result;
+  const ParseXML *XML_interface;
+  double          num_fu, FU_height;
+  bool            is_default;
 
+  bool exist;
 };
 
-class UndiffCore :public Component{
+class UndiffCore : public Component {
 public:
-	UndiffCore(const InputParameter *configure_interface, enum  Core_type core_ty_, double pipeline_stage_,double num_hthreads_,double issue_width_, bool embedded_ = false, bool _is_default = true);
-	InputParameter l_ip;
-	uca_org_t local_result;
-	const  ParseXML *XML_interface;
-	enum  Core_type core_ty;
-	double pipeline_stage,num_hthreads,issue_width;
-	bool   opt_performance, embedded;
-	bool  is_default;
+  UndiffCore(const InputParameter *configure_interface, enum Core_type core_ty_, double pipeline_stage_, double num_hthreads_,
+             double issue_width_, bool embedded_ = false, bool _is_default = true);
+  InputParameter  l_ip;
+  uca_org_t       local_result;
+  const ParseXML *XML_interface;
+  enum Core_type  core_ty;
+  double          pipeline_stage, num_hthreads, issue_width;
+  bool            opt_performance, embedded;
+  bool            is_default;
 };
 #endif /* LOGIC_H_ */

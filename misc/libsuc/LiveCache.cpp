@@ -44,7 +44,7 @@
 #include <unistd.h>
 
 //#define MTRACE(a...)   do{ fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(), (int)mreq->getID(), (unsigned
-//int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); }while(0)
+// int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); }while(0)
 #define MTRACE(a...)
 
 LiveCache::LiveCache() {

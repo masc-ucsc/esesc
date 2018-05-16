@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,24 +36,23 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <float.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <math.h>
-#include <float.h>
 
 #include "GStatsTherm.h"
 #include "Report.h"
 
 /*********************** GStatsThermCntr */
 
-GStatsThermCntr::GStatsThermCntr(const char *format,...)
-{
-  I(format!=0);      // Mandatory to pass a description
+GStatsThermCntr::GStatsThermCntr(const char *format, ...) {
+  I(format != 0);    // Mandatory to pass a description
   I(format[0] != 0); // Empty string not valid
 
-  char *str;
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
@@ -64,51 +63,44 @@ GStatsThermCntr::GStatsThermCntr(const char *format,...)
   alldata = 0;
 
   name = str;
-  I(*name!=0);
+  I(*name != 0);
   subscribe();
 }
 
-double GStatsThermCntr::getDouble() const
-{
-	I(data==0); // Call the end/sample before dumping/using it (partial statistics being gathered)
+double GStatsThermCntr::getDouble() const {
+  I(data == 0); // Call the end/sample before dumping/using it (partial statistics being gathered)
 
   return (double)alldata;
 }
 
-void GStatsThermCntr::reportValue() const
-{
-  //Report::field("%s=%lld", name, alldata);
+void GStatsThermCntr::reportValue() const {
+  // Report::field("%s=%lld", name, alldata);
   Report::field("%s=%Lg", name, alldata);
 }
 
-int64_t GStatsThermCntr::getSamples() const 
-{ 
-	// In a counter, the # samples == value
-	return static_cast<int64_t>(getDouble());
+int64_t GStatsThermCntr::getSamples() const {
+  // In a counter, the # samples == value
+  return static_cast<int64_t>(getDouble());
 }
 
-double GStatsThermCntr::getValue() const 
-{
-	I(data==0); // Call the end/sample before dumping/using it (partial statistics being gathered)
+double GStatsThermCntr::getValue() const {
+  I(data == 0); // Call the end/sample before dumping/using it (partial statistics being gathered)
 
-	return data;
+  return data;
 }
 
-void GStatsThermCntr::stop(double weight)
-{
-	alldata = alldata + (data*weight);
-	data   = 0;
+void GStatsThermCntr::stop(double weight) {
+  alldata = alldata + (data * weight);
+  data    = 0;
 }
 
-void GStatsThermCntr::start()
-{
-	data = 0;
+void GStatsThermCntr::start() {
+  data = 0;
 }
 /*********************** GStatsThermMax */
 
-GStatsThermMax::GStatsThermMax(const char *format,...)
-{
-  char *str;
+GStatsThermMax::GStatsThermMax(const char *format, ...) {
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
@@ -117,28 +109,22 @@ GStatsThermMax::GStatsThermMax(const char *format,...)
 
   maxValue = DBL_MIN;
 
-  frozen   = false;
-  name     = str;
+  frozen = false;
+  name   = str;
 
   subscribe();
 }
 
-void GStatsThermMax::reportValue() const
-{
+void GStatsThermMax::reportValue() const {
   Report::field("%s:max=%g", name, maxValue);
 }
 
-void GStatsThermMax::sample(const double v) 
-{
-	maxValue = (v > maxValue && !frozen) ? v : maxValue;
+void GStatsThermMax::sample(const double v) {
+  maxValue = (v > maxValue && !frozen) ? v : maxValue;
 }
 
-void GStatsThermMax::stop(double weight)
-{
+void GStatsThermMax::stop(double weight) {
 }
 
-void GStatsThermMax::start()
-{
+void GStatsThermMax::start() {
 }
-
-
