@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,11 +35,11 @@
 #ifndef CLUSTERMANAGER_H
 #define CLUSTERMANAGER_H
 
-#include "GStats.h"
-#include "DepWindow.h"
-#include "Instruction.h"
 #include "ClusterScheduler.h"
 #include "DInst.h"
+#include "DepWindow.h"
+#include "GStats.h"
+#include "Instruction.h"
 
 #include "nanassert.h"
 
@@ -48,17 +48,16 @@ class GMemorySystem;
 class GProcessor;
 
 class ClusterManager {
- private:
+private:
   ClusterScheduler *scheduler;
 
- protected:
- public:
+protected:
+public:
   ClusterManager(GMemorySystem *ms, uint32_t cpuid, GProcessor *gproc);
 
   Resource *getResource(DInst *dinst) const {
     return scheduler->getResource(dinst);
   }
-
 };
 
 #endif // CLUSTERMANAGER_H

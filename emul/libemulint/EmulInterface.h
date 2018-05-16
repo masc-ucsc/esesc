@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,38 +35,39 @@
 #ifndef EMULINTERFACE_H
 #define EMULINTERFACE_H
 
-#include <sys/time.h>
 #include <stdint.h>
+#include <sys/time.h>
 #include <vector>
 
-#include "nanassert.h"
 #include "DInst.h"
+#include "nanassert.h"
 
 class EmuSampler;
 
-typedef enum pType{
-  CPU,
-  GPU
-} ProcType;
+typedef enum pType { CPU, GPU } ProcType;
 
 class EmulInterface {
- protected:
+protected:
   const char *section;
   EmuSampler *sampler;
 
-
   pthread_mutex_t mutex;
-  FlowID numFlows;
- public:
+  FlowID          numFlows;
+
+public:
   ProcType cputype;
 
   EmulInterface(const char *section);
   virtual ~EmulInterface();
 
-  EmuSampler *getSampler() const { return sampler; }
+  EmuSampler *getSampler() const {
+    return sampler;
+  }
   virtual void setSampler(EmuSampler *sampler, FlowID fid = 0);
 
-  const char *getSection() const { return section; }
+  const char *getSection() const {
+    return section;
+  }
 
   // addr meaning
   //  - LD/STs : memory address load/store
@@ -74,8 +75,8 @@ class EmulInterface {
   //  - Other  : addr == 0
 
   // Advance the PC of the head
-  virtual bool   populate(FlowID fid) = 0;
-  virtual DInst *peekHead(FlowID fid) = 0;
+  virtual bool   populate(FlowID fid)    = 0;
+  virtual DInst *peekHead(FlowID fid)    = 0;
   virtual void   executeHead(FlowID fid) = 0;
   // Advance the PC of the tail
   virtual void reexecuteTail(FlowID fid) = 0;
@@ -91,28 +92,30 @@ class EmulInterface {
 
   virtual FlowID getNumFlows() const = 0;
   virtual FlowID getNumEmuls() const = 0;
-  virtual FlowID getNumPEs() const {return 0;}; //For GPU
+  virtual FlowID getNumPEs() const {
+    return 0;
+  }; // For GPU
   virtual FlowID mapGlobalID(FlowID gid) const = 0;
 
   // Called from qemu/gpu thread
-  virtual void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats) = 0;
+  virtual void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest,
+                                int dest2, bool keepStats)    = 0;
   virtual void syscall(uint32_t num, Time_t time, FlowID fid) = 0;
 
-  virtual void start()=0;
+  virtual void start() = 0;
 
   // Virtual methods used to notify when to start a new simulation phase. They
   // can be used to optimize/speedup the trace generation
-  virtual void startRabbit(FlowID fid)=0;
-  virtual void startWarmup(FlowID fid)=0;
-  virtual void startDetail(FlowID fid)=0;
-  virtual void startTiming(FlowID fid)=0;
+  virtual void startRabbit(FlowID fid) = 0;
+  virtual void startWarmup(FlowID fid) = 0;
+  virtual void startDetail(FlowID fid) = 0;
+  virtual void startTiming(FlowID fid) = 0;
 
-  virtual void   setFid(FlowID cpuid)=0;
-  virtual FlowID getFid(FlowID last_fid)=0;
-  virtual void   freeFid(FlowID)=0;
-  virtual FlowID mapLid(FlowID) = 0; // Map local FlowID
-  virtual void drainFIFO()=0;
- 
+  virtual void   setFid(FlowID cpuid)    = 0;
+  virtual FlowID getFid(FlowID last_fid) = 0;
+  virtual void   freeFid(FlowID)         = 0;
+  virtual FlowID mapLid(FlowID)          = 0; // Map local FlowID
+  virtual void   drainFIFO()             = 0;
 };
 
-#endif   // EMULINTERFACE_H
+#endif // EMULINTERFACE_H

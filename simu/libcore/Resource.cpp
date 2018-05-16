@@ -49,36 +49,35 @@
 #include "FetchEngine.h"
 #include "GMemorySystem.h"
 #include "GProcessor.h"
-#include "OoOProcessor.h"
-#include "MemRequest.h"
-#include "Port.h"
 #include "LSQ.h"
+#include "MemRequest.h"
+#include "OoOProcessor.h"
+#include "Port.h"
 #include "TaskHandler.h"
 
-//late allocation flag
+// late allocation flag
 #define USE_PNR
 #define LSQ_LATE_EXECUTED 1
 
 /* }}} */
 
 Resource::Resource(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l, uint32_t cpuid)
-  /* constructor {{{1 */
-  : cluster(cls)
-  ,gen(aGen)
-  ,avgRenameTime  ("P(%d)_%s_%d_avgRenameTime" ,cpuid, cls->getName(),type )
-  ,avgIssueTime   ("P(%d)_%s_%d_avgIssueTime"  ,cpuid, cls->getName(),type )
-  ,avgExecuteTime ("P(%d)_%s_%d_avgExecuteTime",cpuid, cls->getName(),type )
-  ,avgRetireTime  ("P(%d)_%s_%d_avgRetireTime" ,cpuid, cls->getName(),type )
-  ,lat(l)
-  ,usedTime(0)
-  ,coreid(cpuid)
-{
+    /* constructor {{{1 */
+    : cluster(cls)
+    , gen(aGen)
+    , avgRenameTime("P(%d)_%s_%d_avgRenameTime", cpuid, cls->getName(), type)
+    , avgIssueTime("P(%d)_%s_%d_avgIssueTime", cpuid, cls->getName(), type)
+    , avgExecuteTime("P(%d)_%s_%d_avgExecuteTime", cpuid, cls->getName(), type)
+    , avgRetireTime("P(%d)_%s_%d_avgRetireTime", cpuid, cls->getName(), type)
+    , lat(l)
+    , usedTime(0)
+    , coreid(cpuid) {
   I(cls);
   if(gen)
     gen->subscribe();
 
   const char *str = SescConf->getCharPtr("cpusimu", "type", cpuid);
-  if (strcasecmp(str,"inorder")==0)
+  if(strcasecmp(str, "inorder") == 0)
     inorder = true;
   else
     inorder = false;
@@ -87,29 +86,28 @@ Resource::Resource(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l,
 
 void Resource::setStats(const DInst *dinst) {
 
-  if (!dinst->getStatsFlag())
+  if(!dinst->getStatsFlag())
     return;
 
   Time_t t;
-  
-  t =globalClock-dinst->getExecutedTime();
-  avgRetireTime.sample(t,true);
 
-  t =dinst->getExecutedTime() - dinst->getIssuedTime();
-  avgExecuteTime.sample(t,true);
+  t = globalClock - dinst->getExecutedTime();
+  avgRetireTime.sample(t, true);
 
-  t =dinst->getIssuedTime() - dinst->getRenamedTime();
-  avgIssueTime.sample(t,true);
+  t = dinst->getExecutedTime() - dinst->getIssuedTime();
+  avgExecuteTime.sample(t, true);
 
-  t =dinst->getRenamedTime() - dinst->getFetchTime();
-  avgRenameTime.sample(t,true);
+  t = dinst->getIssuedTime() - dinst->getRenamedTime();
+  avgIssueTime.sample(t, true);
+
+  t = dinst->getRenamedTime() - dinst->getFetchTime();
+  avgRenameTime.sample(t, true);
 }
 
 Resource::~Resource()
 /* destructor {{{1 */
 {
-  GMSG(!EventScheduler::empty(), "Resources destroyed with %zu pending instructions"
-       ,EventScheduler::size());
+  GMSG(!EventScheduler::empty(), "Resources destroyed with %zu pending instructions", EventScheduler::size());
 
   if(gen)
     gen->unsubscribe();
@@ -118,63 +116,61 @@ Resource::~Resource()
 
 /***********************************************/
 
-MemResource::MemResource(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, Prefetcher *_pref, TimeDelta_t l, GMemorySystem *ms, int32_t id, const char *cad)
-  /* constructor {{{1 */
-  : MemReplay(type, cls, aGen, ss, l, id)
-  ,firstLevelMemObj(ms->getDL1())
-  ,memorySystem(ms)
-  ,lsq(_lsq)
-  ,pref(_pref)
-  ,stldViolations("P(%d)_%s_%s:stldViolations", id, cls->getName(), cad)
-{
-  if (strcasecmp(firstLevelMemObj->getDeviceType(),"cache")==0) {
+MemResource::MemResource(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, Prefetcher *_pref, TimeDelta_t l,
+                         GMemorySystem *ms, int32_t id, const char *cad)
+    /* constructor {{{1 */
+    : MemReplay(type, cls, aGen, ss, l, id)
+    , firstLevelMemObj(ms->getDL1())
+    , memorySystem(ms)
+    , lsq(_lsq)
+    , pref(_pref)
+    , stldViolations("P(%d)_%s_%s:stldViolations", id, cls->getName(), cad) {
+  if(strcasecmp(firstLevelMemObj->getDeviceType(), "cache") == 0) {
     DL1 = firstLevelMemObj;
-  }else{
-    MRouter *router= firstLevelMemObj->getRouter();
-    DL1=router->getDownNode();
-    if (strcasecmp(DL1->getDeviceType(),"cache")!=0) {
-      MRouter *router= DL1->getRouter();
-      DL1=router->getDownNode();
-      if (strcasecmp(DL1->getDeviceType(),"cache")!=0) {
-        printf("ERROR: Neither first or second or 3rd level is a cache %s\n",DL1->getDeviceType());
-      exit(-1);
+  } else {
+    MRouter *router = firstLevelMemObj->getRouter();
+    DL1             = router->getDownNode();
+    if(strcasecmp(DL1->getDeviceType(), "cache") != 0) {
+      MRouter *router = DL1->getRouter();
+      DL1             = router->getDownNode();
+      if(strcasecmp(DL1->getDeviceType(), "cache") != 0) {
+        printf("ERROR: Neither first or second or 3rd level is a cache %s\n", DL1->getDeviceType());
+        exit(-1);
+      }
     }
   }
 }
-}
 /* }}} */
 
-
 MemReplay::MemReplay(uint8_t type, Cluster *cls, PortGeneric *gen, StoreSet *ss, TimeDelta_t l, uint32_t cpuid)
-  :Resource(type, cls, gen, l, cpuid)
-   ,lfSize(8)
-   ,storeset(ss)
-{
-  lf = (struct FailType *)malloc(sizeof(struct FailType)*lfSize);
-  for(uint32_t i=0;i<lfSize;i++) {
+    : Resource(type, cls, gen, l, cpuid)
+    , lfSize(8)
+    , storeset(ss) {
+  lf = (struct FailType *)malloc(sizeof(struct FailType) * lfSize);
+  for(uint32_t i = 0; i < lfSize; i++) {
     lf[i].ssid = -1;
   }
 }
 
-void MemReplay::replayManage(DInst* dinst) {
+void MemReplay::replayManage(DInst *dinst) {
 
-  if (dinst->getSSID()==-1)
+  if(dinst->getSSID() == -1)
     return;
 
-  int pos = -1;
-  int pos2 = 0;
+  int  pos     = -1;
+  int  pos2    = 0;
   bool updated = false;
 
   SSID_t did = dinst->getSSID();
 
-  for(uint32_t i=0;i<lfSize;i++) {
-    if (lf[pos2].id < lf[i].id && lf[i].ssid != did)
+  for(uint32_t i = 0; i < lfSize; i++) {
+    if(lf[pos2].id < lf[i].id && lf[i].ssid != did)
       pos2 = i;
 
-    if (lf[i].id >= dinst->getID())
+    if(lf[i].id >= dinst->getID())
       continue;
-    if (lf[i].ssid == -1) {
-      if (!updated) {
+    if(lf[i].ssid == -1) {
+      if(!updated) {
         lf[i].ssid = did;
         lf[i].id   = dinst->getID();
         lf[i].pc   = dinst->getPC();
@@ -184,8 +180,8 @@ void MemReplay::replayManage(DInst* dinst) {
       }
       continue;
     }
-    if ((dinst->getID() - lf[i].id) > 500) {
-      if (!updated) {
+    if((dinst->getID() - lf[i].id) > 500) {
+      if(!updated) {
         lf[i].ssid = did;
         lf[i].id   = dinst->getID();
         lf[i].pc   = dinst->getPC();
@@ -195,19 +191,18 @@ void MemReplay::replayManage(DInst* dinst) {
       }
       continue;
     }
-    if (lf[i].ssid == did) {
+    if(lf[i].ssid == did) {
       continue;
     }
-    if (lf[i].addr != dinst->getAddr()) {
-      if (pos == -1)
+    if(lf[i].addr != dinst->getAddr()) {
+      if(pos == -1)
         pos = i;
       continue;
     }
 
-    if (pos!=-3) {
+    if(pos != -3) {
       pos = -2;
-      if (lf[i].pc == dinst->getPC()) {
-      }
+      if(lf[i].pc == dinst->getPC()) {}
 #if 0
       printf("1.merging %d and %d : pc %x and %x : addr %x and %x : %dx%d : data %x and %x : id %d and %d (%d) : %x\n"
              ,lf[i].ssid, did, lf[i].pc, dinst->getPC(), lf[i].addr, dinst->getAddr()
@@ -216,20 +211,20 @@ void MemReplay::replayManage(DInst* dinst) {
 #endif
 
       SSID_t newid = storeset->mergeset(lf[i].ssid, did);
-      did = newid;
-      lf[i].ssid = newid;
-      lf[i].id   = dinst->getID();
-      lf[i].pc   = dinst->getPC();
-      lf[i].addr = dinst->getAddr();
-      lf[i].op   = dinst->getInst()->getOpcode();
-      updated    = true;
+      did          = newid;
+      lf[i].ssid   = newid;
+      lf[i].id     = dinst->getID();
+      lf[i].pc     = dinst->getPC();
+      lf[i].addr   = dinst->getAddr();
+      lf[i].op     = dinst->getInst()->getOpcode();
+      updated      = true;
     }
   }
 
   static int rand = 0;
   rand++;
 #if 1
-  if (pos>=0 && (rand & 7) == 0) {
+  if(pos >= 0 && (rand & 7) == 0) {
     int i = pos;
 #if 0
       printf("2.merging %d and %d : pc %x and %x : addr %x and %x : %dx%d : data %x and %x : id %d and %d (%d) : %x\n"
@@ -238,21 +233,22 @@ void MemReplay::replayManage(DInst* dinst) {
           , lf[i].data, dinst->getData(), lf[i].id, dinst->getID(), dinst->getID() - lf[i].id, dinst->getConflictStorePC());
 #endif
     SSID_t newid = storeset->mergeset(lf[i].ssid, dinst->getSSID());
-    lf[i].ssid = newid;
-    lf[i].id   = dinst->getID();
-    lf[i].pc   = dinst->getPC();
-    lf[i].addr = dinst->getAddr();
-    updated    = true;
+    lf[i].ssid   = newid;
+    lf[i].id     = dinst->getID();
+    lf[i].pc     = dinst->getPC();
+    lf[i].addr   = dinst->getAddr();
+    updated      = true;
   }
 #endif
 
-  if (!updated) {
+  if(!updated) {
     int i = pos2;
-    if (dinst->getID() > lf[i].id && dinst->getSSID() != lf[i].ssid) {
+    if(dinst->getID() > lf[i].id && dinst->getSSID() != lf[i].ssid) {
 #if DEBUG
-      printf("3.merging %d and %d : pc %lx and %lx : addr %lx and %lx : id %lu and %lu (%lu)\n",lf[i].ssid, dinst->getSSID(), lf[i].pc, dinst->getPC(), lf[i].addr, dinst->getAddr(), lf[i].id, dinst->getID(), dinst->getID() - lf[i].id);
+      printf("3.merging %d and %d : pc %lx and %lx : addr %lx and %lx : id %lu and %lu (%lu)\n", lf[i].ssid, dinst->getSSID(),
+             lf[i].pc, dinst->getPC(), lf[i].addr, dinst->getAddr(), lf[i].id, dinst->getID(), dinst->getID() - lf[i].id);
       storeset->mergeset(lf[i].ssid, dinst->getSSID());
-      if (lf[i].ssid > dinst->getSSID())
+      if(lf[i].ssid > dinst->getSSID())
         lf[i].ssid = dinst->getSSID();
 #endif
       lf[i].ssid = dinst->getSSID();
@@ -265,16 +261,17 @@ void MemReplay::replayManage(DInst* dinst) {
 
 /***********************************************/
 
-FULoad::FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, Prefetcher *_pref, TimeDelta_t lsdelay, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
-  /* Constructor {{{1 */
-  : MemResource(type, cls, aGen, _lsq, ss, _pref, l, ms, id, cad)
-#ifdef MEM_TSO2 
-  ,tso2Replay("P(%d)_%s_%s:tso2Replay", id, cls->getName(), cad)
+FULoad::FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, Prefetcher *_pref, TimeDelta_t lsdelay,
+               TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
+    /* Constructor {{{1 */
+    : MemResource(type, cls, aGen, _lsq, ss, _pref, l, ms, id, cad)
+#ifdef MEM_TSO2
+    , tso2Replay("P(%d)_%s_%s:tso2Replay", id, cls->getName(), cad)
 #endif
-  ,LSDelay(lsdelay)
-  ,freeEntries(size) {
+    , LSDelay(lsdelay)
+    , freeEntries(size) {
   char cadena[1000];
-  sprintf(cadena,"P(%d)_%s_%s", id, cls->getName(), cad);
+  sprintf(cadena, "P(%d)_%s_%s", id, cls->getName(), cad);
   enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
   I(ms);
 }
@@ -283,28 +280,28 @@ FULoad::FULoad(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSe
 StallCause FULoad::canIssue(DInst *dinst) {
   /* canIssue {{{1 */
 
-  if( freeEntries <= 0 ) {
+  if(freeEntries <= 0) {
 #ifndef LSQ_LATE_EXECUTED
     I(freeEntries == 0); // Can't be negative
 #endif
     return OutsLoadsStall;
   }
-  if( !lsq->hasFreeEntries() )
+  if(!lsq->hasFreeEntries())
     return OutsLoadsStall;
-  
-  if (inorder)
+
+  if(inorder)
     if(lsq->hasPendingResolution())
       return OutsLoadsStall;
 
-  if (!lsq->insert(dinst))
+  if(!lsq->insert(dinst))
     return OutsLoadsStall;
 
   storeset->insert(dinst);
-  //call vtage->rename() here????
+  // call vtage->rename() here????
 
   lsq->decFreeEntries();
 
-  if (!LSQlateAlloc)
+  if(!LSQlateAlloc)
     freeEntries--;
   return NoStall;
 }
@@ -314,33 +311,33 @@ void FULoad::executing(DInst *dinst) {
   /* executing {{{1 */
 
 #ifndef LSQ_LATE_EXECUTED
-  if (LSQlateAlloc)
+  if(LSQlateAlloc)
     freeEntries--;
 #endif
 
   cluster->executing(dinst);
-  Time_t when = gen->nextSlot(dinst->getStatsFlag())+lat;
+  Time_t when = gen->nextSlot(dinst->getStatsFlag()) + lat;
 
   DInst *qdinst = lsq->executing(dinst);
-  I(qdinst==0);
-  if (qdinst) {
+  I(qdinst == 0);
+  if(qdinst) {
     I(qdinst->getInst()->isStore());
     dinst->getGProc()->replay(dinst);
     if(!dinst->getGProc()->isFlushing())
       stldViolations.inc(dinst->getStatsFlag());
 
-    storeset->stldViolation(qdinst,dinst);
+    storeset->stldViolation(qdinst, dinst);
   }
 
   // The check in the LD Queue is performed always, for hit & miss
-  if (dinst->isLoadForwarded() || !enableDcache) {
-    if (enableDcache) {
+  if(dinst->isLoadForwarded() || !enableDcache) {
+    if(enableDcache) {
       MemRequest::sendReqRead(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC()); // Just to use cache ports
     }
     pref->exe(dinst);
-    performedCB::scheduleAbs(when+LSDelay, this, dinst);
+    performedCB::scheduleAbs(when + LSDelay, this, dinst);
     dinst->markDispatched();
-  }else{
+  } else {
     cacheDispatchedCB::scheduleAbs(when, this, dinst);
   }
 }
@@ -350,36 +347,38 @@ void FULoad::cacheDispatched(DInst *dinst) {
   /* cacheDispatched {{{1 */
 
   I(enableDcache);
-  //I(!dinst->isLoadForwarded());
+  // I(!dinst->isLoadForwarded());
   //
   dinst->markDispatched();
 
-  //MSG("FULoad %lld 0x%x 0x%x @%lld",dinst->getID(), dinst->getAddr(), dinst->getPC(), globalClock);
-  MemRequest::sendReqDL1Read(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC(), dinst, performedCB::create(this,dinst));
+  // MSG("FULoad %lld 0x%x 0x%x @%lld",dinst->getID(), dinst->getAddr(), dinst->getPC(), globalClock);
+  MemRequest::sendReqDL1Read(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC(), dinst,
+                             performedCB::create(this, dinst));
 
   pref->exe(dinst);
 }
 /* }}} */
 
-void FULoad::executed(DInst* dinst) {
+void FULoad::executed(DInst *dinst) {
   /* executed {{{1 */
 
 #ifdef LSQ_LATE_EXECUTED
-  if (LSQlateAlloc)
+  if(LSQlateAlloc)
     freeEntries--;
 #endif
 
-  if (dinst->getChained()) {
+  if(dinst->getChained()) {
     I(dinst->getFetchEngine());
     dinst->getFetchEngine()->chainLoadDone(dinst);
-  }else{
+  } else {
     I(!dinst->getFetchEngine());
   }
 
   storeset->remove(dinst);
 
   /*************************/
-  //HERE: Do a call to mark the LD as predicted (index the and set if dataRATptr is to dinst then dataRAT[dinst->getinst()->getDst1()] = dinst->getData();)
+  // HERE: Do a call to mark the LD as predicted (index the and set if dataRATptr is to dinst then
+  // dataRAT[dinst->getinst()->getDst1()] = dinst->getData();)
   //         dataRATptr[...] = 0 if dataRATotr[...] == dinst
 
   cluster->executed(dinst);
@@ -389,8 +388,8 @@ void FULoad::executed(DInst* dinst) {
 bool FULoad::preretire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
-  bool done =  dinst->isDispatched();
-  if (!done)
+  bool done = dinst->isDispatched();
+  if(!done)
     return false;
 
 #ifdef USE_PNR
@@ -406,7 +405,7 @@ bool FULoad::preretire(DInst *dinst, bool flushing)
 bool FULoad::retire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
-  if (!dinst->isPerformed())
+  if(!dinst->isPerformed())
     return false;
 
   lsq->incFreeEntries();
@@ -415,8 +414,8 @@ bool FULoad::retire(DInst *dinst, bool flushing)
 #endif
 
 #ifdef MEM_TSO2
-  if (DL1->Invalid(dinst->getAddr())) {
-    //MSG("Sync head/tail @%lld",globalClock);
+  if(DL1->Invalid(dinst->getAddr())) {
+    // MSG("Sync head/tail @%lld",globalClock);
     tso2Replay.inc(dinst->getStatsFlag());
     dinst->getGProc()->replay(dinst);
 #if 0
@@ -427,7 +426,7 @@ bool FULoad::retire(DInst *dinst, bool flushing)
 #endif
 
   lsq->remove(dinst);
-  //VTAGE->updateVtageTables() here ???? vtage validation
+  // VTAGE->updateVtageTables() here ???? vtage validation
 
 #if 0
   // Merging for tradcore
@@ -444,32 +443,33 @@ bool FULoad::retire(DInst *dinst, bool flushing)
 void FULoad::performed(DInst *dinst) {
   /* memory operation was globally performed {{{1 */
 
-  //MSG("DONE   %lld 0x%x 0x%x @%lld",dinst->getID(), dinst->getAddr(), dinst->getPC(), globalClock);
+  // MSG("DONE   %lld 0x%x 0x%x @%lld",dinst->getID(), dinst->getAddr(), dinst->getPC(), globalClock);
   dinst->markPerformed();
 
   // For LDs, a perform means finish the executed
-  //executedCB::schedule(0);
+  // executedCB::schedule(0);
   executed(dinst);
 }
 /* }}} */
 
 /***********************************************/
 
-FUStore::FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, Prefetcher *_pref, TimeDelta_t l, GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
-  /* constructor {{{1 */
-  : MemResource(type, cls, aGen, _lsq, ss, _pref, l, ms, id, cad)
-  ,freeEntries(size) {
+FUStore::FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, StoreSet *ss, Prefetcher *_pref, TimeDelta_t l,
+                 GMemorySystem *ms, int32_t size, int32_t id, const char *cad)
+    /* constructor {{{1 */
+    : MemResource(type, cls, aGen, _lsq, ss, _pref, l, ms, id, cad)
+    , freeEntries(size) {
 
   enableDcache = SescConf->getBool("cpusimu", "enableDcache", id);
   scbSize      = SescConf->getInt("cpusimu", "scbSize", id);
   scbEntries   = scbSize;
-  if (SescConf->checkBool("cpusimu", "LSQlateAlloc",id))
-    LSQlateAlloc = SescConf->getBool("cpusimu", "LSQlateAlloc",id);
+  if(SescConf->checkBool("cpusimu", "LSQlateAlloc", id))
+    LSQlateAlloc = SescConf->getBool("cpusimu", "LSQlateAlloc", id);
   else
     LSQlateAlloc = false;
 
   const char *dl1_section = DL1->getSection();
-  int bsize               = SescConf->getInt(dl1_section,"bsize");
+  int         bsize       = SescConf->getInt(dl1_section, "bsize");
   lineSizeBits            = log2i(bsize);
 }
 /* }}} */
@@ -477,21 +477,21 @@ FUStore::FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, Store
 StallCause FUStore::canIssue(DInst *dinst) {
   /* canIssue {{{1 */
 
-  if (dinst->getInst()->isStoreAddress())
+  if(dinst->getInst()->isStoreAddress())
     return NoStall;
 
-  if( freeEntries <= 0 ) {
+  if(freeEntries <= 0) {
     I(freeEntries == 0); // Can't be negative
     return OutsStoresStall;
   }
-  if (!lsq->hasFreeEntries())
+  if(!lsq->hasFreeEntries())
     return OutsStoresStall;
 
-  if (inorder)
+  if(inorder)
     if(lsq->hasPendingResolution())
       return OutsStoresStall;
 
-  if (!lsq->insert(dinst))
+  if(!lsq->insert(dinst))
     return OutsStoresStall;
 
   storeset->insert(dinst);
@@ -505,20 +505,20 @@ StallCause FUStore::canIssue(DInst *dinst) {
 
 void FUStore::executing(DInst *dinst) {
   /* executing {{{1 */
-  if (!dinst->getInst()->isStoreAddress()) {
+  if(!dinst->getInst()->isStoreAddress()) {
     DInst *qdinst = lsq->executing(dinst);
-    if (qdinst) {
+    if(qdinst) {
       dinst->getGProc()->replay(qdinst);
       if(!dinst->getGProc()->isFlushing())
         stldViolations.inc(dinst->getStatsFlag());
-      storeset->stldViolation(qdinst,dinst);
+      storeset->stldViolation(qdinst, dinst);
     }
   }
 
   cluster->executing(dinst);
   gen->nextSlot(dinst->getStatsFlag());
 
-  if (dinst->getInst()->isStoreAddress()) {
+  if(dinst->getInst()->isStoreAddress()) {
 #if 0
     if (enableDcache && !firstLevelMemObj->isBusy(dinst->getAddr()) ){
       MemRequest::sendReqWritePrefetch(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), 0); // executedCB::create(this,dinst));
@@ -527,7 +527,7 @@ void FUStore::executing(DInst *dinst) {
 #else
     executed(dinst);
 #endif
-  }else{
+  } else {
     executed(dinst);
   }
 }
@@ -536,7 +536,7 @@ void FUStore::executing(DInst *dinst) {
 void FUStore::executed(DInst *dinst) {
   /* executed {{{1 */
 
-  if (dinst->getInst()->isStore())
+  if(dinst->getInst()->isStore())
     storeset->remove(dinst);
 
   cluster->executed(dinst);
@@ -546,22 +546,22 @@ void FUStore::executed(DInst *dinst) {
 
 bool FUStore::preretire(DInst *dinst, bool flushing) {
   /* retire {{{1 */
-  if (!dinst->isExecuted())
+  if(!dinst->isExecuted())
     return false;
 
-  if (dinst->getInst()->isStoreAddress())
+  if(dinst->getInst()->isStoreAddress())
     return true;
 
-  if (flushing) {
+  if(flushing) {
     performed(dinst);
     return true;
   }
 
-  if (scbEntries<=0)
+  if(scbEntries <= 0)
     return false;
 
 #if 1
-  if(firstLevelMemObj->isBusy(dinst->getAddr())){
+  if(firstLevelMemObj->isBusy(dinst->getAddr())) {
     return false;
   }
 #endif
@@ -572,11 +572,12 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
 
   // FIXME: scbmerge is wrong. We should create a memory block for it before the L1 cache
   bool pendingLine = false; // scbMerge[(dinst->getAddr()>>lineSizeBits) & 1023]>0;
-  scbMerge[(dinst->getAddr()>>lineSizeBits) & 1023]++;
+  scbMerge[(dinst->getAddr() >> lineSizeBits) & 1023]++;
 
-  if (enableDcache && !pendingLine) {
-    MemRequest::sendReqWrite(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC(), performedCB::create(this,dinst));
-  }else{
+  if(enableDcache && !pendingLine) {
+    MemRequest::sendReqWrite(firstLevelMemObj, dinst->getStatsFlag(), dinst->getAddr(), dinst->getPC(),
+                             performedCB::create(this, dinst));
+  } else {
     // Merge request if pending
     performed(dinst);
   }
@@ -591,18 +592,18 @@ void FUStore::performed(DInst *dinst) {
   setStats(dinst); // Not retire for stores
 
   I(!dinst->isPerformed());
-  if (dinst->isRetired()) {
+  if(dinst->isRetired()) {
     dinst->recycle();
   }
   dinst->markPerformed();
 
-  scbMerge[(dinst->getAddr()>>lineSizeBits) & 1023]--;
+  scbMerge[(dinst->getAddr() >> lineSizeBits) & 1023]--;
 
 #ifndef MEM_TSO
   // RC
   scbEntries++;
 #endif
-  if (scbQueue.front() == dinst) {
+  if(scbQueue.front() == dinst) {
 #ifdef MEM_TSO
     scbEntries++;
 #endif
@@ -612,22 +613,20 @@ void FUStore::performed(DInst *dinst) {
 
   int allzeroes = 0;
 
-  for(SCBQueueType::iterator it = scbQueue.begin();
-      it != scbQueue.end();
-      it++ ) {
-    if ((*it == 0 || *it == dinst) && allzeroes>=0)
+  for(SCBQueueType::iterator it = scbQueue.begin(); it != scbQueue.end(); it++) {
+    if((*it == 0 || *it == dinst) && allzeroes >= 0)
       allzeroes++;
-    else 
+    else
       allzeroes = -1;
 
-    if ((*it) == dinst) {
-      if (allzeroes>0) {
+    if((*it) == dinst) {
+      if(allzeroes > 0) {
 #ifdef MEM_TSO
-        scbEntries+=allzeroes;
+        scbEntries += allzeroes;
 #endif
         it++;
-        scbQueue.erase(scbQueue.begin(),it);
-      }else{
+        scbQueue.erase(scbQueue.begin(), it);
+      } else {
         *it = 0;
       }
       return;
@@ -643,7 +642,7 @@ bool FUStore::retire(DInst *dinst, bool flushing) {
     return true;
   }
 
-  //if(!dinst->isPerformed())
+  // if(!dinst->isPerformed())
   //  return false;
 
   I(!dinst->isRetired());
@@ -651,7 +650,7 @@ bool FUStore::retire(DInst *dinst, bool flushing) {
 
   lsq->remove(dinst);
   lsq->incFreeEntries();
-  //freeEntries++;
+  // freeEntries++;
 
   return true;
 }
@@ -659,10 +658,9 @@ bool FUStore::retire(DInst *dinst, bool flushing) {
 
 /***********************************************/
 
-FUGeneric::FUGeneric(uint8_t type, Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l ,uint32_t cpuid)
-  /* constructor {{{1 */
-  :Resource(type, cls, aGen, l, cpuid)
-   {
+FUGeneric::FUGeneric(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l, uint32_t cpuid)
+    /* constructor {{{1 */
+    : Resource(type, cls, aGen, l, cpuid) {
 }
 /* }}} */
 
@@ -681,7 +679,7 @@ StallCause FUGeneric::canIssue(DInst *dinst) {
 
 void FUGeneric::executing(DInst *dinst) {
   /* executing {{{1 */
-  Time_t nlat = gen->nextSlot(dinst->getStatsFlag())+lat;
+  Time_t nlat = gen->nextSlot(dinst->getStatsFlag()) + lat;
 #if 0
   if (dinst->getPC() == 1073741832) {
     MSG("@%lld Scheduling callback for FID[%d] PE[%d] Warp [%d] pc 1073741832 at @%lld"
@@ -730,11 +728,11 @@ void FUGeneric::performed(DInst *dinst) {
 /***********************************************/
 
 FUBranch::FUBranch(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l, uint32_t cpuid, int32_t mb, bool dom)
-  /* constructor {{{1 */
-  :Resource(type, cls, aGen, l, cpuid)
-  ,freeBranches(mb) 
-  ,drainOnMiss(dom) {
-  I(freeBranches>0);
+    /* constructor {{{1 */
+    : Resource(type, cls, aGen, l, cpuid)
+    , freeBranches(mb)
+    , drainOnMiss(dom) {
+  I(freeBranches > 0);
 }
 /* }}} */
 
@@ -742,7 +740,7 @@ StallCause FUBranch::canIssue(DInst *dinst) {
   /* canIssue {{{1 */
 
   I(dinst->getInst()->isControl());
-  if (freeBranches == 0)
+  if(freeBranches == 0)
     return OutsBranchesStall;
 
   freeBranches--;
@@ -754,7 +752,7 @@ StallCause FUBranch::canIssue(DInst *dinst) {
 void FUBranch::executing(DInst *dinst) {
   /* executing {{{1 */
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
+  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag()) + lat, this, dinst);
 }
 /* }}} */
 
@@ -763,7 +761,7 @@ void FUBranch::executed(DInst *dinst) {
   cluster->executed(dinst);
   dinst->markPerformed();
 
-  if (!drainOnMiss && dinst->isBranchMiss()) {
+  if(!drainOnMiss && dinst->isBranchMiss()) {
     (dinst->getFetchEngine())->unBlockFetch(dinst, dinst->getFetchTime());
   }
 
@@ -782,7 +780,7 @@ bool FUBranch::preretire(DInst *dinst, bool flushing)
 bool FUBranch::retire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
-  if (drainOnMiss && dinst->isBranchMiss()) {
+  if(drainOnMiss && dinst->isBranchMiss()) {
     (dinst->getFetchEngine())->unBlockFetch(dinst, dinst->getFetchTime());
   }
   setStats(dinst);
@@ -799,12 +797,11 @@ void FUBranch::performed(DInst *dinst) {
 
 /***********************************************/
 
-FURALU::FURALU(uint8_t type, Cluster *cls ,PortGeneric *aGen ,TimeDelta_t l, int32_t id)
-  /* constructor {{{1 */
-  :Resource(type, cls, aGen, l, id)
-  ,dmemoryBarrier("P(%d)_%s_dmemoryBarrier",id,cls->getName())
-  ,imemoryBarrier("P(%d)_%s_imemoryBarrier",id,cls->getName())
-{
+FURALU::FURALU(uint8_t type, Cluster *cls, PortGeneric *aGen, TimeDelta_t l, int32_t id)
+    /* constructor {{{1 */
+    : Resource(type, cls, aGen, l, id)
+    , dmemoryBarrier("P(%d)_%s_dmemoryBarrier", id, cls->getName())
+    , imemoryBarrier("P(%d)_%s_imemoryBarrier", id, cls->getName()) {
   blockUntil = 0;
 }
 /* }}} */
@@ -814,28 +811,26 @@ StallCause FURALU::canIssue(DInst *dinst)
 {
   I(dinst->getPC() != 0xf00df00d); // It used to be a Syspend, but not longer true
 
-  if (dinst->getPC() == 0xdeaddead){
+  if(dinst->getPC() == 0xdeaddead) {
     // This is the PC for a syscall (QEMUReader::syscall)
-    if (blockUntil==0) {
-      //LOG("syscall %d executed, with %d delay", dinst->getAddr(), dinst->getData());
-      //blockUntil = globalClock+dinst->getData();
-      blockUntil = globalClock+100;
+    if(blockUntil == 0) {
+      // LOG("syscall %d executed, with %d delay", dinst->getAddr(), dinst->getData());
+      // blockUntil = globalClock+dinst->getData();
+      blockUntil = globalClock + 100;
       return SyscallStall;
     }
 
-    //is this where we poweron the GPU threads and then poweroff the QEMU thread?
-    if (globalClock >= blockUntil) {
+    // is this where we poweron the GPU threads and then poweroff the QEMU thread?
+    if(globalClock >= blockUntil) {
       blockUntil = 0;
       return NoStall;
     }
 
     return SyscallStall;
-  }else if (!dinst->getInst()->hasDstRegister()
-            && !dinst->getInst()->hasSrc1Register()
-            && !dinst->getInst()->hasSrc2Register()) {
-    if (dinst->getGProc()->isROBEmpty())
+  } else if(!dinst->getInst()->hasDstRegister() && !dinst->getInst()->hasSrc1Register() && !dinst->getInst()->hasSrc2Register()) {
+    if(dinst->getGProc()->isROBEmpty())
       return NoStall;
-    if (dinst->getAddr() == 0xbeefbeef)
+    if(dinst->getAddr() == 0xbeefbeef)
       imemoryBarrier.inc(dinst->getStatsFlag());
     else
       dmemoryBarrier.inc(dinst->getStatsFlag());
@@ -850,9 +845,9 @@ void FURALU::executing(DInst *dinst)
 /* executing {{{1 */
 {
   cluster->executing(dinst);
-  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag())+lat, this, dinst);
+  executedCB::scheduleAbs(gen->nextSlot(dinst->getStatsFlag()) + lat, this, dinst);
 
-  //Recommended poweron the GPU threads and then poweroff the QEMU thread?
+  // Recommended poweron the GPU threads and then poweroff the QEMU thread?
 }
 /* }}} */
 
@@ -886,5 +881,3 @@ void FURALU::performed(DInst *dinst)
   I(0); // It should be called only for memory operations
 }
 /* }}} */
-
-

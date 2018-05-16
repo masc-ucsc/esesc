@@ -1,21 +1,21 @@
 #ifndef PROGRAMQEMU_H
 #define PROGRAMQEMU_H
 
-#include <stdint.h>
-#include <string.h>
-#include <stdio.h>
 #include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "ProgramBase.h"
 
 #include "qemumin.h"
 
-extern "C" uint64_t qemuesesc_getReg(void * env, uint8_t reg);
-extern "C" uint32_t  qemuesesc_getCP15tls2(void * env);
+extern "C" uint64_t qemuesesc_getReg(void *env, uint8_t reg);
+extern "C" uint32_t qemuesesc_getCP15tls2(void *env);
 
 class ProgramQEMU : public ProgramBase {
 private:
@@ -24,8 +24,7 @@ private:
 protected:
 public:
   ProgramQEMU(void *env);
-  virtual ~ProgramQEMU() {
-  };
+  virtual ~ProgramQEMU(){};
 
   uint32_t get_start_address();
 
@@ -46,15 +45,14 @@ public:
   void st64(uint32_t addr, uint64_t data);
   void st32(uint32_t addr, uint32_t data);
   void st16(uint32_t addr, uint16_t data);
-  void st08(uint32_t addr, uint8_t  data);
+  void st08(uint32_t addr, uint8_t data);
 
-  uint32_t do_syscall(ProgramBase *prog, uint32_t num, uint32_t arg1,
-                      uint32_t arg2, uint32_t arg3, uint32_t arg4,
-                      uint32_t arg5, uint32_t arg6);
+  uint32_t do_syscall(ProgramBase *prog, uint32_t num, uint32_t arg1, uint32_t arg2, uint32_t arg3, uint32_t arg4, uint32_t arg5,
+                      uint32_t arg6);
 
-  //uint32_t do_syscall();
-  uint32_t get_reg(uint8_t reg, TranslationType dontcare = ARM);
-  void set_reg(uint8_t reg, uint32_t val);
+  // uint32_t do_syscall();
+  uint32_t  get_reg(uint8_t reg, TranslationType dontcare = ARM);
+  void      set_reg(uint8_t reg, uint32_t val);
   uint32_t *g2h(uint32_t addr);
 };
 

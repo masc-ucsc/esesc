@@ -1,15 +1,15 @@
 #ifndef _ROUTER_H
 #define _ROUTER_H
 
-#include <vector>
 #include <list>
+#include <vector>
 
 //#include "EnergyMgr.h"  No reference to EnergyMgr.h appears anywhere else in esesc
-#include "estl.h"
-#include "nanassert.h"
 #include "Port.h"
 #include "ProtocolCB.h"
 #include "RoutingTable.h"
+#include "estl.h"
+#include "nanassert.h"
 
 class Message;
 class InterConnection;
@@ -36,13 +36,13 @@ private:
   // Begin Configuration parameters
   const TimeDelta_t crossLat; //!< Router crossing latency [0..32700)
 
-  const ushort      localNum; //!< Number of addressable local ports [1..MAX_PORTS-LOCAL_PORT1)
-  const TimeDelta_t localLat; //!< Local port latency [0..32700)
-  const TimeDelta_t localOcc; //!< Local port occupancy [0..32700)
-  const ushort      localPort;//!< Number of ports for each addressable local port [0..32700)
+  const ushort      localNum;  //!< Number of addressable local ports [1..MAX_PORTS-LOCAL_PORT1)
+  const TimeDelta_t localLat;  //!< Local port latency [0..32700)
+  const TimeDelta_t localOcc;  //!< Local port occupancy [0..32700)
+  const ushort      localPort; //!< Number of ports for each addressable local port [0..32700)
 
-  const bool congestionFree;     //!< Skip the router modeling (just local ports)
-  const TimeDelta_t addFixDelay; //!< fix delay to add to the network forwarding
+  const bool        congestionFree; //!< Skip the router modeling (just local ports)
+  const TimeDelta_t addFixDelay;    //!< fix delay to add to the network forwarding
   // End Configuration parameters
 
   PortID_t maxLocalPort;
@@ -51,7 +51,7 @@ private:
 
   RoutingTable *rTable;
 
-  typedef HASH_MAP<int32_t,ProtocolCBBase*> ProtHandlersType;
+  typedef HASH_MAP<int32_t, ProtocolCBBase *> ProtHandlersType;
 
   ProtHandlersType localPortProtocol;
 
@@ -60,10 +60,9 @@ private:
   std::vector<PortGeneric *> r2rPort; //!< ports from router to router (output)
 
 protected:
-
   ushort calcNumFlits(Message *msg) const;
 
-public:	
+public:
   Router(const char *section, RouterID_t id, InterConnection *n, RoutingTable *rt);
   virtual ~Router();
 
@@ -74,13 +73,12 @@ public:
 
   //!< Register a protocol callback with unique id in the portID
   void registerProtocol(ProtocolCBBase *pcb, PortID_t pID, int32_t id);
-  
+
   void dump();
 
-  RouterID_t getMyID() const { 
-    return myID; 
+  RouterID_t getMyID() const {
+    return myID;
   }
-
 };
 
 #endif //_ROUTER_H

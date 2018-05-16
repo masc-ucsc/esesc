@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2015, Regents of the University of California and 
+// Copyright (c) 2005-2015, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,69 +37,73 @@
 #ifndef LiveCache_H
 #define LiveCache_H
 
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
 #include "LiveCacheCore.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 class LiveCache {
 protected:
-  class CState : public StateGeneric<uint64_t> 
-  {
+  class CState : public StateGeneric<uint64_t> {
   private:
-    enum StateType {
-      M,
-      E,
-      S,
-      I
-    };
+    enum StateType { M, E, S, I };
     StateType state;
 
   public:
-    bool st;
+    bool     st;
     uint64_t order;
 
     CState(int32_t lineSize) {
-      state  = I;
+      state = I;
     }
 
-    bool isModified() const  { return state == M; }
+    bool isModified() const {
+      return state == M;
+    }
     void setModified() {
       state = M;
     }
-    bool isValid()   const   { return state != I; }
-    bool isInvalid() const   { return state == I; }
+    bool isValid() const {
+      return state != I;
+    }
+    bool isInvalid() const {
+      return state == I;
+    }
 
-    StateType getState() const { return state; };
+    StateType getState() const {
+      return state;
+    };
 
     void invalidate() {
-      state  = I;
+      state = I;
     }
   };
 
-  typedef CacheGeneric<CState,uint64_t> CacheType;
-  typedef CacheGeneric<CState,uint64_t>::CacheLine Line;
+  typedef CacheGeneric<CState, uint64_t>            CacheType;
+  typedef CacheGeneric<CState, uint64_t>::CacheLine Line;
 
-  CacheType   *cacheBank;
+  CacheType *cacheBank;
 
-  int32_t      lineSize;
-  int32_t      lineSizeBits;
-  uint64_t     lineCount;
-  uint64_t     maxOrder;
+  int32_t  lineSize;
+  int32_t  lineSizeBits;
+  uint64_t lineCount;
+  uint64_t maxOrder;
 
-  void mergeSort(Line ** arr, uint64_t len);
+  void mergeSort(Line **arr, uint64_t len);
 
 public:
   LiveCache();
   virtual ~LiveCache();
 
-  int32_t getLineSize() const          { return lineSize;   }
+  int32_t getLineSize() const {
+    return lineSize;
+  }
 
-  void read(uint64_t addr);
-  void write(uint64_t addr);
-  uint64_t traverse(uint64_t * addrs, bool * st);
+  void     read(uint64_t addr);
+  void     write(uint64_t addr);
+  uint64_t traverse(uint64_t *addrs, bool *st);
 };
 
 #endif

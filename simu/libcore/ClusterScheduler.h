@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -33,37 +33,36 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-
 #ifndef CLUSTERSCHEDULER_H
 #define CLUSTERSCHEDULER_H
 
-#include <vector>
 #include <stdio.h>
+#include <vector>
 
-#include "GStats.h"
 #include "DInst.h"
+#include "GStats.h"
 #include "Resource.h"
 
-typedef std::vector< std::vector<Resource *> > ResourcesPoolType;
+typedef std::vector<std::vector<Resource *>> ResourcesPoolType;
 
 class ClusterScheduler {
- private:
- protected:
+private:
+protected:
   ResourcesPoolType res;
 
- public:
+public:
   ClusterScheduler(const ResourcesPoolType ores);
   virtual ~ClusterScheduler();
 
-  virtual Resource *getResource(DInst *dinst) =0;
+  virtual Resource *getResource(DInst *dinst) = 0;
 };
 
 class RoundRobinClusterScheduler : public ClusterScheduler {
- private:
+private:
   std::vector<unsigned int> nres;
   std::vector<unsigned int> pos;
-  
- public:
+
+public:
   RoundRobinClusterScheduler(const ResourcesPoolType res);
   ~RoundRobinClusterScheduler();
 
@@ -71,8 +70,8 @@ class RoundRobinClusterScheduler : public ClusterScheduler {
 };
 
 class LRUClusterScheduler : public ClusterScheduler {
- private:
- public:
+private:
+public:
   LRUClusterScheduler(const ResourcesPoolType res);
   ~LRUClusterScheduler();
 
@@ -83,7 +82,7 @@ class UseClusterScheduler : public ClusterScheduler {
 private:
   std::vector<unsigned int> nres;
   std::vector<unsigned int> pos;
-  Cluster *cused[LREG_MAX];
+  Cluster *                 cused[LREG_MAX];
 
 public:
   UseClusterScheduler(const ResourcesPoolType res);
@@ -93,4 +92,3 @@ public:
 };
 
 #endif
-

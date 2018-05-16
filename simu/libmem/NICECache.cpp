@@ -33,33 +33,31 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
-#include "MemorySystem.h"
 #include "MemRequest.h"
+#include "MemorySystem.h"
+#include "SescConf.h"
 
 #include "NICECache.h"
 /* }}} */
 NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
-  /* dummy constructor {{{1 */
-  : MemObj(section, sName)
-  ,hitDelay  (SescConf->getInt(section,"hitDelay"))
-  ,bsize     (SescConf->getInt(section,"bsize"))
-  ,bsizeLog2       (log2i(SescConf->getInt(section,"bsize")))
-  ,coldWarmup      (SescConf->getBool(section,"coldWarmup"))
-  ,readHit         ("%s:readHit",         sName)
-  ,pushDownHit     ("%s:pushDownHit",     sName)
-  ,writeHit        ("%s:writeHit",        sName)
-  ,readMiss        ("%s:readMiss",        sName)
-  ,readHalfMiss    ("%s:readHalfMiss",    sName)
-  ,writeMiss       ("%s:writeMiss",       sName)
-  ,writeHalfMiss   ("%s:writeHalfMiss",   sName)
-  ,writeExclusive  ("%s:writeExclusive",  sName)
-  ,writeBack       ("%s:writeBack",       sName)
-  ,avgMemLat       ("%s_avgMemLat",       sName)
-{
+    /* dummy constructor {{{1 */
+    : MemObj(section, sName)
+    , hitDelay(SescConf->getInt(section, "hitDelay"))
+    , bsize(SescConf->getInt(section, "bsize"))
+    , bsizeLog2(log2i(SescConf->getInt(section, "bsize")))
+    , coldWarmup(SescConf->getBool(section, "coldWarmup"))
+    , readHit("%s:readHit", sName)
+    , pushDownHit("%s:pushDownHit", sName)
+    , writeHit("%s:writeHit", sName)
+    , readMiss("%s:readMiss", sName)
+    , readHalfMiss("%s:readHalfMiss", sName)
+    , writeMiss("%s:writeMiss", sName)
+    , writeHalfMiss("%s:writeHalfMiss", sName)
+    , writeExclusive("%s:writeExclusive", sName)
+    , writeBack("%s:writeBack", sName)
+    , avgMemLat("%s_avgMemLat", sName) {
 
-	// FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
-  
+  // FIXME: the hitdelay should be converted to dyn_hitDelay to support DVFS
 
   warmupStepStart = 256 / 4;
   warmupStep      = warmupStepStart;
@@ -69,126 +67,124 @@ NICECache::NICECache(MemorySystem *gms, const char *section, const char *sName)
 /* }}} */
 
 void NICECache::doReq(MemRequest *mreq)
-  /* read (down) {{{1 */
+/* read (down) {{{1 */
 {
   TimeDelta_t hdelay = hitDelay;
 
-  if (mreq->isWarmup())
+  if(mreq->isWarmup())
     hdelay = 1;
 
   readHit.inc(mreq->getStatsFlag());
 
-	if (mreq->isHomeNode()) {
-    if(coldWarmup && warmup.find(mreq->getAddr()>>bsizeLog2) == warmup.end()) {
+  if(mreq->isHomeNode()) {
+    if(coldWarmup && warmup.find(mreq->getAddr() >> bsizeLog2) == warmup.end()) {
 
       TimeDelta_t lat;
       warmupNext--;
-      if (warmupNext <= 0) {
+      if(warmupNext <= 0) {
         warmupNext = warmupSlowEvery;
         warmupStep--;
-        if (warmupStep <= 0) {
-          warmupSlowEvery = warmupSlowEvery>>1;
-          if (warmupSlowEvery <=0 )
+        if(warmupStep <= 0) {
+          warmupSlowEvery = warmupSlowEvery >> 1;
+          if(warmupSlowEvery <= 0)
             coldWarmup = false;
-          warmupStepStart = warmupStepStart<<1;
+          warmupStepStart = warmupStepStart << 1;
           warmupStep      = warmupStepStart;
         }
-      }else{
+      } else {
         hdelay = 1;
       }
-      warmup.insert(mreq->getAddr()>>bsizeLog2);
+      warmup.insert(mreq->getAddr() >> bsizeLog2);
     }
     mreq->ack(hdelay);
-		return;
-	}
-	if (mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive) {
-		mreq->convert2ReqAck(ma_setExclusive);
-		//MSG("rdnice %x",mreq->getAddr());
-	}else {
-		mreq->convert2ReqAck(ma_setDirty);
-		//MSG("wrnice %x",mreq->getAddr());
-	}
+    return;
+  }
+  if(mreq->getAction() == ma_setValid || mreq->getAction() == ma_setExclusive) {
+    mreq->convert2ReqAck(ma_setExclusive);
+    // MSG("rdnice %x",mreq->getAddr());
+  } else {
+    mreq->convert2ReqAck(ma_setDirty);
+    // MSG("wrnice %x",mreq->getAddr());
+  }
 
-  if(coldWarmup && warmup.find(mreq->getAddr()>>bsizeLog2) == warmup.end()) {
-    warmup.insert(mreq->getAddr()>>bsizeLog2);
+  if(coldWarmup && warmup.find(mreq->getAddr() >> bsizeLog2) == warmup.end()) {
+    warmup.insert(mreq->getAddr() >> bsizeLog2);
     TimeDelta_t lat;
     warmupNext--;
-    if (warmupNext <= 0) {
+    if(warmupNext <= 0) {
       warmupNext = warmupSlowEvery;
       warmupStep--;
-      if (warmupStep <= 0) {
-        warmupSlowEvery = warmupSlowEvery>>1;
-        if (warmupSlowEvery <=0 )
+      if(warmupStep <= 0) {
+        warmupSlowEvery = warmupSlowEvery >> 1;
+        if(warmupSlowEvery <= 0)
           coldWarmup = false;
-        warmupStepStart = warmupStepStart<<1;
+        warmupStepStart = warmupStepStart << 1;
         warmupStep      = warmupStepStart;
       }
-    }else{
+    } else {
       hdelay = 1;
     }
   }
-  avgMemLat.sample(hdelay, mreq->getStatsFlag());  
-  readHit.inc(mreq->getStatsFlag());  
+  avgMemLat.sample(hdelay, mreq->getStatsFlag());
+  readHit.inc(mreq->getStatsFlag());
   router->scheduleReqAck(mreq, hdelay);
 }
 /* }}} */
 
 void NICECache::doReqAck(MemRequest *req)
-  /* req ack {{{1 */
+/* req ack {{{1 */
 {
   I(0);
 }
 // 1}}}
 
 void NICECache::doSetState(MemRequest *req)
-  /* change state request  (up) {{{1 */
+/* change state request  (up) {{{1 */
 {
-	I(0);
+  I(0);
 }
 /* }}} */
 
 void NICECache::doSetStateAck(MemRequest *req)
- /* push (down) {{{1 */
+/* push (down) {{{1 */
 {
-	I(0);
+  I(0);
 }
 /* }}} */
 
 void NICECache::doDisp(MemRequest *mreq)
-  /* push (up) {{{1 */
+/* push (up) {{{1 */
 {
-  writeHit.inc(mreq->getStatsFlag());  
+  writeHit.inc(mreq->getStatsFlag());
   mreq->ack(hitDelay);
 }
 /* }}} */
 
 bool NICECache::isBusy(AddrType addr) const
-  /* can accept reads? {{{1 */
+/* can accept reads? {{{1 */
 {
   return false;
 }
 /* }}} */
 
 void NICECache::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
-  /* drop prefetch {{{1 */
+/* drop prefetch {{{1 */
 {
-  if (cb)
+  if(cb)
     cb->destroy();
 }
 /* }}} */
 
 TimeDelta_t NICECache::ffread(AddrType addr)
-  /* warmup fast forward read {{{1 */
+/* warmup fast forward read {{{1 */
 {
   return 1;
 }
 /* }}} */
 
 TimeDelta_t NICECache::ffwrite(AddrType addr)
-  /* warmup fast forward writed {{{1 */
+/* warmup fast forward writed {{{1 */
 {
   return 1;
 }
 /* }}} */
-
-

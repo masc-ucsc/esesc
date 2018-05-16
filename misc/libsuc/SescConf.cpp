@@ -29,11 +29,11 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "SescConf.h"
 
-SConfig *SescConf=0;
+SConfig *SescConf = 0;
 
 const char *SConfig::jump_spaces(const char *p) {
 
-  while (isspace(*p))
+  while(isspace(*p))
     p++;
 
   return p;
@@ -41,33 +41,33 @@ const char *SConfig::jump_spaces(const char *p) {
 
 char *SConfig::auxstrndup(const char *source, int32_t len) {
 
-  char *q=new char [len + 1];
+  char *q = new char[len + 1];
 
   strncpy(q, source, len);
-  q[len]=0;
+  q[len] = 0;
 
   return q;
 }
 
 const char *SConfig::getConfName(int argc, const char **argv) {
 
-  for(int i=0;i<argc;i++) {
-    if (argv[i][0] != '-' || argv[i][1] != 'c')
+  for(int i = 0; i < argc; i++) {
+    if(argv[i][0] != '-' || argv[i][1] != 'c')
       continue;
 
     // -c found
-    if (argv[i][2]==0) {
-      if (argc == (i+1)) {
+    if(argv[i][2] == 0) {
+      if(argc == (i + 1)) {
         MSG("ERROR: Invalid command line call. Use foo -c esesc.conf");
         exit(-2);
       }
 
-      return argv[i+1];
+      return argv[i + 1];
     }
     return &argv[i][2];
   }
 
-  if (getenv("ESESCCONF"))
+  if(getenv("ESESCCONF"))
     return getenv("ESESCCONF");
 
   return "esesc.conf";
@@ -76,12 +76,10 @@ const char *SConfig::getConfName(int argc, const char **argv) {
 /* END Aux func */
 
 SConfig::SConfig(int argc, const char **argv)
-  :Config(getConfName(argc, argv), "ESESC")
-{
+    : Config(getConfName(argc, argv), "ESESC") {
 }
 
-const char *SConfig::getEnvVar(const char *block,
-                               const char *name) {
+const char *SConfig::getEnvVar(const char *block, const char *name) {
 
   const char *val = Config::getEnvVar("", name);
 
@@ -91,9 +89,7 @@ const char *SConfig::getEnvVar(const char *block,
   return Config::getEnvVar(block, name);
 }
 
-const SConfig::Record * SConfig::getRecord(const char *block,
-                                           const char *name,
-             int32_t vectorPos) {
+const SConfig::Record *SConfig::getRecord(const char *block, const char *name, int32_t vectorPos) {
 
   const Record *rec = Config::getRecord(block, name, vectorPos);
   if(rec)
@@ -110,34 +106,31 @@ const SConfig::Record * SConfig::getRecord(const char *block,
 
   if(secName == 0)
     return rec;
-  
+
   return Config::getRecord(secName, name, 0);
 }
 
-std::vector<char *> SConfig::getSplitCharPtr(const char *block,
-                                             const char *name,
-                                             int32_t vectorPos) {
+std::vector<char *> SConfig::getSplitCharPtr(const char *block, const char *name, int32_t vectorPos) {
   std::vector<char *> vRes;
-  const char *q;
+  const char *        q;
 
-  const char *source=getCharPtr(block, name, vectorPos);
-  source = jump_spaces(source);
+  const char *source = getCharPtr(block, name, vectorPos);
+  source             = jump_spaces(source);
 
-  while (*source) {
-    q=source;
+  while(*source) {
+    q = source;
     while(isalnum(*q) || *q == '_') {
       q++;
     }
 
-    if (source==q)
+    if(source == q)
       break; // May be an error could be yielded
 
-    vRes.push_back(auxstrndup(source, q-source));
+    vRes.push_back(auxstrndup(source, q - source));
     q = jump_spaces(q);
 
-    source=q;
+    source = q;
   }
 
   return vRes;
 }
-

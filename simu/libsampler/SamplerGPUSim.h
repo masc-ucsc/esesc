@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,31 +36,27 @@
 #define SAMPLER_GPU_SIM_H
 
 #include "SamplerBase.h"
-uint32_t roundUp(uint32_t numToRound, uint32_t multiple) 
-{ 
-  if(multiple == 0) 
-    return numToRound; 
+uint32_t roundUp(uint32_t numToRound, uint32_t multiple) {
+  if(multiple == 0)
+    return numToRound;
 
   uint32_t remainder = numToRound % multiple;
-  if (remainder == 0)
+  if(remainder == 0)
     return numToRound;
   return numToRound + multiple - remainder;
-} 
+}
 
-uint32_t roundDown(uint32_t numToRound, uint32_t multiple) 
-{ 
-  if(multiple == 0) 
-    return numToRound; 
+uint32_t roundDown(uint32_t numToRound, uint32_t multiple) {
+  if(multiple == 0)
+    return numToRound;
 
   uint32_t remainder = numToRound % multiple;
   return numToRound - remainder;
-} 
-
+}
 
 class SamplerGPUSim : public SamplerBase {
 private:
 protected:
-
 public:
   SamplerGPUSim(const char *name, const char *section, EmulInterface *emul);
   virtual ~SamplerGPUSim();
@@ -68,7 +64,5 @@ public:
   void queue(uint64_t pc, uint64_t addr, uint32_t fid, char op, int src1, int src2, int dest);
 
   uint64_t getTime() const;
-
 };
 #endif
-

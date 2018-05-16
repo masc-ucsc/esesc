@@ -34,23 +34,23 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
 #include "Pipeline.h"
+#include "SescConf.h"
 
 IBucket::IBucket(size_t size, Pipeline *p, bool clean)
-  : FastQueue<DInst *>(size)
-  ,cleanItem(clean)
-  ,pipeLine(p)
-  ,markFetchedCB(this) {
+    : FastQueue<DInst *>(size)
+    , cleanItem(clean)
+    , pipeLine(p)
+    , markFetchedCB(this) {
 }
 
 void IBucket::markFetched() {
   I(fetched == false);
   IS(fetched = true); // Only called once
 
-  if (!empty()) {
-//    if (top()->getFlowId())
-//      MSG("@%lld: markFetched Bucket[%p]",(long long int)globalClock, this);
+  if(!empty()) {
+    //    if (top()->getFlowId())
+    //      MSG("@%lld: markFetched Bucket[%p]",(long long int)globalClock, this);
   }
 
   pipeLine->readyItem(this);
@@ -61,21 +61,21 @@ bool PipeIBucketLess::operator()(const IBucket *x, const IBucket *y) const {
 }
 
 Pipeline::Pipeline(size_t s, size_t fetch, int32_t maxReqs)
-  : PipeLength(s)
-  ,bucketPoolMaxSize(s+1+maxReqs)
-  ,MaxIRequests(maxReqs)
-  ,nIRequests(maxReqs)
-  ,buffer(s+1+maxReqs)
+    : PipeLength(s)
+    , bucketPoolMaxSize(s + 1 + maxReqs)
+    , MaxIRequests(maxReqs)
+    , nIRequests(maxReqs)
+    , buffer(s + 1 + maxReqs)
 
-  {
+{
   maxItemCntr = 0;
   minItemCntr = 0;
 
   bucketPool.reserve(bucketPoolMaxSize);
   I(bucketPool.empty());
 
-  for(size_t i=0;i<bucketPoolMaxSize;i++) {
-    IBucket *ib = new IBucket(fetch+1, this); // +1 instructions
+  for(size_t i = 0; i < bucketPoolMaxSize; i++) {
+    IBucket *ib = new IBucket(fetch + 1, this); // +1 instructions
     bucketPool.push_back(ib);
   }
 
@@ -101,7 +101,7 @@ void Pipeline::readyItem(IBucket *b) {
   b->setClock();
 
   nIRequests++;
-  if( b->getPipelineId() != minItemCntr ) {
+  if(b->getPipelineId() != minItemCntr) {
     received.push(b);
     return;
   }
@@ -111,7 +111,7 @@ void Pipeline::readyItem(IBucket *b) {
   // out-of-order the memory requests)
   minItemCntr++;
 
-  if( b->empty() )
+  if(b->empty())
     doneItem(b);
   else
     buffer.push(b);
@@ -120,10 +120,10 @@ void Pipeline::readyItem(IBucket *b) {
 }
 
 void Pipeline::clearItems() {
-  while( !received.empty() ) {
-      IBucket *b = received.top();
+  while(!received.empty()) {
+    IBucket *b = received.top();
 
-    if(b->getPipelineId() != minItemCntr){
+    if(b->getPipelineId() != minItemCntr) {
       break;
     }
 
@@ -131,7 +131,7 @@ void Pipeline::clearItems() {
 
     minItemCntr++;
 
-    if( b->empty() )
+    if(b->empty())
       doneItem(b);
     else
       buffer.push(b);
@@ -146,11 +146,9 @@ void Pipeline::doneItem(IBucket *b) {
   bucketPool.push_back(b);
 }
 
-
-
 IBucket *Pipeline::nextItem() {
   while(1) {
-    if (buffer.empty()) {
+    if(buffer.empty()) {
 #ifdef DEBUG
       // It should not be possible to propagate more buckets
       clearItems();
@@ -159,7 +157,7 @@ IBucket *Pipeline::nextItem() {
       return 0;
     }
 
-    if( ((buffer.top())->getClock() + PipeLength) > globalClock ) {
+    if(((buffer.top())->getClock() + PipeLength) > globalClock) {
 #if 0
       fprintf(stderr,"1 @%lld Buffer[%p] .top.ID (%d) ->getClock(@%lld) to be issued after %d cycles\n"
           ,(long long int) globalClock
@@ -183,13 +181,12 @@ IBucket *Pipeline::nextItem() {
     }
     IBucket *b = buffer.top();
     buffer.pop();
-    //fprintf(stderr,"@%lld: Popping Bucket[%p]\n",(long long int)globalClock ,b);
+    // fprintf(stderr,"@%lld: Popping Bucket[%p]\n",(long long int)globalClock ,b);
     I(!b->empty());
     I(!b->cleanItem);
 
     I(!b->empty());
     I(b->top() != 0);
-
 
     return b;
   }
@@ -198,34 +195,25 @@ IBucket *Pipeline::nextItem() {
 }
 
 PipeQueue::PipeQueue(CPU_t i)
-  :pipeLine(
-            SescConf->getInt("cpusimu", "decodeDelay",i)
-            +SescConf->getInt("cpusimu", "renameDelay",i)
-            ,SescConf->getInt("cpusimu", "fetchWidth",i)
-            ,SescConf->getInt("cpusimu", "maxIRequests",i))
-  ,instQueue(SescConf->getInt("cpusimu", "instQueueSize",i))
-{
+    : pipeLine(SescConf->getInt("cpusimu", "decodeDelay", i) + SescConf->getInt("cpusimu", "renameDelay", i),
+               SescConf->getInt("cpusimu", "fetchWidth", i), SescConf->getInt("cpusimu", "maxIRequests", i))
+    , instQueue(SescConf->getInt("cpusimu", "instQueueSize", i)) {
   SescConf->isInt("cpusimu", "decodeDelay", i);
-  SescConf->isBetween("cpusimu", "decodeDelay", 1, 64,i);
+  SescConf->isBetween("cpusimu", "decodeDelay", 1, 64, i);
 
   SescConf->isInt("cpusimu", "renameDelay", i);
   SescConf->isBetween("cpusimu", "renameDelay", 1, 64, i);
 
-  SescConf->isInt("cpusimu", "maxIRequests",i);
-  SescConf->isBetween("cpusimu", "maxIRequests", 0, 32000,i);
+  SescConf->isInt("cpusimu", "maxIRequests", i);
+  SescConf->isBetween("cpusimu", "maxIRequests", 0, 32000, i);
 
-  SescConf->isInt("cpusimu", "instQueueSize",i);
-  SescConf->isBetween("cpusimu", "instQueueSize"
-                      ,SescConf->getInt("cpusimu","fetchWidth",i)
-                      ,32768,i);
-
+  SescConf->isInt("cpusimu", "instQueueSize", i);
+  SescConf->isBetween("cpusimu", "instQueueSize", SescConf->getInt("cpusimu", "fetchWidth", i), 32768, i);
 }
 
-PipeQueue::~PipeQueue()
-{
+PipeQueue::~PipeQueue() {
   // do nothing
 }
-
 
 IBucket *Pipeline::newItem() {
 
@@ -247,7 +235,7 @@ IBucket *Pipeline::newItem() {
 }
 
 bool Pipeline::hasOutstandingItems() const {
-    // bucketPool.size() has lineal time O(n)
+  // bucketPool.size() has lineal time O(n)
 #if 0
   if (!buffer.empty()){
     MSG("Pipeline !buffer.empty()");

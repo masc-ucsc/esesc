@@ -5,17 +5,17 @@
 // interface
 #include <vector>
 
-#include "estl.h"
 #include "InterConn.h"
-#include "nanassert.h"
-#include "ProtocolCB.h"
 #include "PMessage.h"
+#include "ProtocolCB.h"
+#include "estl.h"
+#include "nanassert.h"
 
 class ProtocolBase {
 private:
-  typedef std::vector<ProtocolBase *> DevList;
+  typedef std::vector<ProtocolBase *>                                                         DevList;
   typedef HASH_MAP<InterConnection *, std::vector<ProtocolBase *> *, InterconnectionHashFunc> NetDevType;
-  
+
   static NetDevType netDev;
 
 protected:
@@ -23,14 +23,12 @@ protected:
 
   // Low level Information where the device is mapped
   InterConnection *network;
-  const RouterID_t  routerID;
-  const PortID_t    portID;
+  const RouterID_t routerID;
+  const PortID_t   portID;
 
   // Map a device to a local device. Unless the portID is specified,
   // it can use any of the local ports.
-  ProtocolBase(InterConnection *net, 
-	       RouterID_t rID, 
-	       PortID_t pID = LOCAL_PORT1);
+  ProtocolBase(InterConnection *net, RouterID_t rID, PortID_t pID = LOCAL_PORT1);
 
   void registerHandler(ProtocolCBBase *pcb, MessageType msgType);
 
@@ -43,19 +41,18 @@ protected:
   }
 
   void sendMsgAbs(Time_t when, PMessage *msg) {
-    network->sendMsgAbs(when,msg);
+    network->sendMsgAbs(when, msg);
   }
 
 public:
-  
   NetDevice_t getNetDeviceID() const {
     return myID;
   }
-  
+
   RouterID_t getRouterID() const {
     return routerID;
   }
-  
+
   PortID_t getPortID() const {
     return portID;
   }
@@ -64,4 +61,3 @@ public:
 };
 
 #endif // PROTOCOLBASE_H
-

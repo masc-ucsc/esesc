@@ -1,4 +1,4 @@
-#if 0 
+#if 0
 #include "GPUThreadManager.h"
 
 extern   uint64_t numThreads;

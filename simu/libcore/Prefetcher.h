@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -43,33 +43,32 @@
 #include "GStats.h"
 #include "Port.h"
 
-#include "CacheCore.h"
 #include "AddressPredictor.h"
+#include "CacheCore.h"
 /* }}} */
 
 class MemObj;
 
 class Prefetcher {
 private:
-
   GStatsAvg  avgPrefetchNum;
   GStatsAvg  avgPrefetchConf;
   GStatsHist histPrefetchDelta;
 
   AddressPredictor *apred;
 
-  int32_t maxPrefetch;
-  int32_t minDistance;
-  int32_t pfStride;
-  int32_t curPrefetch;
+  int32_t  maxPrefetch;
+  int32_t  minDistance;
+  int32_t  pfStride;
+  int32_t  curPrefetch;
   uint32_t lineSizeBits;
 
   AddrType pref_sign;
 
-  bool     pending_prefetch;
-  AddrType pending_preq_pc;
-  uint16_t pending_preq_conf;
-  bool     pending_statsFlag;
+  bool         pending_prefetch;
+  AddrType     pending_preq_pc;
+  uint16_t     pending_preq_conf;
+  bool         pending_statsFlag;
   FetchEngine *pending_chain_fetch;
 
   uint16_t conf = 0;
@@ -83,7 +82,8 @@ private:
 
 public:
   Prefetcher(MemObj *l1, int cpud_id);
-  ~Prefetcher() {}
+  ~Prefetcher() {
+  }
 
   void exe(DInst *dinst);
   void ret(DInst *dinst);

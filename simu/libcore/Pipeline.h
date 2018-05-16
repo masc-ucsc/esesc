@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,13 +36,13 @@
 #ifndef PIPELINE_H
 #define PIPELINE_H
 
-#include <vector>
-#include <set>
 #include <queue>
+#include <set>
+#include <vector>
 //#include <boost/heap/priority_queue.hpp>
 
-#include "nanassert.h"
 #include "FastQueue.h"
+#include "nanassert.h"
 
 #include "DInst.h"
 
@@ -58,49 +58,51 @@
  *  doneItem();  // when all the instructions are executed
  */
 
-
 typedef uint32_t CPU_t;
 class IBucket;
 
 class PipeIBucketLess {
- public:
+public:
   bool operator()(const IBucket *x, const IBucket *y) const;
 };
 
 class Pipeline {
 private:
-  const size_t PipeLength;
-  const size_t bucketPoolMaxSize;
-  const int32_t MaxIRequests;
-  int32_t nIRequests;
+  const size_t         PipeLength;
+  const size_t         bucketPoolMaxSize;
+  const int32_t        MaxIRequests;
+  int32_t              nIRequests;
   FastQueue<IBucket *> buffer;
 
   typedef std::vector<IBucket *> IBucketCont;
-  IBucketCont bucketPool;
+  IBucketCont                    bucketPool;
 
-  //typedef boost::heap::priority_queue<IBucket *,boost::heap::compare<PipeIBucketLess> > ReceivedType;
-  typedef std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> ReceivedType;
-  //std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> received;
+  // typedef boost::heap::priority_queue<IBucket *,boost::heap::compare<PipeIBucketLess> > ReceivedType;
+  typedef std::priority_queue<IBucket *, std::vector<IBucket *>, PipeIBucketLess> ReceivedType;
+  // std::priority_queue<IBucket *, std::vector<IBucket*>, PipeIBucketLess> received;
   ReceivedType received;
 
   Time_t maxItemCntr;
   Time_t minItemCntr;
-  
+
 protected:
   void clearItems();
+
 public:
   Pipeline(size_t s, size_t fetch, int32_t maxReqs);
   virtual ~Pipeline();
- 
+
   void cleanMark();
 
   IBucket *newItem();
-  bool hasOutstandingItems() const;
-  void readyItem(IBucket *b);
-  void doneItem(IBucket *b);
+  bool     hasOutstandingItems() const;
+  void     readyItem(IBucket *b);
+  void     doneItem(IBucket *b);
   IBucket *nextItem();
 
-  size_t size() const { return buffer.size(); }
+  size_t size() const {
+    return buffer.size();
+  }
 };
 
 class IBucket : public FastQueue<DInst *> {
@@ -117,36 +119,37 @@ protected:
   Pipeline *const pipeLine;
   ID(bool fetched;)
 
-  Time_t getPipelineId() const { return pipeId; }
+  Time_t getPipelineId() const {
+    return pipeId;
+  }
   void setPipelineId(Time_t i) {
-    pipeId=i;
+    pipeId = i;
   }
 
   void markFetched();
 
-  Time_t getClock() const { return clock; }
+  Time_t getClock() const {
+    return clock;
+  }
   void setClock() {
     clock = globalClock;
   }
- 
+
 public:
-  IBucket(size_t size, Pipeline *p, bool clean=false);
-  virtual ~IBucket() { }
+  IBucket(size_t size, Pipeline *p, bool clean = false);
+  virtual ~IBucket() {
+  }
 
   StaticCallbackMember0<IBucket, &IBucket::markFetched> markFetchedCB;
 };
-
-
 
 class PipeQueue {
 public:
   PipeQueue(CPU_t i);
   ~PipeQueue();
 
-  Pipeline pipeLine;
+  Pipeline             pipeLine;
   FastQueue<IBucket *> instQueue;
-
 };
-
 
 #endif // PIPELINE_H

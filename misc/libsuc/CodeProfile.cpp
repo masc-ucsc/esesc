@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2015-2016, Regents of the University of California and 
+// Copyright (c) 2015-2016, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -32,22 +32,21 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <math.h>
 
 #include "CodeProfile.h"
 #include "Report.h"
 #include "SescConf.h"
 
-CodeProfile::CodeProfile(const char *format,...)
-{
-  I(format!=0);      // Mandatory to pass a description
+CodeProfile::CodeProfile(const char *format, ...) {
+  I(format != 0);    // Mandatory to pass a description
   I(format[0] != 0); // Empty string not valid
 
-  char *str;
+  char *  str;
   va_list ap;
 
   va_start(ap, format);
@@ -55,7 +54,7 @@ CodeProfile::CodeProfile(const char *format,...)
   va_end(ap);
 
   name = str;
-  I(*name!=0);
+  I(*name != 0);
   subscribe();
 
   last_nCommitted = 0;
@@ -70,24 +69,17 @@ double CodeProfile::getDouble() const {
 
 void CodeProfile::reportValue() const {
 
-  for(Prof::const_iterator it=prof.begin();it!=prof.end();it++) {
+  for(Prof::const_iterator it = prof.begin(); it != prof.end(); it++) {
     ProfEntry e = it->second;
-    //if (e.n/nTotal<0.001)
-      //continue; // Just print things over 1%
+    // if (e.n/nTotal<0.001)
+    // continue; // Just print things over 1%
 
-    Report::field("%s_%llx:n=%4.3f:cpi=%f:wt=%f:et=%f:flush=%lld:prefetch=%lld",name,it->first,e.n/nTotal,e.sum_cpi/e.n,e.sum_wt/e.n,e.sum_et/e.n,e.sum_flush,e.sum_prefetch);
+    Report::field("%s_%llx:n=%4.3f:cpi=%f:wt=%f:et=%f:flush=%lld:prefetch=%lld", name, it->first, e.n / nTotal, e.sum_cpi / e.n,
+                  e.sum_wt / e.n, e.sum_et / e.n, e.sum_flush, e.sum_prefetch);
   }
 }
 
-void CodeProfile::reportBinValue() const {
-  Report::binField(0);
-}
-
-void CodeProfile::reportScheme() const {
-  Report::scheme(name, "8");
-}
-
-int64_t CodeProfile::getSamples() const { 
+int64_t CodeProfile::getSamples() const {
   return 0;
 }
 
@@ -95,7 +87,8 @@ void CodeProfile::flushValue() {
   prof.clear();
 }
 
-void CodeProfile::sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch) {
+void CodeProfile::sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush,
+                         bool prefetch) {
 
   double delta_nCommitted = nCommitted - last_nCommitted;
   double delta_clockTicks = clockTicks - last_clockTicks;
@@ -103,33 +96,30 @@ void CodeProfile::sample(const uint64_t pc, const double nCommitted, const doubl
   last_nCommitted = nCommitted;
   last_clockTicks = clockTicks;
 
-  if (delta_nCommitted==0)
+  if(delta_nCommitted == 0)
     return;
 
-  double cpi = delta_clockTicks/delta_nCommitted;
+  double cpi = delta_clockTicks / delta_nCommitted;
 
   nTotal++;
 
-  //MSG("%llx, %g",pc,cpi);
+  // MSG("%llx, %g",pc,cpi);
 
-  if (prof.find(pc) == prof.end()) {
+  if(prof.find(pc) == prof.end()) {
     ProfEntry e;
-    e.n   = 1;
-    e.sum_cpi = cpi;
-    e.sum_wt  = wt;
-    e.sum_et  = et;
-    e.sum_flush  = flush?1:0;
-    e.sum_prefetch  = prefetch?1:0;
-    prof[pc] = e;
-  }else{
+    e.n            = 1;
+    e.sum_cpi      = cpi;
+    e.sum_wt       = wt;
+    e.sum_et       = et;
+    e.sum_flush    = flush ? 1 : 0;
+    e.sum_prefetch = prefetch ? 1 : 0;
+    prof[pc]       = e;
+  } else {
     prof[pc].sum_cpi += cpi;
-    prof[pc].sum_wt  += wt;
-    prof[pc].sum_et  += et;
-    prof[pc].sum_flush  += flush?1:0;
-    prof[pc].sum_prefetch  += prefetch?1:0;
+    prof[pc].sum_wt += wt;
+    prof[pc].sum_et += et;
+    prof[pc].sum_flush += flush ? 1 : 0;
+    prof[pc].sum_prefetch += prefetch ? 1 : 0;
     prof[pc].n++;
   }
-
 }
-
-

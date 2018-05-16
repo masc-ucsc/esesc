@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2003 University of Illinois.
 
@@ -29,14 +29,15 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 class SCTable {
 private:
-  const uint64_t  sizeMask;
-  const uint8_t   Saturate;
-  const uint8_t   MaxValue;
-  
+  const uint64_t sizeMask;
+  const uint8_t  Saturate;
+  const uint8_t  MaxValue;
+
   uint8_t *table;
- protected:
- public:
-  SCTable(const char *str, size_t size, uint8_t bits=2);
+
+protected:
+public:
+  SCTable(const char *str, size_t size, uint8_t bits = 2);
   ~SCTable(void);
   void clear(uint32_t cid); // Bias to not-taken
   void reset(uint32_t cid, bool taken);
@@ -45,10 +46,18 @@ private:
   void inc(uint32_t cid, int d);
   void dec(uint32_t cid, int d);
 
-  bool predict(uint32_t cid)  const    { return table[cid & sizeMask] >= Saturate; }
-  bool isLowest(uint32_t cid) const    { return table[cid & sizeMask] == 0; }
-  bool isHighest(uint32_t cid) const   { return table[cid & sizeMask] == MaxValue; }
-  uint8_t getValue(uint32_t cid) const { return table[cid & sizeMask]; }
+  bool predict(uint32_t cid) const {
+    return table[cid & sizeMask] >= Saturate;
+  }
+  bool isLowest(uint32_t cid) const {
+    return table[cid & sizeMask] == 0;
+  }
+  bool isHighest(uint32_t cid) const {
+    return table[cid & sizeMask] == MaxValue;
+  }
+  uint8_t getValue(uint32_t cid) const {
+    return table[cid & sizeMask];
+  }
 };
 
 #endif

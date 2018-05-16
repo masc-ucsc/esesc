@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -40,14 +40,14 @@
 /* }}} */
 
 class MSHRentry {
- private:
+private:
   CallbackContainer cc;
   int32_t           nFreeSEntries;
 
- public:
+public:
   MSHRentry() {
     nFreeSEntries = 0;
-   }
+  }
 
   ~MSHRentry() {
   }
@@ -65,7 +65,7 @@ class MSHRentry {
     return true;
   }
 
-  bool canAccept() const { 
+  bool canAccept() const {
     if(nFreeSEntries == 0)
       return false;
 
@@ -81,4 +81,4 @@ class MSHRentry {
   }
 };
 
-#endif 
+#endif

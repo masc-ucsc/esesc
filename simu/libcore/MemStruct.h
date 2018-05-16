@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -45,28 +45,26 @@ using namespace std;
  * accessed. Used in membench.cpp to verify cache coherence.
  */
 
-
-//Implementing singleton design. Only one instance of CacheDebugAccess exists
+// Implementing singleton design. Only one instance of CacheDebugAccess exists
 class CacheDebugAccess {
-  public:
-    static CacheDebugAccess* getInstance();
+public:
+  static CacheDebugAccess *getInstance();
 
-    void setCacheAccess(char*);
-    bool readCacheAccess(string);
+  void setCacheAccess(char *);
+  bool readCacheAccess(string);
 
-    void setAddrsAccessed(int);
-    int readAddrsAccessed(void);
-   
-    int cacheAccessSum(void);
-    void mapReset(void);
+  void setAddrsAccessed(int);
+  int  readAddrsAccessed(void);
 
-  private:
-    map<string, bool> debugMap;
-    int cacheAccesses;                          //Addr for where mem read starts
+  int  cacheAccessSum(void);
+  void mapReset(void);
 
-    CacheDebugAccess() {};                      //private constructor
-    CacheDebugAccess(CacheDebugAccess const&);  //no accidental creation from copy constructor
-    void operator=(CacheDebugAccess const&);
-    
+private:
+  map<string, bool> debugMap;
+  int               cacheAccesses; // Addr for where mem read starts
+
+  CacheDebugAccess(){};                       // private constructor
+  CacheDebugAccess(CacheDebugAccess const &); // no accidental creation from copy constructor
+  void operator=(CacheDebugAccess const &);
 };
 #endif

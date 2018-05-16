@@ -29,56 +29,57 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "nanassert.h"
 
-#include "Reader.h"
-#include "GStats.h"
-#include "EmuDInstQueue.h"
 #include "DInst.h"
+#include "EmuDInstQueue.h"
 #include "FastQueue.h"
+#include "GStats.h"
+#include "Reader.h"
 
-#include "GPUInterface.h"
-#include "ThreadSafeFIFO.h"
 #include "ARMCrack.h"
 #include "CUDAInstruction.h"
+#include "GPUInterface.h"
+#include "ThreadSafeFIFO.h"
 
 class DInst;
 
-class GPUReader:public Reader {
+class GPUReader : public Reader {
 
 private:
-
 #ifdef ESESC_QEMU_ISA_ARMEL
-  ARMCrack  crackInst;
+  ARMCrack crackInst;
 #endif
 
-  FlowID numFlows;
-  bool started;
+  FlowID         numFlows;
+  bool           started;
   EmulInterface *eint;
-  volatile bool *active;  // Modified by GPU thread, read by simu thread
+  volatile bool *active; // Modified by GPU thread, read by simu thread
 
 public:
-  //GPUReader(QEMUArgs *qargs, const char *section);
-    GPUReader (const char *section, EmulInterface * eint);
-    virtual ~ GPUReader ();
+  // GPUReader(QEMUArgs *qargs, const char *section);
+  GPUReader(const char *section, EmulInterface *eint);
+  virtual ~GPUReader();
 
-  DInst *executeHead (FlowID fid);
-  void reexecuteTail (FlowID fid);
-  void syncHeadTail (FlowID fid);
+  DInst *executeHead(FlowID fid);
+  void   reexecuteTail(FlowID fid);
+  void   syncHeadTail(FlowID fid);
 
   // Only method called by remote thread
-  //void queueInstruction (uint32_t insn, AddrType pc, AddrType addr, DataType data,char thumb,  FlowID fid, void *env, bool inEmuTiming = false);
-  void queueInstruction (uint32_t insn, AddrType pc, AddrType addr, char thumb,  FlowID fid, void *env, bool inEmuTiming = false);
-  void syscall (uint32_t num, Time_t time, FlowID fid);
+  // void queueInstruction (uint32_t insn, AddrType pc, AddrType addr, DataType data,char thumb,  FlowID fid, void *env, bool
+  // inEmuTiming = false);
+  void queueInstruction(uint32_t insn, AddrType pc, AddrType addr, char thumb, FlowID fid, void *env, bool inEmuTiming = false);
+  void syscall(uint32_t num, Time_t time, FlowID fid);
 
-  void start ();
+  void start();
 
   // Whenever we have a change in statistics (mode), we should drain the queue
   // as much as possible
-  void drainFIFO (FlowID fid);
-  bool drainedFIFO (FlowID fid);
+  void drainFIFO(FlowID fid);
+  bool drainedFIFO(FlowID fid);
 
-  uint32_t getKernelId() { return kernelsId[current_CUDA_kernel]; };
-  void fillCudaSpecficfields(DInst* dinst, RAWDInst* rinst, FlowID fid);
-
+  uint32_t getKernelId() {
+    return kernelsId[current_CUDA_kernel];
+  };
+  void fillCudaSpecficfields(DInst *dinst, RAWDInst *rinst, FlowID fid);
 };
 
 #endif

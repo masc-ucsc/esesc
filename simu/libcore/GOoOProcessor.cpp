@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -44,10 +44,9 @@
 #include "GMemorySystem.h"
 
 GOoOProcessor::GOoOProcessor(GMemorySystem *gm, CPU_t i)
-  :GProcessor(gm, i) {
+    : GProcessor(gm, i) {
 }
 
-//GOoOProcessor::~GOoOProcessor() {
-  // Nothing to do
+// GOoOProcessor::~GOoOProcessor() {
+// Nothing to do
 //}
-

@@ -1,5 +1,5 @@
-// This file and its contents exist only until the other diveregence mechanisms are fixed and tested. 
-#if 0 
+// This file and its contents exist only until the other diveregence mechanisms are fixed and tested.
+#if 0
 #include "GPUThreadManager.h"
 
 extern   uint64_t numThreads;

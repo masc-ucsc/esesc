@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,21 +35,21 @@
 #ifndef RAWDINST_H
 #define RAWDINST_H
 
-#include <vector>
 #include "Instruction.h"
+#include <vector>
 
 typedef uint64_t DataType;
 typedef uint64_t AddrType;
-typedef uint32_t FlowID; 
+typedef uint32_t FlowID;
 
 #include "nanassert.h"
 
 class RAWDInst {
 private:
-  AddrType    pc;
-  AddrType    addr;
+  AddrType pc;
+  AddrType addr;
 #ifdef ESESC_TRACE_DATA
-  DataType    data;
+  DataType data;
 #endif
   Instruction inst;
 
@@ -62,33 +62,43 @@ public:
     inst      = p.inst;
     keepStats = p.keepStats;
 #ifdef ESESC_TRACE_DATA
-    data      = p.data;
+    data = p.data;
 #endif
   }
 
   RAWDInst() {
   }
 
-  void set(AddrType _pc, AddrType _addr, InstOpcode _op, RegType _src1, RegType _src2, RegType _dest, RegType _dest2, bool _keepStats) {
-    pc   = _pc;
-    addr = _addr;
+  void set(AddrType _pc, AddrType _addr, InstOpcode _op, RegType _src1, RegType _src2, RegType _dest, RegType _dest2,
+           bool _keepStats) {
+    pc        = _pc;
+    addr      = _addr;
     keepStats = _keepStats;
     inst.set(_op, _src1, _src2, _dest, _dest2);
   }
 
 #ifdef ESESC_TRACE_DATA
-  DataType getData()    const  { return data; };
+  DataType getData() const {
+    return data;
+  };
   void setData(DataType _data) {
     data = _data;
   }
 #endif
 
-  AddrType    getPC()   const { return pc;   };
-  AddrType    getAddr() const { return addr; };
-  bool getStatsFlag()   const { return keepStats; };
+  AddrType getPC() const {
+    return pc;
+  };
+  AddrType getAddr() const {
+    return addr;
+  };
+  bool getStatsFlag() const {
+    return keepStats;
+  };
 
-  const Instruction *getInst() const { return &inst; };
+  const Instruction *getInst() const {
+    return &inst;
+  };
 };
 
 #endif
-

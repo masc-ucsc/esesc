@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2004 University of Illinois.
 
@@ -23,37 +23,39 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #ifndef BLOOMFILTER_H
 #define BLOOMFILTER_H
 
-#include "nanassert.h"
 #include "GStats.h"
+#include "nanassert.h"
 
 class BloomFilter {
- private:
-  int32_t *vSize;
-  int32_t *vBits;
+private:
+  int32_t * vSize;
+  int32_t * vBits;
   unsigned *vMask;
-  int32_t *rShift;
+  int32_t * rShift;
   int32_t **countVec;
-  int32_t nVectors;
-  int32_t *nonZeroCount;
-  char *desc;
-  int32_t nElements;
+  int32_t   nVectors;
+  int32_t * nonZeroCount;
+  char *    desc;
+  int32_t   nElements;
 
   bool BFBuild;
 
-  void initMasks();
+  void    initMasks();
   int32_t getIndex(unsigned val, int32_t chunkPos);
-  
- public:
+
+public:
   ~BloomFilter();
 
-  //the chunk parameters are from the least significant to 
-  //the most significant portion of the address
+  // the chunk parameters are from the least significant to
+  // the most significant portion of the address
   BloomFilter(int32_t nv, ...);
-  BloomFilter(): BFBuild(false) {}
+  BloomFilter()
+      : BFBuild(false) {
+  }
 
-  BloomFilter(const BloomFilter& bf);
+  BloomFilter(const BloomFilter &bf);
 
-  BloomFilter& operator=(const BloomFilter &bf);
+  BloomFilter &operator=(const BloomFilter &bf);
 
   void init(bool build, int32_t nv, ...);
 
@@ -74,32 +76,32 @@ class BloomFilter {
 
   int32_t countAlias(unsigned e);
 
-  void dump(const char *msg);
-  const char *getDesc() { return desc; }
+  void        dump(const char *msg);
+  const char *getDesc() {
+    return desc;
+  }
 
-  int32_t size() {  //# of elements encoded
+  int32_t size() { //# of elements encoded
     return nElements;
   }
 
   int32_t getSize(); // size of the vectors in bits
   int32_t getSizeRLE(int32_t base = 0, int32_t runBits = 7);
 
-
-  FILE *dumpPtr;
-  static int32_t  numDumps;
-  void begin_dump_pychart(const char *bname = "bf");
-  void end_dump_pychart();
-  void add_dump_line(unsigned e);
+  FILE *         dumpPtr;
+  static int32_t numDumps;
+  void           begin_dump_pychart(const char *bname = "bf");
+  void           end_dump_pychart();
+  void           add_dump_line(unsigned e);
 };
 
 class BitSelection {
- private:
-  int32_t nBits;
-  int32_t bits[32];
+private:
+  int32_t  nBits;
+  int32_t  bits[32];
   unsigned mask[32];
 
- public:
-
+public:
   BitSelection() {
     nBits = 0;
     for(int32_t i = 0; i < 32; i++) {
@@ -109,13 +111,16 @@ class BitSelection {
 
   BitSelection(int32_t *bitPos, int32_t n) {
     nBits = 0;
-    for(int32_t i = 0; i < n; i++) 
+    for(int32_t i = 0; i < n; i++)
       addBit(bitPos[i]);
   }
 
-  ~BitSelection() {}
+  ~BitSelection() {
+  }
 
-  int32_t getNBits() { return nBits; }
+  int32_t getNBits() {
+    return nBits;
+  }
 
   void addBit(int32_t b) {
     bits[nBits] = b;
@@ -127,11 +132,11 @@ class BitSelection {
     unsigned res = 0;
     for(int32_t i = 0; i < nBits; i++) {
       unsigned bit = (val & mask[i]) ? 1 : 0;
-      res = res | (bit << i);
+      res          = res | (bit << i);
     }
     return res;
   }
-  
+
   void dump(const char *msg) {
     printf("%s:", msg);
     for(int32_t i = 0; i < nBits; i++) {
@@ -141,5 +146,4 @@ class BitSelection {
   }
 };
 
-
-#endif //BLOOMFILTER_H
+#endif // BLOOMFILTER_H

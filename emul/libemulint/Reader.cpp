@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -33,34 +33,32 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "Reader.h"
-#include "Instruction.h"
-#include "ThreadSafeFIFO.h"
 #include "DInst.h"
+#include "Instruction.h"
 #include "SescConf.h"
+#include "ThreadSafeFIFO.h"
 
-
-ThreadSafeFIFO<RAWDInst> *Reader::tsfifo = NULL;
-pthread_mutex_t          *Reader::tsfifo_snd_mutex = NULL;
-volatile int             *Reader::tsfifo_snd_mutex_blocked = 0;
-pthread_mutex_t          Reader::tsfifo_rcv_mutex;
-volatile int             Reader::tsfifo_rcv_mutex_blocked;
-EmuDInstQueue            *Reader::ruffer = NULL;
+ThreadSafeFIFO<RAWDInst> *Reader::tsfifo                   = NULL;
+pthread_mutex_t *         Reader::tsfifo_snd_mutex         = NULL;
+volatile int *            Reader::tsfifo_snd_mutex_blocked = 0;
+pthread_mutex_t           Reader::tsfifo_rcv_mutex;
+volatile int              Reader::tsfifo_rcv_mutex_blocked;
+EmuDInstQueue *           Reader::ruffer = NULL;
 
 FlowID Reader::nemul = 0;
 
-Reader::Reader(const char* section)
-{
-  if (tsfifo == NULL) {
+Reader::Reader(const char *section) {
+  if(tsfifo == NULL) {
     // Shared through all the objects, but sized with the # cores
-    
-    nemul =  SescConf->getRecordSize("","cpuemul");
 
-    tsfifo       = new ThreadSafeFIFO<RAWDInst>[nemul];
+    nemul = SescConf->getRecordSize("", "cpuemul");
+
+    tsfifo = new ThreadSafeFIFO<RAWDInst>[nemul];
 
     // On thread for each tsfifo sender
-    tsfifo_snd_mutex = new pthread_mutex_t[nemul];
+    tsfifo_snd_mutex         = new pthread_mutex_t[nemul];
     tsfifo_snd_mutex_blocked = new int[nemul];
-    for(int i=0;i<nemul;i++) {
+    for(int i = 0; i < nemul; i++) {
       pthread_mutex_init(&tsfifo_snd_mutex[i], NULL);
       pthread_mutex_lock(&tsfifo_snd_mutex[i]);
       tsfifo_snd_mutex_blocked[i] = 0;
@@ -71,7 +69,6 @@ Reader::Reader(const char* section)
     pthread_mutex_init(&tsfifo_rcv_mutex, NULL);
     pthread_mutex_lock(&tsfifo_rcv_mutex);
 
-    ruffer       = new EmuDInstQueue[nemul];
+    ruffer = new EmuDInstQueue[nemul];
   }
-
 }

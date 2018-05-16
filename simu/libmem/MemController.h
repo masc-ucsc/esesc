@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,11 +37,11 @@
 #ifndef MEMCONTROLLER_H
 #define MEMCONTROLLER_H
 
-#include "GStats.h"
 #include "CacheCore.h"
-#include "Port.h"
-#include "MemRequest.h"
+#include "GStats.h"
 #include "MemObj.h"
+#include "MemRequest.h"
+#include "Port.h"
 
 #include "SescConf.h"
 #include "callback.h"
@@ -53,15 +53,14 @@ class MemorySystem;
 #include <queue>
 /* }}} */
 
-class MemController: public MemObj {
+class MemController : public MemObj {
 protected:
-
-   class FCFSField {
+  class FCFSField {
   public:
-    uint32_t Bank;
-    uint32_t Row;
-    uint32_t Column;
-    Time_t TimeEntered;
+    uint32_t    Bank;
+    uint32_t    Row;
+    uint32_t    Column;
+    Time_t      TimeEntered;
     MemRequest *mreq;
   };
   TimeDelta_t delay;
@@ -72,19 +71,19 @@ protected:
   GStatsCntr nPrecharge;
   GStatsCntr nColumnAccess;
   GStatsCntr nRowAccess;
-  GStatsAvg avgMemLat;
+  GStatsAvg  avgMemLat;
   GStatsCntr readHit;
 
   enum STATE {
-  IDLE = 0,
-  ACTIVATING,
-  PRECHARGE,
-  ACTIVE,
-  ACCESSING,
-  INIT  // Added LNB 5/31/2014
-};
+    IDLE = 0,
+    ACTIVATING,
+    PRECHARGE,
+    ACTIVE,
+    ACCESSING,
+    INIT // Added LNB 5/31/2014
+  };
   PortGeneric *cmdPort;
-  
+
   uint32_t rowMask;
   uint32_t columnMask;
   uint32_t bankMask;
@@ -93,71 +92,77 @@ protected:
   uint32_t bankOffset;
   uint32_t numBanks;
   uint32_t memRequestBufferSize;
-  
 
   class BankStatus {
   public:
-    int state;
+    int      state;
     uint32_t activeRow;
-    bool bpend;
-    bool cpend;
-    Time_t bankTime;
+    bool     bpend;
+    bool     cpend;
+    Time_t   bankTime;
   };
-  
+
   BankStatus *bankState;
-  
-  typedef std::vector<FCFSField*> FCFSList;
-  FCFSList curMemRequests;
-  typedef std::queue<FCFSField*> FCFSQueue;
-  FCFSQueue OverflowMemoryRequests;
+
+  typedef std::vector<FCFSField *> FCFSList;
+  FCFSList                         curMemRequests;
+  typedef std::queue<FCFSField *>  FCFSQueue;
+  FCFSQueue                        OverflowMemoryRequests;
 
 public:
-  MemController(MemorySystem* current, const char *device_descr_section, const char *device_name = NULL);
-  ~MemController() {}
+  MemController(MemorySystem *current, const char *device_descr_section, const char *device_name = NULL);
+  ~MemController() {
+  }
 
-	// Entry points to schedule that may schedule a do?? if needed
-	void req(MemRequest *req)         { doReq(req); };
-	void reqAck(MemRequest *req)      { doReqAck(req); };
-	void setState(MemRequest *req)    { doSetState(req); };
-	void setStateAck(MemRequest *req) { doSetStateAck(req); };
-	void disp(MemRequest *req)        { doDisp(req); }
+  // Entry points to schedule that may schedule a do?? if needed
+  void req(MemRequest *req) {
+    doReq(req);
+  };
+  void reqAck(MemRequest *req) {
+    doReqAck(req);
+  };
+  void setState(MemRequest *req) {
+    doSetState(req);
+  };
+  void setStateAck(MemRequest *req) {
+    doSetStateAck(req);
+  };
+  void disp(MemRequest *req) {
+    doDisp(req);
+  }
 
-	// This do the real work
-	void doReq(MemRequest *req);
-	void doReqAck(MemRequest *req);
-	void doSetState(MemRequest *req);
-	void doSetStateAck(MemRequest *req);
-	void doDisp(MemRequest *req);
+  // This do the real work
+  void doReq(MemRequest *req);
+  void doReqAck(MemRequest *req);
+  void doSetState(MemRequest *req);
+  void doSetStateAck(MemRequest *req);
+  void doDisp(MemRequest *req);
 
-  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb=0);
+  void tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb = 0);
 
   TimeDelta_t ffread(AddrType addr);
   TimeDelta_t ffwrite(AddrType addr);
 
-	bool isBusy(AddrType addr) const;
+  bool isBusy(AddrType addr) const;
 
   uint16_t getLineSize() const;
 
   void manageRam(void);
 
-  typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;
- // typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;  // Added by LNB 5/27/2014
+  typedef CallbackMember0<MemController, &MemController::manageRam> ManageRamCB;
+  // typedef CallbackMember0<MemController, &MemController::manageRam>   ManageRamCB;  // Added by LNB 5/27/2014
 
-  //TimeDelta_t ffread(AddrType addr, DataType data);
-  //TimeDelta_t ffwrite(AddrType addr, DataType data);
-  //void        ffinvalidate(AddrType addr, int32_t lineSize);
-  private:
+  // TimeDelta_t ffread(AddrType addr, DataType data);
+  // TimeDelta_t ffwrite(AddrType addr, DataType data);
+  // void        ffinvalidate(AddrType addr, int32_t lineSize);
+private:
   uint32_t getBank(MemRequest *mreq) const;
   uint32_t getRow(MemRequest *mreq) const;
   uint32_t getColumn(MemRequest *mreq) const;
-  void addMemRequest(MemRequest *mreq);
-  
+  void     addMemRequest(MemRequest *mreq);
+
   void transferOverflowMemory(void);
   void scheduleNextAction(void);
-  
 };
-
-
-
 
 #endif

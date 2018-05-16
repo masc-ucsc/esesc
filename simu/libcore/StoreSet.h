@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,12 +36,12 @@
 #ifndef STSET_H
 #define STSET_H
 
-#include <vector>
 #include "estl.h"
+#include <vector>
 
+#include "DInst.h"
 #include "GStats.h"
 #include "callback.h"
-#include "DInst.h"
 
 /* }}} */
 #define STORESET_MERGING 1
@@ -50,7 +50,6 @@
 
 class StoreSet {
 private:
-
   typedef std::vector<SSID_t>  SSIT_t;
   typedef std::vector<DInst *> LFST_t;
 
@@ -60,14 +59,14 @@ private:
   SSID_t StoreSetSize;
 
 #ifdef STORESET_CLEARING
-  Time_t  clear_interval;
-  void clearStoreSetsTimer();
-  StaticCallbackMember0<StoreSet,&StoreSet::clearStoreSetsTimer> clearStoreSetsTimerCB;
+  Time_t                                                          clear_interval;
+  void                                                            clearStoreSetsTimer();
+  StaticCallbackMember0<StoreSet, &StoreSet::clearStoreSetsTimer> clearStoreSetsTimerCB;
 #endif
 
   AddrType hashPC(AddrType PC) const {
-//    return ((PC>>2) % 8191);
-    return ((((PC>>2) ^ (PC>>11)) + PC)>>2) & (StoreSetSize-1);
+    //    return ((PC>>2) % 8191);
+    return ((((PC >> 2) ^ (PC >> 11)) + PC) >> 2) & (StoreSetSize - 1);
   }
 
   bool isValidSSID(SSID_t SSID) const {
@@ -75,19 +74,25 @@ private:
   }
 
   // SSIT Functions
-  SSID_t get_SSID(AddrType PC) const        { return SSIT[hashPC(PC)]; };
-  void   clear_SSIT();
+  SSID_t get_SSID(AddrType PC) const {
+    return SSIT[hashPC(PC)];
+  };
+  void clear_SSIT();
 
   // LFST Functions
-  DInst *get_LFS(SSID_t SSID) const  {
-    I(SSID<=(int32_t)LFST.size());
+  DInst *get_LFS(SSID_t SSID) const {
+    I(SSID <= (int32_t)LFST.size());
     return LFST[SSID];
   };
-  void set_LFS(SSID_t SSID, DInst *dinst) { LFST[SSID] = dinst; }
+  void set_LFS(SSID_t SSID, DInst *dinst) {
+    LFST[SSID] = dinst;
+  }
   void clear_LFST(void);
 
   SSID_t create_id();
-  void set_SSID(AddrType PC, SSID_t SSID) { SSIT[hashPC(PC)] = SSID; };
+  void   set_SSID(AddrType PC, SSID_t SSID) {
+    SSIT[hashPC(PC)] = SSID;
+  };
   SSID_t create_set(AddrType);
 
 #if 1
@@ -98,25 +103,22 @@ private:
 #endif
 public:
   StoreSet(const int32_t cpu_id);
-  ~StoreSet() { }
+  ~StoreSet() {
+  }
 
   bool insert(DInst *dinst);
   void remove(DInst *dinst);
   void stldViolation(DInst *ld_dinst, AddrType st_pc);
   void stldViolation(DInst *ld_dinst, DInst *st_dinst);
 
-
   SSID_t mergeset(SSID_t id1, SSID_t id2);
-
-
 
 #ifdef STORESET_MERGING
   // move violating load to qdinst load's store set, stores will migrate as violations occur.
   void merge_sets(DInst *m_dinst, DInst *d_dinst);
 #else
-  void merge_sets(DInst *m_dinst, DInst *d_dinst) { };
+  void merge_sets(DInst *m_dinst, DInst *d_dinst){};
 #endif
-
 };
 
 #endif

@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -33,16 +33,14 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
-#include "MemorySystem.h"
 #include "GXBar.h"
+#include "MemorySystem.h"
+#include "SescConf.h"
 /* }}} */
 
 uint32_t GXBar::Xbar_unXbar_balance = 0;
 
-GXBar::GXBar(const char *section ,const char *name)
-  /* constructor {{{1 */
-  : MemObj(section, name)
-{
-
+GXBar::GXBar(const char *section, const char *name)
+    /* constructor {{{1 */
+    : MemObj(section, name) {
 }

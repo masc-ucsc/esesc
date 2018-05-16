@@ -21,28 +21,28 @@
   Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-#include <sys/types.h>
 #include <dirent.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <signal.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/types.h>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
 
 #include "EmuSampler.h"
-#include "SescConf.h"
 #include "QEMUReader.h"
+#include "SescConf.h"
 //#include "SPARCInstruction.h"
-#include "Snippets.h"
-#include "callback.h"
 #include "DInst.h"
 #include "QEMUInterface.h"
+#include "Snippets.h"
+#include "callback.h"
 
 /* }}} */
 
@@ -70,45 +70,44 @@ void *QEMUReader::getSharedMemory(size_t size)
 bool QEMUReader::started = false;
 
 QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint_)
-  /* constructor {{{1 */
-  : Reader(section),
-    qemuargs(qargs) {
+    /* constructor {{{1 */
+    : Reader(section)
+    , qemuargs(qargs) {
 
-
-  numFlows = 0;
-  numAllFlows = 0;
-  FlowID nemul = SescConf->getRecordSize("","cpuemul");
-  for(FlowID i=0;i<nemul;i++) {
-    const char *section = SescConf->getCharPtr("","cpuemul",i);
-    const char *type    = SescConf->getCharPtr(section,"type");
-    if(strcasecmp(type,"QEMU") == 0 ) {
+  numFlows     = 0;
+  numAllFlows  = 0;
+  FlowID nemul = SescConf->getRecordSize("", "cpuemul");
+  for(FlowID i = 0; i < nemul; i++) {
+    const char *section = SescConf->getCharPtr("", "cpuemul", i);
+    const char *type    = SescConf->getCharPtr(section, "type");
+    if(strcasecmp(type, "QEMU") == 0) {
       numFlows++;
     }
     numAllFlows++;
   }
 
   qemu_thread = -1;
-  //started = false;
+  // started = false;
 }
 /* }}} */
 
-void QEMUReader::start() 
+void QEMUReader::start()
 /* Start QEMU Thread (wait until sampler is ready {{{1 */
 {
 
-  if (started)
+  if(started)
     return;
 
-  pthread_mutex_init(&mutex_ctrl,0);
+  pthread_mutex_init(&mutex_ctrl, 0);
 
   started = true;
 
 #if 1
-  MSG ("STARTING QEMU ......");
+  MSG("STARTING QEMU ......");
   pthread_attr_t attr;
   pthread_attr_init(&attr);
 
-  size_t stacksize = 1024*1024;
+  size_t stacksize = 1024 * 1024;
   pthread_attr_setstacksize(&attr, stacksize);
 
 #if 0
@@ -123,7 +122,7 @@ void QEMUReader::start()
   pthread_sigmask (SIG_UNBLOCK, &mysigset, NULL);
 #endif
 
-  if (pthread_create(&qemu_thread, &attr, qemuesesc_main_bootstrap, (void *)qemuargs) != 0) {
+  if(pthread_create(&qemu_thread, &attr, qemuesesc_main_bootstrap, (void *)qemuargs) != 0) {
     MSG("ERROR: pthread create failed");
     exit(-2);
   }
@@ -144,19 +143,20 @@ QEMUReader::~QEMUReader() {
 }
 /* }}} */
 
-void QEMUReader::queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats)
+void QEMUReader::queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest,
+                                  int dest2, bool keepStats)
 /* queue instruction (called by QEMU) {{{1 */
 {
-  uint64_t conta=0;
+  uint64_t conta = 0;
 
-  I(src1<LREG_MAX);
-  I(src2<LREG_MAX);
-  I(dest<LREG_MAX);
-  I(dest2<LREG_MAX);
+  I(src1 < LREG_MAX);
+  I(src2 < LREG_MAX);
+  I(dest < LREG_MAX);
+  I(dest2 < LREG_MAX);
 
-  while (tsfifo[fid].full()) {
-    if (qsamplerlist[fid]->isActive(fid) == false) {
-      qsamplerlist[fid]->resumeThread(fid,fid);
+  while(tsfifo[fid].full()) {
+    if(qsamplerlist[fid]->isActive(fid) == false) {
+      qsamplerlist[fid]->resumeThread(fid, fid);
     }
     pthread_mutex_lock(&mutex_ctrl); // BEGIN
 
@@ -169,32 +169,33 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, DataType data, Flo
 #endif
 
     bool doblock = false;
-    if (tsfifo_snd_mutex_blocked[fid] == 0) {
+    if(tsfifo_snd_mutex_blocked[fid] == 0) {
       tsfifo_snd_mutex_blocked[fid] = 1;
-      doblock = true;
+      doblock                       = true;
     }
     pthread_mutex_unlock(&mutex_ctrl); // END
 
-    //MSG("2.sleep  snd%d",fid);
-    if (doblock) {
+    // MSG("2.sleep  snd%d",fid);
+    if(doblock) {
       pthread_mutex_lock(&tsfifo_snd_mutex[fid]);
-    }else{
+    } else {
       I(0);
     }
-    //MSG("2.wakeup snd%d",fid);
+    // MSG("2.wakeup snd%d",fid);
   }
 
   RAWDInst *rinst = tsfifo[fid].getTailRef();
 
   I(rinst);
 
-  rinst->set(pc,addr,static_cast<InstOpcode>(op), static_cast<RegType>(src1),static_cast<RegType>(src2),static_cast<RegType>(dest), static_cast<RegType>(dest2), keepStats);
+  rinst->set(pc, addr, static_cast<InstOpcode>(op), static_cast<RegType>(src1), static_cast<RegType>(src2),
+             static_cast<RegType>(dest), static_cast<RegType>(dest2), keepStats);
 #ifdef ESESC_TRACE_DATA
   rinst->setData(data);
 #endif
-  
+
   tsfifo[fid].push();
- }
+}
 /* }}} */
 
 void QEMUReader::syscall(uint32_t num, Time_t time, FlowID fid)
@@ -202,14 +203,14 @@ void QEMUReader::syscall(uint32_t num, Time_t time, FlowID fid)
 {
   RAWDInst *rinst = tsfifo[fid].getTailRef();
 
-  rinst->set(0xdeaddead,0,iRALU,LREG_R0,LREG_R0,LREG_InvalidOutput, LREG_InvalidOutput,true);
+  rinst->set(0xdeaddead, 0, iRALU, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, true);
 
   tsfifo[fid].push();
 }
 // }}}
 
 uint32_t QEMUReader::wait_until_FIFO_full(FlowID fid)
-  // active wait for fifo full before read {{{1
+// active wait for fifo full before read {{{1
 {
   MSG("OOPS");
   I(0);
@@ -219,7 +220,7 @@ uint32_t QEMUReader::wait_until_FIFO_full(FlowID fid)
 
 bool QEMUReader::populate(FlowID fid) {
   int conta = 0;
-  if (ruffer[fid].size()>1024) // No need to overpopulate the queues
+  if(ruffer[fid].size() > 1024) // No need to overpopulate the queues
     return true;
 
   if(!tsfifo[fid].halfFull()) {
@@ -227,10 +228,10 @@ bool QEMUReader::populate(FlowID fid) {
 
     bool unblocked = false;
 
-    if (tsfifo_snd_mutex_blocked[fid]) {
+    if(tsfifo_snd_mutex_blocked[fid]) {
       tsfifo_snd_mutex_blocked[fid] = 0;
       pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
-      //MSG("2.alarmt snd%d",fid);
+      // MSG("2.alarmt snd%d",fid);
       unblocked = true;
     }
 #if 0
@@ -248,24 +249,24 @@ bool QEMUReader::populate(FlowID fid) {
     pthread_mutex_unlock(&mutex_ctrl); // END
 #endif
 
-    if (unblocked)
+    if(unblocked)
       return true;
 
-    if (qsamplerlist[fid]->isActive(fid) == false) {
-      //MSG("DOWN");
+    if(qsamplerlist[fid]->isActive(fid) == false) {
+      // MSG("DOWN");
       return true;
     }
 
-    for(int i=0;i<numFlows;i++) {
-      if (tsfifo_snd_mutex_blocked[i]==0)
+    for(int i = 0; i < numFlows; i++) {
+      if(tsfifo_snd_mutex_blocked[i] == 0)
         continue;
 
-      if (qsamplerlist[i]->isActive(i) == false) {
+      if(qsamplerlist[i]->isActive(i) == false) {
 #ifdef DEBUG
         MSG("Deadlock avoidance: sleeping thread was not active");
 #endif
-        qsamplerlist[i]->resumeThread(i,i);
-      }else{
+        qsamplerlist[i]->resumeThread(i, i);
+      } else {
 #ifdef DEBUG2
         MSG("Slowlock: sleeping thread was active");
 #endif
@@ -277,9 +278,9 @@ bool QEMUReader::populate(FlowID fid) {
 
   I(tsfifo[fid].halfFull());
 
-  for(int i=32;i<tsfifo[fid].size();i++) {
-    RAWDInst  *rinst = tsfifo[fid].getHeadRef();
-    DInst **dinsth = ruffer[fid].getInsertPointRef();
+  for(int i = 32; i < tsfifo[fid].size(); i++) {
+    RAWDInst *rinst  = tsfifo[fid].getHeadRef();
+    DInst **  dinsth = ruffer[fid].getInsertPointRef();
 
     *dinsth = DInst::create(rinst->getInst(), rinst->getPC(), rinst->getAddr(), fid, rinst->getStatsFlag());
 #ifdef ESESC_TRACE_DATA
@@ -291,7 +292,7 @@ bool QEMUReader::populate(FlowID fid) {
   }
 
   pthread_mutex_lock(&mutex_ctrl); // BEGIN
-  if (tsfifo_snd_mutex_blocked[fid]) {
+  if(tsfifo_snd_mutex_blocked[fid]) {
     tsfifo_snd_mutex_blocked[fid] = 0;
     pthread_mutex_unlock(&tsfifo_snd_mutex[fid]);
   }
@@ -302,28 +303,27 @@ bool QEMUReader::populate(FlowID fid) {
 
 DInst *QEMUReader::peekHead(FlowID fid) {
 
-  do{
+  do {
 
-    if (!ruffer[fid].empty()) {
+    if(!ruffer[fid].empty()) {
       DInst *dinst = ruffer[fid].getHead();
       I(dinst); // We just added, there should be one or more
 #ifdef FETCH_TRACE
-    if (trace.is_trace_entry(dinst)) {
-      // get trace, get next 256 or end trace (may need to call populate),
-      // check if matches trace.  If trace matches. Push OPTIMIZED trace.
-      // If missmatch, push optimized which should trigger an abort, and
-      // original after.
-    }
+      if(trace.is_trace_entry(dinst)) {
+        // get trace, get next 256 or end trace (may need to call populate),
+        // check if matches trace.  If trace matches. Push OPTIMIZED trace.
+        // If missmatch, push optimized which should trigger an abort, and
+        // original after.
+      }
 #endif
       return dinst;
     }
 
-
     bool p = populate(fid);
-    if (!p)
+    if(!p)
       return 0;
 
-  }while(!ruffer[fid].empty());
+  } while(!ruffer[fid].empty());
 
   return 0;
 }
@@ -331,9 +331,9 @@ DInst *QEMUReader::peekHead(FlowID fid) {
 DInst *QEMUReader::executeHead(FlowID fid)
 /* speculative advance of execution {{{1 */
 {
-  do{
+  do {
 
-    if (!ruffer[fid].empty()) {
+    if(!ruffer[fid].empty()) {
       DInst *dinst = ruffer[fid].getHead();
       ruffer[fid].popHead();
       I(dinst); // We just added, there should be one or more
@@ -341,10 +341,10 @@ DInst *QEMUReader::executeHead(FlowID fid)
     }
 
     bool p = populate(fid);
-    if (!p)
+    if(!p)
       return 0;
 
-  }while(!ruffer[fid].empty());
+  } while(!ruffer[fid].empty());
 
   return 0;
 }
@@ -357,12 +357,11 @@ void QEMUReader::reexecuteTail(FlowID fid) {
 }
 /* }}} */
 
-void QEMUReader::syncHeadTail(FlowID fid){
+void QEMUReader::syncHeadTail(FlowID fid) {
   /* replay triggers a syncHeadTail {{{1 */
 
   ruffer[fid].moveHead2Tail();
-  //ruffer[fid].advanceTail(); // Make sure that the same inst is not re-exec again
- 
+  // ruffer[fid].advanceTail(); // Make sure that the same inst is not re-exec again
 }
 /* }}} */
 
@@ -370,7 +369,7 @@ void QEMUReader::drainFIFO(FlowID fid)
 /* Drain the tsfifo as much as possible due to a mode change {{{1 */
 {
   I(0); // not needed for the moment
-  if (pthread_equal(qemu_thread,pthread_self()))
+  if(pthread_equal(qemu_thread, pthread_self()))
     return;
 
   while(!tsfifo[fid].empty() && !ruffer[fid].empty()) {
@@ -378,4 +377,3 @@ void QEMUReader::drainFIFO(FlowID fid)
   }
 }
 /* }}} */
-

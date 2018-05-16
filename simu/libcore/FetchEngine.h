@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,9 +39,9 @@
 #ifndef FETCHENGINE_H
 #define FETCHENGINE_H
 
-#include "nanassert.h"
-#include "EmulInterface.h"
 #include "AddressPredictor.h"
+#include "EmulInterface.h"
+#include "nanassert.h"
 
 #include "BPred.h"
 #include "GStats.h"
@@ -51,15 +51,14 @@ class IBucket;
 
 class FetchEngine {
 private:
-
   GMemorySystem *const gms;
 
-  BPredictor   *bpred;
+  BPredictor *bpred;
 
-  uint16_t      FetchWidth;
-  uint16_t      FetchWidthBits;
-  uint16_t      Fetch2Width;
-  uint16_t      Fetch2WidthBits;
+  uint16_t FetchWidth;
+  uint16_t FetchWidthBits;
+  uint16_t Fetch2Width;
+  uint16_t Fetch2WidthBits;
 
 #ifdef ESESC_TRACE_DATA
 
@@ -84,18 +83,20 @@ private:
       used = 0;
     }
     void set(DataType d, AddrType a) {
-      data = d;
+      data   = d;
       delta0 = (addr == a);
-      addr = a;
-      if (used>0)
+      addr   = a;
+      if(used > 0)
         used--;
     }
 
-    bool isChained() const { return used >= 6; }
+    bool isChained() const {
+      return used >= 6;
+    }
     void chain() {
-      if (used<6)
-        used+=2;
-      used= 0; // disable chaining loads
+      if(used < 6)
+        used += 2;
+      used = 0; // disable chaining loads
     }
 
     int inc_chain() {
@@ -103,7 +104,7 @@ private:
       return chained;
     }
     void dec_chain() {
-      if (chained==0)
+      if(chained == 0)
         return;
       chained--;
     }
@@ -113,46 +114,46 @@ private:
   AddrType lastPredictable_addr;
   DataType lastPredictable_data;
 
-  SCTable  lastData;
+  SCTable lastData;
 
   struct OracleDataRATEntry {
     OracleDataRATEntry() {
-      ldpc = 0;
+      ldpc  = 0;
       depth = 32768;
     }
     AddrType ldpc;
     int      depth;
   };
-  HASH_MAP<AddrType,OracleDataLastEntry> oracleDataLast;
-  OracleDataRATEntry    oracleDataRAT[LREG_MAX];
+  HASH_MAP<AddrType, OracleDataLastEntry> oracleDataLast;
+  OracleDataRATEntry                      oracleDataRAT[LREG_MAX];
 
-  HASH_MAP<AddrType,AddrType>   ldpc2brpc; // FIXME: Only a small table of address to track
+  HASH_MAP<AddrType, AddrType> ldpc2brpc; // FIXME: Only a small table of address to track
 #endif
 
-  bool          TargetInLine;
-  bool          FetchOneLine;
-	bool          AlignedFetch;
-	bool          TraceAlign;
+  bool TargetInLine;
+  bool FetchOneLine;
+  bool AlignedFetch;
+  bool TraceAlign;
 
-  uint16_t      BB4Cycle;
-  uint16_t      maxBB;
+  uint16_t BB4Cycle;
+  uint16_t maxBB;
 
-  TimeDelta_t   IL1HitDelay;
-  uint16_t      LineSize;
-  uint16_t      LineSizeBits;
+  TimeDelta_t IL1HitDelay;
+  uint16_t    LineSize;
+  uint16_t    LineSizeBits;
 
   // InstID of the address that generated a misprediction
- 
-  bool              missInst; // branch missprediction. Stop fetching until solved
-  ID(DInst            *missDInst);
+
+  bool missInst; // branch missprediction. Stop fetching until solved
+  ID(DInst *missDInst);
   CallbackContainer cbPending;
 
-  Time_t    lastMissTime; // FIXME: maybe we need an array
+  Time_t lastMissTime; // FIXME: maybe we need an array
 
-  bool      enableICache;
- 
+  bool enableICache;
+
 protected:
-  //bool processBranch(DInst *dinst, uint16_t n2Fetched);
+  // bool processBranch(DInst *dinst, uint16_t n2Fetched);
   bool processBranch(DInst *dinst, uint16_t n2Fetchedi);
 
   // ******************* Statistics section
@@ -172,32 +173,30 @@ protected:
   GStatsHist nbranchMissHist;
   GStatsHist nLoadData_per_branch;
   GStatsHist nLoadAddr_per_branch;
-  
+
 #endif
   // *******************
 
 public:
-  FetchEngine(FlowID i
-              ,GMemorySystem *gms
-              ,FetchEngine *fe = 0);
+  FetchEngine(FlowID i, GMemorySystem *gms, FetchEngine *fe = 0);
 
   ~FetchEngine();
 
   void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
-  typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface* , FlowID, &FetchEngine::fetch>  fetchCB;
+  typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface *, FlowID, &FetchEngine::fetch> fetchCB;
 
   void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
-  //typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, &FetchEngine::realfetch>  realfetchCB;
+  // typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, &FetchEngine::realfetch>  realfetchCB;
 
   void chainPrefDone(AddrType pc, int distance, AddrType addr);
   void chainLoadDone(DInst *dinst);
-  typedef CallbackMember3<FetchEngine, AddrType, int, AddrType,  &FetchEngine::chainPrefDone> chainPrefDoneCB;
+  typedef CallbackMember3<FetchEngine, AddrType, int, AddrType, &FetchEngine::chainPrefDone> chainPrefDoneCB;
 
-  void unBlockFetch(DInst* dinst, Time_t missFetchTime);
-  typedef CallbackMember2<FetchEngine, DInst*, Time_t,  &FetchEngine::unBlockFetch> unBlockFetchCB;
+  void unBlockFetch(DInst *dinst, Time_t missFetchTime);
+  typedef CallbackMember2<FetchEngine, DInst *, Time_t, &FetchEngine::unBlockFetch> unBlockFetchCB;
 
-  void unBlockFetchBPredDelay(DInst* dinst, Time_t missFetchTime);
-  typedef CallbackMember2<FetchEngine, DInst* , Time_t, &FetchEngine::unBlockFetchBPredDelay> unBlockFetchBPredDelayCB;
+  void unBlockFetchBPredDelay(DInst *dinst, Time_t missFetchTime);
+  typedef CallbackMember2<FetchEngine, DInst *, Time_t, &FetchEngine::unBlockFetchBPredDelay> unBlockFetchBPredDelayCB;
 
 #if 0
   void unBlockFetch();
@@ -209,13 +208,17 @@ public:
 
   void dump(const char *str) const;
 
-  bool isBlocked() const { return missInst; }
+  bool isBlocked() const {
+    return missInst;
+  }
 #ifdef DEBUG
-  DInst *getMissDInst() const { return missDInst; }
+  DInst *getMissDInst() const {
+    return missDInst;
+  }
 #endif
 
-  void clearMissInst(DInst * dinst, Time_t missFetchTime);
-  void setMissInst(DInst * dinst);
+  void clearMissInst(DInst *dinst, Time_t missFetchTime);
+  void setMissInst(DInst *dinst);
 };
 
-#endif   // FETCHENGINE_H
+#endif // FETCHENGINE_H

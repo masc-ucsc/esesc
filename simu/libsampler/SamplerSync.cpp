@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,81 +35,75 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #include "SamplerSync.h"
-#include "EmulInterface.h"
-#include "SescConf.h"
 #include "BootLoader.h"
-#include "TaskHandler.h"
-#include "MemObj.h"
-#include "GProcessor.h"
+#include "EmulInterface.h"
 #include "GMemorySystem.h"
+#include "GProcessor.h"
+#include "MemObj.h"
+#include "SescConf.h"
+#include "TaskHandler.h"
 
 #include <iostream>
 
 SamplerSync::SamplerSync(const char *iname, const char *section, EmulInterface *emu, FlowID fid)
-  : SamplerBase(iname, section, emu, fid)
-  /* SamplerSync constructor {{{1 */
+    : SamplerBase(iname, section, emu, fid)
+/* SamplerSync constructor {{{1 */
 {
   finished[fid] = true; // will be set to false in resumeThread
-  finished[0] = false;
+  finished[0]   = false;
 
-  nInstForcedDetail = nInstDetail==0? nInstTiming/2:nInstDetail;
+  nInstForcedDetail = nInstDetail == 0 ? nInstTiming / 2 : nInstDetail;
 
   setNextSwitch(nInstSkip);
-  if (nInstSkip)
+  if(nInstSkip)
     startRabbit(fid);
 
-  std::cout << "Sampler: inst, R:" << nInstRabbit
-            << ", W:"             << nInstWarmup
-            << ", D:"             << nInstDetail
-            << ", T:"             << nInstTiming
+  std::cout << "Sampler: inst, R:" << nInstRabbit << ", W:" << nInstWarmup << ", D:" << nInstDetail << ", T:" << nInstTiming
             << std::endl;
 
-  std::cout << "Sampler: inst, nInstMax:" << nInstMax
-            << ", nInstSkip:"            << nInstSkip
-            << ", maxnsTime:"           << maxnsTime
-            << std::endl;
+  std::cout << "Sampler: inst, nInstMax:" << nInstMax << ", nInstSkip:" << nInstSkip << ", maxnsTime:" << maxnsTime << std::endl;
 }
 /* }}} */
 
-SamplerSync::~SamplerSync() 
-  /* DestructorRabbit {{{1 */
+SamplerSync::~SamplerSync()
+/* DestructorRabbit {{{1 */
 {
-  // Free name, but who cares 
+  // Free name, but who cares
 }
 /* }}} */
 
 uint64_t SamplerSync::queue(uint64_t pc, uint64_t addr, uint64_t data, FlowID fid, char op, int src1, int src2, int dest, int dest2)
-  /* main qemu/gpu/tracer/... entry point {{{1 */
+/* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
   if(likely(!execute(fid, 1)))
     return 0; // QEMU can still send a few additional instructions (emul should stop soon)
-  I(mode!=EmuInit);
+  I(mode != EmuInit);
 
   // process the current sample mode
-  if (getNextSwitch()>totalnInst) {
+  if(getNextSwitch() > totalnInst) {
 
-    if (mode == EmuRabbit || mode == EmuInit) {
+    if(mode == EmuRabbit || mode == EmuInit) {
       uint64_t rabbitInst = getNextSwitch() - totalnInst;
-      execute(fid,rabbitInst);
+      execute(fid, rabbitInst);
       // Qemu is not going to return untill it has executed these many instructions
       // Or untill it hits a syscall that causes it to exit
       // Untill then, you are on your own. Sit back and relax!
-      return rabbitInst; 
+      return rabbitInst;
     }
 
-    if (mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(pc,addr, data, fid, op, src1, src2, dest, dest2, getStatsFlag());
+    if(mode == EmuDetail || mode == EmuTiming) {
+      emul->queueInstruction(pc, addr, data, fid, op, src1, src2, dest, dest2, getStatsFlag());
       return 0;
     }
 
     I(mode == EmuWarmup);
 #if 1
-    if ( op == iLALU_LD || op == iSALU_ST)
+    if(op == iLALU_LD || op == iSALU_ST)
       // cache warmup fake inst, do not need SRC deps (faster)
-      emul->queueInstruction(0,addr, 0, fid, op, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, false);
+      emul->queueInstruction(0, addr, 0, fid, op, LREG_R0, LREG_R0, LREG_InvalidOutput, LREG_InvalidOutput, false);
 #else
-		//doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
+    // doWarmupOpAddr(static_cast<InstOpcode>(op), addr);
 #endif
     return 0;
   }
@@ -117,18 +111,18 @@ uint64_t SamplerSync::queue(uint64_t pc, uint64_t addr, uint64_t data, FlowID fi
   // Look for the new mode
   // This can fail because the other thread can update: racy but infrequent, so OK I(getNextSwitch() <= totalnInst);
 
- // I(mode != next_mode);
-  pthread_mutex_lock (&mode_lock);
+  // I(mode != next_mode);
+  pthread_mutex_lock(&mode_lock);
   //
 
-  if (getNextSwitch() > totalnInst){//another thread just changed the mode
-    pthread_mutex_unlock (&mode_lock);
+  if(getNextSwitch() > totalnInst) { // another thread just changed the mode
+    pthread_mutex_unlock(&mode_lock);
     return 0;
   }
 
   lastMode = mode;
   nextMode(ROTATE, fid);
-  if (lastMode == EmuTiming) { // timing is going to be over
+  if(lastMode == EmuTiming) { // timing is going to be over
 
 #if 0
 		static double last_timing         = 0;
@@ -143,28 +137,28 @@ uint64_t SamplerSync::queue(uint64_t pc, uint64_t addr, uint64_t data, FlowID fi
 #endif
 
     BootLoader::reportSample();
-    
-    if (GProcessor::getWallClock()>=maxnsTime || totalnInst>=nInstMax) {
+
+    if(GProcessor::getWallClock() >= maxnsTime || totalnInst >= nInstMax) {
       markDone();
-      pthread_mutex_unlock (&mode_lock);
+      pthread_mutex_unlock(&mode_lock);
       return 0;
     }
-    if (doPower) {
+    if(doPower) {
       uint64_t mytime = getTime();
-      int64_t ti = mytime - lastTime;
+      int64_t  ti     = mytime - lastTime;
       I(ti > 0);
-      ti = (static_cast<int64_t>(freq)*ti)/1e9;
+      ti = (static_cast<int64_t>(freq) * ti) / 1e9;
 
-      BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio()); 
-      BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid); 
+      BootLoader::getPowerModelPtr()->setSamplingRatio(getSamplingRatio());
+      BootLoader::getPowerModelPtr()->calcStats(ti, !(lastMode == EmuTiming), fid);
       lastTime = mytime;
-      updateCPI(fid); 
-      if (doTherm) {
-        BootLoader::getPowerModelPtr()->updateSescTherm(ti);  
+      updateCPI(fid);
+      if(doTherm) {
+        BootLoader::getPowerModelPtr()->updateSescTherm(ti);
       }
     }
   }
-  pthread_mutex_unlock (&mode_lock);
+  pthread_mutex_unlock(&mode_lock);
 
   return 0;
 }
@@ -174,30 +168,18 @@ void SamplerSync::updateCPI(FlowID fid) {
   estCPI = getMeaCPI();
 }
 
-void SamplerSync::nextMode(bool rotate, FlowID fid, EmuMode mod){
-  if (rotate){
+void SamplerSync::nextMode(bool rotate, FlowID fid, EmuMode mod) {
+  if(rotate) {
     fetchNextMode();
     I(next_mode != EmuInit);
 
-    //If in live mode and warmup is to be forced
-    if(BootLoader::genwarm > 0 && next_mode == EmuTiming) {
-      BootLoader::genwarm--;
-      setMode(EmuWarmup, fid);
-      //setMode(EmuDetail, fid);
-    } else if(BootLoader::live_warmup > 0 && next_mode == EmuTiming) {
-      BootLoader::live_warmup--;
-      //BootLoader::sample_count++;
-      setMode(EmuDetail, fid);
-      //setMode(EmuRabbit, fid);
-    } else {
-      setMode(next_mode, fid);
-    }
+    setMode(next_mode, fid);
 
-    if (next_mode == EmuRabbit){
+    if(next_mode == EmuRabbit) {
       setModeNativeRabbit();
     }
     setNextSwitch(getNextSwitch() + sequence_size[sequence_pos]);
-  }else{
+  } else {
     I(0);
   }
 }

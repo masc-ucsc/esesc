@@ -1,4 +1,4 @@
-/* 
+/*
    ESESC: Super ESCalar simulator
    Copyright (C) 2004 University of Illinois.
 
@@ -30,12 +30,12 @@ BloomFilter::BloomFilter(int32_t nv, ...) {
   va_list argL;
   va_start(argL, nv);
 
-  nVectors = nv;
-  vSize = new int[nVectors];
-  vBits = new int[nVectors];
-  vMask = new unsigned[nVectors];
-  rShift = new int[nVectors];
-  countVec = new int*[nVectors];
+  nVectors     = nv;
+  vSize        = new int[nVectors];
+  vBits        = new int[nVectors];
+  vMask        = new unsigned[nVectors];
+  rShift       = new int[nVectors];
+  countVec     = new int *[nVectors];
   nonZeroCount = new int[nVectors];
 
   for(int32_t i = 0; i < nVectors; i++) {
@@ -52,9 +52,9 @@ BloomFilter::BloomFilter(int32_t nv, ...) {
 
   va_end(argL);
 
-  desc = new char[128];
+  desc    = new char[128];
   desc[0] = 0;
-  for(int32_t i = 0; i < nVectors; i++) 
+  for(int32_t i = 0; i < nVectors; i++)
     sprintf(desc + strlen(desc), "[%d, %d]", vBits[i], vSize[i]);
 
   initMasks();
@@ -64,51 +64,51 @@ BloomFilter::BloomFilter(int32_t nv, ...) {
   BFBuild = true;
 }
 
-BloomFilter::~BloomFilter() { 
+BloomFilter::~BloomFilter() {
   if(!BFBuild)
     return;
 
-  delete [] vSize;
-  delete [] vBits;
-  delete [] vMask;
-  delete [] rShift;
-  delete [] nonZeroCount;
-  
+  delete[] vSize;
+  delete[] vBits;
+  delete[] vMask;
+  delete[] rShift;
+  delete[] nonZeroCount;
+
   for(int32_t i = 0; i < nVectors; i++) {
-    delete [] countVec[i];
+    delete[] countVec[i];
   }
-  
-  delete [] countVec;
-  delete [] desc;
+
+  delete[] countVec;
+  delete[] desc;
 }
 
-BloomFilter::BloomFilter(const BloomFilter& bf) {
+BloomFilter::BloomFilter(const BloomFilter &bf) {
 
-  if( !bf.BFBuild ) {
+  if(!bf.BFBuild) {
     BFBuild = false;
     return;
   }
 
-  BFBuild = true; 
- 
+  BFBuild = true;
+
   nVectors = bf.nVectors;
 
-  vSize = new int[nVectors];
-  vBits = new int[nVectors];
-  vMask = new unsigned[nVectors];
-  rShift = new int[nVectors];
-  countVec = new int*[nVectors];
+  vSize        = new int[nVectors];
+  vBits        = new int[nVectors];
+  vMask        = new unsigned[nVectors];
+  rShift       = new int[nVectors];
+  countVec     = new int *[nVectors];
   nonZeroCount = new int[nVectors];
-  desc = strdup(bf.desc);
-  nElements = bf.nElements;
+  desc         = strdup(bf.desc);
+  nElements    = bf.nElements;
 
   for(int32_t i = 0; i < nVectors; i++) {
-    vSize[i] = bf.vSize[i];
-    vBits[i] = bf.vBits[i];
-    vMask[i] = bf.vMask[i];
-    rShift[i] = bf.rShift[i];
+    vSize[i]        = bf.vSize[i];
+    vBits[i]        = bf.vBits[i];
+    vMask[i]        = bf.vMask[i];
+    rShift[i]       = bf.rShift[i];
     nonZeroCount[i] = bf.nonZeroCount[i];
-  
+
     countVec[i] = new int[vSize[i]];
 
     for(int32_t j = 0; j < vSize[i]; j++) {
@@ -117,12 +117,12 @@ BloomFilter::BloomFilter(const BloomFilter& bf) {
   }
 }
 
-BloomFilter& BloomFilter::operator=(const BloomFilter &bf) {
+BloomFilter &BloomFilter::operator=(const BloomFilter &bf) {
 
   if(this == &bf)
     return *this;
 
-  if( !bf.BFBuild ) {
+  if(!bf.BFBuild) {
     if(BFBuild)
       clear();
     return *this;
@@ -139,10 +139,10 @@ BloomFilter& BloomFilter::operator=(const BloomFilter &bf) {
 
   nVectors = bf.nVectors;
   for(int32_t i = 0; i < nVectors; i++) {
-    vSize[i] = bf.vSize[i];
-    vBits[i] = bf.vBits[i];
-    vMask[i] = bf.vMask[i];
-    rShift[i] = bf.rShift[i];
+    vSize[i]        = bf.vSize[i];
+    vBits[i]        = bf.vBits[i];
+    vMask[i]        = bf.vMask[i];
+    rShift[i]       = bf.rShift[i];
     nonZeroCount[i] = bf.nonZeroCount[i];
     for(int32_t j = 0; j < vSize[i]; j++) {
       countVec[i][j] = bf.countVec[i][j];
@@ -155,11 +155,11 @@ BloomFilter& BloomFilter::operator=(const BloomFilter &bf) {
 }
 
 void BloomFilter::init(bool build, int32_t nv, ...) {
-  if( BFBuild ) {
+  if(BFBuild) {
     return;
   }
 
-  I( !BFBuild );
+  I(!BFBuild);
 
   va_list argL;
   va_start(argL, nv);
@@ -167,8 +167,8 @@ void BloomFilter::init(bool build, int32_t nv, ...) {
   BFBuild = true;
 
   nVectors = nv;
-  vSize = new int[nVectors];
-  vBits = new int[nVectors];
+  vSize    = new int[nVectors];
+  vBits    = new int[nVectors];
 
   for(int32_t i = 0; i < nVectors; i++) {
     vBits[i] = va_arg(argL, int); // # of bits from the address
@@ -177,28 +177,28 @@ void BloomFilter::init(bool build, int32_t nv, ...) {
 
   va_end(argL);
 
-  vMask = new unsigned[nVectors];
-  rShift = new int[nVectors];
-  countVec = new int*[nVectors];
+  vMask        = new unsigned[nVectors];
+  rShift       = new int[nVectors];
+  countVec     = new int *[nVectors];
   nonZeroCount = new int[nVectors];
-  
+
   for(int32_t i = 0; i < nVectors; i++) {
-    
+
     countVec[i] = new int[vSize[i]];
     for(int32_t j = 0; j < vSize[i]; j++) {
       countVec[i][j] = 0;
     }
-    
+
     nonZeroCount[i] = 0;
   }
 
   nElements = 0;
-  
+
   initMasks();
-  
-  desc = new char[128];
+
+  desc    = new char[128];
   desc[0] = 0;
-  for(int32_t i = 0; i < nVectors; i++) 
+  for(int32_t i = 0; i < nVectors; i++)
     sprintf(desc + strlen(desc), "[%d, %d]", vBits[i], vSize[i]);
 }
 
@@ -210,19 +210,19 @@ void BloomFilter::initMasks() {
     for(int32_t m = 0; m < vBits[i]; m++)
       mask = mask | 1 << m;
 
-    mask = mask << totShift;
-    vMask[i] = mask;
+    mask      = mask << totShift;
+    vMask[i]  = mask;
     rShift[i] = totShift;
-    
+
     totShift += vBits[i];
   }
 }
 
 int32_t BloomFilter::getIndex(unsigned val, int32_t chunkPos) {
   unsigned uidx;
-  int32_t ret;
+  int32_t  ret;
 
-  //val = val ^ SWAP_WORD(val);
+  // val = val ^ SWAP_WORD(val);
 
   I(BFBuild);
 
@@ -231,15 +231,15 @@ int32_t BloomFilter::getIndex(unsigned val, int32_t chunkPos) {
 
   uidx = (uidx % vSize[chunkPos]);
 
-  ret = (int) uidx;
+  ret = (int)uidx;
 
-  I( ret > -1 && ret < vSize[chunkPos]);
-  
+  I(ret > -1 && ret < vSize[chunkPos]);
+
   return ret;
 }
 
 void BloomFilter::insert(unsigned e) {
-  if( !BFBuild )
+  if(!BFBuild)
     return;
 
   for(int32_t i = 0; i < nVectors; i++) {
@@ -256,7 +256,7 @@ void BloomFilter::insert(unsigned e) {
 
 void BloomFilter::remove(unsigned e) {
 
-  if( !BFBuild )
+  if(!BFBuild)
     return;
 
   for(int32_t i = 0; i < nVectors; i++) {
@@ -276,7 +276,7 @@ void BloomFilter::remove(unsigned e) {
 
 void BloomFilter::clear() {
 
-  if( !BFBuild )
+  if(!BFBuild)
     return;
 
   for(int32_t i = 0; i < nVectors; i++) {
@@ -291,7 +291,7 @@ void BloomFilter::clear() {
 
 bool BloomFilter::mayExist(unsigned e) {
 
-  if( !BFBuild )
+  if(!BFBuild)
     return true;
 
   for(int32_t i = 0; i < nVectors; i++) {
@@ -304,7 +304,7 @@ bool BloomFilter::mayExist(unsigned e) {
 
 bool BloomFilter::mayIntersect(BloomFilter &otherbf) {
 
-  if( !BFBuild  || !otherbf.BFBuild)
+  if(!BFBuild || !otherbf.BFBuild)
     return true;
 
   I(nVectors == otherbf.nVectors);
@@ -312,14 +312,14 @@ bool BloomFilter::mayIntersect(BloomFilter &otherbf) {
   for(int32_t i = 0; i < nVectors; i++) {
     I(vSize[i] == otherbf.vSize[i]);
   }
-#endif  
+#endif
 
   for(int32_t v = 0; v < nVectors; v++) {
     bool vectorInt = false;
     for(int32_t e = 0; e < vSize[v]; e++) {
       if((countVec[v][e] > 0) && (otherbf.countVec[v][e] > 0)) {
-  vectorInt = true;
-  break;
+        vectorInt = true;
+        break;
       }
     }
     if(!vectorInt) {
@@ -328,12 +328,12 @@ bool BloomFilter::mayIntersect(BloomFilter &otherbf) {
     }
   }
 
-  return true;  
+  return true;
 }
 
 void BloomFilter::mergeWith(BloomFilter &otherbf) {
 
-  if( !BFBuild || !otherbf.BFBuild)
+  if(!BFBuild || !otherbf.BFBuild)
     return;
 
   I(nVectors == otherbf.nVectors);
@@ -341,21 +341,21 @@ void BloomFilter::mergeWith(BloomFilter &otherbf) {
   for(int32_t i = 0; i < nVectors; i++) {
     I(vSize[i] == otherbf.vSize[i]);
   }
-#endif  
+#endif
 
   for(int32_t v = 0; v < nVectors; v++) {
     nonZeroCount[v] = 0;
     for(int32_t e = 0; e < vSize[v]; e++) {
       countVec[v][e] += otherbf.countVec[v][e];
       if(countVec[v][e] != 0)
-  nonZeroCount[v]++;
+        nonZeroCount[v]++;
     }
   }
 }
 
-void BloomFilter::subtract(BloomFilter &otherbf){
+void BloomFilter::subtract(BloomFilter &otherbf) {
 
-  if( !BFBuild || !otherbf.BFBuild)
+  if(!BFBuild || !otherbf.BFBuild)
     return;
 
   I(nVectors == otherbf.nVectors);
@@ -363,7 +363,7 @@ void BloomFilter::subtract(BloomFilter &otherbf){
   for(int32_t i = 0; i < nVectors; i++) {
     I(vSize[i] == otherbf.vSize[i]);
   }
-#endif  
+#endif
 
   for(int32_t v = 0; v < nVectors; v++) {
     nonZeroCount[v] = 0;
@@ -371,7 +371,7 @@ void BloomFilter::subtract(BloomFilter &otherbf){
       countVec[v][e] -= otherbf.countVec[v][e];
       I(countVec[v][e] >= 0);
       if(countVec[v][e] != 0)
-  nonZeroCount[v]++;
+        nonZeroCount[v]++;
     }
   }
 }
@@ -380,7 +380,7 @@ void BloomFilter::dump(const char *msg) {
 
   printf("%s:", msg);
 
-  if( !BFBuild ) {
+  if(!BFBuild) {
     printf("BF never built!\n");
     return;
   }
@@ -393,7 +393,7 @@ void BloomFilter::dump(const char *msg) {
 
 int32_t BloomFilter::getSize() {
 
-  if( !BFBuild )
+  if(!BFBuild)
     return 0;
 
   int32_t size = 0;
@@ -406,24 +406,24 @@ int32_t BloomFilter::getSize() {
 
 int32_t BloomFilter::getSizeRLE(int32_t base, int32_t runBits) {
 
-  if( !BFBuild )
+  if(!BFBuild)
     return 0;
 
   int32_t rleSize = 0;
   int32_t runSize = 0;
-  int32_t maxRun = (1 << runBits) - 1;
+  int32_t maxRun  = (1 << runBits) - 1;
 
   for(int32_t i = 0; i < nVectors; i++) {
     for(int32_t j = 0; j < vSize[i]; j++) {
       if(countVec[i][j] != base) {
-  if(runSize != 0) {
-    int32_t nRuns = (runSize / maxRun) + ((runSize % maxRun) > 0 ? 1 : 0);
-    rleSize += (1 + runBits) * nRuns;
-  }
-  rleSize++;
-  runSize = 0;
+        if(runSize != 0) {
+          int32_t nRuns = (runSize / maxRun) + ((runSize % maxRun) > 0 ? 1 : 0);
+          rleSize += (1 + runBits) * nRuns;
+        }
+        rleSize++;
+        runSize = 0;
       } else {
-  runSize++;
+        runSize++;
       }
     }
   }
@@ -432,7 +432,7 @@ int32_t BloomFilter::getSizeRLE(int32_t base, int32_t runBits) {
 
 bool BloomFilter::isSubsetOf(BloomFilter &otherbf) {
 
-  if( !BFBuild  || !otherbf.BFBuild)
+  if(!BFBuild || !otherbf.BFBuild)
     return true;
 
   I(nVectors == otherbf.nVectors);
@@ -440,12 +440,12 @@ bool BloomFilter::isSubsetOf(BloomFilter &otherbf) {
   for(int32_t i = 0; i < nVectors; i++) {
     I(vSize[i] == otherbf.vSize[i]);
   }
-#endif  
+#endif
 
   for(int32_t v = 0; v < nVectors; v++) {
     for(int32_t e = 0; e < vSize[v]; e++) {
       if(countVec[v][e] > otherbf.countVec[v][e]) {
-  return false;
+        return false;
       }
     }
   }
@@ -457,31 +457,25 @@ void BloomFilter::begin_dump_pychart(const char *bname) {
 
   char str[512];
 
-  sprintf(str,"%s.%d.py",bname, numDumps);
-   
+  sprintf(str, "%s.%d.py", bname, numDumps);
+
   numDumps++;
- 
 
-  dumpPtr = fopen(str,"w");
+  dumpPtr = fopen(str, "w");
 
-  fprintf(dumpPtr, 
-    "from pychart import *\n"
-    "import sys           \n\n"
-    "theme.get_options()  \n"
-    "can = canvas.default_canvas()\n"
-    "size = (300, 200)\n"
-    "ar = area.T(size = size, legend=None, y_range = (0, 2048),\n"
-          "            x_axis = axis.X(format=\"%%d\", label=\"Bank\"),\n"
-          "            y_axis = axis.Y(format=\"%%d\", label=\"Index\"))\n"
-    );
-
+  fprintf(dumpPtr, "from pychart import *\n"
+                   "import sys           \n\n"
+                   "theme.get_options()  \n"
+                   "can = canvas.default_canvas()\n"
+                   "size = (300, 200)\n"
+                   "ar = area.T(size = size, legend=None, y_range = (0, 2048),\n"
+                   "            x_axis = axis.X(format=\"%%d\", label=\"Bank\"),\n"
+                   "            y_axis = axis.Y(format=\"%%d\", label=\"Index\"))\n");
 }
 
 void BloomFilter::end_dump_pychart() {
 
-  fprintf(dumpPtr,
-    "ar.draw()\n"
-    );
+  fprintf(dumpPtr, "ar.draw()\n");
 
   fclose(dumpPtr);
   dumpPtr = NULL;
@@ -493,23 +487,21 @@ void BloomFilter::end_dump_pychart() {
 
 void BloomFilter::add_dump_line(unsigned e) {
 
-  fprintf(dumpPtr,
-    "ar.add_plot(line_plot.T(data=[ ");
+  fprintf(dumpPtr, "ar.add_plot(line_plot.T(data=[ ");
 
   for(int32_t i = 0; i < nVectors; i++) {
     int32_t idx = getIndex(e, i);
 
-    if( i==2 )
+    if(i == 2)
       idx *= 32;
-    
-    if(i != nVectors - 1) {
-      fprintf(dumpPtr,"[%d, %d],", i, idx);
-    } else {
-      fprintf(dumpPtr,"[%d, %d]", i, idx);
-    }
-  }  
 
-  
+    if(i != nVectors - 1) {
+      fprintf(dumpPtr, "[%d, %d],", i, idx);
+    } else {
+      fprintf(dumpPtr, "[%d, %d]", i, idx);
+    }
+  }
+
   fprintf(dumpPtr, " ]))\n\n");
 }
 
@@ -531,8 +523,8 @@ void BloomFilter::intersectionWith(BloomFilter &otherbf, BloomFilter &inter) {
   for(int32_t v = 0; v < nVectors; v++) {
     for(int32_t e = 0; e < vSize[v]; e++) {
       if(countVec[v][e] != 0 && otherbf.countVec[v][e] != 0) {
-  inter.countVec[v][e] = 1;
+        inter.countVec[v][e] = 1;
       }
-    }  
-  }  
+    }
+  }
 }

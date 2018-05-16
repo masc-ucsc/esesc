@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,10 +37,10 @@
 
 #include "nanassert.h"
 
-#include "GProcessor.h"
-#include "Pipeline.h"
 #include "FetchEngine.h"
+#include "GProcessor.h"
 #include "LSQ.h"
+#include "Pipeline.h"
 
 class GPUSMProcessor : public GProcessor {
 private:
@@ -49,14 +49,15 @@ private:
   int32_t     spaceInInstQueue;
   uint32_t    numSP;
 
-  LSQNone     lsq;
-  bool        busy;
+  LSQNone lsq;
+  bool    busy;
 
-  bool*       inst_perpe_percyc; //Only needed for the GPUSMProc
+  bool *inst_perpe_percyc; // Only needed for the GPUSMProc
 
   DInst **RAT;
 
   void fetch(FlowID fid);
+
 protected:
   ClusterManager clusterManager;
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
@@ -67,31 +68,27 @@ protected:
   // END VIRTUAL FUNCTIONS of GProcessor
 
 public:
-
   GPUSMProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~GPUSMProcessor();
 
-  LSQ *getLSQ() { return &lsq; }
+  LSQ *getLSQ() {
+    return &lsq;
+  }
   void replay(DInst *dinst);
 
-  bool isFlushing()
-  {
+  bool isFlushing() {
     return false;
   }
 
-  bool isReplayRecovering()
-  {
-    I(0);
-    return false;
-  }
-  
-  Time_t getReplayID()
-  {
+  bool isReplayRecovering() {
     I(0);
     return false;
   }
 
+  Time_t getReplayID() {
+    I(0);
+    return false;
+  }
 };
-
 
 #endif /* GPUSMProcessor_H_ */

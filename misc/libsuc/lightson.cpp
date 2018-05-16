@@ -1,16 +1,16 @@
 #include "lightson.h"
 
 Lightson::Lightson() {
-  count = 0;
+  count  = 0;
   schema = "";
-  str = "";
+  str    = "";
 }
 
 void Lightson::register_member(string name) {
   if(schema != "")
     schema += ",";
   schema += name;
-  count ++;
+  count++;
 }
 
 void Lightson::clear() {
@@ -22,7 +22,7 @@ void Lightson::push(int val) {
     str += ",";
   ostringstream s;
   s << val;
-  str += s.str(); 
+  str += s.str();
 }
 
 void Lightson::push(double val) {
@@ -30,13 +30,13 @@ void Lightson::push(double val) {
     str += ",";
   ostringstream s;
   s << val;
-  str += s.str(); 
+  str += s.str();
 }
 
 void Lightson::push(string val) {
   if(str != "")
     str += ",";
-  str += "\"" + val + "\""; 
+  str += "\"" + val + "\"";
 }
 
 string Lightson::get_schema() {
@@ -52,14 +52,14 @@ void Lightson::set_data(string s) {
 }
 
 int Lightson::pull_int() {
-  int out;
+  int          out;
   stringstream ss(pull_element());
   ss >> out;
   return out;
 }
 
 double Lightson::pull_double() {
-  double out;
+  double       out;
   stringstream ss(pull_element());
   ss >> out;
   return out;
@@ -70,12 +70,12 @@ string Lightson::pull_string() {
 }
 
 string Lightson::pull_element() {
-  int i;
+  int  i;
   bool f = true;
   for(i = 0; i < str.length() && f; i++) {
     if(str.at(i) == ',') {
       f = false;
-      i --;
+      i--;
     }
   }
   string out = str.substr(1, i - 2);

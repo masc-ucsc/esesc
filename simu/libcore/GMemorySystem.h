@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,28 +37,28 @@
 #ifndef GMEMORYSYSTEM_H
 #define GMEMORYSYSTEM_H
 
-#include "nanassert.h"
 #include "estl.h"
+#include "nanassert.h"
 
 class MemObj;
 
-//Class for comparison to be used in hashes of char * where the
-//content is to be compared
+// Class for comparison to be used in hashes of char * where the
+// content is to be compared
 class MemObjCaseeqstr {
- public:
-  inline bool operator()(const char* s1, const char* s2) const {
+public:
+  inline bool operator()(const char *s1, const char *s2) const {
     return strcasecmp(s1, s2) == 0;
   }
 };
 
 class MemoryObjContainer {
- private:
-  std::vector<MemObj *> mem_node;
+private:
+  std::vector<MemObj *>                   mem_node;
   typedef std::map<std::string, MemObj *> StrToMemoryObjMapper;
-  //typedef HASH_MAP<const char *, MemObj *, HASH<const char*>, MemObjCaseeqstr> StrToMemoryObjMapper;
+  // typedef HASH_MAP<const char *, MemObj *, HASH<const char*>, MemObjCaseeqstr> StrToMemoryObjMapper;
   StrToMemoryObjMapper intlMemoryObjContainer;
 
- public:
+public:
   void addMemoryObj(const char *device_name, MemObj *obj);
 
   MemObj *searchMemoryObj(const char *section, const char *name) const;
@@ -68,15 +68,14 @@ class MemoryObjContainer {
 };
 
 class GMemorySystem {
- private:
-
+private:
   typedef std::map<std::string, uint32_t> StrCounterType;
-  //typedef HASH_MAP<const char*, uint32_t, HASH<const char*>, MemObjCaseeqstr > StrCounterType;
+  // typedef HASH_MAP<const char*, uint32_t, HASH<const char*>, MemObjCaseeqstr > StrCounterType;
   static StrCounterType usedNames;
-  
+
   static MemoryObjContainer sharedMemoryObjContainer;
-  MemoryObjContainer *localMemoryObjContainer;
-  
+  MemoryObjContainer *      localMemoryObjContainer;
+
   const MemoryObjContainer *getMemoryObjContainer(bool shared) const {
     MemoryObjContainer *mo = shared ? &sharedMemoryObjContainer : localMemoryObjContainer;
     I(mo);
@@ -91,12 +90,12 @@ class GMemorySystem {
 
   static std::vector<std::string> MemObjNames;
 
-  MemObj   *DL1; // Data L1 cache
-  MemObj   *IL1; // Instruction L1 cache
-  MemObj   *pref; // Prefetcher
-  MemObj   *vpc; // Speculative virtual predictor cache
+  MemObj *DL1;  // Data L1 cache
+  MemObj *IL1;  // Instruction L1 cache
+  MemObj *pref; // Prefetcher
+  MemObj *vpc;  // Speculative virtual predictor cache
 
- protected:
+protected:
   const uint32_t coreId;
 
   char *buildUniqueName(const char *device_type);
@@ -107,7 +106,7 @@ class GMemorySystem {
 
   virtual MemObj *buildMemoryObj(const char *type, const char *section, const char *name);
 
- public:
+public:
   GMemorySystem(int32_t processorId);
   virtual ~GMemorySystem();
 
@@ -118,27 +117,41 @@ class GMemorySystem {
   MemObj *searchMemoryObj(bool shared, const char *section, const char *name) const;
   MemObj *searchMemoryObj(bool shared, const char *name) const;
 
-  
   MemObj *declareMemoryObj_uniqueName(char *name, char *device_descr_section);
   MemObj *declareMemoryObj(const char *block, const char *field);
-  MemObj *finishDeclareMemoryObj(std::vector<char *> vPars, char* name_suffix = NULL);
+  MemObj *finishDeclareMemoryObj(std::vector<char *> vPars, char *name_suffix = NULL);
 
+  uint32_t getNumMemObjs() {
+    return MemObjNames.size();
+  }
+  void addMemObjName(const char *name) {
+    MemObjNames.push_back(name);
+  }
+  std::string getMemObjName(uint32_t i) {
+    return MemObjNames[i];
+  }
 
-  uint32_t getNumMemObjs() { return MemObjNames.size(); }
-  void addMemObjName(const char *name) { MemObjNames.push_back(name); }
-  std::string getMemObjName(uint32_t i) { return MemObjNames[i]; }
-
-  uint32_t getCoreId() const  { return coreId;  };
-  MemObj *getDL1() const { return DL1; };
-  MemObj *getIL1() const { return IL1; };
-  MemObj *getvpc() const { return vpc; };
-  MemObj *getPrefetcher() const { return pref; };
+  uint32_t getCoreId() const {
+    return coreId;
+  };
+  MemObj *getDL1() const {
+    return DL1;
+  };
+  MemObj *getIL1() const {
+    return IL1;
+  };
+  MemObj *getvpc() const {
+    return vpc;
+  };
+  MemObj *getPrefetcher() const {
+    return pref;
+  };
 };
 
 class DummyMemorySystem : public GMemorySystem {
- private:
- protected:
- public:
+private:
+protected:
+public:
   DummyMemorySystem(int32_t coreId);
   ~DummyMemorySystem();
 };

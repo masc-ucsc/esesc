@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -34,43 +34,43 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include "SescConf.h"
-#include "MemorySystem.h"
 #include "UnMemXBar.h"
+#include "MemorySystem.h"
+#include "SescConf.h"
 /* }}} */
 
-UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *name)
-  /* constructor {{{1 */
-  : GXBar(section, name)
-{
-  MSG("building an UnMemXbar named:%s\n",name);
-  Xbar_unXbar_balance--; //decrement balance of XBars
-  lower_level = NULL; 
+UnMemXBar::UnMemXBar(MemorySystem *current, const char *section, const char *name)
+    /* constructor {{{1 */
+    : GXBar(section, name) {
+  MSG("building an UnMemXbar named:%s\n", name);
+  Xbar_unXbar_balance--; // decrement balance of XBars
+  lower_level = NULL;
 
   SescConf->isInt(section, "lowerLevelBanks");
-  SescConf->isPower2(section,"lowerLevelBanks");
+  SescConf->isPower2(section, "lowerLevelBanks");
 
   SescConf->isInt(section, "LineSize");
   SescConf->isInt(section, "Modfactor");
 
-  numLowerLevelBanks = SescConf->getInt(section, "lowerLevelBanks");    
+  numLowerLevelBanks = SescConf->getInt(section, "lowerLevelBanks");
   LineSize           = SescConf->getInt(section, "LineSize");
   Modfactor          = SescConf->getInt(section, "Modfactor");
 
-  if(Modfactor < numLowerLevelBanks){
-    printf("ERROR: UNXBAR: %s does not have a Modfactor(%d) bigger than the number of structures(%d) below it!\n",name,Modfactor,numLowerLevelBanks);
+  if(Modfactor < numLowerLevelBanks) {
+    printf("ERROR: UNXBAR: %s does not have a Modfactor(%d) bigger than the number of structures(%d) below it!\n", name, Modfactor,
+           numLowerLevelBanks);
     exit(1);
   }
 
 #ifdef OLD_CODE_TO_BE_PHASED_OUT
   std::vector<char *> vPars = SescConf->getSplitCharPtr(section, "lowerLevel");
-  size_t size = strlen(vPars[0]);
-  char *tmp = (char*)malloc(size + 6);
-  sprintf(tmp,"%s",vPars[1]);
-  lower_level = current->declareMemoryObj_uniqueName(tmp,vPars[0]);         
+  size_t              size  = strlen(vPars[0]);
+  char *              tmp   = (char *)malloc(size + 6);
+  sprintf(tmp, "%s", vPars[1]);
+  lower_level = current->declareMemoryObj_uniqueName(tmp, vPars[0]);
 #else
-  lower_level = current->declareMemoryObj(section,"lowerLevel");         
-  //Must have only one lower level!
+  lower_level = current->declareMemoryObj(section, "lowerLevel");
+  // Must have only one lower level!
 #endif
 
   addLowerLevel(lower_level);
@@ -79,39 +79,39 @@ UnMemXBar::UnMemXBar(MemorySystem* current ,const char *section ,const char *nam
 /* }}} */
 
 void UnMemXBar::doReq(MemRequest *mreq)
-  /* read if splitter above L1 (down) {{{1 */
+/* read if splitter above L1 (down) {{{1 */
 {
   router->scheduleReq(mreq);
 }
 /* }}} */
 
 void UnMemXBar::doReqAck(MemRequest *mreq)
-  /* req ack (up) {{{1 */
+/* req ack (up) {{{1 */
 {
   I(!mreq->isHomeNode());
 
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize,Modfactor,numLowerLevelBanks);
+  uint32_t pos = addrHash(mreq->getAddr(), LineSize, Modfactor, numLowerLevelBanks);
   router->scheduleReqAckPos(pos, mreq);
 }
 /* }}} */
 
 void UnMemXBar::doSetState(MemRequest *mreq)
-  /* setState (up) {{{1 */
-{  
-  uint32_t pos = addrHash(mreq->getAddr(),LineSize, Modfactor,numLowerLevelBanks);
+/* setState (up) {{{1 */
+{
+  uint32_t pos = addrHash(mreq->getAddr(), LineSize, Modfactor, numLowerLevelBanks);
   router->scheduleSetStatePos(pos, mreq);
 }
 /* }}} */
 
 void UnMemXBar::doSetStateAck(MemRequest *mreq)
-  /* setStateAck (down) {{{1 */
+/* setStateAck (down) {{{1 */
 {
   router->scheduleSetStateAck(mreq);
 }
 /* }}} */
 
 void UnMemXBar::doDisp(MemRequest *mreq)
-  /* disp (down) {{{1 */
+/* disp (down) {{{1 */
 {
   router->scheduleDisp(mreq);
 }
@@ -125,15 +125,15 @@ bool UnMemXBar::isBusy(AddrType addr) const
 /* }}} */
 
 TimeDelta_t UnMemXBar::ffread(AddrType addr)
-  /* fast forward reads {{{1 */
-{ 
+/* fast forward reads {{{1 */
+{
   return router->ffread(addr);
 }
 /* }}} */
 
 TimeDelta_t UnMemXBar::ffwrite(AddrType addr)
-  /* fast forward writes {{{1 */
-{ 
+/* fast forward writes {{{1 */
+{
   return router->ffwrite(addr);
 }
 /* }}} */

@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -35,91 +35,91 @@
 #ifndef TASKHANDER_H
 #define TASKHANDER_H
 
-//#define ENABLE_MP 0 
+//#define ENABLE_MP 0
 #include <vector>
 
-#include "nanassert.h"
 #include "EmulInterface.h"
+#include "nanassert.h"
 #include <pthread.h>
 
 class GProcessor;
 
 class TaskHandler {
-  private:
-    class EmulSimuMapping {
-      public:
-        FlowID         fid;
-        bool           active;
-        bool           deactivating;
-        EmulInterface *emul;
-        GProcessor    *simu;
-    };
-
-    typedef std::vector<EmulSimuMapping> AllMapsType;
-    typedef FlowID* runningType;
-
-    static AllMapsType allmaps;
-    static volatile bool terminate_all;
-
-    static runningType running;
-    static FlowID running_size;
-    static pthread_mutex_t mutex;
-
-    static std::vector<EmulInterface *>  emulas; // associated emula
-    static std::vector<GProcessor *>     cpus;   // All the CPUs in the system
-
-    static void removeFromRunning(FlowID fid);
+private:
+  class EmulSimuMapping {
   public:
+    FlowID         fid;
+    bool           active;
+    bool           deactivating;
+    EmulInterface *emul;
+    GProcessor *   simu;
+  };
 
-    static void freeze(FlowID fid, Time_t nCycles);
+  typedef std::vector<EmulSimuMapping> AllMapsType;
+  typedef FlowID *                     runningType;
 
-    static FlowID resumeThread(FlowID uid, FlowID last_fid);
-    static FlowID resumeThread(FlowID uid);
-    static void pauseThread(FlowID fid);
-    static void terminate();
+  static AllMapsType   allmaps;
+  static volatile bool terminate_all;
 
-    static void report(const char *str);
+  static runningType     running;
+  static FlowID          running_size;
+  static pthread_mutex_t mutex;
 
-    static void addEmul(EmulInterface *eint, FlowID fid = 0);
-    static void addEmulShared(EmulInterface *eint);
-    static void addSimu(GProcessor *gproc);
+  static std::vector<EmulInterface *> emulas; // associated emula
+  static std::vector<GProcessor *>    cpus;   // All the CPUs in the system
 
-    static bool isTerminated() {
-      return terminate_all;
-    }
+  static void removeFromRunning(FlowID fid);
 
-    static bool isActive(FlowID fid) {
-      I(fid<allmaps.size());
-      return allmaps[fid].active;
-    }
+public:
+  static void freeze(FlowID fid, Time_t nCycles);
 
-    static FlowID getNumActiveCores();
-    static FlowID getNumCores() { return allmaps.size(); }
+  static FlowID resumeThread(FlowID uid, FlowID last_fid);
+  static FlowID resumeThread(FlowID uid);
+  static void   pauseThread(FlowID fid);
+  static void   terminate();
 
-    static FlowID getNumCPUS() {
-			I(cpus.size()>0);
-      return cpus.size();
-    }
+  static void report(const char *str);
 
-    static EmulInterface *getEmul(FlowID fid) {
-      I(fid<emulas.size());
-      return emulas[fid];
-    };
+  static void addEmul(EmulInterface *eint, FlowID fid = 0);
+  static void addEmulShared(EmulInterface *eint);
+  static void addSimu(GProcessor *gproc);
 
-    static GProcessor *getSimu(FlowID fid) {
-      I(fid<cpus.size());
-      return cpus[fid];
-    };
+  static bool isTerminated() {
+    return terminate_all;
+  }
 
-    static void plugBegin();
-    static void plugEnd();
-    static void boot();
-    static void unboot();
-    static void unplug();
+  static bool isActive(FlowID fid) {
+    I(fid < allmaps.size());
+    return allmaps[fid].active;
+  }
 
-    static void syncStats();
+  static FlowID getNumActiveCores();
+  static FlowID getNumCores() {
+    return allmaps.size();
+  }
 
+  static FlowID getNumCPUS() {
+    I(cpus.size() > 0);
+    return cpus.size();
+  }
+
+  static EmulInterface *getEmul(FlowID fid) {
+    I(fid < emulas.size());
+    return emulas[fid];
+  };
+
+  static GProcessor *getSimu(FlowID fid) {
+    I(fid < cpus.size());
+    return cpus[fid];
+  };
+
+  static void plugBegin();
+  static void plugEnd();
+  static void boot();
+  static void unboot();
+  static void unplug();
+
+  static void syncStats();
 };
-
 
 #endif

@@ -29,11 +29,11 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "nanassert.h"
 
-#include "Reader.h"
-#include "GStats.h"
-#include "EmuDInstQueue.h"
 #include "DInst.h"
+#include "EmuDInstQueue.h"
 #include "FastQueue.h"
+#include "GStats.h"
+#include "Reader.h"
 
 #include "QEMUInterface.h"
 #include "ThreadSafeFIFO.h"
@@ -42,35 +42,35 @@ class DInst;
 
 class QEMUReader : public Reader {
 private:
-
-  pthread_t         qemu_thread;
-  FlowID            numFlows;
-  FlowID            numAllFlows;
-  static bool       started;
-  QEMUArgs         *qemuargs;
+  pthread_t   qemu_thread;
+  FlowID      numFlows;
+  FlowID      numAllFlows;
+  static bool started;
+  QEMUArgs *  qemuargs;
 
 public:
-	static void setStarted() {
-		started = true;
-	}
+  static void setStarted() {
+    started = true;
+  }
   QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint);
   virtual ~QEMUReader();
 
-  bool   populate(FlowID  fid);
-  DInst *peekHead(FlowID  fid);
-  DInst *executeHead(FlowID  fid);
+  bool   populate(FlowID fid);
+  DInst *peekHead(FlowID fid);
+  DInst *executeHead(FlowID fid);
   void   reexecuteTail(FlowID fid);
-  void   syncHeadTail(FlowID  fid);
+  void   syncHeadTail(FlowID fid);
 
   // Only method called by remote thread
-  void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2, bool keepStats);
+  void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2,
+                        bool keepStats);
   void syscall(uint32_t num, Time_t time, FlowID fid);
-  
+
   void start();
 
   // Whenever we have a change in statistics (mode), we should drain the queue
   // as much as possible
-  void drainFIFO(FlowID fid);
+  void     drainFIFO(FlowID fid);
   uint32_t wait_until_FIFO_full(FlowID fid);
 };
 

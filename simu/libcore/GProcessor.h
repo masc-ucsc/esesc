@@ -50,21 +50,20 @@
 
 #include "nanassert.h"
 
-#include "callback.h"
 #include "Cluster.h"
 #include "ClusterManager.h"
-#include "Instruction.h"
+#include "EmuSampler.h"
+#include "EmulInterface.h"
 #include "FastQueue.h"
 #include "GStats.h"
+#include "Instruction.h"
 #include "Pipeline.h"
-#include "EmulInterface.h"
-#include "EmuSampler.h"
+#include "callback.h"
 
-
-#include "Resource.h"
-#include "Snippets.h"
 #include "LSQ.h"
 #include "Prefetcher.h"
+#include "Resource.h"
+#include "Snippets.h"
 
 class GMemorySystem;
 class BPredictor;
@@ -75,173 +74,194 @@ class wavesnap;
 #endif
 
 class GProcessor {
-  private:
-  protected:
-    // Per instance data
-    const uint32_t cpu_id;
+private:
+protected:
+  // Per instance data
+  const uint32_t cpu_id;
 
-    const int32_t FetchWidth;
-    const int32_t IssueWidth;
-    const int32_t RetireWidth;
-    const int32_t RealisticWidth;
-    const int32_t InstQueueSize;
-    const size_t  MaxROBSize;
+  const int32_t FetchWidth;
+  const int32_t IssueWidth;
+  const int32_t RetireWidth;
+  const int32_t RealisticWidth;
+  const int32_t InstQueueSize;
+  const size_t  MaxROBSize;
 
-    FlowID   maxFlows;
-    EmulInterface   *eint;
-    GMemorySystem   *memorySystem;
+  FlowID         maxFlows;
+  EmulInterface *eint;
+  GMemorySystem *memorySystem;
 
-    StoreSet           storeset;
-    Prefetcher         prefetcher;
-    FastQueue<DInst *> rROB; // ready/retiring/executed ROB
-    FastQueue<DInst *> ROB;
+  StoreSet           storeset;
+  Prefetcher         prefetcher;
+  FastQueue<DInst *> rROB; // ready/retiring/executed ROB
+  FastQueue<DInst *> ROB;
 
-    // Updated by Processor or SMTProcessor. Shows the number of clocks
-    // that the processor have been active (fetch + exe engine)
-    ID(int32_t prevDInstID);
+  // Updated by Processor or SMTProcessor. Shows the number of clocks
+  // that the processor have been active (fetch + exe engine)
+  ID(int32_t prevDInstID);
 
-    uint32_t   smt; // 1...
-    uint32_t   smt_ctx; // 0... smt_ctx = cpu_id % smt
+  uint32_t smt;     // 1...
+  uint32_t smt_ctx; // 0... smt_ctx = cpu_id % smt
 
-    bool       active;
+  bool active;
 
-    // BEGIN  Statistics
-    //
-    GStatsCntr *nStall[MaxStall];
-    GStatsCntr *nInst[iMAX];
+  // BEGIN  Statistics
+  //
+  GStatsCntr *nStall[MaxStall];
+  GStatsCntr *nInst[iMAX];
 
-    // OoO Stats
-    GStatsAvg  rrobUsed;
-    GStatsAvg  robUsed;
-    GStatsAvg  nReplayInst;
-    GStatsCntr nCommitted; // committed instructions
+  // OoO Stats
+  GStatsAvg  rrobUsed;
+  GStatsAvg  robUsed;
+  GStatsAvg  nReplayInst;
+  GStatsCntr nCommitted; // committed instructions
 
-    // "Lack of Retirement" Stats
-    GStatsCntr noFetch;
-    GStatsCntr noFetch2;
+  // "Lack of Retirement" Stats
+  GStatsCntr noFetch;
+  GStatsCntr noFetch2;
 
-    GStatsCntr   nFreeze;
-    GStatsCntr   clockTicks;
+  GStatsCntr nFreeze;
+  GStatsCntr clockTicks;
 
-    static Time_t       lastWallClock;
-    Time_t              lastUpdatedWallClock;
-    Time_t              activeclock_start;
-    Time_t              activeclock_end;
-    static GStatsCntr   *wallClock;
+  static Time_t      lastWallClock;
+  Time_t             lastUpdatedWallClock;
+  Time_t             activeclock_start;
+  Time_t             activeclock_end;
+  static GStatsCntr *wallClock;
 
-    // END Statistics
-    float        throttlingRatio;
-    uint32_t     throttling_cntr;
+  // END Statistics
+  float    throttlingRatio;
+  uint32_t throttling_cntr;
 
-    uint64_t     lastReplay;
+  uint64_t lastReplay;
 
-    // Construction
-    void buildInstStats(GStatsCntr *i[iMAX], const char *txt);
-    void buildUnit(const char *clusterName, GMemorySystem *ms, Cluster *cluster, InstOpcode type);
-    void buildCluster(const char *clusterName, GMemorySystem * ms);
-    void buildClusters(GMemorySystem *ms);
+  // Construction
+  void buildInstStats(GStatsCntr *i[iMAX], const char *txt);
+  void buildUnit(const char *clusterName, GMemorySystem *ms, Cluster *cluster, InstOpcode type);
+  void buildCluster(const char *clusterName, GMemorySystem *ms);
+  void buildClusters(GMemorySystem *ms);
 
-    GProcessor(GMemorySystem *gm, CPU_t i);
-    int32_t issue(PipeQueue &pipeQ);
+  GProcessor(GMemorySystem *gm, CPU_t i);
+  int32_t issue(PipeQueue &pipeQ);
 
-    virtual void retire();
+  virtual void retire();
 
-    virtual void fetch(FlowID fid) = 0;
-    virtual StallCause addInst(DInst *dinst) = 0;
-  public:
+  virtual void       fetch(FlowID fid)     = 0;
+  virtual StallCause addInst(DInst *dinst) = 0;
 
+public:
 #ifdef WAVESNAP_EN
-    wavesnap *snap;
+  wavesnap *snap;
 #endif
-    virtual ~GProcessor();
-    int getID() const { return cpu_id; }
-    GStatsCntr *getnCommitted() { return &nCommitted;}
+  virtual ~GProcessor();
+  int getID() const {
+    return cpu_id;
+  }
+  GStatsCntr *getnCommitted() {
+    return &nCommitted;
+  }
 
-    GMemorySystem *getMemorySystem() const { return memorySystem; }
-    virtual void executing(DInst *dinst) = 0;
-    virtual void executed(DInst *dinst) = 0;
-    virtual LSQ *getLSQ() = 0;
-    virtual bool isFlushing() = 0;
-    virtual bool isReplayRecovering() = 0;
-    virtual Time_t getReplayID() = 0;
+  GMemorySystem *getMemorySystem() const {
+    return memorySystem;
+  }
+  virtual void   executing(DInst *dinst) = 0;
+  virtual void   executed(DInst *dinst)  = 0;
+  virtual LSQ *  getLSQ()                = 0;
+  virtual bool   isFlushing()            = 0;
+  virtual bool   isReplayRecovering()    = 0;
+  virtual Time_t getReplayID()           = 0;
 
-    virtual void replay(DInst *target) { };// = 0;
+  virtual void replay(DInst *target){}; // = 0;
 
-    bool isROBEmpty() const { return(ROB.empty() && rROB.empty()); }
-    int getROBsize() const { return(ROB.size() + rROB.size()); }
-    void drain() {
-      retire();
-    }
+  bool isROBEmpty() const {
+    return (ROB.empty() && rROB.empty());
+  }
+  int getROBsize() const {
+    return (ROB.size() + rROB.size());
+  }
+  void drain() {
+    retire();
+  }
 
-    // Returns the maximum number of flows this processor can support
-    FlowID getMaxFlows(void) const { return maxFlows; }
+  // Returns the maximum number of flows this processor can support
+  FlowID getMaxFlows(void) const {
+    return maxFlows;
+  }
 
-    void report(const char *str);
+  void report(const char *str);
 
-    // Different types of cores extend this function. See SMTProcessor and
-    // Processor.
-    virtual bool advance_clock(FlowID fid) = 0;
+  // Different types of cores extend this function. See SMTProcessor and
+  // Processor.
+  virtual bool advance_clock(FlowID fid) = 0;
 
-    void setEmulInterface(EmulInterface *e) {
-      eint = e;
-    }
+  void setEmulInterface(EmulInterface *e) {
+    eint = e;
+  }
 
-    void freeze(Time_t nCycles) {
-      nFreeze.add(nCycles);
-      clockTicks.add(nCycles);
-    }
+  void freeze(Time_t nCycles) {
+    nFreeze.add(nCycles);
+    clockTicks.add(nCycles);
+  }
 
-    void setActive() {
-      active = true;
-    }
-    void clearActive() {
-      I(isROBEmpty());
-      active = false;
-    }
-    bool isActive() const { return active; }
+  void setActive() {
+    active = true;
+  }
+  void clearActive() {
+    I(isROBEmpty());
+    active = false;
+  }
+  bool isActive() const {
+    return active;
+  }
 
-    void setWallClock(bool en=true) {
+  void setWallClock(bool en = true) {
 
-//FIXME: Periods of no fetch do not advance clock. 
+    // FIXME: Periods of no fetch do not advance clock.
 
-      trackactivity();
+    trackactivity();
 
-      if (lastWallClock == globalClock || !en)
-        return;
+    if(lastWallClock == globalClock || !en)
+      return;
 
-      lastWallClock = globalClock;
-      wallClock->inc(en);
-    }
-    static Time_t getWallClock() { return lastWallClock; }
+    lastWallClock = globalClock;
+    wallClock->inc(en);
+  }
+  static Time_t getWallClock() {
+    return lastWallClock;
+  }
 
-    void trackactivity(){
-      if (activeclock_end == (lastWallClock-1)){
-      } else {
-        if (activeclock_start != activeclock_end) {
-        //MSG("\nCPU[%d]\t%lld\t%lld\n"
+  void trackactivity() {
+    if(activeclock_end == (lastWallClock - 1)) {
+    } else {
+      if(activeclock_start != activeclock_end) {
+        // MSG("\nCPU[%d]\t%lld\t%lld\n"
         //    ,cpu_id
         //    ,(long long int) activeclock_start
         //    ,(long long int) activeclock_end
         //    );
-        }
-        activeclock_start =  lastWallClock;
       }
-      activeclock_end = lastWallClock;
+      activeclock_start = lastWallClock;
     }
+    activeclock_end = lastWallClock;
+  }
 
-    void dumpactivity(){
-      //MSG("\nCPU[%d]\t%lld\t%lld\n"
-      //    ,cpu_id
-      //    ,(long long int) activeclock_start
-      //    ,(long long int) activeclock_end
-      //   );
-    }
+  void dumpactivity() {
+    // MSG("\nCPU[%d]\t%lld\t%lld\n"
+    //    ,cpu_id
+    //    ,(long long int) activeclock_start
+    //    ,(long long int) activeclock_end
+    //   );
+  }
 
-    StoreSet *getSS() { return &storeset; }
-    Prefetcher *getPrefetcher() { return &prefetcher; }
+  StoreSet *getSS() {
+    return &storeset;
+  }
+  Prefetcher *getPrefetcher() {
+    return &prefetcher;
+  }
 
-    float getTurboRatio() { return EmuSampler::getTurboRatio(); };
-
+  float getTurboRatio() {
+    return EmuSampler::getTurboRatio();
+  };
 };
 
-#endif   // GPROCESSOR_H
+#endif // GPROCESSOR_H

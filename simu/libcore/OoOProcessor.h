@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -39,12 +39,12 @@
 
 #include "nanassert.h"
 
-#include "callback.h"
+#include "CodeProfile.h"
+#include "FastQueue.h"
+#include "FetchEngine.h"
 #include "GOoOProcessor.h"
 #include "Pipeline.h"
-#include "FetchEngine.h"
-#include "FastQueue.h"
-#include "CodeProfile.h"
+#include "callback.h"
 
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
@@ -57,8 +57,8 @@ private:
     Time_t r_dinst_ID;
     Time_t dinst_ID;
     DInst *r_dinst;
-    DInst *dinst;    
-    bool operator==(const RetireState& a) const {
+    DInst *dinst;
+    bool   operator==(const RetireState &a) const {
       return a.committed == committed;
     };
     RetireState() {
@@ -69,54 +69,55 @@ private:
       dinst      = 0;
     }
   };
-  
-  const bool MemoryReplay;
+
+  const bool    MemoryReplay;
   const int32_t RetireDelay;
-  
+
   FetchEngine IFID;
   PipeQueue   pipeQ;
   LSQFull     lsq;
 
-  uint32_t  serialize_level;
-  uint32_t  serialize;
-  uint32_t  serialize_for;
-  uint32_t  forwardProg_threshold;
-  DInst    *last_serialized;
-  DInst    *last_serializedST;
+  uint32_t serialize_level;
+  uint32_t serialize;
+  uint32_t serialize_for;
+  uint32_t forwardProg_threshold;
+  DInst *  last_serialized;
+  DInst *  last_serializedST;
 
   int32_t spaceInInstQueue;
-  DInst   *RAT[LREG_MAX];
-  int32_t  nTotalRegs;
+  DInst * RAT[LREG_MAX];
+  int32_t nTotalRegs;
 
-  DInst   *serializeRAT[LREG_MAX];
+  DInst *  serializeRAT[LREG_MAX];
   RegType  last_serializeLogical;
   AddrType last_serializePC;
 
-  bool busy;
-  bool replayRecovering;
-  bool getStatsFlag;
+  bool   busy;
+  bool   replayRecovering;
+  bool   getStatsFlag;
   Time_t replayID;
-  bool flushing;
+  bool   flushing;
 
   FlowID flushing_fid;
 
-  RetireState last_state;
-  void retire_lock_check();
-  bool scooreMemory;
+  RetireState                                                           last_state;
+  void                                                                  retire_lock_check();
+  bool                                                                  scooreMemory;
   StaticCallbackMember0<OoOProcessor, &OoOProcessor::retire_lock_check> retire_lock_checkCB;
 
   void fetch(FlowID fid);
+
 protected:
   ClusterManager clusterManager;
 
   GStatsAvg avgFetchWidth;
 #ifdef TRACK_TIMELEAK
-  GStatsAvg avgPNRHitLoadSpec;
+  GStatsAvg  avgPNRHitLoadSpec;
   GStatsHist avgPNRMissLoadSpec;
 #endif
 #ifdef TRACK_FORWARDING
-  GStatsAvg avgNumSrc;
-  GStatsAvg avgNumDep;
+  GStatsAvg  avgNumSrc;
+  GStatsAvg  avgNumDep;
   Time_t     fwdDone[LREG_MAX];
   GStatsCntr fwd0done0;
   GStatsCntr fwd1done0;
@@ -129,9 +130,9 @@ protected:
   double      codeProfile_trigger;
 
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
-  bool advance_clock(FlowID fid);
+  bool       advance_clock(FlowID fid);
   StallCause addInst(DInst *dinst);
-  void retire();
+  void       retire();
 
   // END VIRTUAL FUNCTIONS of GProcessor
 public:
@@ -140,16 +141,25 @@ public:
 
   void executing(DInst *dinst);
   void executed(DInst *dinst);
-  LSQ *getLSQ() { return &lsq; }
+  LSQ *getLSQ() {
+    return &lsq;
+  }
   void replay(DInst *target);
-  bool isFlushing() {return flushing;}
-  bool isReplayRecovering() {return replayRecovering;}
-  Time_t getReplayID() {return replayID;}
+  bool isFlushing() {
+    return flushing;
+  }
+  bool isReplayRecovering() {
+    return replayRecovering;
+  }
+  Time_t getReplayID() {
+    return replayID;
+  }
 
   void dumpROB();
 
-  bool isSerializing() const { return serialize_for!=0; }
-
+  bool isSerializing() const {
+    return serialize_for != 0;
+  }
 };
 
 #endif

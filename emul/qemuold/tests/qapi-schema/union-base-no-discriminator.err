@@ -1,1 +1,0 @@
-tests/qapi-schema/union-base-no-discriminator.json:11: Union 'TestUnion' requires a discriminator to go along with base
