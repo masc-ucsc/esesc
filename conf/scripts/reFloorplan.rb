@@ -1,6 +1,6 @@
 #!/usr/bin/ruby -i
 #
-# A wrapper for the floorplanner 
+# A wrapper for the floorplanner
 # By Ehsan K. Ardestani
 
 if ARGV.size != 3

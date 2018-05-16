@@ -31,6 +31,6 @@ while line_txt = gets do
 
   last_op   = op
   last_line = line_txt
-  
+
 end
 

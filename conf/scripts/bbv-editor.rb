@@ -40,9 +40,9 @@ simpointBin = "/mada/users/gsouther/tools/simpoint/SimPoint.3.2/bin/simpoint"
 benchName = options[:bench]
 
 #SescConf doesn't like periods so we need to get rid of them
-re1='(\\d+)'	
-re2='.*?'	
-re3='((?:[a-z][a-z0-9_]*))'	
+re1='(\\d+)'
+re2='.*?'
+re3='((?:[a-z][a-z0-9_]*))'
 re=(re1+re2+re3)
 benchRegex = Regexp.new(re,Regexp::IGNORECASE)
 benchMatch = benchRegex.match(benchName)
@@ -66,10 +66,10 @@ outFile.close()
 #Execute simpoint binary
 command = simpointBin + " -saveSimpointWeights " + benchName + "-100m.weights" +
   " -saveSimpoints " + benchName + "-100m.simpoints" +
-  " -saveLabels " + benchName + "-100m.labels" + 
+  " -saveLabels " + benchName + "-100m.labels" +
   " -numInitSeeds 1" +
-  " -loadFVFile " + benchName + "-100b.bbv" + " -maxK 10" 
- 
+  " -loadFVFile " + benchName + "-100b.bbv" + " -maxK 10"
+
 puts "Running simpoint"
 output = `#{command}`
 

@@ -39,5 +39,5 @@ docker run  \
   --tty=true \
   --privileged=true \
   ${DOCKER_IMAGE} \
-  bin/bash 
+  bin/bash
 

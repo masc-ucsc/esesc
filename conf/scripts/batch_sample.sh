@@ -1,5 +1,5 @@
 #!/bin/sh
-#$ -S /bin/sh 
+#$ -S /bin/sh
 #$ -m es
 #$ -M renau@soe.ucsc.edu
 #$ -cwd

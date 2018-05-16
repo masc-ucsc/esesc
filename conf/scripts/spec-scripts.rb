@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-# This script is used for generating files to run SPEC CPU2000 and CPU2006 
+# This script is used for generating files to run SPEC CPU2000 and CPU2006
 # benchmarks with eSESC.  You can set default values for some of the
 # parameters by configuring enviornment variables in your .bashrc file
 #
@@ -19,15 +19,15 @@ THERM_TT = 363.15 # Thermal throttling threshold 90C HP
 THERM_TTLP = 348.15 # Thermal throttling threshold 75 LP
 
 ### Set default options ####
-options = Hash.new 
+options = Hash.new
 options[:benchmarks] =[]
 options[:email] = ENV['ESESC_SCRIPT_EMAIL']
-options[:esescConf] = ENV['ESESC_SCRIPT_CONF'] 
+options[:esescConf] = ENV['ESESC_SCRIPT_CONF']
 options[:specDir] =  ENV['ESESC_SCRIPT_SPECDIR']
-options[:thermFF] = 1 
-options[:thermTT] = 0 # no throttling at all 
-options[:maxSimedTime] = 90 # seconds 
-options[:stackSize] = "unspecified" 
+options[:thermFF] = 1
+options[:thermTT] = 0 # no throttling at all
+options[:maxSimedTime] = 90 # seconds
+options[:stackSize] = "unspecified"
 options[:OOOxmlLoc] = ENV['ESESC_SCRIPT_OOOXML']
 options[:esescExe] = ENV['ESESC_SCRIPT_ESESCEXE']
 
@@ -67,21 +67,21 @@ optparse = OptionParser.new do |opts|
   opts.on("-m mode","--mode mode","sampling mode to use") do |mode|
     options[:samplerMode] = mode
   end
-  
+
   opts.on("-c conf_file","--conf conf_file","specify location of conf file to use") do |conf|
     options[:esescConf] = conf
   end
 
   opts.on("-d specDir","--specDir specDir","specify location of SPEC CPU benchmarks") do |dir|
     options[:specDir] = dir
-  end   
+  end
 
   opts.on("-x esesc-exe","--exe esesc_exe","specify location of esesc executable") do |exe|
     options[:esescExe] = exe
   end
 
   opts.on("-v jobname","--extra","extra variable to append to the name of the job") do |jobname|
-    options[:jobname] = "-" + jobname 
+    options[:jobname] = "-" + jobname
   end
 
   opts.on("-f thermff","--thermff","fast fowarding for thermal sampling") do |thermFF|
@@ -101,9 +101,9 @@ optparse = OptionParser.new do |opts|
   end
 
   opts.on("-p enablePower","--enablePower","setting for whether power/thermal should be run") do |enablePower|
-    options[:enablePower] = enablePower 
+    options[:enablePower] = enablePower
   end
-  
+
   opts.on("-z labelDir","--labelFile","specify location of label files") do |labelDir|
     options[:labelDir] = labelDir
   end
@@ -127,7 +127,7 @@ optparse = OptionParser.new do |opts|
   opts.on("-q qemuExe","--qemu-exe","location of qemu executable for emulation only") do |qemuExe|
     options[:qemuExe] = qemuExe
   end
-  
+
   opts.on("-g postfix","--post-fix","postfix to benchmark binaries") do |postfix|
     options[:postfix] = postfix
   end
@@ -155,7 +155,7 @@ def coskunScript(options,benchName,baseName,spointSection)
 
   scriptFile = File.new((benchName + "-coskun.sh"),"w")
   benchDir = Dir.getwd + "/" + benchName
-  
+
   ## Commands for qsub
   scriptFile.puts('#!/bin/sh ' + "\n" +
                   '#$ -S /bin/sh' + "\n" +
@@ -163,7 +163,7 @@ def coskunScript(options,benchName,baseName,spointSection)
                   '#$ -M ' + options[:email] + "\n" +
                   '#$ -cwd' + "\n" +
                   '#$ -o ' + baseName + ".log \n" +
-                  '#$ -e ' + baseName + ".err \n" + 
+                  '#$ -e ' + baseName + ".err \n" +
                   '#$ -N ' + baseName + options[:jobname] + "\n\n")
 
 
@@ -176,7 +176,7 @@ def coskunScript(options,benchName,baseName,spointSection)
 
 
   #labelFile = options[:labelDir] + "/" + benchName + "/" + benchName + "-100m.labels"
-  labelFile = Dir.glob(options[:labelDir] + benchName + "/" + "*_labels") 
+  labelFile = Dir.glob(options[:labelDir] + benchName + "/" + "*_labels")
   if(File.exist?(labelFile.to_s))
     labelFile = File.expand_path(labelFile.to_s)
   else
@@ -187,7 +187,7 @@ def coskunScript(options,benchName,baseName,spointSection)
   if(options[:powerSuffix].nil?)
     options[:powerSuffix] = ""
   end
- 
+
   if(options[:thermDir].nil?)
     puts "ERROR: did not specify location of power files"
     exit(1)
@@ -202,14 +202,14 @@ def coskunScript(options,benchName,baseName,spointSection)
     puts "ERROR: problem with leakage file: " + leakageFile
     exit(1)
   end
-  
+
   deviceFile = Dir.glob(thermDir + "/deviceTypes_esesc_" + baseName + options[:powerSuffix] + ".*")
   if(deviceFile.length != 1)
     puts "ERROR: problem with device file: " + deviceFile
     exit(1)
   end
 
-  scriptFile.puts(options[:thermmain] + 
+  scriptFile.puts(options[:thermmain] +
                   " -c " + options[:esescConf] +
                   " -s " + labelFile +
                   " -t " + "esesc_" + baseName + options[:powerSuffix] +
@@ -217,21 +217,21 @@ def coskunScript(options,benchName,baseName,spointSection)
                   " -l " + leakageFile[0] +
                   " -d " + deviceFile[0] +
                   " -m " + spointSection)
-  
+
   scriptFile.puts("exit 0")
   scriptFile.chmod(0755)
   scriptFile.close
-  
+
 end
 
 ######################################
 ### Function to create script file ###
 ######################################
 def writeScript(options,benchName,version,exeArgs,input)
- 
-  re1='(\\d+)'	
-  re2='.*?'	
-  re3='((?:[a-z][a-z0-9_]*))'	
+
+  re1='(\\d+)'
+  re2='.*?'
+  re3='((?:[a-z][a-z0-9_]*))'
   re=(re1+re2+re3)
   benchRegex = Regexp.new(re,Regexp::IGNORECASE)
   benchMatch = benchRegex.match(benchName)
@@ -264,12 +264,12 @@ def writeScript(options,benchName,version,exeArgs,input)
   else
     benchSampler = options[:samplerMode]
   end
- 
+
   stackSize = ""
   if(options[:stackSize].to_s != "unspecified" )
     stackSize = "-s " + options[:stackSize].to_s + " "
   end
- 
+
   if(exeArgs != "")
     exeArgs = " " + exeArgs
   end
@@ -279,7 +279,7 @@ def writeScript(options,benchName,version,exeArgs,input)
   benchDir = Dir.getwd + "/" + benchName
   if(benchSampler != 'qemu')
    scriptFile = File.new((benchName + "-run.sh"),"w")
-  
+
     ## Commands for qsub
     scriptFile.puts('#!/bin/sh ' + "\n" +
                     '#$ -S /bin/sh' + "\n" +
@@ -287,16 +287,16 @@ def writeScript(options,benchName,version,exeArgs,input)
                     '#$ -M ' + options[:email] + "\n" +
                     '#$ -cwd' + "\n" +
                     '#$ -o ' + benchSuffix + ".log \n" +
-                    '#$ -e ' + benchSuffix + ".err \n" + 
+                    '#$ -e ' + benchSuffix + ".err \n" +
                     '#$ -N ' + benchSuffix + options[:jobname] + "\n\n")
 
     scriptFile.puts('if [ ! -d "' + benchDir + '" ]; then' + "\n" +
                     "  mkdir " + benchDir + "\n" +
                     "fi \n")
     scriptFile.puts("cd " + benchDir)
-    
+
     scriptFile.puts("cp -f " + options[:OOOxmlLoc] + " .")
-    
+
     inputpath = options[:inputPath]
     if(inputpath==nil)
       inputpath = specDir + "input/"
@@ -315,8 +315,8 @@ def writeScript(options,benchName,version,exeArgs,input)
     scriptFile.puts("exit 0")
     scriptFile.chmod(0755)
     scriptFile.close
-  
-  ### Script for running with QEMU emulation mode only 
+
+  ### Script for running with QEMU emulation mode only
   else
     if(options[:qemuExe].nil?)
       puts "ERROR: qemu executable not specified"
@@ -329,14 +329,14 @@ def writeScript(options,benchName,version,exeArgs,input)
                  '#$ -M ' + options[:email] + "\n" +
                  '#$ -cwd' + "\n" +
                  '#$ -o ' + benchSuffix + ".log \n" +
-                 '#$ -e ' + benchSuffix + ".err \n" + 
+                 '#$ -e ' + benchSuffix + ".err \n" +
                  '#$ -N ' + benchSuffix + options[:jobname] + "\n\n")
     qemuRun.puts('if [ ! -d "' + benchDir + '" ]; then' + "\n" +
                  "  mkdir " + benchDir + "\n" +
                  "fi \n")
     qemuRun.puts("cd " + benchDir)
     qemuRun.puts("cp -rf " + specDir + "input/" + benchName + '/* .')
-    qemuRun.puts("cp -f " + specDir + "exe/" + benchExe + " .")    
+    qemuRun.puts("cp -f " + specDir + "exe/" + benchExe + " .")
     qemuRun.puts(options[:qemuExe] + " " + benchExe + exeArgs + " " + input)
     qemuRun.puts("exit 0")
     qemuRun.chmod(0755)
@@ -348,7 +348,7 @@ end
 # Parse command line options
 optparse.parse!
 
-# Check that parameters are valid 
+# Check that parameters are valid
 if(options[:jobname].nil?)
   options[:jobname] = ""
 end
@@ -365,7 +365,7 @@ end
 
 if((options[:esescConf])!=nil)
   if(File.exists?(options[:esescConf]))
-    options[:esescConf] = File.expand_path(options[:esescConf]) 
+    options[:esescConf] = File.expand_path(options[:esescConf])
   else
     puts "ERROR: configuration file '#{options[:esescConf]}' not found"
     exit(1)
@@ -380,17 +380,17 @@ end
 
 puts "Generating scripts using the following parameters"
 puts "-----------------------------------"
-options.each_pair { |key,value| 
+options.each_pair { |key,value|
   if  value.nil?
     puts "ERROR: need to specify value for #{key}"
     exit(1)
   end
   if(!value.is_a?(Array))
-    puts "paramter type is #{value.class}  parameter '#{key}' is: '#{value}'" 
+    puts "paramter type is #{value.class}  parameter '#{key}' is: '#{value}'"
   end
 }
 puts "-----------------------------------"
-   
+
 #### CPU2000 benchmarks ####
 cintBenchmarks00 = Array.[]("164.gzip","175.vpr","176.gcc","179.art","181.mcf","186.crafty","197.parser",
                          "252.eon","256.bzip2","300.twolf")
@@ -421,18 +421,18 @@ armall06 = Array.[]("473.astar","401.bzip2","445.gobmk","456.hmmer","437.leslie3
 #tsampleSet06 = Array.[]("403.gcc", "458.sjeng", "433.milc", "429.mcf","447.dealII", #varied
 tsampleSet06 = Array.[]("403.gcc", "433.milc", "429.mcf","447.dealII", #varied
 										 	"400.perlbench", "450.soplex" , "473.astar", "453.povray",  #smooth
-										  "444.namd" , "464.h264ref") 
+										  "444.namd" , "464.h264ref")
 tsampleVSet06 = Array.[]("403.gcc", "458.sjeng", "433.milc", "429.mcf","447.dealII") #varied
 tsampleSSet06 = Array.[]("400.perlbench", "450.soplex" , "473.astar", "453.povray",  #smooth
-										  "444.namd" , "464.h264ref") 
+										  "444.namd" , "464.h264ref")
 
 all = cintBenchmarks00 + cfpBenchmarks00 + cintBenchmarks06 + cfpBenchmarks06
 
 #### CPU benchmarks for mixed workloads (with GPU apps) #####
 
-gpumix = Array.[]("173.applu", "179.art", "401.bzip2","186.crafty","183.equake", 
+gpumix = Array.[]("173.applu", "179.art", "401.bzip2","186.crafty","183.equake",
                   "254.gap","176.gcc","164.gzip","189.lucas","181.mcf","177.mesa",
-                  "172.mgrid", "197.parser","253.perlbmk","171.swim", "300.twolf", 
+                  "172.mgrid", "197.parser","253.perlbmk","171.swim", "300.twolf",
                   "168.wupwise")
 
 ## Set benchmarks to run
@@ -446,7 +446,7 @@ options[:benchmarks] = case options[:benchmarks][0]
   when "tsample-cpu2000v"  then tsampleVSet00
   when "tsample-cpu2000s"  then tsampleSSet00
   when "tsample"           then tsampleSet00 + tsampleSet06
-#  when "gpumix"            then gpumix 
+#  when "gpumix"            then gpumix
   when "all"               then all
   else options[:benchmarks] = options[:benchmarks]
 end
@@ -478,7 +478,7 @@ options[:benchmarks].each do |benchmark|
       writeScript(options,benchmark,2000,"input.source 58","")
     when "300.twolf"
       writeScript(options,benchmark,2000,"ref","")
-      
+
     ### SPEC CFP 2000 that are working
     when "168.wupwise"
       writeScript(options,benchmark,2000,"","")
@@ -491,7 +491,7 @@ options[:benchmarks].each do |benchmark|
     when "177.mesa"
       writeScript(options,benchmark,2000,"-frames 1000 -meshfile mesa.in -ppmfile mesa.ppm","")
     when "178.galgel"
-      writeScript(options,benchmark,2000,"","< galgel.in") 
+      writeScript(options,benchmark,2000,"","< galgel.in")
     when "179.art"
       writeScript(options,benchmark,2000,"-scanfile c756hel.in -trainfile1 a10.img -trainfile2 hc.img -stride 2 -startx 110 -starty 200 -endx 160 -endy 240 -objects 10","")
     when "183.equake"
@@ -505,7 +505,7 @@ options[:benchmarks].each do |benchmark|
     when "191.fma3d"
       writeScript(options,benchmark,2000,"","")
     when "200.sixtrack"
-      writeScript(options,benchmark,2000,"","< inp.in") 
+      writeScript(options,benchmark,2000,"","< inp.in")
     when "301.apsi"
       writeScript(options,benchmark,2000,"","")
 
@@ -532,7 +532,7 @@ options[:benchmarks].each do |benchmark|
       writeScript(options,benchmark,2006,"omnetpp.ini","")
     when "473.astar"
       writeScript(options,benchmark,2006,"BigLakes2048.cfg","")
-    
+
     ### SPEC CFP 2006 that are working
     when "410.bwaves"
       writeScript(options,benchmark,2006,"","")

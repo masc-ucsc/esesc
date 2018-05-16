@@ -16,9 +16,9 @@ ARGV.each do |file|
      next
   end
   next if file =~ /^-/
-  
+
   File.open(file) do |fd|
-    
+
     f = File.basename(file).split(/_/)
     bench  = f[0]
 

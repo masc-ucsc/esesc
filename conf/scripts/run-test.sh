@@ -34,7 +34,7 @@ cp ${ESESC_SRC}/bins/inputs/* .
 #ls -a
 #pwd
 #sleep 2
-#../main/esesc 
+#../main/esesc
 
 if [ $? -eq '0' ]; then
   ${ESESC_SRC}/conf/scripts/report.pl -last
