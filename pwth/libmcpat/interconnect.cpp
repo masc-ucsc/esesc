@@ -57,6 +57,7 @@ interconnect::interconnect(string name_, double base_w, double base_h, int data_
     : name(name_)
     , in_rise_time(0)
     , out_rise_time(0)
+    , l_ip(*configure_interface)
     , base_width(base_w)
     , base_height(base_h)
     , data_width(data_w)
@@ -68,7 +69,6 @@ interconnect::interconnect(string name_, double base_w, double base_h, int data_
     , interconnect_latency(10.0)
     , deviceType(dt) {
 
-  l_ip                       = *configure_interface;
   max_unpipelined_link_delay = 0; // TODO
   min_w_nmos                 = g_tp.min_w_nmos_;
   min_w_pmos                 = deviceType->n_to_p_eff_curr_drv_ratio * min_w_nmos;
@@ -117,6 +117,5 @@ void interconnect::compute() {
   power.readOp.gate_leakage = wtemp1->power.readOp.gate_leakage;
   area.h                    = width_scaling * (wtemp1->wire_width + wtemp1->wire_spacing);
   area.w                    = length;
-  if(wtemp1)
-    delete wtemp1;
+  delete wtemp1;
 }

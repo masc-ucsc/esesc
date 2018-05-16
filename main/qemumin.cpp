@@ -35,7 +35,6 @@ extern "C" void esesc_set_timing(uint32_t fid);
 void start_qemu(int argc, char **argv) {
   char **qargv = (char **)malloc(argc * sizeof(char **));
 
-  qargv    = (char **)malloc(argc * sizeof(char *));
   qargv[0] = (char *)"qemu";
   for(int j = 1; j < argc; j++) {
     qargv[j] = strdup(argv[j]);
