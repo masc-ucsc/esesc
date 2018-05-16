@@ -13,7 +13,7 @@ ENABLE_LIVE=${5:-0}
 DOCKER_IMAGE=${6:-mascucsc/esescbase}
 
 
-: ${ESESC_HOST_PROCS:=`nproc`}
+: ${ESESC_HOST_PROCS:=$(nproc)}
 
 DOCKER_ESESC_SRC='/esesc'
 BUILD_DIR='/build'

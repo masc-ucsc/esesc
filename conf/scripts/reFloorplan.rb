@@ -23,7 +23,7 @@ Config = File.join(BuildDir,"floorplan", "hotspot.config")
 
 # check if hotfloorplan exist
 # if not, make hotfloorplan
-if !File.exists?(HotFloorplan)
+if !File.exist?(HotFloorplan)
   puts "Looking for the floorplanner #{HotFloorplan}"
   puts "the floorplanner is not compiled"
   puts "make floorplan"

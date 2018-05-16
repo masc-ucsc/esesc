@@ -11,7 +11,7 @@ BUILD_TYPE=${3:-Debug}
 ENABLE_LIVE=${4:-1}
 DOCKER_IMAGE=${5:-mascucsc/esescbase}
 
-: ${ESESC_HOST_PROCS:=`nproc`}
+: ${ESESC_HOST_PROCS:=$(nproc)}
 
 DOCKER_ESESC_SRC='/esesc'
 DOCKER_BUILD_DIR='/build'
@@ -21,7 +21,7 @@ if [ ! -e ${ESESC_SRC}/CMakeLists.txt ]; then
   exit -1
 fi
 
-GID=`id -rg`
+GID=$(id -rg)
 
 # Note: the 'chown' command is used to set permissions
 # on the generated files to the current user rather than root.  There

@@ -4,7 +4,7 @@
 : ${ESESC_SRC:=${HOME}/projs/esesc}
 : ${ESESC_BUILD_DIR:=${HOME}/build}
 : ${ESESC_BUILD_TYPE:=Debug}
-: ${ESESC_HOST_PROCS:=`nproc`}
+: ${ESESC_HOST_PROCS:=$(nproc)}
 : ${ESESC_ENABLE_LIVE:=0}
 
 BUILD_DIR=${ESESC_BUILD_DIR}/${ESESC_BUILD_TYPE,,}

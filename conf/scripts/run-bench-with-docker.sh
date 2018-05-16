@@ -29,7 +29,7 @@ if [ ! -e ${CONF_DIR}/esesc.conf ]; then
   exit -1
 fi
 
-GID=`id -rg`
+GID=$(id -rg)
 
 # Note: the 'chown' command is used to set permissions
 # on the generated files to the current user rather than root.  There
