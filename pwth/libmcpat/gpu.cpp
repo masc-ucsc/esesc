@@ -272,20 +272,20 @@ TCD::TCD(ParseXML *XML_interface, int ithSM_, int ithLane_, InputParameter *inte
   interface_ip.pure_cam = false;
   interface_ip.pure_ram = false;
   // Dcache
-  int size                  = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[0];
-  int line                  = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[1];
-  int assoc                 = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[2];
-  int banks                 = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[3];
-  int idx                   = int(ceil(log2(size / line / assoc)));
-  int tag                   = XML->sys.physical_address_width - idx - int(ceil(log2(line))) + EXTRA_TAG_BITS;
-  interface_ip.specific_tag = 1;
-  interface_ip.tag_w        = tag;
-  interface_ip.cache_sz     = size;
-  interface_ip.line_sz      = line;
-  interface_ip.assoc        = assoc;
-  interface_ip.nbanks       = banks;
-  interface_ip.out_w        = interface_ip.line_sz * 8;
-  interface_ip.access_mode = 0; // debug?0:XML->sys.gpu.homoSM.dcache.dcache_config[5];
+  int size                         = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[0];
+  int line                         = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[1];
+  int assoc                        = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[2];
+  int banks                        = XML->sys.gpu.homoSM.homolane.tinycache_data.dcache_config[3];
+  int idx                          = int(ceil(log2(size / line / assoc)));
+  int tag                          = XML->sys.physical_address_width - idx - int(ceil(log2(line))) + EXTRA_TAG_BITS;
+  interface_ip.specific_tag        = 1;
+  interface_ip.tag_w               = tag;
+  interface_ip.cache_sz            = size;
+  interface_ip.line_sz             = line;
+  interface_ip.assoc               = assoc;
+  interface_ip.nbanks              = banks;
+  interface_ip.out_w               = interface_ip.line_sz * 8;
+  interface_ip.access_mode         = 0; // debug?0:XML->sys.gpu.homoSM.dcache.dcache_config[5];
   interface_ip.throughput          = XML->sys.gpu.homoSM.dcache.dcache_config[4] / clockRate;
   interface_ip.latency             = XML->sys.gpu.homoSM.dcache.dcache_config[5] / clockRate;
   interface_ip.obj_func_dyn_energy = 0;
@@ -333,20 +333,20 @@ TCI::TCI(ParseXML *XML_interface, int ithSM_, int ithLane_, InputParameter *inte
   interface_ip.pure_cam = false;
   interface_ip.pure_ram = false;
   // Dcache
-  int size                  = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[0];
-  int line                  = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[1];
-  int assoc                 = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[2];
-  int banks                 = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[3];
-  int idx                   = int(ceil(log2(size / line / assoc)));
-  int tag                   = XML->sys.physical_address_width - idx - int(ceil(log2(line))) + EXTRA_TAG_BITS;
-  interface_ip.specific_tag = 1;
-  interface_ip.tag_w        = tag;
-  interface_ip.cache_sz     = size;
-  interface_ip.line_sz      = line;
-  interface_ip.assoc        = assoc;
-  interface_ip.nbanks       = banks;
-  interface_ip.out_w        = interface_ip.line_sz * 8;
-  interface_ip.access_mode = 0; // debug?0:XML->sys.gpu.homoSM.dcache.dcache_config[5];
+  int size                         = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[0];
+  int line                         = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[1];
+  int assoc                        = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[2];
+  int banks                        = XML->sys.gpu.homoSM.homolane.tinycache_inst.dcache_config[3];
+  int idx                          = int(ceil(log2(size / line / assoc)));
+  int tag                          = XML->sys.physical_address_width - idx - int(ceil(log2(line))) + EXTRA_TAG_BITS;
+  interface_ip.specific_tag        = 1;
+  interface_ip.tag_w               = tag;
+  interface_ip.cache_sz            = size;
+  interface_ip.line_sz             = line;
+  interface_ip.assoc               = assoc;
+  interface_ip.nbanks              = banks;
+  interface_ip.out_w               = interface_ip.line_sz * 8;
+  interface_ip.access_mode         = 0; // debug?0:XML->sys.gpu.homoSM.dcache.dcache_config[5];
   interface_ip.throughput          = XML->sys.gpu.homoSM.dcache.dcache_config[4] / clockRate;
   interface_ip.latency             = XML->sys.gpu.homoSM.dcache.dcache_config[5] / clockRate;
   interface_ip.obj_func_dyn_energy = 0;
@@ -445,17 +445,17 @@ MemManUG_I::MemManUG_I(ParseXML *XML_interface, int ithSM_, InputParameter *inte
   interface_ip.pure_ram     = false;
   interface_ip.specific_tag = 1;
   // Itlb TLBs are partioned among threads according to Nigara and Nehalem
-  tag                  = XML->sys.virtual_address_width - int(floor(log2(XML->sys.virtual_memory_page_size))) + EXTRA_TAG_BITS;
-  data                 = XML->sys.physical_address_width - int(floor(log2(XML->sys.virtual_memory_page_size)));
-  interface_ip.tag_w   = tag;
-  interface_ip.line_sz = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
-  interface_ip.cache_sz            = XML->sys.gpu.homoSM.itlb.number_entries * interface_ip.line_sz;
-  interface_ip.assoc               = 0;
-  interface_ip.nbanks              = 1;
-  interface_ip.out_w               = interface_ip.line_sz * 8;
-  interface_ip.access_mode         = 2;
-  interface_ip.throughput          = debug ? 1.0 / clockRate : XML->sys.gpu.homoSM.icache.icache_config[4] / clockRate;
-  interface_ip.latency             = debug ? 1.0 / clockRate : XML->sys.gpu.homoSM.icache.icache_config[5] / clockRate;
+  tag                      = XML->sys.virtual_address_width - int(floor(log2(XML->sys.virtual_memory_page_size))) + EXTRA_TAG_BITS;
+  data                     = XML->sys.physical_address_width - int(floor(log2(XML->sys.virtual_memory_page_size)));
+  interface_ip.tag_w       = tag;
+  interface_ip.line_sz     = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
+  interface_ip.cache_sz    = XML->sys.gpu.homoSM.itlb.number_entries * interface_ip.line_sz;
+  interface_ip.assoc       = 0;
+  interface_ip.nbanks      = 1;
+  interface_ip.out_w       = interface_ip.line_sz * 8;
+  interface_ip.access_mode = 2;
+  interface_ip.throughput  = debug ? 1.0 / clockRate : XML->sys.gpu.homoSM.icache.icache_config[4] / clockRate;
+  interface_ip.latency     = debug ? 1.0 / clockRate : XML->sys.gpu.homoSM.icache.icache_config[5] / clockRate;
   interface_ip.obj_func_dyn_energy = 0;
   interface_ip.obj_func_dyn_power  = 0;
   interface_ip.obj_func_leak_power = 0;
@@ -489,10 +489,10 @@ MemManUG_D::MemManUG_D(ParseXML *XML_interface, int ithSM_, InputParameter *inte
 
   tag = XML->sys.virtual_address_width - int(floor(log2(XML->sys.virtual_memory_page_size))) + EXTRA_TAG_BITS;
 
-  data                      = XML->sys.physical_address_width - int(floor(log2(XML->sys.virtual_memory_page_size)));
-  interface_ip.specific_tag = 1;
-  interface_ip.tag_w        = tag;
-  interface_ip.line_sz = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
+  data                             = XML->sys.physical_address_width - int(floor(log2(XML->sys.virtual_memory_page_size)));
+  interface_ip.specific_tag        = 1;
+  interface_ip.tag_w               = tag;
+  interface_ip.line_sz             = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
   interface_ip.cache_sz            = XML->sys.gpu.homoSM.dtlb.number_entries * interface_ip.line_sz;
   interface_ip.assoc               = 0;
   interface_ip.nbanks              = 1;
@@ -1103,7 +1103,7 @@ void RegFUG::computeEnergy(bool is_tdp) { /*{{{*/
     // eka
     rt_power.reset();
     // init stats for Runtime Dynamic (RTP)
-    IRF->stats_t.readAc.access = XML->sys.gpu.SMS[ithSM].lanes[ithLane].int_regfile_reads; // TODO: no diff on archi and phy
+    IRF->stats_t.readAc.access  = XML->sys.gpu.SMS[ithSM].lanes[ithLane].int_regfile_reads; // TODO: no diff on archi and phy
     IRF->stats_t.writeAc.access = XML->sys.gpu.SMS[ithSM].lanes[ithLane].int_regfile_writes;
     IRF->rtp_stats              = IRF->stats_t;
   }
@@ -1433,7 +1433,7 @@ void SM::computeEnergy(bool is_tdp) { /*{{{*/
     dcache.ifb->stats_t.writeAc.access = 0; // dcache.ifb->l_ip.num_search_ports;
     dcache.ifb->tdp_stats              = dcache.ifb->stats_t;
 
-    dcache.prefetchb->stats_t.readAc.access = 0;  // dcache.prefetchb->l_ip.num_search_ports;
+    dcache.prefetchb->stats_t.readAc.access  = 0; // dcache.prefetchb->l_ip.num_search_ports;
     dcache.prefetchb->stats_t.writeAc.access = 0; // dcache.ifb->l_ip.num_search_ports;
     dcache.prefetchb->tdp_stats              = dcache.prefetchb->stats_t;
 

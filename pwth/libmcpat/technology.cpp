@@ -103,7 +103,7 @@ void init_tech_params(double technology, bool is_tag) {
 
   double curr_logic_scaling_co_eff =
       0; // This is based on the reported numbers of Intel Merom 65nm, Penryn45nm and IBM cell 90/65/45 date
-  double curr_core_tx_density = 0; // this is density per um^2; 90, ...22nm based on Intel Penryn
+  double curr_core_tx_density       = 0; // this is density per um^2; 90, ...22nm based on Intel Penryn
   double curr_chip_layout_overhead  = 0;
   double curr_macro_layout_overhead = 0;
   double curr_sckt_co_eff           = 0;
@@ -1057,12 +1057,12 @@ void init_tech_params(double technology, bool is_tag) {
 
       if(ram_cell_tech_type == lp_dram) {
         // LP-DRAM cell access transistor technology parameters
-        curr_vdd_dram_cell                          = 1.0;
-        Lphy[3]                                     = 0.056;
-        Lelec[3]                                    = 0.0419; // Assume Lelec is 30% lesser than Lphy for DRAM access and wordline transistors.
-        curr_v_th_dram_access_transistor            = 0.44129;
-        width_dram_access_transistor                = 0.056;
-        curr_I_on_dram_cell                         = 36e-6;
+        curr_vdd_dram_cell               = 1.0;
+        Lphy[3]                          = 0.056;
+        Lelec[3]                         = 0.0419; // Assume Lelec is 30% lesser than Lphy for DRAM access and wordline transistors.
+        curr_v_th_dram_access_transistor = 0.44129;
+        width_dram_access_transistor     = 0.056;
+        curr_I_on_dram_cell              = 36e-6;
         curr_I_off_dram_cell_worst_case_length_temp = 18.9e-12;
         curr_Wmemcella_dram                         = width_dram_access_transistor;
         curr_Wmemcellpmos_dram                      = 0;
@@ -1100,12 +1100,12 @@ void init_tech_params(double technology, bool is_tag) {
         I_off_n[3][100]                      = 8.87e-10;
       } else if(ram_cell_tech_type == comm_dram) {
         // COMM-DRAM cell access transistor technology parameters
-        curr_vdd_dram_cell                          = 1.0;
-        Lphy[3]                                     = 0.032;
-        Lelec[3]                                    = 0.0205; // Assume Lelec is 30% lesser than Lphy for DRAM access and wordline transistors.
-        curr_v_th_dram_access_transistor            = 1;
-        width_dram_access_transistor                = 0.032;
-        curr_I_on_dram_cell                         = 20e-6;
+        curr_vdd_dram_cell               = 1.0;
+        Lphy[3]                          = 0.032;
+        Lelec[3]                         = 0.0205; // Assume Lelec is 30% lesser than Lphy for DRAM access and wordline transistors.
+        curr_v_th_dram_access_transistor = 1;
+        width_dram_access_transistor     = 0.032;
+        curr_I_on_dram_cell              = 20e-6;
         curr_I_off_dram_cell_worst_case_length_temp = 1e-15;
         curr_Wmemcella_dram                         = width_dram_access_transistor;
         curr_Wmemcellpmos_dram                      = 0;
@@ -1265,7 +1265,7 @@ void init_tech_params(double technology, bool is_tag) {
         Lelec[3]                         = 0.0181; // micron.
         curr_v_th_dram_access_transistor = 1;      // V
         width_dram_access_transistor     = 0.022;  // micron
-        curr_I_on_dram_cell = 20e-6;               // This is a typical value that I have always
+        curr_I_on_dram_cell              = 20e-6;  // This is a typical value that I have always
         // kept constant. In reality this could perhaps be lower
         curr_I_off_dram_cell_worst_case_length_temp = 1e-15; // A
         curr_Wmemcella_dram                         = width_dram_access_transistor;
@@ -1273,7 +1273,7 @@ void init_tech_params(double technology, bool is_tag) {
         curr_Wmemcellnmos_dram                      = 0;
         curr_area_cell_dram                         = 6 * 0.022 * 0.022; // micron2.
         curr_asp_ratio_cell_dram                    = 0.667;
-        curr_c_dram_cell = 30e-15; // This is a typical value that I have alwaus
+        curr_c_dram_cell                            = 30e-15; // This is a typical value that I have alwaus
         // kept constant.
 
         // 22 nm commodity DRAM wordline transistor parameters obtained using MASTAR.
@@ -1348,7 +1348,7 @@ void init_tech_params(double technology, bool is_tag) {
       I_on_n[0]                            = 2768.4e-6;                          // A/micron
       nmos_effective_resistance_multiplier = 1.48; // nmos_effective_resistance_multiplier  is the ratio of Ieff to Idsat where Ieff
                                                    // is the effective NMOS current and Idsat is the saturation current.
-      n_to_p_eff_curr_drv_ratio[0] = 2; // Wpmos/Wnmos = 2 in 2007 MASTAR. Look in
+      n_to_p_eff_curr_drv_ratio[0] = 2;            // Wpmos/Wnmos = 2 in 2007 MASTAR. Look in
       //"Dynamic" tab of Device workspace.
       gmp_to_gmn_multiplier[0] = 1.38;                                                      // Just using the 32nm SOI value.
       Rnchannelon[0]           = nmos_effective_resistance_multiplier * vdd[0] / I_on_n[0]; // ohm-micron
@@ -1431,7 +1431,7 @@ void init_tech_params(double technology, bool is_tag) {
         Lelec[3]                         = 0.0181; // micron.
         curr_v_th_dram_access_transistor = 1;      // V
         width_dram_access_transistor     = 0.022;  // micron
-        curr_I_on_dram_cell = 20e-6;               // This is a typical value that I have always
+        curr_I_on_dram_cell              = 20e-6;  // This is a typical value that I have always
         // kept constant. In reality this could perhaps be lower
         curr_I_off_dram_cell_worst_case_length_temp = 1e-15; // A
         curr_Wmemcella_dram                         = width_dram_access_transistor;
@@ -1439,7 +1439,7 @@ void init_tech_params(double technology, bool is_tag) {
         curr_Wmemcellnmos_dram                      = 0;
         curr_area_cell_dram                         = 6 * 0.022 * 0.022; // micron2.
         curr_asp_ratio_cell_dram                    = 0.667;
-        curr_c_dram_cell = 30e-15; // This is a typical value that I have alwaus
+        curr_c_dram_cell                            = 30e-15; // This is a typical value that I have alwaus
         // kept constant.
 
         // 22 nm commodity DRAM wordline transistor parameters obtained using MASTAR.
@@ -1614,10 +1614,10 @@ void init_tech_params(double technology, bool is_tag) {
   g_tp.w_comp_inv_n2 = 15 * g_ip->F_sz_um;   // this was 12 micron for the 0.8 micron process
   g_tp.w_comp_inv_p3 = 50 * g_ip->F_sz_um;   // this was 40 micron for the 0.8 micron process
   g_tp.w_comp_inv_n3 = 30 * g_ip->F_sz_um;   // this was 24 micron for the 0.8 micron process
-  g_tp.w_eval_inv_p = 100 * g_ip->F_sz_um;   // this was 80 micron for the 0.8 micron process
-  g_tp.w_eval_inv_n = 50 * g_ip->F_sz_um;    // this was 40 micron for the 0.8 micron process
-  g_tp.w_comp_n = 12.5 * g_ip->F_sz_um;      // this was 10 micron for the 0.8 micron process
-  g_tp.w_comp_p = 37.5 * g_ip->F_sz_um;      // this was 30 micron for the 0.8 micron process
+  g_tp.w_eval_inv_p  = 100 * g_ip->F_sz_um;  // this was 80 micron for the 0.8 micron process
+  g_tp.w_eval_inv_n  = 50 * g_ip->F_sz_um;   // this was 40 micron for the 0.8 micron process
+  g_tp.w_comp_n      = 12.5 * g_ip->F_sz_um; // this was 10 micron for the 0.8 micron process
+  g_tp.w_comp_p      = 37.5 * g_ip->F_sz_um; // this was 30 micron for the 0.8 micron process
 
   g_tp.MIN_GAP_BET_P_AND_N_DIFFS   = 5 * g_ip->F_sz_um;
   g_tp.MIN_GAP_BET_SAME_TYPE_DIFFS = 1.5 * g_ip->F_sz_um;

@@ -141,12 +141,12 @@ dep_resource_conflict_check::dep_resource_conflict_check(const InputParameter *c
     , coredynp(dyn_p_)
     , compare_bits(compare_bits_)
     , is_default(_is_default) {
-  Wcompn    = 25 * l_ip.F_sz_um;   // this was 20.0 micron for the 0.8 micron process
-  Wevalinvp = 25 * l_ip.F_sz_um;   // this was 20.0 micron for the 0.8 micron process
-  Wevalinvn = 100 * l_ip.F_sz_um;  // this was 80.0 mcron for the 0.8 micron process
-  Wcomppreequ = 50 * l_ip.F_sz_um; // this was 40.0  micron for the 0.8 micron process
-  WNORn = 6.75 * l_ip.F_sz_um;     // this was 5.4 micron for the 0.8 micron process
-  WNORp = 38.125 * l_ip.F_sz_um;   // this was 30.5 micron for the 0.8 micron process
+  Wcompn      = 25 * l_ip.F_sz_um;     // this was 20.0 micron for the 0.8 micron process
+  Wevalinvp   = 25 * l_ip.F_sz_um;     // this was 20.0 micron for the 0.8 micron process
+  Wevalinvn   = 100 * l_ip.F_sz_um;    // this was 80.0 mcron for the 0.8 micron process
+  Wcomppreequ = 50 * l_ip.F_sz_um;     // this was 40.0  micron for the 0.8 micron process
+  WNORn       = 6.75 * l_ip.F_sz_um;   // this was 5.4 micron for the 0.8 micron process
+  WNORp       = 38.125 * l_ip.F_sz_um; // this was 30.5 micron for the 0.8 micron process
 
   local_result = init_interface(&l_ip);
 
@@ -276,7 +276,8 @@ void PipelinePower::compute() {
 
   double clock_power_pipereg = num_piperegs * pipe_reg.e_clock.readOp.dynamic;
   //******************pipeline power: currently, we average all the possibilities of the states of DFFs in the pipeline. A better
-  //way to do it is to consider the harming distance of two consecutive signals, However McPAT does not have plan to do this in near
+  // way to do it is to consider the harming distance of two consecutive signals, However McPAT does not have plan to do this in
+  // near
   // future as it focuses on worst case power.
   double pipe_reg_power =
       num_piperegs * (pipe_reg.e_switch.readOp.dynamic + pipe_reg.e_keep_0.readOp.dynamic + pipe_reg.e_keep_1.readOp.dynamic) / 3 +
@@ -425,7 +426,7 @@ FunctionalUnit::FunctionalUnit(const InputParameter *configure_interface, enum F
               2; // unit W
     gate_leakage = area_t * (g_tp.scaling_factor.core_tx_density / 10) *
                    cmos_Ig_leakage(g_tp.min_w_nmos_, g_tp.min_w_nmos_ * pmos_to_nmos_sizing_r, 1, inv) * g_tp.peri_global.Vdd / 2;
-    energy = 0.00649 * 1e-9;                           // This is per cycle energy(nJ)
+    energy    = 0.00649 * 1e-9;                        // This is per cycle energy(nJ)
     FU_height = (4111 * num_fu + 6904) * l_ip.F_sz_um; // integer ALU + divider/mul from Intel's data
   }
   // IEXEU, simple ALU and FPU
@@ -507,7 +508,7 @@ UndiffCore::UndiffCore(const InputParameter *configure_interface, enum Core_type
   //		double velocity_index=1.1;
   //		double c_in=gate_C(g_tp.min_w_nmos_, g_tp.min_w_nmos_*pmos_to_nmos_sizing_r , 0.0, false);
   //		double c_out= drain_C_(g_tp.min_w_nmos_, NCH, 2, 1, g_tp.cell_h_def, false) +
-  //drain_C_(g_tp.min_w_nmos_*pmos_to_nmos_sizing_r, PCH, 1, 1, g_tp.cell_h_def, false) + c_in; 		double w_nmos=g_tp.min_w_nmos_;
+  // drain_C_(g_tp.min_w_nmos_*pmos_to_nmos_sizing_r, PCH, 1, 1, g_tp.cell_h_def, false) + c_in; 		double w_nmos=g_tp.min_w_nmos_;
   //		double w_pmos=g_tp.min_w_nmos_*pmos_to_nmos_sizing_r;
   //		double i_on_n=1.0;
   //		double i_on_p=1.0;
@@ -516,7 +517,7 @@ UndiffCore::UndiffCore(const InputParameter *configure_interface, enum Core_type
   //		double vdd=g_tp.peri_global.Vdd;
 
   //		power.readOp.sc=shortcircuit_simple(vt, velocity_index, c_in, c_out, w_nmos,w_pmos, i_on_n, i_on_p,i_on_n_in, i_on_p_in,
-  //vdd); 		power.readOp.dynamic=c_out*vdd*vdd/2;
+  // vdd); 		power.readOp.dynamic=c_out*vdd*vdd/2;
 
   //		cout<<power.readOp.dynamic << "dynamic" <<endl;
   //		cout<<power.readOp.sc << "sc" << endl;

@@ -454,8 +454,8 @@ double cmos_Ig_leakage(double nWidth, double pWidth, int fanin, enum Gate_type g
           Ig_on += nmos_leak * combination(fanin, num_on_tx) * num_on_tx;
         }
       } else {
-        Ig_on += nmos_leak * fanin; // pull down network when all TXs are on.
-                                    // num_on_tx is the number of on tx
+        Ig_on += nmos_leak * fanin;                        // pull down network when all TXs are on.
+                                                           // num_on_tx is the number of on tx
         for(num_on_tx = 1; num_on_tx < fanin; num_on_tx++) // when num_on_tx=[1,n-1]
         {
           Ig_on += nmos_leak * combination(fanin, num_on_tx) * num_on_tx /
@@ -474,8 +474,8 @@ double cmos_Ig_leakage(double nWidth, double pWidth, int fanin, enum Gate_type g
           Ig_on += pmos_leak * combination(fanin, num_on_tx) * num_on_tx;
         }
       } else {
-        Ig_on += pmos_leak * fanin; // pull down network when all TXs are on.
-                                    // num_on_tx is the number of on tx
+        Ig_on += pmos_leak * fanin;                        // pull down network when all TXs are on.
+                                                           // num_on_tx is the number of on tx
         for(num_on_tx = 1; num_on_tx < fanin; num_on_tx++) // when num_on_tx=[1,n-1]
         {
           Ig_on += pmos_leak * combination(fanin, num_on_tx) * num_on_tx /
@@ -575,7 +575,7 @@ double shortcircuit_simple(double vt, double velocity_index, double c_in, double
   //	cout <<t1<<"t1\n"<<t2<<"t2\n"<<t3<<"t3\n"<<t4<<"t4\n"<<fanout<<endl;
   //	p_short_circuit_discharge = 1.0/(1.0/p_short_circuit_discharge_low + 1.0/p_short_circuit_discharge_high);
   //	p_short_circuit_charge = 1/(1/p_short_circuit_charge_low + 1/p_short_circuit_charge_high); //harmmoic mean cannot be applied
-  //simple formulas.
+  // simple formulas.
 
   p_short_circuit_discharge = p_short_circuit_discharge_low;
   p_short_circuit_charge    = p_short_circuit_charge_low;
@@ -589,7 +589,7 @@ double shortcircuit(double vt, double velocity_index, double c_in, double c_out,
 
   double p_short_circuit =
       0 /*, p_short_circuit_discharge*/; //, p_short_circuit_charge, p_short_circuit_discharge_low, p_short_circuit_discharge_high,
-                                         //p_short_circuit_charge_low, p_short_circuit_charge_high; //this is actually energy
+                                         // p_short_circuit_charge_low, p_short_circuit_charge_high; //this is actually energy
                                          //	double /*fo_n,*/ fo_p, fanout, beta_ratio /*,vt_to_vdd_ratio*/;
                                          //	double f_alpha, k_v, e, g_v_alpha, h_v_alpha;
 
@@ -602,16 +602,16 @@ double shortcircuit(double vt, double velocity_index, double c_in, double c_out,
   //	f_alpha		=	1/(velocity_index+2) -velocity_index/(2*(velocity_index+3))
   //+velocity_index/(velocity_index+4)*(velocity_index/2-1); 	k_v			=	0.9/0.8+(vdd-vt)/0.8*log(10*(vdd-vt)/e); 	g_v_alpha	=
   //(velocity_index +
-  //1)*pow((1-velocity_index),velocity_index)*pow((1-velocity_index),velocity_index/2)/f_alpha/pow((1-velocity_index-velocity_index),(velocity_index/2+velocity_index+2));
+  // 1)*pow((1-velocity_index),velocity_index)*pow((1-velocity_index),velocity_index/2)/f_alpha/pow((1-velocity_index-velocity_index),(velocity_index/2+velocity_index+2));
   //	h_v_alpha	=   pow(2,
-  //velocity_index)*(velocity_index+1)*pow((1-velocity_index),velocity_index)/pow((1-velocity_index-velocity_index),(velocity_index+1));
+  // velocity_index)*(velocity_index+1)*pow((1-velocity_index),velocity_index)/pow((1-velocity_index-velocity_index),(velocity_index+1));
 
   // p_short_circuit_discharge_low 	=
   // 10/3*(pow(0.5-vt_to_vdd_ratio,3.0)/pow(velocity_index,2.0)/pow(2.0,3*vt_to_vdd_ratio*vt_to_vdd_ratio))*c_in*vdd*vdd*fo_p*fo_p/fanout/beta_ratio;
   //	p_short_circuit_discharge_low 	=
-  //10/3*(pow(((vdd-vt)-vt_to_vdd_ratio),3.0)/pow(velocity_index,2.0)/pow(2.0,3*vt_to_vdd_ratio*vt_to_vdd_ratio))*c_in*vdd*vdd*fo_p*fo_p/fanout/beta_ratio;
+  // 10/3*(pow(((vdd-vt)-vt_to_vdd_ratio),3.0)/pow(velocity_index,2.0)/pow(2.0,3*vt_to_vdd_ratio*vt_to_vdd_ratio))*c_in*vdd*vdd*fo_p*fo_p/fanout/beta_ratio;
   //	p_short_circuit_charge_low 		=
-  //10/3*(pow(((vdd-vt)-vt_to_vdd_ratio),3.0)/pow(velocity_index,2.0)/pow(2.0,3*vt_to_vdd_ratio*vt_to_vdd_ratio))*c_in*vdd*vdd*fo_n*fo_n/fanout*beta_ratio;
+  // 10/3*(pow(((vdd-vt)-vt_to_vdd_ratio),3.0)/pow(velocity_index,2.0)/pow(2.0,3*vt_to_vdd_ratio*vt_to_vdd_ratio))*c_in*vdd*vdd*fo_n*fo_n/fanout*beta_ratio;
   //	double t1, t2, t3, t4, t5;
   //	t1=pow(((vdd-vt)-vt_to_vdd_ratio),3);
   //	t2=pow(velocity_index,2.0);
@@ -622,8 +622,8 @@ double shortcircuit(double vt, double velocity_index, double c_in, double c_out,
   //
   //
   //	p_short_circuit_discharge_high 	= pow(((vdd-vt)-vt_to_vdd_ratio),1.5)*c_in*vdd*vdd*fo_p/10/pow(2,
-  //3*vt_to_vdd_ratio+2*velocity_index); 	p_short_circuit_charge_high 	=
-  //pow(((vdd-vt)-vt_to_vdd_ratio),1.5)*c_in*vdd*vdd*fo_n/10/pow(2, 3*vt_to_vdd_ratio+2*velocity_index);
+  // 3*vt_to_vdd_ratio+2*velocity_index); 	p_short_circuit_charge_high 	=
+  // pow(((vdd-vt)-vt_to_vdd_ratio),1.5)*c_in*vdd*vdd*fo_n/10/pow(2, 3*vt_to_vdd_ratio+2*velocity_index);
   //
   //	p_short_circuit_discharge = 1.0/(1.0/p_short_circuit_discharge_low + 1.0/p_short_circuit_discharge_high);
   //	p_short_circuit_charge = 1/(1/p_short_circuit_charge_low + 1/p_short_circuit_charge_high);

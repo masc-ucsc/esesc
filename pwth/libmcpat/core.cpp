@@ -635,17 +635,20 @@ void BranchPredictor::displayEnergy(uint32_t indent, int plevel, bool is_tdp) {
     cout << endl;
   } else {
     //		cout << indent_str_next << "Global Predictor    TDP Dynamic = " << globalBPT->rt_power.readOp.dynamic*clockRate << " W" <<
-    //endl; 		cout << indent_str_next << "Global Predictor    Subthreshold Leakage = " << globalBPT->rt_power.readOp.leakage <<" W" <<
-    //endl; 		cout << indent_str_next << "Global Predictor    Gate Leakage = " << globalBPT->rt_power.readOp.gate_leakage << " W" <<
-    //endl; 		cout << indent_str_next << "Local Predictor   TDP Dynamic = " << L1_localBPT->rt_power.readOp.dynamic*clockRate  << " W"
-    //<< endl; 		cout << indent_str_next << "Local Predictor   Subthreshold Leakage = " << L1_localBPT->rt_power.readOp.leakage  << "
-    //W" << endl; 		cout << indent_str_next << "Local Predictor   Gate Leakage = " << L1_localBPT->rt_power.readOp.gate_leakage  << "
-    //W" << endl; 		cout << indent_str_next << "Chooser   TDP Dynamic = " << chooser->rt_power.readOp.dynamic*clockRate  << " W" <<
-    //endl; 		cout << indent_str_next << "Chooser   Subthreshold Leakage = " << chooser->rt_power.readOp.leakage  << " W" << endl;
-    //		cout << indent_str_next << "Chooser   Gate Leakage = " << chooser->rt_power.readOp.gate_leakage  << " W" << endl;
-    //		cout << indent_str_next << "RAS   TDP Dynamic = " << RAS->rt_power.readOp.dynamic*clockRate  << " W" << endl;
-    //		cout << indent_str_next << "RAS   Subthreshold Leakage = " << RAS->rt_power.readOp.leakage  << " W" << endl;
-    //		cout << indent_str_next << "RAS   Gate Leakage = " << RAS->rt_power.readOp.gate_leakage  << " W" << endl;
+    // endl; 		cout << indent_str_next << "Global Predictor    Subthreshold Leakage = " << globalBPT->rt_power.readOp.leakage <<" W"
+    // <<
+    // endl; 		cout << indent_str_next << "Global Predictor    Gate Leakage = " << globalBPT->rt_power.readOp.gate_leakage << " W"
+    // <<
+    // endl; 		cout << indent_str_next << "Local Predictor   TDP Dynamic = " << L1_localBPT->rt_power.readOp.dynamic*clockRate  << "
+    // W"
+    //<< endl; 		cout << indent_str_next << "Local Predictor   Subthreshold Leakage = " << L1_localBPT->rt_power.readOp.leakage <<
+    //" W" << endl; 		cout << indent_str_next << "Local Predictor   Gate Leakage = " << L1_localBPT->rt_power.readOp.gate_leakage
+    // << " W" << endl; 		cout << indent_str_next << "Chooser   TDP Dynamic = " << chooser->rt_power.readOp.dynamic*clockRate  << "
+    // W" << endl; 		cout << indent_str_next << "Chooser   Subthreshold Leakage = " << chooser->rt_power.readOp.leakage  << " W" <<
+    // endl; 		cout << indent_str_next << "Chooser   Gate Leakage = " << chooser->rt_power.readOp.gate_leakage  << " W" << endl; 		cout
+    //<< indent_str_next << "RAS   TDP Dynamic = " << RAS->rt_power.readOp.dynamic*clockRate  << " W" << endl; 		cout <<
+    //indent_str_next << "RAS   Subthreshold Leakage = " << RAS->rt_power.readOp.leakage  << " W" << endl; 		cout << indent_str_next
+    //<< "RAS   Gate Leakage = " << RAS->rt_power.readOp.gate_leakage  << " W" << endl;
   }
 }
 
@@ -676,8 +679,8 @@ void InstFetchU::computeEnergy(bool is_tdp) {
     IB->tdp_stats                                          = IB->stats_t;
 
     if(coredynp.predictionW > 0) {
-      BTB->stats_t.readAc.access = coredynp.predictionW; // XML->sys.core[ithCore].BTB.read_accesses;
-      BTB->stats_t.writeAc.access = 0;                   // XML->sys.core[ithCore].BTB.write_accesses;
+      BTB->stats_t.readAc.access  = coredynp.predictionW; // XML->sys.core[ithCore].BTB.read_accesses;
+      BTB->stats_t.writeAc.access = 0;                    // XML->sys.core[ithCore].BTB.write_accesses;
     }
 
   } else {
@@ -706,7 +709,7 @@ void InstFetchU::computeEnergy(bool is_tdp) {
     IB->rtp_stats = IB->stats_t;
 
     if(coredynp.predictionW > 0) {
-      BTB->stats_t.readAc.access = XML->sys.core[ithCore].branch_instructions;    // XML->sys.core[ithCore].BTB.read_accesses;
+      BTB->stats_t.readAc.access  = XML->sys.core[ithCore].branch_instructions;   // XML->sys.core[ithCore].BTB.read_accesses;
       BTB->stats_t.writeAc.access = XML->sys.core[ithCore].branch_mispredictions; // XML->sys.core[ithCore].BTB.write_accesses;
       BTB->rtp_stats              = BTB->stats_t;
     }
@@ -732,7 +735,7 @@ void InstFetchU::computeEnergy(bool is_tdp) {
           icache.missb->local_result.power.writeOp.dynamic; // each access to missb involves a CAM and a write
   // icache.power_t.readOp.dynamic	+=  icache.ifb->stats_t.readAc.access*icache.ifb->local_result.power.searchOp.dynamic +
   //        icache.ifb->stats_t.writeAc.access*icache.ifb->local_result.power.writeOp.dynamic;
-  // icache.power_t.readOp.dynamic	+=  icache.prefetchb->stats_t.readAc.access*icache.prefetchb->local_result.power.searchOp.dynamic
+  // icache.power_t.readOp.dynamic	+= icache.prefetchb->stats_t.readAc.access*icache.prefetchb->local_result.power.searchOp.dynamic
   // +
   //  icache.prefetchb->stats_t.writeAc.access*icache.prefetchb->local_result.power.writeOp.dynamic;
 
@@ -816,17 +819,18 @@ void InstFetchU::displayEnergy(uint32_t indent, int plevel, bool is_tdp) {
     }
   } else {
     //		cout << indent_str_next << "Instruction Cache    TDP Dynamic = " << icache.rt_power.readOp.dynamic*clockRate << " W" <<
-    //endl; 		cout << indent_str_next << "Instruction Cache    Subthreshold Leakage = " << icache.rt_power.readOp.leakage <<" W" <<
-    //endl; 		cout << indent_str_next << "Instruction Cache    Gate Leakage = " << icache.rt_power.readOp.gate_leakage << " W" <<
-    //endl; 		cout << indent_str_next << "Instruction Buffer   TDP Dynamic = " << IB->rt_power.readOp.dynamic*clockRate  << " W" <<
-    //endl; 		cout << indent_str_next << "Instruction Buffer   Subthreshold Leakage = " << IB->rt_power.readOp.leakage  << " W" <<
-    //endl; 		cout << indent_str_next << "Instruction Buffer   Gate Leakage = " << IB->rt_power.readOp.gate_leakage  << " W" << endl;
-    //		cout << indent_str_next << "Branch Target Buffer   TDP Dynamic = " << BTB->rt_power.readOp.dynamic*clockRate  << " W" <<
-    //endl; 		cout << indent_str_next << "Branch Target Buffer   Subthreshold Leakage = " << BTB->rt_power.readOp.leakage  << " W" <<
-    //endl; 		cout << indent_str_next << "Branch Target Buffer   Gate Leakage = " << BTB->rt_power.readOp.gate_leakage  << " W" <<
-    //endl; 		cout << indent_str_next << "Branch Predictor   TDP Dynamic = " << BPT->rt_power.readOp.dynamic*clockRate  << " W" <<
-    //endl; 		cout << indent_str_next << "Branch Predictor   Subthreshold Leakage = " << BPT->rt_power.readOp.leakage  << " W" <<
-    //endl; 		cout << indent_str_next << "Branch Predictor   Gate Leakage = " << BPT->rt_power.readOp.gate_leakage  << " W" << endl;
+    // endl; 		cout << indent_str_next << "Instruction Cache    Subthreshold Leakage = " << icache.rt_power.readOp.leakage <<" W"
+    // << endl; 		cout << indent_str_next << "Instruction Cache    Gate Leakage = " << icache.rt_power.readOp.gate_leakage << " W"
+    // << endl; 		cout << indent_str_next << "Instruction Buffer   TDP Dynamic = " << IB->rt_power.readOp.dynamic*clockRate  << " W"
+    // << endl; 		cout << indent_str_next << "Instruction Buffer   Subthreshold Leakage = " << IB->rt_power.readOp.leakage  << " W"
+    // << endl; 		cout << indent_str_next << "Instruction Buffer   Gate Leakage = " << IB->rt_power.readOp.gate_leakage  << " W" <<
+    // endl; 		cout << indent_str_next << "Branch Target Buffer   TDP Dynamic = " << BTB->rt_power.readOp.dynamic*clockRate  << " W" <<
+    // endl; 		cout << indent_str_next << "Branch Target Buffer   Subthreshold Leakage = " << BTB->rt_power.readOp.leakage  << " W"
+    // << endl; 		cout << indent_str_next << "Branch Target Buffer   Gate Leakage = " << BTB->rt_power.readOp.gate_leakage  << " W"
+    // << endl; 		cout << indent_str_next << "Branch Predictor   TDP Dynamic = " << BPT->rt_power.readOp.dynamic*clockRate  << " W"
+    // << endl; 		cout << indent_str_next << "Branch Predictor   Subthreshold Leakage = " << BPT->rt_power.readOp.leakage  << " W"
+    // << endl; 		cout << indent_str_next << "Branch Predictor   Gate Leakage = " << BPT->rt_power.readOp.gate_leakage  << " W" <<
+    // endl;
   }
 }
 
@@ -1257,9 +1261,9 @@ void SchedulerU::computeEnergy(bool is_tdp) {
       fp_inst_window->stats_t.readAc.access   = XML->sys.core[ithCore].fp_instructions;
       fp_inst_window->stats_t.writeAc.access  = XML->sys.core[ithCore].fp_instructions;
       fp_inst_window->rtp_stats               = fp_inst_window->stats_t;
-      ROB->stats_t.readAc.access = XML->sys.core[ithCore].ROB_reads; // TODO: ROB need to be updated in RS based OOO
-      ROB->stats_t.writeAc.access = XML->sys.core[ithCore].ROB_writes;
-      ROB->rtp_stats              = ROB->stats_t;
+      ROB->stats_t.readAc.access              = XML->sys.core[ithCore].ROB_reads; // TODO: ROB need to be updated in RS based OOO
+      ROB->stats_t.writeAc.access             = XML->sys.core[ithCore].ROB_writes;
+      ROB->rtp_stats                          = ROB->stats_t;
 
     } else if(coredynp.multithreaded) {
       int_inst_window->stats_t.readAc.access =
@@ -1429,7 +1433,7 @@ void LoadStoreU::computeEnergy(bool is_tdp) {
     dcache.ifb->stats_t.writeAc.access = 0; // dcache.ifb->l_ip.num_search_ports;
     dcache.ifb->tdp_stats              = dcache.ifb->stats_t;
 
-    dcache.prefetchb->stats_t.readAc.access = 0;  // dcache.prefetchb->l_ip.num_search_ports;
+    dcache.prefetchb->stats_t.readAc.access  = 0; // dcache.prefetchb->l_ip.num_search_ports;
     dcache.prefetchb->stats_t.writeAc.access = 0; // dcache.ifb->l_ip.num_search_ports;
     dcache.prefetchb->tdp_stats              = dcache.prefetchb->stats_t;
 
@@ -1447,7 +1451,7 @@ void LoadStoreU::computeEnergy(bool is_tdp) {
         VPCfilter.caches->stats_t.writeAc.hit = VPCfilter.caches->stats_t.writeAc.access - VPCfilter.caches->stats_t.writeAc.miss;
         VPCfilter.caches->tdp_stats           = VPCfilter.caches->stats_t;
 
-        VPCfilter.missb->stats_t.readAc.access = 0;  // VPCfilter.missb->l_ip.num_search_ports;
+        VPCfilter.missb->stats_t.readAc.access  = 0; // VPCfilter.missb->l_ip.num_search_ports;
         VPCfilter.missb->stats_t.writeAc.access = 0; // VPCfilter.missb->l_ip.num_search_ports;
         VPCfilter.missb->tdp_stats              = VPCfilter.missb->stats_t;
 
@@ -1455,7 +1459,7 @@ void LoadStoreU::computeEnergy(bool is_tdp) {
         VPCfilter.ifb->stats_t.writeAc.access = 0; // VPCfilter.ifb->l_ip.num_search_ports;
         VPCfilter.ifb->tdp_stats              = VPCfilter.ifb->stats_t;
 
-        VPCfilter.prefetchb->stats_t.readAc.access = 0;  // VPCfilter.prefetchb->l_ip.num_search_ports;
+        VPCfilter.prefetchb->stats_t.readAc.access  = 0; // VPCfilter.prefetchb->l_ip.num_search_ports;
         VPCfilter.prefetchb->stats_t.writeAc.access = 0; // VPCfilter.ifb->l_ip.num_search_ports;
         VPCfilter.prefetchb->tdp_stats              = VPCfilter.prefetchb->stats_t;
 
@@ -1540,9 +1544,9 @@ void LoadStoreU::computeEnergy(bool is_tdp) {
         VPCfilter.caches->stats_t.readAc.hit     = VPCfilter.caches->stats_t.readAc.access - VPCfilter.caches->stats_t.readAc.miss;
         VPCfilter.caches->stats_t.writeAc.access = XML->sys.core[ithCore].VPCfilter.write_accesses;
         VPCfilter.caches->stats_t.writeAc.miss   = XML->sys.core[ithCore].VPCfilter.write_misses;
-        VPCfilter.caches->stats_t.writeAc.hit = VPCfilter.caches->stats_t.writeAc.access - VPCfilter.caches->stats_t.writeAc.miss;
-        VPCfilter.caches->rtp_stats           = VPCfilter.caches->stats_t;
-        VPCfilter.missb->stats_t.readAc.access = 0;  // VPCfilter.caches->stats_t.readAc.access;
+        VPCfilter.caches->stats_t.writeAc.hit   = VPCfilter.caches->stats_t.writeAc.access - VPCfilter.caches->stats_t.writeAc.miss;
+        VPCfilter.caches->rtp_stats             = VPCfilter.caches->stats_t;
+        VPCfilter.missb->stats_t.readAc.access  = 0; // VPCfilter.caches->stats_t.readAc.access;
         VPCfilter.missb->stats_t.writeAc.access = 0; // VPCfilter.caches->stats_t.writeAc.access;
         VPCfilter.missb->rtp_stats              = VPCfilter.missb->stats_t;
 
@@ -1550,7 +1554,7 @@ void LoadStoreU::computeEnergy(bool is_tdp) {
         VPCfilter.ifb->stats_t.writeAc.access = VPCfilter.caches->stats_t.writeAc.miss;
         VPCfilter.ifb->rtp_stats              = VPCfilter.ifb->stats_t;
 
-        VPCfilter.prefetchb->stats_t.readAc.access = 0;  // VPCfilter.caches->stats_t.writeAc.miss;
+        VPCfilter.prefetchb->stats_t.readAc.access  = 0; // VPCfilter.caches->stats_t.writeAc.miss;
         VPCfilter.prefetchb->stats_t.writeAc.access = 0; // VPCfilter.caches->stats_t.writeAc.miss;
         VPCfilter.prefetchb->rtp_stats              = VPCfilter.prefetchb->stats_t;
 
@@ -1996,7 +2000,7 @@ void RegFU::computeEnergy(bool is_tdp) {
     // eka
     rt_power.reset();
     // init stats for Runtime Dynamic (RTP)
-    IRF->stats_t.readAc.access = XML->sys.core[ithCore].int_regfile_reads; // TODO: no diff on archi and phy
+    IRF->stats_t.readAc.access  = XML->sys.core[ithCore].int_regfile_reads; // TODO: no diff on archi and phy
     IRF->stats_t.writeAc.access = XML->sys.core[ithCore].int_regfile_writes;
     IRF->rtp_stats              = IRF->stats_t;
 
@@ -2629,29 +2633,29 @@ void InstFetchU::buildInstCache() {
   // cache
 
   int  idx, tag, data, size, line, assoc, banks;
-  bool debug                = false;
-  size                      = XML->sys.core[ithCore].icache.icache_config[0];
-  line                      = XML->sys.core[ithCore].icache.icache_config[1];
-  assoc                     = XML->sys.core[ithCore].icache.icache_config[2];
-  banks                     = XML->sys.core[ithCore].icache.icache_config[3];
-  idx                       = debug ? 9 : int(ceil(log2(size / line / assoc)));
-  tag                       = debug ? 51 : XML->sys.physical_address_width - idx - int(ceil(log2(line))) + EXTRA_TAG_BITS;
-  interface_ip.specific_tag = 1;
-  interface_ip.tag_w        = tag;
-  interface_ip.cache_sz     = debug ? 32768 : size;
-  interface_ip.line_sz      = debug ? 64 : line;
-  interface_ip.assoc        = debug ? 8 : assoc;
-  interface_ip.nbanks       = debug ? 1 : banks;
-  interface_ip.out_w        = interface_ip.line_sz * 8;
-  interface_ip.access_mode = 0; // debug?0:XML->sys.core[ithCore].icache.icache_config[5];
-  interface_ip.throughput                  = debug ? 1.0 / clockRate : XML->sys.core[ithCore].icache.icache_config[4] / clockRate;
-  interface_ip.latency                     = debug ? 3.0 / clockRate : XML->sys.core[ithCore].icache.icache_config[5] / clockRate;
-  interface_ip.is_cache                    = true;
-  interface_ip.pure_cam                    = false;
-  interface_ip.pure_ram                    = false;
-  interface_ip.ram_cell_tech_type          = 1;
-  interface_ip.peri_global_tech_type       = 1;
-  interface_ip.data_arr_ram_cell_tech_type = 1;
+  bool debug                         = false;
+  size                               = XML->sys.core[ithCore].icache.icache_config[0];
+  line                               = XML->sys.core[ithCore].icache.icache_config[1];
+  assoc                              = XML->sys.core[ithCore].icache.icache_config[2];
+  banks                              = XML->sys.core[ithCore].icache.icache_config[3];
+  idx                                = debug ? 9 : int(ceil(log2(size / line / assoc)));
+  tag                                = debug ? 51 : XML->sys.physical_address_width - idx - int(ceil(log2(line))) + EXTRA_TAG_BITS;
+  interface_ip.specific_tag          = 1;
+  interface_ip.tag_w                 = tag;
+  interface_ip.cache_sz              = debug ? 32768 : size;
+  interface_ip.line_sz               = debug ? 64 : line;
+  interface_ip.assoc                 = debug ? 8 : assoc;
+  interface_ip.nbanks                = debug ? 1 : banks;
+  interface_ip.out_w                 = interface_ip.line_sz * 8;
+  interface_ip.access_mode           = 0; // debug?0:XML->sys.core[ithCore].icache.icache_config[5];
+  interface_ip.throughput            = debug ? 1.0 / clockRate : XML->sys.core[ithCore].icache.icache_config[4] / clockRate;
+  interface_ip.latency               = debug ? 3.0 / clockRate : XML->sys.core[ithCore].icache.icache_config[5] / clockRate;
+  interface_ip.is_cache              = true;
+  interface_ip.pure_cam              = false;
+  interface_ip.pure_ram              = false;
+  interface_ip.ram_cell_tech_type    = 1;
+  interface_ip.peri_global_tech_type = 1;
+  interface_ip.data_arr_ram_cell_tech_type    = 1;
   interface_ip.data_arr_peri_global_tech_type = 1;
   interface_ip.tag_arr_ram_cell_tech_type     = 1;
   interface_ip.tag_arr_peri_global_tech_type  = 1;
@@ -2686,14 +2690,14 @@ void InstFetchU::buildInstCache() {
   data                          = (XML->sys.physical_address_width) + int(ceil(log2(size / line))) + icache.caches->l_ip.line_sz;
   interface_ip.specific_tag     = 1;
   interface_ip.tag_w            = tag;
-  interface_ip.line_sz = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
-  interface_ip.cache_sz    = (XML->sys.core[ithCore].icache.buffer_sizes[0] * interface_ip.line_sz < 64
+  interface_ip.line_sz          = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
+  interface_ip.cache_sz         = (XML->sys.core[ithCore].icache.buffer_sizes[0] * interface_ip.line_sz < 64
                                ? 64
                                : XML->sys.core[ithCore].icache.buffer_sizes[0] * interface_ip.line_sz);
-  interface_ip.assoc       = 0;
-  interface_ip.nbanks      = 1;
-  interface_ip.out_w       = interface_ip.line_sz * 8;
-  interface_ip.access_mode = 2;
+  interface_ip.assoc            = 0;
+  interface_ip.nbanks           = 1;
+  interface_ip.out_w            = interface_ip.line_sz * 8;
+  interface_ip.access_mode      = 2;
   interface_ip.throughput = debug ? 1.0 / clockRate : XML->sys.core[ithCore].icache.icache_config[4] / clockRate; // means cycle
                                                                                                                   // time
   interface_ip.latency = debug ? 1.0 / clockRate : XML->sys.core[ithCore].icache.icache_config[5] / clockRate; // means access time

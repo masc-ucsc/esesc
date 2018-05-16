@@ -160,7 +160,7 @@ void ArrayST::optimize_array() {
       l_ip.dynamic_power_wt = 10; // Fixed number, This is used to exhaustive search for individual components.
       l_ip.leakage_power_wt = 10;
 
-      l_ip.delay_dev = 1000000; // Fixed number, make sure timing can be satisfied.
+      l_ip.delay_dev      = 1000000; // Fixed number, make sure timing can be satisfied.
       l_ip.cycle_time_dev = 100;
 
       l_ip.area_dev          = 1000000; // Fixed number, This is used to exhaustive search for individual components.

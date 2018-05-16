@@ -326,14 +326,14 @@ public:
   double       V_b_sense;
   unsigned int num_r_subarray;
   unsigned int num_c_subarray;
-  int          tag_num_r_subarray; // sheng: fully associative cache tag and data must be computed together, data and tag must be separate
-  int          tag_num_c_subarray;
-  int          data_num_r_subarray;
-  int          data_num_c_subarray;
-  int          num_mats_h_dir;
-  int          num_mats_v_dir;
-  uint32_t     ram_cell_tech_type;
-  double       dram_refresh_period;
+  int tag_num_r_subarray; // sheng: fully associative cache tag and data must be computed together, data and tag must be separate
+  int tag_num_c_subarray;
+  int data_num_r_subarray;
+  int data_num_c_subarray;
+  int num_mats_h_dir;
+  int num_mats_v_dir;
+  uint32_t ram_cell_tech_type;
+  double   dram_refresh_period;
 
   DynamicParameter();
   DynamicParameter(bool is_tag_, int pure_ram_, int pure_cam_, double Nspd_, unsigned int Ndwl_, unsigned int Ndbl_,
@@ -347,8 +347,8 @@ public:
   unsigned int num_search_ports;
   unsigned int out_w; // == nr_bits_out
   bool         is_main_mem;
-  Area cell, cam_cell; // cell is the sram_cell in both nomal cache/ram and FA.
-  bool is_valid;
+  Area         cell, cam_cell; // cell is the sram_cell in both nomal cache/ram and FA.
+  bool         is_valid;
 };
 
 // by eka, to keep track of some runtime parameters such as call #

@@ -587,7 +587,7 @@ DynamicParameter::DynamicParameter(bool is_tag_, int pure_ram_, int pure_cam_, d
   int num_addr_b_row_dec = _log2(num_r_subarray);
   if((fully_assoc || pure_cam))
     num_addr_b_row_dec += _log2(num_subarrays / num_mats);
-  int number_subbanks = num_mats / num_act_mats_hor_dir;
+  int number_subbanks    = num_mats / num_act_mats_hor_dir;
   number_subbanks_decode = _log2(number_subbanks); // TODO: add log2(num_subarray_per_bank) to FA/CAM
 
   num_rw_ports     = g_ip->num_rw_ports;

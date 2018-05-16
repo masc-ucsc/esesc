@@ -95,13 +95,13 @@ double Arbiter::arb_int() {
 void Arbiter::compute_power() {
   power.readOp.dynamic =
       (R * arb_req() * Vdd * Vdd / 2 + R * arb_pri() * Vdd * Vdd / 2 + arb_grant() * Vdd * Vdd + arb_int() * 0.5 * Vdd * Vdd);
-  double nor1_leak      = cmos_Isub_leakage(g_tp.min_w_nmos_ * NTn1 * 2, min_w_pmos * PTn1 * 2, 2, nor);
-  double nor2_leak      = cmos_Isub_leakage(g_tp.min_w_nmos_ * NTn2 * R, min_w_pmos * PTn2 * R, 2, nor);
-  double not_leak       = cmos_Isub_leakage(g_tp.min_w_nmos_ * NTi, min_w_pmos * PTi, 1, inv);
-  double nor1_leak_gate = cmos_Ig_leakage(g_tp.min_w_nmos_ * NTn1 * 2, min_w_pmos * PTn1 * 2, 2, nor);
-  double nor2_leak_gate = cmos_Ig_leakage(g_tp.min_w_nmos_ * NTn2 * R, min_w_pmos * PTn2 * R, 2, nor);
-  double not_leak_gate  = cmos_Ig_leakage(g_tp.min_w_nmos_ * NTi, min_w_pmos * PTi, 1, inv);
-  power.readOp.leakage = (nor1_leak + nor2_leak + not_leak) * Vdd; // FIXME include priority table leakage
+  double nor1_leak          = cmos_Isub_leakage(g_tp.min_w_nmos_ * NTn1 * 2, min_w_pmos * PTn1 * 2, 2, nor);
+  double nor2_leak          = cmos_Isub_leakage(g_tp.min_w_nmos_ * NTn2 * R, min_w_pmos * PTn2 * R, 2, nor);
+  double not_leak           = cmos_Isub_leakage(g_tp.min_w_nmos_ * NTi, min_w_pmos * PTi, 1, inv);
+  double nor1_leak_gate     = cmos_Ig_leakage(g_tp.min_w_nmos_ * NTn1 * 2, min_w_pmos * PTn1 * 2, 2, nor);
+  double nor2_leak_gate     = cmos_Ig_leakage(g_tp.min_w_nmos_ * NTn2 * R, min_w_pmos * PTn2 * R, 2, nor);
+  double not_leak_gate      = cmos_Ig_leakage(g_tp.min_w_nmos_ * NTi, min_w_pmos * PTi, 1, inv);
+  power.readOp.leakage      = (nor1_leak + nor2_leak + not_leak) * Vdd; // FIXME include priority table leakage
   power.readOp.gate_leakage = nor1_leak_gate * Vdd + nor2_leak_gate * Vdd + not_leak_gate * Vdd;
 }
 
