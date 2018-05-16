@@ -3,7 +3,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -38,30 +38,30 @@
 /* }}} */
 
 PowerStats::PowerStats(const char *str)
-  /* constructor {{{1 */
-  : name(strdup(str)) {
+    /* constructor {{{1 */
+    : name(strdup(str)) {
   last_value = 0;
 }
 /* }}} */
 
 PowerStats::~PowerStats()
-  /* destructor {{{1 */
+/* destructor {{{1 */
 {
-  free(const_cast <char *> (name));
+  free(const_cast<char *>(name));
 }
 /* }}} */
 
 void PowerStats::addGStat(const char *str, const int32_t scale)
-  /* add a GStat {{{1 */
+/* add a GStat {{{1 */
 {
   I(str != 0);
   I(str[0] != 0);
 
   GStats *ref = GStats::getRef(str);
-  if (ref) {
+  if(ref) {
     Container c(ref, scale);
     stats.push_back(c);
-  } else if (strcmp(str, "testCounter")) {
+  } else if(strcmp(str, "testCounter")) {
     MSG("WARNING: GStat '%s' needed by PowerModel not found", str);
     I(0);
   }
@@ -69,16 +69,15 @@ void PowerStats::addGStat(const char *str, const int32_t scale)
 /* }}} */
 
 uint32_t PowerStats::getActivity()
-  /* getActivity {{{1 */
+/* getActivity {{{1 */
 {
   uint32_t total = 0;
 
-  for(size_t i = 0; i < stats.size(); i++) 
+  for(size_t i = 0; i < stats.size(); i++)
     total += stats[i].getValue();
-  
+
   uint32_t temp = total - last_value;
   last_value    = total;
   return temp;
 }
 /* }}} */
-

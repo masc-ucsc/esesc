@@ -4,7 +4,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -42,38 +42,38 @@ Description:    This handles the forward declarations of all the classes used
 #ifndef CLASS_DECLARE_H
 #define CLASS_DECLARE_H
 
-//layer info
+// layer info
 class ChipLayers;
 
-//library
+// library
 class DataLibrary;
 
-//base
+// base
 class ModelUnit;
 
-//chip
+// chip
 class ChipFloorplan_Unit;
 class ChipFloorplan;
 
-//config data
+// config data
 class ConfigData;
 
-//graphics
+// graphics
 class ThermGraphics;
 class ThermGraphics_FileType;
 class ThermGraphics_Color;
 
-//material
+// material
 class Material;
 class Material_List;
 
-//model
+// model
 class ThermModel;
 
-//utilities
+// utilities
 class Utilities;
 class RegressionLine;
-template<typename T1, typename T2> class ValueEquals;
+template <typename T1, typename T2> class ValueEquals;
 template <class T> class DynamicArray;
 template <class T> class dynamic_array_row;
 

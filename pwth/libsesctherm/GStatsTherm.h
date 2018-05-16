@@ -6,7 +6,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -47,20 +47,18 @@
 #include "callback.h"
 #include "nanassert.h"
 
-
 #include "GStats.h"
-
-
 
 class GStatsThermCntr : public GStats {
 private:
   long double data;
   long double alldata;
+
 protected:
 public:
-  GStatsThermCntr(const char *format,...);
+  GStatsThermCntr(const char *format, ...);
 
-  GStatsThermCntr & operator += (const double v) {
+  GStatsThermCntr &operator+=(const double v) {
     data += v;
     return *this;
   }
@@ -68,34 +66,32 @@ public:
   void add(const double v) {
     data += v;
   }
-  double getValue() const;
+  double  getValue() const;
   double  getDouble() const;
   int64_t getSamples() const;
-  void reportValue() const;
-  void start();
-  void stop(double weight=1);
+  void    reportValue() const;
+  void    start();
+  void    stop(double weight = 1);
 };
-
-
 
 class GStatsThermMax : public GStats {
 private:
 protected:
   double maxValue;
-  bool    frozen;
+  bool   frozen;
+
 public:
-  GStatsThermMax(const char *format,...);
+  GStatsThermMax(const char *format, ...);
 
   void sample(const double v);
 
   void reportValue() const;
 
-  double  getDouble() const{
-		return maxValue;
-	}
+  double getDouble() const {
+    return maxValue;
+  }
   void start();
-  void stop(double weight=1);
+  void stop(double weight = 1);
 };
 
-
-#endif   // GSTATS_THERMAL_H
+#endif // GSTATS_THERMAL_H

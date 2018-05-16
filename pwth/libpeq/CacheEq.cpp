@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -42,71 +42,63 @@ using namespace std;
 using namespace mu;
 
 ////////////////////////////////////////////////////////////
-CacheEq::CacheEq()
-{
-  tech = 0.032;
-  assoc = 1;
+CacheEq::CacheEq() {
+  tech      = 0.032;
+  assoc     = 1;
   line_size = 32;
-  size = 4096;
+  size      = 4096;
   leakage_eq.SetVarFactory(AddVariable, &leakage_eq);
 }
 
 CacheEq::CacheEq(double tech, double assoc, double line_size, double size)
-	:tech(tech), assoc(assoc), line_size(line_size), size(size)
-{
+    : tech(tech)
+    , assoc(assoc)
+    , line_size(line_size)
+    , size(size) {
   leakage_eq.SetVarFactory(AddVariable, &leakage_eq);
 }
 
-
-CacheEq::~CacheEq()
-{
+CacheEq::~CacheEq() {
 }
 
-void CacheEq::SetEquation(const char* eq_type)
-{
-	const char *EqExpression;
-	if(assoc <= 4 && size < 65536 && line_size < 64) {
-		EqExpression = SescConf->getCharPtr("CacheEq_Small", eq_type);
-	}
-	else {
-		EqExpression = SescConf->getCharPtr("CacheEq_Large",eq_type);
-	}
+void CacheEq::SetEquation(const char *eq_type) {
+  const char *EqExpression;
+  if(assoc <= 4 && size < 65536 && line_size < 64) {
+    EqExpression = SescConf->getCharPtr("CacheEq_Small", eq_type);
+  } else {
+    EqExpression = SescConf->getCharPtr("CacheEq_Large", eq_type);
+  }
 
-	if(strcasecmp(eq_type, "dynamic") == 0 ) {
-	// Declare Variables of dyanmic equation and link to object variables
-	// Since muParser only takes variables as double. All variables should be
-	// declared as double
-		dynamic_eq.DefineVar("tech",&tech);
-		dynamic_eq.DefineVar("assoc",&assoc);
-		dynamic_eq.DefineVar("line_size",&line_size);
-		dynamic_eq.DefineVar("size",&size);
-		dynamic_eq.SetExpr((string_type)EqExpression);
-	}
-	else
-		leakage_eq.SetExpr((string_type)EqExpression);
+  if(strcasecmp(eq_type, "dynamic") == 0) {
+    // Declare Variables of dyanmic equation and link to object variables
+    // Since muParser only takes variables as double. All variables should be
+    // declared as double
+    dynamic_eq.DefineVar("tech", &tech);
+    dynamic_eq.DefineVar("assoc", &assoc);
+    dynamic_eq.DefineVar("line_size", &line_size);
+    dynamic_eq.DefineVar("size", &size);
+    dynamic_eq.SetExpr((string_type)EqExpression);
+  } else
+    leakage_eq.SetExpr((string_type)EqExpression);
 }
-value_type CacheEq::EvalEquation(const char* eq_type)
-{
-	if(strcasecmp(eq_type,"dynamic") == 0) 
-		return dynamic_eq.Eval();
-	else
-		return leakage_eq.Eval();
+value_type CacheEq::EvalEquation(const char *eq_type) {
+  if(strcasecmp(eq_type, "dynamic") == 0)
+    return dynamic_eq.Eval();
+  else
+    return leakage_eq.Eval();
 }
 
-void CacheEq::testCacheEq()
-{
-	SetEquation("dynamic");
-	SetEquation("leakage");	
+void CacheEq::testCacheEq() {
+  SetEquation("dynamic");
+  SetEquation("leakage");
 
-/*	this->SetParserExpression(); */
-	string_type s_expr = dynamic_eq.GetExpr();
-	cout<<"Dynamic Equation is "<<s_expr<<"\n";
-	value_type dynamic = EvalEquation("dynamic");
-	cout<<"Dynamic Power is "<<dynamic<<"\n";
-	s_expr = leakage_eq.GetExpr();
-	cout<<"Leakage Equation is "<<s_expr<<"\n";
+  /*	this->SetParserExpression(); */
+  string_type s_expr = dynamic_eq.GetExpr();
+  cout << "Dynamic Equation is " << s_expr << "\n";
+  value_type dynamic = EvalEquation("dynamic");
+  cout << "Dynamic Power is " << dynamic << "\n";
+  s_expr = leakage_eq.GetExpr();
+  cout << "Leakage Equation is " << s_expr << "\n";
 }
-
-
 
 //---------------------------------------------------------------------------

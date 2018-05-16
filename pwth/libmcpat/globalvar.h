@@ -51,8 +51,5 @@
 //#define EXTERN
 //#else
 //#define EXTERN extern
-bool opt_for_clk= true;
+bool opt_for_clk = true;
 #endif /* GLOBALVAR_H_ */
-
-
-

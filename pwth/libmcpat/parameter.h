@@ -50,22 +50,19 @@
 #define __PARAMETER_H__
 
 #include "area.h"
-#include "const.h"
 #include "cacti_interface.h"
+#include "const.h"
 #include "io.h"
 
-
 // parameters which are functions of certain device technology
-class TechnologyParameter
-{
- public:
-  class DeviceType
-  {
-   public:
+class TechnologyParameter {
+public:
+  class DeviceType {
+  public:
     double C_g_ideal;
     double C_fringe;
     double C_overlap;
-    double C_junc;  // C_junc_area
+    double C_junc; // C_junc_area
     double C_junc_sidewall;
     double l_phy;
     double l_elec;
@@ -83,57 +80,72 @@ class TechnologyParameter
     double t_ox;
     double n_to_p_eff_curr_drv_ratio;
 
-    DeviceType(): C_g_ideal(0), C_fringe(0), C_overlap(0), C_junc(0),
-                  C_junc_sidewall(0), l_phy(0), l_elec(0), R_nch_on(0), R_pch_on(0),
-                  Vdd(0), Vth(0),
-                  I_on_n(0), I_on_p(0), I_off_n(0), I_off_p(0),I_g_on_n(0),I_g_on_p(0),
-                  C_ox(0), t_ox(0), n_to_p_eff_curr_drv_ratio(0) { };
-    void reset()
-    {
-      C_g_ideal = 0;
-      C_fringe  = 0;
-      C_overlap = 0;
-      C_junc    = 0;
-      l_phy     = 0;
-      l_elec    = 0;
-      R_nch_on  = 0;
-      R_pch_on  = 0;
-      Vdd       = 0;
-      Vth       = 0;
-      I_on_n    = 0;
-      I_on_p    = 0;
-      I_off_n   = 0;
-      I_off_p   = 0;
-      I_g_on_n   = 0;
-      I_g_on_p   = 0;
-      C_ox      = 0;
-      t_ox      = 0;
+    DeviceType()
+        : C_g_ideal(0)
+        , C_fringe(0)
+        , C_overlap(0)
+        , C_junc(0)
+        , C_junc_sidewall(0)
+        , l_phy(0)
+        , l_elec(0)
+        , R_nch_on(0)
+        , R_pch_on(0)
+        , Vdd(0)
+        , Vth(0)
+        , I_on_n(0)
+        , I_on_p(0)
+        , I_off_n(0)
+        , I_off_p(0)
+        , I_g_on_n(0)
+        , I_g_on_p(0)
+        , C_ox(0)
+        , t_ox(0)
+        , n_to_p_eff_curr_drv_ratio(0){};
+    void reset() {
+      C_g_ideal                 = 0;
+      C_fringe                  = 0;
+      C_overlap                 = 0;
+      C_junc                    = 0;
+      l_phy                     = 0;
+      l_elec                    = 0;
+      R_nch_on                  = 0;
+      R_pch_on                  = 0;
+      Vdd                       = 0;
+      Vth                       = 0;
+      I_on_n                    = 0;
+      I_on_p                    = 0;
+      I_off_n                   = 0;
+      I_off_p                   = 0;
+      I_g_on_n                  = 0;
+      I_g_on_p                  = 0;
+      C_ox                      = 0;
+      t_ox                      = 0;
       n_to_p_eff_curr_drv_ratio = 0;
     }
 
     void display(uint32_t indent = 0);
   };
-  class InterconnectType
-  {
-   public:
+  class InterconnectType {
+  public:
     double pitch;
     double R_per_um;
     double C_per_um;
 
-    InterconnectType(): pitch(0), R_per_um(0), C_per_um(0) { };
+    InterconnectType()
+        : pitch(0)
+        , R_per_um(0)
+        , C_per_um(0){};
 
-    void reset()
-    {
-      pitch = 0;
+    void reset() {
+      pitch    = 0;
       R_per_um = 0;
       C_per_um = 0;
     }
 
     void display(uint32_t indent = 0);
   };
-  class MemoryType
-  {
-   public:
+  class MemoryType {
+  public:
     double b_w;
     double b_h;
     double cell_a_w;
@@ -141,31 +153,30 @@ class TechnologyParameter
     double cell_nmos_w;
     double Vbitpre;
 
-    void reset()
-    {
-      b_w = 0;
-      b_h = 0;
-      cell_a_w = 0;
+    void reset() {
+      b_w         = 0;
+      b_h         = 0;
+      cell_a_w    = 0;
       cell_pmos_w = 0;
       cell_nmos_w = 0;
-      Vbitpre = 0;
+      Vbitpre     = 0;
     }
 
     void display(uint32_t indent = 0);
   };
 
-  class ScalingFactor
-  {
-   public:
+  class ScalingFactor {
+  public:
     double logic_scaling_co_eff;
     double core_tx_density;
 
-    ScalingFactor(): logic_scaling_co_eff(0), core_tx_density(0) { };
+    ScalingFactor()
+        : logic_scaling_co_eff(0)
+        , core_tx_density(0){};
 
-    void reset()
-    {
-      logic_scaling_co_eff= 0;
-      core_tx_density = 0;
+    void reset() {
+      logic_scaling_co_eff = 0;
+      core_tx_density      = 0;
     }
 
     void display(uint32_t indent = 0);
@@ -225,7 +236,7 @@ class TechnologyParameter
   DeviceType dram_acc;    // DRAM access transistor
   DeviceType dram_wl;     // DRAM wordline transistor
   DeviceType peri_global; // peripheral global
-  DeviceType cam_cell;   // SRAM cell transistor
+  DeviceType cam_cell;    // SRAM cell transistor
 
   InterconnectType wire_local;
   InterconnectType wire_inside_mat;
@@ -244,8 +255,7 @@ class TechnologyParameter
 
   void display(uint32_t indent = 0);
 
-  void reset()
-  {
+  void reset() {
     dram_cell_Vdd  = 0;
     dram_cell_I_on = 0;
     dram_cell_C    = 0;
@@ -275,98 +285,84 @@ class TechnologyParameter
   }
 };
 
+class DynamicParameter {
+public:
+  bool   is_tag;
+  bool   pure_ram;
+  bool   pure_cam;
+  bool   fully_assoc;
+  int    tagbits;
+  int    num_subarrays; // only for leakage computation  -- the number of subarrays per bank
+  int    num_mats;      // only for leakage computation  -- the number of mats per bank
+  double Nspd;
+  int    Ndwl;
+  int    Ndbl;
+  int    Ndcm;
+  int    deg_bl_muxing;
+  int    deg_senseamp_muxing_non_associativity;
+  int    Ndsam_lev_1;
+  int    Ndsam_lev_2;
+  int    number_addr_bits_mat;   // per port
+  int    number_subbanks_decode; // per_port
+  int    num_di_b_bank_per_port;
+  int    num_do_b_bank_per_port;
+  int    num_di_b_mat;
+  int    num_do_b_mat;
+  int    num_di_b_subbank;
+  int    num_do_b_subbank;
 
+  int num_si_b_mat;
+  int num_so_b_mat;
+  int num_si_b_subbank;
+  int num_so_b_subbank;
+  int num_si_b_bank_per_port;
+  int num_so_b_bank_per_port;
 
-class DynamicParameter
-{
-  public:
-    bool is_tag;
-    bool pure_ram;
-    bool pure_cam;
-    bool fully_assoc;
-    int tagbits;
-    int num_subarrays;  // only for leakage computation  -- the number of subarrays per bank
-    int num_mats;       // only for leakage computation  -- the number of mats per bank
-    double Nspd;
-    int Ndwl;
-    int Ndbl;
-    int Ndcm;
-    int deg_bl_muxing;
-    int deg_senseamp_muxing_non_associativity;
-    int Ndsam_lev_1;
-    int Ndsam_lev_2;
-    int number_addr_bits_mat;             // per port
-    int number_subbanks_decode;           // per_port
-    int num_di_b_bank_per_port;
-    int num_do_b_bank_per_port;
-    int num_di_b_mat;
-    int num_do_b_mat;
-    int num_di_b_subbank;
-    int num_do_b_subbank;
+  int number_way_select_signals_mat;
+  int num_act_mats_hor_dir;
 
-    int num_si_b_mat;
-    int num_so_b_mat;
-    int num_si_b_subbank;
-    int num_so_b_subbank;
-	int num_si_b_bank_per_port;
-	int num_so_b_bank_per_port;
+  int          num_act_mats_hor_dir_sl;
+  bool         is_dram;
+  double       V_b_sense;
+  unsigned int num_r_subarray;
+  unsigned int num_c_subarray;
+  int          tag_num_r_subarray; // sheng: fully associative cache tag and data must be computed together, data and tag must be separate
+  int          tag_num_c_subarray;
+  int          data_num_r_subarray;
+  int          data_num_c_subarray;
+  int          num_mats_h_dir;
+  int          num_mats_v_dir;
+  uint32_t     ram_cell_tech_type;
+  double       dram_refresh_period;
 
-    int number_way_select_signals_mat;
-    int num_act_mats_hor_dir;
+  DynamicParameter();
+  DynamicParameter(bool is_tag_, int pure_ram_, int pure_cam_, double Nspd_, unsigned int Ndwl_, unsigned int Ndbl_,
+                   unsigned int Ndcm_, unsigned int Ndsam_lev_1_, unsigned int Ndsam_lev_2_, bool is_main_mem_);
 
-    int num_act_mats_hor_dir_sl;
-    bool is_dram;
-    double V_b_sense;
-    unsigned int num_r_subarray;
-    unsigned int num_c_subarray;
-    int tag_num_r_subarray;//sheng: fully associative cache tag and data must be computed together, data and tag must be separate
-    int tag_num_c_subarray;
-    int data_num_r_subarray;
-    int data_num_c_subarray;
-    int num_mats_h_dir;
-    int num_mats_v_dir;
-    uint32_t ram_cell_tech_type;
-    double dram_refresh_period;
-
-    DynamicParameter();
-    DynamicParameter(
-        bool         is_tag_,
-        int          pure_ram_,
-        int          pure_cam_,
-        double       Nspd_,
-        unsigned int Ndwl_,
-        unsigned int Ndbl_,
-        unsigned int Ndcm_,
-        unsigned int Ndsam_lev_1_,
-        unsigned int Ndsam_lev_2_,
-        bool         is_main_mem_);
-
-    int use_inp_params;
-    unsigned int num_rw_ports;
-    unsigned int num_rd_ports;
-    unsigned int num_wr_ports;
-    unsigned int num_se_rd_ports;  // number of single ended read ports
-    unsigned int num_search_ports;
-    unsigned int out_w;// == nr_bits_out
-    bool   is_main_mem;
-    Area   cell, cam_cell;//cell is the sram_cell in both nomal cache/ram and FA.
-    bool   is_valid;
+  int          use_inp_params;
+  unsigned int num_rw_ports;
+  unsigned int num_rd_ports;
+  unsigned int num_wr_ports;
+  unsigned int num_se_rd_ports; // number of single ended read ports
+  unsigned int num_search_ports;
+  unsigned int out_w; // == nr_bits_out
+  bool         is_main_mem;
+  Area cell, cam_cell; // cell is the sram_cell in both nomal cache/ram and FA.
+  bool is_valid;
 };
 
-//by eka, to keep track of some runtime parameters such as call #
-class RuntimeParameter
-{
-  public:
-    bool is_first_call;
-    RuntimeParameter();
-    RuntimeParameter(bool is_first_call_);
-    bool Is_first_call();
-    void Set_no_first_call();
+// by eka, to keep track of some runtime parameters such as call #
+class RuntimeParameter {
+public:
+  bool is_first_call;
+  RuntimeParameter();
+  RuntimeParameter(bool is_first_call_);
+  bool Is_first_call();
+  void Set_no_first_call();
 };
 
-extern RuntimeParameter mcpat_call; //by eka
-extern InputParameter * g_ip;
+extern RuntimeParameter    mcpat_call; // by eka
+extern InputParameter *    g_ip;
 extern TechnologyParameter g_tp;
 
 #endif
-

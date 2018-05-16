@@ -48,89 +48,122 @@
 #ifndef TLB_H_
 #define TLB_H_
 
-#include "const.h"
+#include "GStats.h"
 #include "cacti_interface.h"
-#include "parameter.h"
 #include "component.h"
+#include "const.h"
+#include "parameter.h"
 #include <iostream>
 #include <string>
-#include "GStats.h"
-
 
 using namespace std;
 
-class ArrayST :public Component{
- public:
+class ArrayST : public Component {
+public:
   ArrayST(){};
-  ArrayST(const InputParameter *configure_interface, string _name, bool _is_default=true, bool powervalprovided = false);
+  ArrayST(const InputParameter *configure_interface, string _name, bool _is_default = true, bool powervalprovided = false);
 
   InputParameter l_ip;
   string         name;
   bool           is_default;
   uca_org_t      local_result;
 
-  statsDef       tdp_stats;
-  statsDef       rtp_stats;
-  statsDef       stats_t;
-  powerDef       power_t;
+  statsDef tdp_stats;
+  statsDef rtp_stats;
+  statsDef stats_t;
+  powerDef power_t;
 
-	GStatsMax      *maxDynPower;
-
+  GStatsMax *maxDynPower;
 
   virtual void optimize_array();
-//#ifdef ENABLE_PEQ
+  //#ifdef ENABLE_PEQ
   virtual void optimize_array_peq();
-//#endif
+  //#endif
   virtual void compute_base_power();
   virtual ~ArrayST(){};
 };
 
-class InstCache :public Component{
+class InstCache : public Component {
 public:
-  ArrayST* caches;
-  ArrayST* missb;
-  ArrayST* ifb;
-  ArrayST* prefetchb;
-  powerDef power_t;//temp value holder for both (max) power and runtime power
-  InstCache(){caches=0;missb=0;ifb=0;prefetchb=0;};
-  ~InstCache(){
-	  if (caches)    {delete caches; caches=0;}
-	  if (missb)     {delete missb; missb=0;}
-	  if (ifb)       {delete ifb; ifb=0;}
-	  if (prefetchb) {delete prefetchb; prefetchb=0;}
-   };
+  ArrayST *caches;
+  ArrayST *missb;
+  ArrayST *ifb;
+  ArrayST *prefetchb;
+  powerDef power_t; // temp value holder for both (max) power and runtime power
+  InstCache() {
+    caches    = 0;
+    missb     = 0;
+    ifb       = 0;
+    prefetchb = 0;
+  };
+  ~InstCache() {
+    if(caches) {
+      delete caches;
+      caches = 0;
+    }
+    if(missb) {
+      delete missb;
+      missb = 0;
+    }
+    if(ifb) {
+      delete ifb;
+      ifb = 0;
+    }
+    if(prefetchb) {
+      delete prefetchb;
+      prefetchb = 0;
+    }
+  };
 };
 
-class DataCache :public InstCache{
+class DataCache : public InstCache {
 public:
-  ArrayST* wbb;
-  DataCache(){wbb=0;};
-  ~DataCache(){
-	  if (wbb) {delete wbb; wbb=0;}
-   };
+  ArrayST *wbb;
+  DataCache() {
+    wbb = 0;
+  };
+  ~DataCache() {
+    if(wbb) {
+      delete wbb;
+      wbb = 0;
+    }
+  };
 };
 
 class interconnect;
-class SMInstCache :public InstCache{
+class SMInstCache : public InstCache {
 public:
-	interconnect* bcast;
+  interconnect *bcast;
 
-  SMInstCache(){bcast=0;};
-  ~SMInstCache(){
-	  if (bcast) bcast=0;
-   };
+  SMInstCache() {
+    bcast = 0;
+  };
+  ~SMInstCache() {
+    if(bcast)
+      bcast = 0;
+  };
 };
-class SMDataCache :public InstCache{
+class SMDataCache : public InstCache {
 public:
-  ArrayST* wbb;
-	ArrayST* coal;
-	ArrayST* xbar;
+  ArrayST *wbb;
+  ArrayST *coal;
+  ArrayST *xbar;
 
-  SMDataCache(){wbb=0;coal=0;xbar=0;};
-  ~SMDataCache(){
-	  if (wbb)  {delete wbb; wbb=0;}
-	  if (coal) {delete coal; coal=0;}
-	  //if (xbar) {delete xbar; xbar=0;}
-   };
+  SMDataCache() {
+    wbb  = 0;
+    coal = 0;
+    xbar = 0;
+  };
+  ~SMDataCache() {
+    if(wbb) {
+      delete wbb;
+      wbb = 0;
+    }
+    if(coal) {
+      delete coal;
+      coal = 0;
+    }
+    // if (xbar) {delete xbar; xbar=0;}
+  };
 };
 #endif /* TLB_H_ */

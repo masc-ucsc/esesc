@@ -4,30 +4,29 @@
 #include "flp.h"
 
 /* normalized polish expression	*/
-typedef struct NPE_t_st
-{
-	int *elements;
-	int size;
+typedef struct NPE_t_st {
+  int *elements;
+  int  size;
 
-	/* positions of the units	*/
-	int *unit_pos;
-	int n_units;
+  /* positions of the units	*/
+  int *unit_pos;
+  int  n_units;
 
-	/* 
-	 * flipping positions  - where 
-	 * a unit is immediately adjacent 
-	 * to a cut_type and vice-versa
-	 */
-	int *flip_pos;
-	int n_flips;
+  /*
+   * flipping positions  - where
+   * a unit is immediately adjacent
+   * to a cut_type and vice-versa
+   */
+  int *flip_pos;
+  int  n_flips;
 
-	/* positions of the chains	*/
-	int *chain_pos;
-	int n_chains;
+  /* positions of the chains	*/
+  int *chain_pos;
+  int  n_chains;
 
-	/* no. of units till this position	*/
-	int *ballot_count;
-}NPE_t;
+  /* no. of units till this position	*/
+  int *ballot_count;
+} NPE_t;
 
 /* NPE routines	*/
 
@@ -37,9 +36,9 @@ NPE_t *NPE_get_initial(flp_desc_t *flp_desc);
 void free_NPE(NPE_t *expr);
 /* debug print	*/
 void print_NPE(NPE_t *expr, flp_desc_t *flp_desc);
-/* 
- * move M1 of the floorplan paper 
- * swap two units adjacent in the NPE	
+/*
+ * move M1 of the floorplan paper
+ * swap two units adjacent in the NPE
  */
 void NPE_swap_units(NPE_t *expr, int pos);
 /* move M2 - invert a chain of cut_types in the NPE	*/

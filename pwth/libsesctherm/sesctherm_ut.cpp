@@ -1,10 +1,10 @@
-//  Contributed by Ehsan K.Ardestani 
+//  Contributed by Ehsan K.Ardestani
 //                 Ian Lee
 //                 Jose Renau
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,38 +36,38 @@
 
 /*******************************************************************************
 File name:      sesctherm_ut.cpp
-Description:    Wrapper class structure creates the interface between SescTherm 
+Description:    Wrapper class structure creates the interface between SescTherm
                 and the eSESC performance simulator.
 ********************************************************************************/
 
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <map>
 
 #include "SescConf.h"
 #include "SescThermWrapper.h"
 
-void print_usage(const char * argv0);
+void print_usage(const char *argv0);
 
-int main(int argc, const char **argv){
-  const char* section = 0;
-	ChipEnergyBundle *energyBundle = new ChipEnergyBundle;
+int main(int argc, const char **argv) {
+  const char *        section      = 0;
+  ChipEnergyBundle *  energyBundle = new ChipEnergyBundle;
   std::vector<float> *temperatures = NULL;
 
   SescThermWrapper *sesctherm = new SescThermWrapper;
-  SescConf = new SConfig(argc, argv);
+  SescConf                    = new SConfig(argc, argv);
 
-  for (int i=0; i<30; i++){
-		char name[128];
-		sprintf(name, "b(%d)", i);
-		char *conn="b(0)";
-    float dyn   = 0.5;
-    float lkg   = 0.001;
-    int devType = 0;
+  for(int i = 0; i < 30; i++) {
+    char name[128];
+    sprintf(name, "b(%d)", i);
+    char *conn    = "b(0)";
+    float dyn     = 0.5;
+    float lkg     = 0.001;
+    int   devType = 0;
     energyBundle->cntrs.push_back(Container((const char *)name, (char *)conn, (char *)conn, devType, 0, 0, dyn, lkg));
-	}
+  }
 
-	uint32_t tl;
+  uint32_t tl;
   sesctherm->plug(section, energyBundle);
   std::cout << "PLUG DONE" << std::endl;
   sesctherm->calcTemp(energyBundle, temperatures, 10000, tl);

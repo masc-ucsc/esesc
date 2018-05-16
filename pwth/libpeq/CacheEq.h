@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -36,43 +36,41 @@
 #define CacheEq_H
 #include "muParserTest.h"
 
-#define _USE_MATH_DEFINES		
+#define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <cmath>
-#include <string>
-#include <iostream>
-#include <locale>
-#include <limits>
-#include <ios> 
 #include <iomanip>
+#include <ios>
+#include <iostream>
+#include <limits>
+#include <locale>
 #include <numeric>
+#include <string>
 
 #include "muParser.h"
 
 using namespace std;
 using namespace mu;
 
-
 class CacheEq {
 private:
- mu::Parser dynamic_eq; // Equation for dynamic power consumption
- mu::Parser leakage_eq; // Equation for leakage power consumption
- double tech; //technology node
- double assoc; // associativity
- double line_size; // line_size
- double size; // Size
-
+  mu::Parser dynamic_eq; // Equation for dynamic power consumption
+  mu::Parser leakage_eq; // Equation for leakage power consumption
+  double     tech;       // technology node
+  double     assoc;      // associativity
+  double     line_size;  // line_size
+  double     size;       // Size
 
 public:
-CacheEq();
-~CacheEq();
-CacheEq(double tech, double assoc, double line_size, double size);
+  CacheEq();
+  ~CacheEq();
+  CacheEq(double tech, double assoc, double line_size, double size);
 
-void SetEquation(const char* eq_type);
-value_type EvalEquation(const char* eq_type);
-void testCacheEq();
+  void       SetEquation(const char *eq_type);
+  value_type EvalEquation(const char *eq_type);
+  void       testCacheEq();
 };
 
 #endif

@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -37,41 +37,41 @@
 
 #include "muParserTest.h"
 
-#define _USE_MATH_DEFINES		
+#define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <cmath>
-#include <string>
-#include <iostream>
-#include <locale>
-#include <limits>
-#include <ios> 
 #include <iomanip>
+#include <ios>
+#include <iostream>
+#include <limits>
+#include <locale>
 #include <numeric>
+#include <string>
 
 #include "muParser.h"
 
 using namespace std;
 using namespace mu;
 
-
 // Forward declarations
 
-value_type* AddVariable(const char_type *a_szName, void *a_pUserData);
-void ListVar(const mu::ParserBase &parser);
-void ListConst(const mu::ParserBase &parser);
-void ListExprVar(const mu::ParserBase &parser);
+value_type *AddVariable(const char_type *a_szName, void *a_pUserData);
+void        ListVar(const mu::ParserBase &parser);
+void        ListConst(const mu::ParserBase &parser);
+void        ListExprVar(const mu::ParserBase &parser);
 
 class PeqParser {
 private:
- mu::Parser parser;
+  mu::Parser parser;
+
 public:
-PeqParser();
-~PeqParser();
-void SetParserExpression();
-value_type ParserEvalEq();
-void testParser();
+  PeqParser();
+  ~PeqParser();
+  void       SetParserExpression();
+  value_type ParserEvalEq();
+  void       testParser();
 };
 
 #endif

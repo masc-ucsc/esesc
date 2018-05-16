@@ -2,7 +2,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -42,76 +42,68 @@ using namespace std;
 using namespace mu;
 
 ////////////////////////////////////////////////////////////
-SRAM::SRAM()
-{
-  tech = 32;
+SRAM::SRAM() {
+  tech  = 32;
   ports = 1;
   width = 32;
-  size = 4096;
+  size  = 4096;
   leakage_eq.SetVarFactory(AddVariable, &leakage_eq);
 }
 
 SRAM::SRAM(double tech, double ports, double width, double size)
-	:tech(tech), ports(ports), width(width), size(size)
-{
+    : tech(tech)
+    , ports(ports)
+    , width(width)
+    , size(size) {
 }
 
-
-SRAM::~SRAM()
-{
+SRAM::~SRAM() {
 }
 
-void SRAM::SetEquation(const char* eq_type)
-{
-	const char *EqExpression;
-	if(ports < 3) {
-		if(ports*size < 4097) // Size smaller than 4KB
-			EqExpression = SescConf->getCharPtr("SRAM_Small1", eq_type);
-		else
-			EqExpression = SescConf->getCharPtr("SRAM_Large1",eq_type);
-	}
-	else {
-		if(ports*size < 10241) // Size smaller than 10KB
-			EqExpression = SescConf->getCharPtr("SRAM_Small2",eq_type);
-		else
-			EqExpression = SescConf->getCharPtr("SRAM_Large2",eq_type);
-	}
+void SRAM::SetEquation(const char *eq_type) {
+  const char *EqExpression;
+  if(ports < 3) {
+    if(ports * size < 4097) // Size smaller than 4KB
+      EqExpression = SescConf->getCharPtr("SRAM_Small1", eq_type);
+    else
+      EqExpression = SescConf->getCharPtr("SRAM_Large1", eq_type);
+  } else {
+    if(ports * size < 10241) // Size smaller than 10KB
+      EqExpression = SescConf->getCharPtr("SRAM_Small2", eq_type);
+    else
+      EqExpression = SescConf->getCharPtr("SRAM_Large2", eq_type);
+  }
 
-	if(strcasecmp(eq_type, "dynamic") == 0 ) {
-	// Declare Variables of dyanmic equation and link to object variables
-	// Since muParser only takes variables as double. All variables should be
-	// declared as double
-		dynamic_eq.DefineVar("tech",&tech);
-		dynamic_eq.DefineVar("ports",&ports);
-		dynamic_eq.DefineVar("width",&width);
-		dynamic_eq.DefineVar("size",&size);
-		dynamic_eq.SetExpr((string_type)EqExpression);
-	}
-	else
-		leakage_eq.SetExpr((string_type)EqExpression);
+  if(strcasecmp(eq_type, "dynamic") == 0) {
+    // Declare Variables of dyanmic equation and link to object variables
+    // Since muParser only takes variables as double. All variables should be
+    // declared as double
+    dynamic_eq.DefineVar("tech", &tech);
+    dynamic_eq.DefineVar("ports", &ports);
+    dynamic_eq.DefineVar("width", &width);
+    dynamic_eq.DefineVar("size", &size);
+    dynamic_eq.SetExpr((string_type)EqExpression);
+  } else
+    leakage_eq.SetExpr((string_type)EqExpression);
 }
-value_type SRAM::EvalEquation(const char* eq_type)
-{
-	if(strcasecmp(eq_type,"dynamic") == 0) 
-		return dynamic_eq.Eval();
-	else
-		return leakage_eq.Eval();
+value_type SRAM::EvalEquation(const char *eq_type) {
+  if(strcasecmp(eq_type, "dynamic") == 0)
+    return dynamic_eq.Eval();
+  else
+    return leakage_eq.Eval();
 }
 
-void SRAM::testSRAM()
-{
-	SetEquation("dynamic");
-	SetEquation("leakage");	
+void SRAM::testSRAM() {
+  SetEquation("dynamic");
+  SetEquation("leakage");
 
-/*	this->SetParserExpression(); */
-	string_type s_expr = dynamic_eq.GetExpr();
-	cout<<"Dynamic Equation is "<<s_expr<<"\n";
-	value_type dynamic = EvalEquation("dynamic");
-	cout<<"Dynamic Power is "<<dynamic<<"\n";
-	s_expr = leakage_eq.GetExpr();
-	cout<<"Leakage Equation is "<<s_expr<<"\n";
+  /*	this->SetParserExpression(); */
+  string_type s_expr = dynamic_eq.GetExpr();
+  cout << "Dynamic Equation is " << s_expr << "\n";
+  value_type dynamic = EvalEquation("dynamic");
+  cout << "Dynamic Power is " << dynamic << "\n";
+  s_expr = leakage_eq.GetExpr();
+  cout << "Leakage Equation is " << s_expr << "\n";
 }
-
-
 
 //---------------------------------------------------------------------------

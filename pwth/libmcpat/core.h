@@ -50,280 +50,262 @@
 #define CORE_H_
 
 #include "XML_Parse.h"
+#include "array.h"
+#include "basic_components.h"
+#include "interconnect.h"
 #include "logic.h"
 #include "parameter.h"
-#include "array.h"
-#include "interconnect.h"
-#include "basic_components.h"
 
-class BranchPredictor :public Component {
-  public:
+class BranchPredictor : public Component {
+public:
+  ParseXML *     XML;
+  int            ithCore;
+  InputParameter interface_ip;
+  CoreDynParam   coredynp;
+  double         clockRate, executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
+  ArrayST *      globalBPT;
+  ArrayST *      L1_localBPT;
+  ArrayST *      L2_localBPT;
+  ArrayST *      chooser;
+  ArrayST *      RAS;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	ArrayST * globalBPT;
-	ArrayST * L1_localBPT;
-	ArrayST * L2_localBPT;
-	ArrayST * chooser;
-	ArrayST * RAS;
-	
-	bool exist;
+  bool exist;
 
-	BranchPredictor(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~BranchPredictor();
+  BranchPredictor(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~BranchPredictor();
 };
 
+class InstFetchU : public Component {
+public:
+  ParseXML *     XML;
+  int            ithCore;
+  InputParameter interface_ip;
+  CoreDynParam   coredynp;
+  double         clockRate, executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
 
-class InstFetchU :public Component {
-  public:
+  InstCache        icache;
+  InstCache        icachecc;
+  ArrayST *        IB;
+  ArrayST *        BTB;
+  BranchPredictor *BPT;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
+  void buildInstCache();
+  void buildInstBuffer();
+  void buildBranchPredictor();
 
-	InstCache icache;
-	InstCache icachecc;
-	ArrayST * IB;
-	ArrayST * BTB;
-	BranchPredictor * BPT;
+  bool exist;
 
-	void buildInstCache();
-	void buildInstBuffer();
-	void buildBranchPredictor();
-	
-	bool exist;
-
-	InstFetchU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~InstFetchU();
+  InstFetchU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~InstFetchU();
 };
 
+class SchedulerU : public Component {
+public:
+  ParseXML *       XML;
+  int              ithCore;
+  InputParameter   interface_ip;
+  CoreDynParam     coredynp;
+  double           clockRate, executionTime;
+  double           scktRatio, chip_PR_overhead, macro_PR_overhead;
+  double           Iw_height, fp_Iw_height, ROB_height;
+  ArrayST *        int_inst_window;
+  ArrayST *        fp_inst_window;
+  ArrayST *        ROB;
+  selection_logic *instruction_selection;
 
-class SchedulerU :public Component {
-  public:
+  void buildInorderScheduler();
+  void buildIntInstWindow();
+  void buildFPInstWindow();
+  void buildROB();
+  void buildSelectionU();
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double Iw_height, fp_Iw_height,ROB_height;
-	ArrayST         * int_inst_window;
-	ArrayST         * fp_inst_window;
-	ArrayST         * ROB;
-	selection_logic * instruction_selection;
+  bool exist;
 
-	void buildInorderScheduler();
-	void buildIntInstWindow();
-	void buildFPInstWindow();
-	void buildROB();
-	void buildSelectionU();
-	
-	bool exist;
-
-    SchedulerU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~SchedulerU();
+  SchedulerU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~SchedulerU();
 };
 
-class RENAMINGU :public Component {
-  public:
+class RENAMINGU : public Component {
+public:
+  ParseXML *                   XML;
+  int                          ithCore;
+  InputParameter               interface_ip;
+  double                       clockRate, executionTime;
+  CoreDynParam                 coredynp;
+  ArrayST *                    iFRAT;
+  ArrayST *                    fFRAT;
+  ArrayST *                    iRRAT;
+  ArrayST *                    fRRAT;
+  ArrayST *                    ifreeL;
+  ArrayST *                    ffreeL;
+  dep_resource_conflict_check *idcl;
+  dep_resource_conflict_check *fdcl;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	CoreDynParam  coredynp;
-	ArrayST * iFRAT;
-	ArrayST * fFRAT;
-	ArrayST * iRRAT;
-	ArrayST * fRRAT;
-	ArrayST * ifreeL;
-	ArrayST * ffreeL;
-	dep_resource_conflict_check * idcl;
-	dep_resource_conflict_check * fdcl;
+  void buildIFRATRam();
+  void buildFFRATRam();
+  void buildIFRATCam();
+  void buildFFRATCam();
+  void buildIRRAT();
+  void buildFRRAT();
+  void buildIFreeL();
+  void buildFFreeL();
 
-	void buildIFRATRam();
-	void buildFFRATRam();
-	void buildIFRATCam();
-	void buildFFRATCam();
-	void buildIRRAT();
-	void buildFRRAT();
-	void buildIFreeL();
-	void buildFFreeL();
-	
-	bool exist;
+  bool exist;
 
-	RENAMINGU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_, const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~RENAMINGU();
+  RENAMINGU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~RENAMINGU();
 };
 
-class LoadStoreU :public Component {
-  public:
+class LoadStoreU : public Component {
+public:
+  ParseXML *     XML;
+  int            ithCore;
+  InputParameter interface_ip;
+  CoreDynParam   coredynp;
+  double         clockRate, executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
+  double         lsq_height;
+  DataCache      dcache;
+  DataCache      dcachecc;
+  ArrayST *      LSQ; // it is actually the store queue but for inorder processors it serves as both loadQ and StoreQ
+  ArrayST *      LoadQ;
+  ArrayST *      ssit;
+  ArrayST *      lfst;
+  DataCache      VPCfilter;
+  ArrayST *      vpc_buffer;
+  ArrayST *      vpc_wb;
+  ArrayST *      vpc_specbw;
+  ArrayST *      vpc_specbr;
+  ArrayST *      strb;
+  ArrayST *      ldrb;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double lsq_height;
-	DataCache dcache;
-	DataCache dcachecc;
-	ArrayST * LSQ;//it is actually the store queue but for inorder processors it serves as both loadQ and StoreQ
-	ArrayST * LoadQ;
-	ArrayST * ssit;
-	ArrayST * lfst;
-	DataCache VPCfilter;
-	ArrayST * vpc_buffer;
-	ArrayST * vpc_wb;
-	ArrayST * vpc_specbw;
-	ArrayST * vpc_specbr;
-	ArrayST * strb;
-	ArrayST * ldrb;
+  void buildDataCache();
+  void buildVPCBuffer();
+  void buildVPCSpecBuffers();
+  void buildL2Filter();
+  void buildLSQ();
+  void buildLoadQ();
+  void buildStoreSets();
 
-	void buildDataCache();
-	void buildVPCBuffer();
-	void buildVPCSpecBuffers();
-	void buildL2Filter();
-	void buildLSQ();
-	void buildLoadQ();
-	void buildStoreSets();
-	
-	bool exist;
-	
+  bool exist;
 
-	LoadStoreU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~LoadStoreU();
+  LoadStoreU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~LoadStoreU();
 };
 
-class MemManU :public Component {
-  public:
+class MemManU : public Component {
+public:
+  ParseXML *     XML;
+  int            ithCore;
+  InputParameter interface_ip;
+  CoreDynParam   coredynp;
+  double         clockRate, executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
+  ArrayST *      itlb;
+  ArrayST *      dtlb;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	ArrayST * itlb;
-	ArrayST * dtlb;
- 
-	void buildITLB();
-	void buildDTLB();
-	
-	bool exist;
+  void buildITLB();
+  void buildDTLB();
 
+  bool exist;
 
-
-	MemManU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~MemManU();
+  MemManU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~MemManU();
 };
 
-class RegFU :public Component {
-  public:
+class RegFU : public Component {
+public:
+  ParseXML *     XML;
+  int            ithCore;
+  InputParameter interface_ip;
+  CoreDynParam   coredynp;
+  double         clockRate, executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
+  double         int_regfile_height, fp_regfile_height;
+  ArrayST *      IRF;
+  ArrayST *      FRF;
+  ArrayST *      RFWIN;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	CoreDynParam  coredynp;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double int_regfile_height, fp_regfile_height;
-	ArrayST * IRF;
-	ArrayST * FRF;
-	ArrayST * RFWIN;
+  void buildIRF();
+  void buildFRF();
 
-	void buildIRF();
-	void buildFRF();
-	
-	bool exist;
+  bool exist;
 
-
-	RegFU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-    void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~RegFU();
+  RegFU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~RegFU();
 };
 
-class EXECU :public Component {
-  public:
+class EXECU : public Component {
+public:
+  ParseXML *      XML;
+  int             ithCore;
+  InputParameter  interface_ip;
+  double          clockRate, executionTime;
+  double          scktRatio, chip_PR_overhead, macro_PR_overhead;
+  double          lsq_height;
+  CoreDynParam    coredynp;
+  RegFU *         rfu;
+  SchedulerU *    scheu;
+  FunctionalUnit *fp_u;
+  FunctionalUnit *exeu;
+  interconnect *  int_bypass;
+  interconnect *  intTagBypass;
+  interconnect *  fp_bypass;
+  interconnect *  fpTagBypass;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
-	double lsq_height;
-	CoreDynParam  coredynp;
-	RegFU          * rfu;
-	SchedulerU     * scheu;
-    FunctionalUnit * fp_u;
-    FunctionalUnit * exeu;
-	interconnect * int_bypass;
-	interconnect * intTagBypass;
-	interconnect * fp_bypass;
-	interconnect * fpTagBypass;
+  Component bypass;
 
-	Component  bypass;
-	
-	bool exist;
+  bool exist;
 
-	EXECU(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_, double lsq_height_,const CoreDynParam & dyn_p_);
-    void computeEnergy(bool is_tdp=true);
-	void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~EXECU();
+  EXECU(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, double lsq_height_, const CoreDynParam &dyn_p_);
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~EXECU();
 };
 
+class Core : public Component {
+public:
+  ParseXML *     XML;
+  int            ithCore;
+  InputParameter interface_ip;
+  double         clockRate, executionTime;
+  double         scktRatio, chip_PR_overhead, macro_PR_overhead;
 
-class Core :public Component {
-  public:
+  InstFetchU *   ifu;
+  LoadStoreU *   lsu;
+  MemManU *      mmu;
+  EXECU *        exu;
+  RENAMINGU *    rnu;
+  PipelinePower *corepipe;
 
-	ParseXML *XML;
-	int  ithCore;
-	InputParameter interface_ip;
-	double clockRate,executionTime;
-	double scktRatio, chip_PR_overhead, macro_PR_overhead;
+  bool exist;
 
-	InstFetchU * ifu;
-	LoadStoreU * lsu;
-	MemManU    * mmu;
-	EXECU      * exu;
-	RENAMINGU  * rnu;
-	PipelinePower   * corepipe;
-
-	
-	bool exist;
-
-	UndiffCore * undiffCore;
-	CoreDynParam  coredynp;
-	//full_decoder 	inst_decoder;
-    //clock_network	clockNetwork;
-	Core(ParseXML *XML_interface, int ithCore_, InputParameter* interface_ip_);
-	void set_core_param();
-  void update_rtparam(ParseXML *XML_interface, int ithCore_, 
-    InputParameter* interface_ip_, Core *core); //eka
-	void computeEnergy(bool is_tdp=true);
-	void displayEnergy(uint32_t indent = 0,int plevel = 100, bool is_tdp=true);
-	~Core();
+  UndiffCore * undiffCore;
+  CoreDynParam coredynp;
+  // full_decoder 	inst_decoder;
+  // clock_network	clockNetwork;
+  Core(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_);
+  void set_core_param();
+  void update_rtparam(ParseXML *XML_interface, int ithCore_, InputParameter *interface_ip_, Core *core); // eka
+  void computeEnergy(bool is_tdp = true);
+  void displayEnergy(uint32_t indent = 0, int plevel = 100, bool is_tdp = true);
+  ~Core();
 };
 
 #endif /* CORE_H_ */
