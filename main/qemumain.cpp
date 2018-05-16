@@ -20,11 +20,11 @@
  Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#include "QEMUEmulInterface.h"
-#include "SescConf.h"
-#include "EmulInterface.h"
-#include "SamplerSkipSim.h"
 #include "BootLoader.h"
+#include "EmulInterface.h"
+#include "QEMUEmulInterface.h"
+#include "SamplerSkipSim.h"
+#include "SescConf.h"
 #ifdef DEBUG
 #include <mcheck.h>
 #endif
@@ -37,7 +37,7 @@ int main(int argc, const char **argv) {
   BootLoader::plug(argc, argv);
 
   // Prepare to boot (Similar to BootLoader::boot)
-  if (!SescConf->lock())
+  if(!SescConf->lock())
     exit(-1);
 
   SescConf->dump();
@@ -46,56 +46,54 @@ int main(int argc, const char **argv) {
 
   // Run the main loop (Similar to TaskHanlder::boot but without CPU)
   timeval startTime;
-  gettimeofday(&startTime,0);
+  gettimeofday(&startTime, 0);
 
   uint64_t instcount = 0;
 
   bool allCPUsfinished = false;
 
-
-  while (!allCPUsfinished) {
+  while(!allCPUsfinished) {
     allCPUsfinished = true; // Normally set to quit the loop
     FlowID maxFlows = TaskHandler::getMaxFlows();
 
-    for (FlowID i = 0; i < maxFlows; i++) {
-      if (!TaskHandler::isActive(i))
+    for(FlowID i = 0; i < maxFlows; i++) {
+      if(!TaskHandler::isActive(i))
         continue;
 
       EmulInterface *eint = TaskHandler::getEmul(i);
-      allCPUsfinished = false;
+      allCPUsfinished     = false;
       // If Flow is inactive, continue. else
-      DInst *dinst = eint->executeHead(i);
-      static int conta = 0;
+      DInst *         dinst  = eint->executeHead(i);
+      static int      conta  = 0;
       static AddrType lastPC = 0;
-      if (dinst) {
+      if(dinst) {
         // dinst->dump("");
         conta++;
-        if (dinst->getPC() != lastPC) {
-          if (conta > 10)
-            //MSG("oop=%x",lastPC);
-          conta = 0;
+        if(dinst->getPC() != lastPC) {
+          if(conta > 10)
+            // MSG("oop=%x",lastPC);
+            conta = 0;
         }
         lastPC = dinst->getPC();
         eint->reexecuteTail(i);
-        //dinst->dump(""); 
+        // dinst->dump("");
         dinst->scrap(eint);
         instcount++;
-      }else{
+      } else {
         conta = 0;
       }
     }
   }
 
   timeval endTime;
-  gettimeofday(&endTime,0);
-  double msecs = ( endTime.tv_sec - startTime.tv_sec ) * 1000
-                   + ( endTime.tv_usec - startTime.tv_usec ) / 1000;
+  gettimeofday(&endTime, 0);
+  double msecs = (endTime.tv_sec - startTime.tv_sec) * 1000 + (endTime.tv_usec - startTime.tv_usec) / 1000;
 
-  long double res = instcount/1000;
+  long double res = instcount / 1000;
   res /= msecs;
   MSG("------------------");
   MSG("Simulator performance with inst skip");
-  MSG ( "qemumain MIPS = %g secs = %g insts = %lld",(double)res, msecs/1000,(long long)instcount);
+  MSG("qemumain MIPS = %g secs = %g insts = %lld", (double)res, msecs / 1000, (long long)instcount);
   MSG("------------------");
 
   BootLoader::report("");
