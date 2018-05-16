@@ -1469,8 +1469,8 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 
     /* -------------------------------------- GPU IFU           ----------------------------------------*/
 #if 0
-	sprintf(name, "IFUG(%d)",(*gpuIndex)[ii]); 
-    sprintf(conn, "lanesG(%d)",(*gpuIndex)[ii]); 
+	sprintf(name, "IFUG(%d)",(*gpuIndex)[ii]);
+    sprintf(conn, "lanesG(%d)",(*gpuIndex)[ii]);
     area = 1.5e-12*gpu->sms[i]->icache.area.get_area();
     tdp  = gpu->sms[i]->icache.power.readOp.dynamic;
     lkg  = gpu->sms[i]->icache.rt_power.readOp.get_leak();
@@ -1512,8 +1512,8 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
 
     /* -------------------------------------- GPU Coalescer     ----------------------------------------*/
 #if 0
-    sprintf(name, "P(%d)_Coal",(*gpuIndex)[ii]); 
-    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]); 
+    sprintf(name, "P(%d)_Coal",(*gpuIndex)[ii]);
+    sprintf(conn, "P(%d)_lanesG",(*gpuIndex)[ii]);
     area = 1.5e-12*gpu->sms[i]->icache.area.get_area();
     tdp  = gpu->sms[i]->icache.power.readOp.dynamic;
     lkg  = gpu->sms[i]->icache.rt_power.readOp.get_leak();
@@ -1533,8 +1533,8 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
     area = tdp = lkg = 0;
 
 #if 0
-    sprintf(name, "P(%d)_pipeG",(*gpuIndex)[ii]); 
-    sprintf(conn, "lanesG(%d) DL1G(%d) IL1G(%d) RFG(%d)",(*gpuIndex)[ii],(*gpuIndex)[ii],(*gpuIndex)[ii],(*gpuIndex)[ii]); 
+    sprintf(name, "P(%d)_pipeG",(*gpuIndex)[ii]);
+    sprintf(conn, "lanesG(%d) DL1G(%d) IL1G(%d) RFG(%d)",(*gpuIndex)[ii],(*gpuIndex)[ii],(*gpuIndex)[ii],(*gpuIndex)[ii]);
     area = 1.5e-12*gpu->sms[i]->lanes[0]->corepipe->area.get_area()*procdynp.numLane;
     tdp  = gpu->sms[i]->lanes[0]->corepipe->power.readOp.dynamic;
     lkg  = gpu->sms[i]->lanes[0]->corepipe->power.readOp.get_leak();
@@ -1578,7 +1578,7 @@ void Processor::dumpStatics(ChipEnergyBundle *eBundle) {
   idx_start_STLB = energyCntrNames->size();
   for(int i = 0; i <procdynp.numSTLB; i++){
     sprintf(str, "STLB(%d)", i);
-    energyCntrNames->push_back(str);         
+    energyCntrNames->push_back(str);
   }
   idx_end_STLB = energyCntrNames->size();
 #endif
@@ -2156,7 +2156,7 @@ void Processor::dumpGPUDyn(int i) {
 
 #if 0
   dyn = ((gpu->sms[i]->lanes[0]->corepipe->power*pppm_t)*cccm_t).readOp.get_dyn();
-  sprintf(name, "P(%d)_pipeG",(*gpuIndex)[i]); 
+  sprintf(name, "P(%d)_pipeG",(*gpuIndex)[i]);
   energyBundle->setDynCycByName(name, dyn, cyc);
 #endif
 }

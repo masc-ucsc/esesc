@@ -75,9 +75,9 @@ int main(int argc,char *argv[])
 			infile_specified = true;
 			i++;
 			fb[j++] = argv[ i];
-      if (j > 2) 
+      if (j > 2)
         exit(0);
-         
+
 		}
    //
 
@@ -100,20 +100,20 @@ int main(int argc,char *argv[])
 
 	//parse XML-based interface
 	cout<<"McPAT is computing the target processor...\n "<<endl;
-  
+
   // clock codes by eka, just to see how long each method takes
-  clock_t startpars, endpars; 
-  clock_t startproc, endproc; 
-  clock_t startproc2, endproc2; 
+  clock_t startpars, endpars;
+  clock_t startproc, endproc;
+  clock_t startproc2, endproc2;
   clock_t startdisp, enddisp;
-  startpars = clock();       
+  startpars = clock();
   ParseXML *p1= new ParseXML();
-	p1->parse(fb[0]);     
+	p1->parse(fb[0]);
 	//eka, this is for test to open another XML file
   ParseXML *p2= new ParseXML();
-	p2->parse(fb[1]);     
+	p2->parse(fb[1]);
 	//
-  endpars = clock();       
+  endpars = clock();
   startproc = clock();
 	Processor proc(p1);
   endproc = clock();
@@ -125,8 +125,8 @@ int main(int argc,char *argv[])
     mcpat_call.Set_no_first_call();
 	//
 	//
-	//by eka, after the first call, next calls will call Processor2 instead of 
-	//allocating a new object, 
+	//by eka, after the first call, next calls will call Processor2 instead of
+	//allocating a new object,
   //since we are about to update the XML counters, and bypass the Parser
   //a modification  ll be required in the interface of Processor2
   //I'll patch it when we decide on how to pass the counters

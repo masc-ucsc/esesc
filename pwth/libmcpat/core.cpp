@@ -1501,11 +1501,11 @@ void LoadStoreU::computeEnergy(bool is_tdp) {
     dcache.missb->stats_t.readAc.access  = dcache.caches->stats_t.readAc.miss;
     dcache.missb->stats_t.writeAc.access = dcache.caches->stats_t.writeAc.miss;
 #if 0
-      if (XML->sys.core[ithCore].scoore){ 
+      if (XML->sys.core[ithCore].scoore){
         dcache.missb->stats_t.readAc.access  = 0;
         dcache.missb->stats_t.writeAc.access = 0;
         //0.4 comes from CACTI as the tag bank dynamic power for the VPC, which drops write_misses on the floor and only accesses the tag bank.
-        dcache.caches->stats_t.writeAc.miss   = 0.4*XML->sys.core[ithCore].dcache.write_misses; 
+        dcache.caches->stats_t.writeAc.miss   = 0.4*XML->sys.core[ithCore].dcache.write_misses;
       }
 #endif
 
