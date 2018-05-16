@@ -619,14 +619,14 @@ double Mat::compute_cam_delay(double inrisetime) {
     Wdecnandp     = 37.5 * g_ip->F_sz_um;//this was  30 micron for the 0.8 micron process
 
     */
-    Wfaprechp = 12.5 * g_ip->F_sz_um;  // this was  10 micron for the 0.8 micron process
-    Wdummyn = 12.5 * g_ip->F_sz_um;    // this was  10 micron for the 0.8 micron process
-    Waddrnandn = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
-    Waddrnandp = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
-    Wfanorn = 6.25 * g_ip->F_sz_um;    // this was   5 micron for the 0.8 micron process
-    Wfanorp = 12.5 * g_ip->F_sz_um;    // this was  10 micron for the 0.8 micron process
-    Wdummyinvn = 75 * g_ip->F_sz_um;   // this was  60 micron for the 0.8 micron process
-    Wdummyinvp = 100 * g_ip->F_sz_um;  // this was  80 micron for the 0.8 micron process
+    Wfaprechp    = 12.5 * g_ip->F_sz_um; // this was  10 micron for the 0.8 micron process
+    Wdummyn      = 12.5 * g_ip->F_sz_um; // this was  10 micron for the 0.8 micron process
+    Waddrnandn   = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
+    Waddrnandp   = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
+    Wfanorn      = 6.25 * g_ip->F_sz_um; // this was   5 micron for the 0.8 micron process
+    Wfanorp      = 12.5 * g_ip->F_sz_um; // this was  10 micron for the 0.8 micron process
+    Wdummyinvn   = 75 * g_ip->F_sz_um;   // this was  60 micron for the 0.8 micron process
+    Wdummyinvp   = 100 * g_ip->F_sz_um;  // this was  80 micron for the 0.8 micron process
     W_hit_miss_n = Wdummyn;
     W_hit_miss_p = g_tp.min_w_nmos_ * p_to_n_sizing_r;
     // TODO: this number should updated using new layout; from the NAND to output NOR should be computed using logical effort
@@ -652,14 +652,14 @@ double Mat::compute_cam_delay(double inrisetime) {
     Wdecnandp     = 37.5 * g_ip->F_sz_um;//this was  30 micron for the 0.8 micron process
 
     */
-    Wfaprechp = g_tp.w_pmos_bl_precharge; // this was  10 micron for the 0.8 micron process
-    Wdummyn    = g_tp.cam.cell_nmos_w;
-    Waddrnandn = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
-    Waddrnandp = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
-    Wfanorn = 6.25 * g_ip->F_sz_um;    // this was   5 micron for the 0.8 micron process
-    Wfanorp = 12.5 * g_ip->F_sz_um;    // this was  10 micron for the 0.8 micron process
-    Wdummyinvn = 75 * g_ip->F_sz_um;   // this was  60 micron for the 0.8 micron process
-    Wdummyinvp = 100 * g_ip->F_sz_um;  // this was  80 micron for the 0.8 micron process
+    Wfaprechp    = g_tp.w_pmos_bl_precharge; // this was  10 micron for the 0.8 micron process
+    Wdummyn      = g_tp.cam.cell_nmos_w;
+    Waddrnandn   = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
+    Waddrnandp   = 62.5 * g_ip->F_sz_um; // this was  50 micron for the 0.8 micron process
+    Wfanorn      = 6.25 * g_ip->F_sz_um; // this was   5 micron for the 0.8 micron process
+    Wfanorp      = 12.5 * g_ip->F_sz_um; // this was  10 micron for the 0.8 micron process
+    Wdummyinvn   = 75 * g_ip->F_sz_um;   // this was  60 micron for the 0.8 micron process
+    Wdummyinvp   = 100 * g_ip->F_sz_um;  // this was  80 micron for the 0.8 micron process
     W_hit_miss_n = Wdummyn;
     W_hit_miss_p = g_tp.min_w_nmos_ * p_to_n_sizing_r;
   }
@@ -930,7 +930,7 @@ double Mat::compute_bitline_delay(double inrisetime) {
     // Leakage current of an SRAM cell
     double Iport     = cmos_Isub_leakage(g_tp.sram.cell_a_w, 0, 1, nmos); // TODO: how much is the idle time? just by *2?
     double Iport_erp = cmos_Isub_leakage(g_tp.sram.cell_a_w, 0, 2, nmos);
-    double Icell = cmos_Isub_leakage(g_tp.sram.cell_nmos_w, g_tp.sram.cell_pmos_w, 1, inv) * 2; // two invs per cell
+    double Icell     = cmos_Isub_leakage(g_tp.sram.cell_nmos_w, g_tp.sram.cell_pmos_w, 1, inv) * 2; // two invs per cell
 
     leak_power_cc_inverters_sram_cell         = Icell * g_tp.sram_cell.Vdd;
     leak_power_acc_tr_RW_or_WR_port_sram_cell = Iport * g_tp.sram_cell.Vdd;

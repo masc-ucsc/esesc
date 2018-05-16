@@ -135,9 +135,9 @@ SharedCache::SharedCache(ParseXML *XML_interface, int ithCache_, InputParameter 
   if(cacheL == STLB) {
 
     interface_ip.specific_tag = 1;
-    tag                = XML->sys.virtual_address_width - int(floor(log2(XML->sys.virtual_memory_page_size))) + EXTRA_TAG_BITS;
-    data               = XML->sys.physical_address_width - int(floor(log2(XML->sys.virtual_memory_page_size)));
-    interface_ip.tag_w = tag;
+    tag                  = XML->sys.virtual_address_width - int(floor(log2(XML->sys.virtual_memory_page_size))) + EXTRA_TAG_BITS;
+    data                 = XML->sys.physical_address_width - int(floor(log2(XML->sys.virtual_memory_page_size)));
+    interface_ip.tag_w   = tag;
     interface_ip.line_sz = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
     // if (XML->sys.homogeneous_STLBs)
     //	interface_ip.cache_sz            *= XML->sys.number_of_cores;
@@ -167,17 +167,17 @@ SharedCache::SharedCache(ParseXML *XML_interface, int ithCache_, InputParameter 
     data                      = (XML->sys.physical_address_width) + int(ceil(log2(size / line))) + unicache.caches->l_ip.line_sz;
     interface_ip.specific_tag = 1;
     interface_ip.tag_w        = tag;
-    interface_ip.line_sz = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
-    interface_ip.cache_sz            = cachep.missb_size * interface_ip.line_sz;
-    interface_ip.assoc               = 0;
-    interface_ip.is_cache            = true;
-    interface_ip.pure_ram            = false;
-    interface_ip.pure_cam            = false;
-    interface_ip.nbanks              = 1;
-    interface_ip.out_w               = interface_ip.line_sz * 8 / 2;
-    interface_ip.access_mode         = 0;
-    interface_ip.throughput          = cachep.throughput; // means cycle time
-    interface_ip.latency             = cachep.latency;    // means access time
+    interface_ip.line_sz      = int(ceil(data / 8.0)); // int(ceil(pow(2.0,ceil(log2(data)))/8.0));
+    interface_ip.cache_sz     = cachep.missb_size * interface_ip.line_sz;
+    interface_ip.assoc        = 0;
+    interface_ip.is_cache     = true;
+    interface_ip.pure_ram     = false;
+    interface_ip.pure_cam     = false;
+    interface_ip.nbanks       = 1;
+    interface_ip.out_w        = interface_ip.line_sz * 8 / 2;
+    interface_ip.access_mode  = 0;
+    interface_ip.throughput   = cachep.throughput; // means cycle time
+    interface_ip.latency      = cachep.latency;    // means access time
     interface_ip.obj_func_dyn_energy = 0;
     interface_ip.obj_func_dyn_power  = 0;
     interface_ip.obj_func_leak_power = 0;
@@ -214,8 +214,8 @@ SharedCache::SharedCache(ParseXML *XML_interface, int ithCache_, InputParameter 
     unicache.area.set_area(unicache.area.get_area() + unicache.ifb->local_result.area);
     area.set_area(area.get_area() + unicache.ifb->local_result.area);
     // prefetch buffer
-    tag = XML->sys.physical_address_width + EXTRA_TAG_BITS; // check with previous entries to decide wthether to merge.
-    data = unicache.caches->l_ip.line_sz;                   // separate queue to prevent from cache polution.
+    tag  = XML->sys.physical_address_width + EXTRA_TAG_BITS; // check with previous entries to decide wthether to merge.
+    data = unicache.caches->l_ip.line_sz;                    // separate queue to prevent from cache polution.
     interface_ip.specific_tag        = 1;
     interface_ip.tag_w               = tag;
     interface_ip.line_sz             = data; // int(pow(2.0,ceil(log2(data))));
@@ -287,7 +287,7 @@ void SharedCache::computeEnergy(bool is_tdp) {
       unicache.ifb->stats_t.writeAc.access = 0; // unicache.ifb->l_ip.num_search_ports;
       unicache.ifb->tdp_stats              = unicache.ifb->stats_t;
 
-      unicache.prefetchb->stats_t.readAc.access = 0;  // unicache.prefetchb->l_ip.num_search_ports;
+      unicache.prefetchb->stats_t.readAc.access  = 0; // unicache.prefetchb->l_ip.num_search_ports;
       unicache.prefetchb->stats_t.writeAc.access = 0; // unicache.ifb->l_ip.num_search_ports;
       unicache.prefetchb->tdp_stats              = unicache.prefetchb->stats_t;
 
@@ -443,8 +443,8 @@ void SharedCache::set_cache_param() {
     cachep.dir_ty    = NonDir;
     cachep.clockRate = XML->sys.L2[ithCache].clockrate;
     cachep.clockRate *= 1e6;
-    cachep.executionTime                     = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
-    interface_ip.data_arr_ram_cell_tech_type = XML->sys.L2[ithCache].device_type; // long channel device LSTP
+    cachep.executionTime                        = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
+    interface_ip.data_arr_ram_cell_tech_type    = XML->sys.L2[ithCache].device_type; // long channel device LSTP
     interface_ip.data_arr_peri_global_tech_type = XML->sys.L2[ithCache].device_type;
     interface_ip.tag_arr_ram_cell_tech_type     = XML->sys.L2[ithCache].device_type;
     interface_ip.tag_arr_peri_global_tech_type  = XML->sys.L2[ithCache].device_type;
@@ -484,8 +484,8 @@ void SharedCache::set_cache_param() {
     cachep.dir_ty    = NonDir;
     cachep.clockRate = XML->sys.STLB[ithCache].clockrate;
     cachep.clockRate *= 1e6;
-    cachep.executionTime                     = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
-    interface_ip.data_arr_ram_cell_tech_type = XML->sys.STLB[ithCache].device_type; // long channel device LSTP
+    cachep.executionTime                        = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
+    interface_ip.data_arr_ram_cell_tech_type    = XML->sys.STLB[ithCache].device_type; // long channel device LSTP
     interface_ip.data_arr_peri_global_tech_type = XML->sys.STLB[ithCache].device_type;
     interface_ip.tag_arr_ram_cell_tech_type     = XML->sys.STLB[ithCache].device_type;
     interface_ip.tag_arr_peri_global_tech_type  = XML->sys.STLB[ithCache].device_type;
@@ -500,8 +500,8 @@ void SharedCache::set_cache_param() {
     cachep.dir_ty    = NonDir;
     cachep.clockRate = XML->sys.L3[ithCache].clockrate;
     cachep.clockRate *= 1e6;
-    cachep.executionTime                     = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
-    interface_ip.data_arr_ram_cell_tech_type = XML->sys.L3[ithCache].device_type; // long channel device LSTP
+    cachep.executionTime                        = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
+    interface_ip.data_arr_ram_cell_tech_type    = XML->sys.L3[ithCache].device_type; // long channel device LSTP
     interface_ip.data_arr_peri_global_tech_type = XML->sys.L3[ithCache].device_type;
     interface_ip.tag_arr_ram_cell_tech_type     = XML->sys.L3[ithCache].device_type;
     interface_ip.tag_arr_peri_global_tech_type  = XML->sys.L3[ithCache].device_type;
@@ -522,8 +522,8 @@ void SharedCache::set_cache_param() {
     cachep.dir_ty    = (enum Dir_type)XML->sys.L1Directory[ithCache].Directory_type;
     cachep.clockRate = XML->sys.L1Directory[ithCache].clockrate;
     cachep.clockRate *= 1e6;
-    cachep.executionTime                     = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
-    interface_ip.data_arr_ram_cell_tech_type = XML->sys.L1Directory[ithCache].device_type; // long channel device LSTP
+    cachep.executionTime                        = XML->sys.total_cycles / (XML->sys.target_core_clockrate * 1e6);
+    interface_ip.data_arr_ram_cell_tech_type    = XML->sys.L1Directory[ithCache].device_type; // long channel device LSTP
     interface_ip.data_arr_peri_global_tech_type = XML->sys.L1Directory[ithCache].device_type;
     interface_ip.tag_arr_ram_cell_tech_type     = XML->sys.L1Directory[ithCache].device_type;
     interface_ip.tag_arr_peri_global_tech_type  = XML->sys.L1Directory[ithCache].device_type;
@@ -542,8 +542,8 @@ void SharedCache::set_cache_param() {
     cachep.dir_ty    = (enum Dir_type)XML->sys.L2Directory[ithCache].Directory_type;
     cachep.clockRate = XML->sys.L2Directory[ithCache].clockrate;
     cachep.clockRate *= 1e6;
-    cachep.executionTime                     = XML->sys.executionTime;
-    interface_ip.data_arr_ram_cell_tech_type = XML->sys.L2Directory[ithCache].device_type; // long channel device LSTP
+    cachep.executionTime                        = XML->sys.executionTime;
+    interface_ip.data_arr_ram_cell_tech_type    = XML->sys.L2Directory[ithCache].device_type; // long channel device LSTP
     interface_ip.data_arr_peri_global_tech_type = XML->sys.L2Directory[ithCache].device_type;
     interface_ip.tag_arr_ram_cell_tech_type     = XML->sys.L2Directory[ithCache].device_type;
     interface_ip.tag_arr_peri_global_tech_type  = XML->sys.L2Directory[ithCache].device_type;

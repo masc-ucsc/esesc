@@ -2666,7 +2666,7 @@ void ParseXML::getGeneralParams() {
   sys.scale_lkg              = SescConf->getDouble(section, "scaleLkgPow");
   const char *therm_section  = SescConf->getCharPtr("", "thermal");
   const char *model_section  = SescConf->getCharPtr(therm_section, "model");
-  sys.temperature            = floor((SescConf->getDouble(model_section, "ambientTemp") / 10)) * 10; // CACTI accepts temperature in steps of
+  sys.temperature = floor((SescConf->getDouble(model_section, "ambientTemp") / 10)) * 10; // CACTI accepts temperature in steps of
                                                                                           // 10
 }
 
@@ -2680,12 +2680,12 @@ void ParseXML::getGPUParams() {
     const char *emu_section = SescConf->getCharPtr("", "cpuemul", (*gpuIndex)[0]);
 
     //--------------------- GPU CORE CONFIGURATION ----------------------//
-    sys.number_of_GPU = 1; // maximum number of GPUs currently supported my esesc.
+    sys.number_of_GPU              = 1; // maximum number of GPUs currently supported my esesc.
     sys.gpu.number_of_SMs          = gpuIndex->size();
     sys.gpu.homoSM.number_of_lanes = SescConf->getInt("", "SP_PER_SM");
     ;
-    sys.gpu.homoSM.homolane.clock_rate   = 2000; // FIXME: Hardcoded, read from esesc.conf?
-    sys.gpu.homoSM.homolane.machine_bits = 32;   // FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.clock_rate            = 2000; // FIXME: Hardcoded, read from esesc.conf?
+    sys.gpu.homoSM.homolane.machine_bits          = 32;   // FIXME: Hardcoded, read from esesc.conf?
     sys.gpu.homoSM.homolane.virtual_address_width = sys.virtual_address_width;
 
     /* address width determins the tag_width in Cache, LSQ and buffers in cache controller
@@ -2693,9 +2693,9 @@ void ParseXML::getGPUParams() {
        */
     sys.gpu.homoSM.homolane.physical_address_width = sys.physical_address_width;
 
-    sys.gpu.homoSM.homolane.instruction_length = 32;     // SescConf->getInt(section, "instWidth"); //FIXME
-    sys.gpu.homoSM.homolane.opcode_width = 11;           // SescConf->getInt(section, "opcodeWidth"); //FIXME
-    sys.gpu.homoSM.homolane.internal_datapath_width = 0; // Does not exist in OOO.xml.
+    sys.gpu.homoSM.homolane.instruction_length      = 32; // SescConf->getInt(section, "instWidth"); //FIXME
+    sys.gpu.homoSM.homolane.opcode_width            = 11; // SescConf->getInt(section, "opcodeWidth"); //FIXME
+    sys.gpu.homoSM.homolane.internal_datapath_width = 0;  // Does not exist in OOO.xml.
 
     /*number_of_hardware_threads defines how many blocks run on the same SM */
     sys.gpu.homoSM.homolane.number_hardware_threads = SescConf->getInt(emu_section, "max_blocks_sm");
@@ -2713,11 +2713,11 @@ void ParseXML::getGPUParams() {
     sys.gpu.homoSM.homolane.pipeline_depth[1] = 13;
 
     sys.gpu.homoSM.homolane.instruction_buffer_size = 16; // SescConf->getInt(section, "issueWidth") * 4;
-    sys.gpu.homoSM.homolane.archi_Regs_IRF_size = 32;     // SescConf->getInt(section, "nArchRegs");
-    sys.gpu.homoSM.homolane.phy_Regs_IRF_size = 1024;
-    sys.gpu.homoSM.homolane.store_buffer_size = 32; // SescConf->getInt(section, "maxStores");
-    sys.gpu.homoSM.homolane.memory_ports      = 2;  //<!-- number of ports refer to sustainable concurrent memory accesses -->
-    sys.gpu.homoSM.homolane.LSQ_ports         = 0;
+    sys.gpu.homoSM.homolane.archi_Regs_IRF_size     = 32; // SescConf->getInt(section, "nArchRegs");
+    sys.gpu.homoSM.homolane.phy_Regs_IRF_size       = 1024;
+    sys.gpu.homoSM.homolane.store_buffer_size       = 32; // SescConf->getInt(section, "maxStores");
+    sys.gpu.homoSM.homolane.memory_ports            = 2;  //<!-- number of ports refer to sustainable concurrent memory accesses -->
+    sys.gpu.homoSM.homolane.LSQ_ports               = 0;
 
     //--------------------- GPU ICACHE CONFIGURATION ----------------------//
     if(SescConf->checkCharPtr("gpuCore", "SM_IL1")) {

@@ -397,7 +397,7 @@ void Processor::Processor2(ParseXML *XML_interface)
    */
   int    i;
   double pppm_t[4] = {1, 1, 1, 1};
-  XML = XML_interface; // eka, to copy the input XML info to the local XML
+  XML              = XML_interface; // eka, to copy the input XML info to the local XML
 
   static bool first_time = true;
   if(first_time) {
@@ -761,13 +761,13 @@ void Processor::set_proc_param() {
   interface_ip.ic_proj_type     = debug ? 0 : XML->sys.interconnect_projection_type;
   interface_ip.wire_is_mat_type = 2;
   interface_ip.wire_os_mat_type = 2;
-  interface_ip.delay_wt = 100;         // Fixed number, make sure timing can be satisfied.
-  interface_ip.area_wt  = 0;           // Fixed number, This is used to exhaustive search for individual components.
+  interface_ip.delay_wt         = 100; // Fixed number, make sure timing can be satisfied.
+  interface_ip.area_wt          = 0;   // Fixed number, This is used to exhaustive search for individual components.
   interface_ip.dynamic_power_wt = 100; // Fixed number, This is used to exhaustive search for individual components.
   interface_ip.leakage_power_wt = 0;
   interface_ip.cycle_time_wt    = 0;
 
-  interface_ip.delay_dev = 10000;         // Fixed number, make sure timing can be satisfied.
+  interface_ip.delay_dev         = 10000; // Fixed number, make sure timing can be satisfied.
   interface_ip.area_dev          = 10000; // Fixed number, This is used to exhaustive search for individual components.
   interface_ip.dynamic_power_dev = 10;    // Fixed number, This is used to exhaustive search for individual components.
   interface_ip.leakage_power_dev = 10000;
@@ -782,7 +782,7 @@ void Processor::set_proc_param() {
   interface_ip.F_sz_um        = interface_ip.F_sz_nm / 1000;
 
   //***********This section of code does not have real meaning, they are just to ensure all data will have initial value to prevent
-  //errors. They will be overridden  during each components initialization
+  // errors. They will be overridden  during each components initialization
   interface_ip.cache_sz     = 64;
   interface_ip.line_sz      = 1;
   interface_ip.assoc        = 1;
