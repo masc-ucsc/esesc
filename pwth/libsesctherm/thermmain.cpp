@@ -616,16 +616,18 @@ void SescTherm::computeTemp(int argc, const char **argv) {
   strcpy(tmp_label_match, (char *)label_match);
   strcpy(tmp_label_file, (char *)label_file);
 
-  p = strtok((char *)tmp_label_match, "_");
+  char *save=0;
+
+  p = strtok_r((char *)tmp_label_match, "_",&save);
 
   while(p != NULL) {
-    p = strtok(NULL, "_");
+    p = strtok_r(NULL, "_",&save);
     if(p != NULL)
       bname = p;
   }
-  s = strtok((char *)tmp_label_file, "/");
+  s = strtok_r((char *)tmp_label_file, "/",&save);
   while(s != NULL) {
-    s = strtok(NULL, "/");
+    s = strtok_r(NULL, "/",&save);
     if(s != NULL)
       label_name = s;
   }

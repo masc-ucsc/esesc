@@ -100,11 +100,12 @@ QEMUEmulInterface::QEMUEmulInterface(const char *section)
   for(int j = 0; j < qargs->qargc; j++) {
     qargs->qargv[j] = strdup(" ");
   }
+  char *save=0;
   qargs->qargv[qargpos++] = (char *)"qemu";
   for(int j = 0; j < paramcount; j++) {
     char *param       = strdup(SescConf->getCharPtr(section, "params", j));
     char *param_start = param;
-    char *splitparam  = strtok(param, " ");
+    char *splitparam  = strtok_r(param, " ", &save);
     while(splitparam != NULL) {
       char cadena[8192];
       if(stringmode) {
@@ -126,7 +127,7 @@ QEMUEmulInterface::QEMUEmulInterface(const char *section)
       if(!stringmode)
         qargpos++;
 
-      splitparam = strtok(NULL, " ");
+      splitparam = strtok_r(NULL, " ", &save);
     }
     free(param_start);
   }
