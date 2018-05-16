@@ -48,6 +48,8 @@ If you publish research using ESESC please cite the paper [ESESC: A Fast Multico
       year = {2013}
     }
 
+[![CodeFactor](https://www.codefactor.io/repository/github/masc-ucsc/esesc/badge)](https://www.codefactor.io/repository/github/masc-ucsc/esesc)
+
 [1]:https://groups.google.com/forum/#!forum/esesc 
 [2]:http://masc.cse.ucsc.edu/esesc
 [3]:http://masc.soe.ucsc.edu/docs/hpca13.pdf
