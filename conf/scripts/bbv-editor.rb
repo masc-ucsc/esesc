@@ -71,7 +71,7 @@ command = simpointBin + " -saveSimpointWeights " + benchName + "-100m.weights" +
   " -loadFVFile " + benchName + "-100b.bbv" + " -maxK 10"
 
 puts "Running simpoint"
-output = `#{command}`
+`#{command}`
 
 SPoint = Struct.new(:inst,:weight)
 

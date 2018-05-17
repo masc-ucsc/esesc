@@ -31,8 +31,7 @@ if !File.exist?(HotFloorplan)
 end
 
 # run hotfloorplan
-cmd = "#{HotFloorplan} -f #{FLP} -p #{TDP} -o #{NewFLP} -c #{Config} > log"
-res = `#{cmd}`
+system("#{HotFloorplan} -f #{FLP} -p #{TDP} -o #{NewFLP} -c #{Config} > log")
 
 # run flpconv > flp.conf
 convcmd = "#{FlpConv} #{NewFLP} #{MSG}"
