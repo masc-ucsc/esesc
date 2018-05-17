@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 
-#define SCOORE
+//#define SCOORE
 
 #ifdef SCOORE
 #define SIZE 100000
@@ -64,17 +64,19 @@ extern "C" void *qemuesesc_main_bootstrap(void *threadargs) {
     }
     cf.push(i);
   }
+
+  return 0;
 }
 
 
-main() {
+int main() {
 
   pthread_t qemu_thread;
 
   pthread_create(&qemu_thread,0,&qemuesesc_main_bootstrap,(void *) 0);
 
   // Consumer
-  
+
   for(uint32_t i=0;i<SIZE;i++) {
     while(cf.empty()) {
       ;
@@ -91,6 +93,7 @@ main() {
   printf("Job done\n");
   pthread_kill(qemu_thread,SIGKILL);
 
+  return 0;
 }
 
 #endif
