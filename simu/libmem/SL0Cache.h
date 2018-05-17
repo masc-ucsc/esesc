@@ -5,7 +5,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -63,15 +63,15 @@ class SL0Cache: public Cache {
   };
   class WCB {
   protected:
-    
+
     const uint32_t size;
     const AddrType log2AddrLs;
     const AddrType wordMask;
     const uint32_t nWords;
-    
+
     uint32_t mru;
     uint32_t random;
-    uint32_t global_hist_index;    
+    uint32_t global_hist_index;
 
     DataType global_hist_data[w_GLOBAL_HIST];
     AddrType global_hist_addr[w_GLOBAL_HIST];
@@ -81,7 +81,7 @@ class SL0Cache: public Cache {
 
   public:
     WCBLine displaced;
-  WCB(int32_t sz, int32_t l) : size(sz) ,log2AddrLs(l) ,wordMask((1<<(l))-1), nWords(1<<l) {      
+  WCB(int32_t sz, int32_t l) : size(sz) ,log2AddrLs(l) ,wordMask((1<<(l))-1), nWords(1<<l) {
       mru    = 0;
       global_hist_index = 0;
       displaced.reset(nWords);
@@ -91,11 +91,11 @@ class SL0Cache: public Cache {
         global_hist_addr[i] = 0;
         global_hist_stid[i] = 0;
       }
-      for(uint32_t i=0;i<size;i++) 
+      for(uint32_t i=0;i<size;i++)
         line[i].reset(nWords);
       random = 0;
 
-    }                           
+    }
     uint32_t getnWords() const { return nWords; }
     int32_t calcWord(AddrType addr) const {
       return (addr & wordMask)>>2;
@@ -139,15 +139,15 @@ class SL0Cache: public Cache {
             }
             printf("word %u line %u ",word,i);
             printf("fastST @%lld id=%lld pc=0x%llx addr=0x%llx tag=0x%llx [0x%x vs 0x%x] line_id = %lld : %lld\n"
-       ,(long long)globalClock, (long long)dinst->getID(), dinst->getPC(), addr, tag, data 
+       ,(long long)globalClock, (long long)dinst->getID(), dinst->getPC(), addr, tag, data
        ,line[i].data[word], (long long)line[i].stid[word]
-       ,(long long)line[i].stid[word]-(long long)dinst->getID());    
+       ,(long long)line[i].stid[word]-(long long)dinst->getID());
           }
           else //fastLD
             printf("word %u line %u ",word,i);
 
           printf("fastLD @%lld id=%lld pc=0x%llx addr=0x%llx tag=0x%llx [0x%x vs 0x%x] line_id = %lld : %lld\n"
-     ,(long long)globalClock, (long long)dinst->getID(), dinst->getPC(), addr, tag, data 
+     ,(long long)globalClock, (long long)dinst->getID(), dinst->getPC(), addr, tag, data
      ,line[i].data[word], (long long)line[i].stid[word]
      ,(long long)line[i].stid[word]-(long long)dinst->getID());
         }
@@ -188,7 +188,7 @@ class SL0Cache: public Cache {
           continue;
         if( !line[i].valid==w_PENDING && (line[i].stid[word] != dinst->getID()))
           return true;
- 
+
         return false;
       }
       return false;
@@ -240,7 +240,7 @@ class SL0Cache: public Cache {
     global_hist_stid[global_hist_index] = line[i].stid[word];
     global_hist_index++;
     if(global_hist_index>=w_GLOBAL_HIST)
-    global_hist_index = 0;       
+    global_hist_index = 0;
   }
         line[i].data[word]    = data;
         line[i].stid[word]    = stid;
@@ -254,7 +254,7 @@ class SL0Cache: public Cache {
       //so we should always find a matching line above
       /*BEGIN REMOVAL SECTION*/
       /*      I(pos<size);
-      bool disp=false; 
+      bool disp=false;
       if (line[pos].valid==VALID) {
         if(line[pos].present[word]==true){ //there's already a word here, save it
           global_hist_addr[global_hist_index] = addr;
@@ -262,7 +262,7 @@ class SL0Cache: public Cache {
           global_hist_stid[global_hist_index] = line[pos].stid[word];
           global_hist_index++;
           if(global_hist_index>=w_GLOBAL_HIST)
-            global_hist_index = 0;       
+            global_hist_index = 0;
         }
 
         displaced = line[pos];
@@ -335,7 +335,7 @@ class SL0Cache: public Cache {
 
       return disp;
     }
-  }; 
+  };
 
   class DataTypeHashFunc {
     public:

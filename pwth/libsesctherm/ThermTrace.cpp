@@ -283,7 +283,7 @@ bool ThermTrace::read_energy(bool File_nVector) {
 
   if(File_nVector == true) {
 
-#if 0    
+#if 0
      // BINARY FILE
     float buffer[mapping.size()];
 
@@ -421,11 +421,11 @@ bool ThermTrace::read_energy(bool File_nVector) {
         flp[flp_id]->energy += mapping[i].ratio[k] * energyCntrValues_->at(energyCntrSample_).at(i);
       }
     }
-#if 0 
+#if 0
     FILE * flplog = fopen("rflpPow","a");
 
     // dump dynamic power
-     for(size_t i=0;i<flp.size();i++) { 
+     for(size_t i=0;i<flp.size();i++) {
        fprintf(flplog, "%g\t",flp[i]-> energy);
      }
 

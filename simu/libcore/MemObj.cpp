@@ -111,7 +111,7 @@ void MemObj::blockFill(MemRequest *mreq) {
 #if 0
 void MemObj::tryPrefetch(AddrType addr, bool doStats, int degree, AddrType pref_sign, AddrType pc, CallbackBase *cb)
   /* forward tryPrefetch {{{1 */
-{ 
+{
   router->tryPrefetch(addr,doStats, degree, pref_sign, pc, cb);
 }
 /* }}} */

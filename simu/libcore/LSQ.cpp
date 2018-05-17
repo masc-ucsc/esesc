@@ -61,7 +61,7 @@ DInst *LSQFull::executing(DInst *dinst)
   while(instIt != instMap.end()) {
     if (instIt->first != tag){
       instIt++;
-      continue; 
+      continue;
     }
 #endif
   std::pair<AddrDInstQMap::iterator, AddrDInstQMap::iterator> ret;

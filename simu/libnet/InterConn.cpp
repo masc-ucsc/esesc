@@ -151,16 +151,16 @@ class TestMessage : public Message {
 };
 pool<TestMessage> tmpool;
 
-void TestMessage::garbageCollect() 
+void TestMessage::garbageCollect()
 {
     refCount--;
     if (refCount == 0) {
       LOG("destroying TestMessage");
-      tmpool.in(this); 
+      tmpool.in(this);
     }
 }
 
-void InterConnection::test() 
+void InterConnection::test()
 {
   TestMessage* t;
   for (ushort i = 0; i < rPolicy->getnRouters(); i++) {

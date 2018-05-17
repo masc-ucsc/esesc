@@ -49,7 +49,7 @@
 pthread_mutex_t mutex_ctrl;
 
 #if 0
-void *QEMUReader::getSharedMemory(size_t size) 
+void *QEMUReader::getSharedMemory(size_t size)
 /* Allocate a shared memory region {{{1 */
 {
   int shmid= shmget(0,size,IPC_CREAT|0666);
