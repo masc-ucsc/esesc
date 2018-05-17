@@ -3,6 +3,9 @@ ESESC
 
 [![Build Status](https://travis-ci.org/masc-ucsc/esesc.png)](https://travis-ci.org/masc-ucsc/esesc)
 
+[![CodeFactor](https://www.codefactor.io/repository/github/masc-ucsc/esesc/badge)](https://www.codefactor.io/repository/github/masc-ucsc/esesc)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4cae3de3de714e13b6003002f74b7375)](https://www.codacy.com/app/renau/lgraph?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=masc-ucsc/lgraph&amp;utm_campaign=Badge_Grade)
+
 * [ESESC Forum][1]
 * [ESESC Blog][2]
 * [ESESC Documentation](./docs)
@@ -48,7 +51,6 @@ If you publish research using ESESC please cite the paper [ESESC: A Fast Multico
       year = {2013}
     }
 
-[![CodeFactor](https://www.codefactor.io/repository/github/masc-ucsc/esesc/badge)](https://www.codefactor.io/repository/github/masc-ucsc/esesc)
 
 [1]:https://groups.google.com/forum/#!forum/esesc 
 [2]:http://masc.cse.ucsc.edu/esesc
