@@ -131,8 +131,8 @@ protected:
   PortGeneric *cmdPort;
 
   CacheType *tlbBank;
-  MemObj *lowerTLB;   // Points to the next TLB lower in the heirarchy, May be NULL
-  MemObj *lowerCache; // Points to the cache right below the TLB. (Used only for processor direct requests)
+  MemObj *   lowerTLB;   // Points to the next TLB lower in the heirarchy, May be NULL
+  MemObj *   lowerCache; // Points to the cache right below the TLB. (Used only for processor direct requests)
 
   typedef std::deque<MemRequest *> PendingQueue;
   PendingQueue                     pending;

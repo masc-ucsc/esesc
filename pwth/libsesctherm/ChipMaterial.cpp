@@ -733,8 +733,8 @@ MATRIX_DATA Material::calc_interlayer_conductivity(MATRIX_DATA dielectric_consta
 // this is used to scale the effective conductivity as a function of the density of the corresponding functional unit
 MATRIX_DATA Material::calc_effective_interconnect_layer_vertical_conductivity(int layer, MATRIX_DATA density,
                                                                               DataLibrary *datalibrary_) {
-  int         technology          = datalibrary_->config_data_->technology_; // get the technology used
-  int         metal_index         = DataLibrary::tech_metal_index(layer); // get the metal layer offset for the technology_parameters table
+  int         technology  = datalibrary_->config_data_->technology_; // get the technology used
+  int         metal_index = DataLibrary::tech_metal_index(layer); // get the metal layer offset for the technology_parameters table
   MATRIX_DATA dielectric_constant = DataLibrary::technology_parameters_[TECH_K][technology];
   // compute the bulk thermal conductivity of the inter-layer dielectric using the dielectric constant
 
@@ -1121,11 +1121,11 @@ void Material::calc_c4underfill_layer_properties(ChipLayers &layer, DataLibrary 
   if(layer.thickness_ == 0)
     layer.thickness_ = thickness;
 
-  MATRIX_DATA volume = width * height * thickness;
+  MATRIX_DATA volume             = width * height * thickness;
   layer.horizontal_conductivity_ = 0.8; // 0.8W/mK (Takem from "Prediction of Thermal Performance...")
 
   layer.vertical_conductivity_down_ = 1.66; // 1.66W/mK (Takem from "Prediction of Thermal Performance...")
-  layer.vertical_conductivity_up_ = 1.66;   // 1.66W/mK (Takem from "Prediction of Thermal Performance...")
+  layer.vertical_conductivity_up_   = 1.66; // 1.66W/mK (Takem from "Prediction of Thermal Performance...")
 
   MATRIX_DATA volume_bump = (4 / 3) * 3.14159265 * (powf((250e-6) / 2.0, 3.0));
   layer.spec_heat_        = datalibrary_->layer_materials_.find("COPPER").spec_heat_ * ((volume_bump * pin_count) / volume);
@@ -1302,7 +1302,7 @@ void Material::calc_package_substrate_layer_properties(ChipLayers &layer, DataLi
 
   layer.vertical_conductivity_down_ =
       conductivity * 8.58; //~8.58X thu-plane conductivity difference when accounting for 25% vias (from "wiring statistics and
-                           //printed wiring board thermal conductivity")
+                           // printed wiring board thermal conductivity")
   layer.vertical_conductivity_up_ = conductivity * 8.58; //~8.58X thu-plane conductivity difference when accounting for 25% vias
                                                          //(from "wiring statistics and printed wiring board thermal conductivity")
 
@@ -1657,7 +1657,7 @@ void Material::calc_air_layer_properties(ChipLayers &layer, DataLibrary *datalib
   // v1/v2=p2/p1
   kinematic_viscosity = kinematic_viscosity * (1.0133E5 / air_pressure); // compensate for pressure difference
   // determine the location of the transition
-  MATRIX_DATA leftx = fan_distance; // offset axis by the distance of the fan to the chip
+  MATRIX_DATA leftx            = fan_distance; // offset axis by the distance of the fan to the chip
   MATRIX_DATA rightx           = width + fan_distance;
   MATRIX_DATA transition_point = MIN(kinematic_viscosity / fan_velocity * 5.0e5, 1e8);
 

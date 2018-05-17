@@ -1203,7 +1203,6 @@ void output_UCA(uca_org_t *fr) {
          << fr->power.readOp.gate_leakage * 1e3 << endl;
   }
 
-  if(g_ip->data_arr_ram_cell_tech_type == 3 || g_ip->data_arr_ram_cell_tech_type == 4) {}
   cout << "    Cache height x width (mm): " << fr->cache_ht * 1e-3 << " x " << fr->cache_len * 1e-3 << endl << endl;
 
   cout << "    Best Ndwl : " << fr->data_array2->Ndwl << endl;

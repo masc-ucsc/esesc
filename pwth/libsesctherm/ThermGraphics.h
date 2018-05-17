@@ -81,9 +81,9 @@ public:
   MATRIX_DATA  max_rotate_;     // maximum hue rotation
   MATRIX_DATA  stroke_coeff_;   // used to tune the stroke-width
   MATRIX_DATA  stroke_opacity_; // used to control the opacity of the floor plan
-  MATRIX_DATA smallest_shown_;  // fraction of the entire chip necessary to see macro
-  MATRIX_DATA zoom_;
-  MATRIX_DATA txt_offset_;
+  MATRIX_DATA  smallest_shown_; // fraction of the entire chip necessary to see macro
+  MATRIX_DATA  zoom_;
+  MATRIX_DATA  txt_offset_;
   // static int palette_[21][3];
 
   std::vector<ThermGraphics_Color> colors_;  // these are the colors to be used in the palette

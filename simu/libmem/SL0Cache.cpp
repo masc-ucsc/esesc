@@ -7,7 +7,7 @@
 //
 // The ESESC/BSD License
 //
-// Copyright (c) 2005-2013, Regents of the University of California and 
+// Copyright (c) 2005-2013, Regents of the University of California and
 // the ESESC Project.
 // All rights reserved.
 //
@@ -100,7 +100,7 @@ void SL0Cache::doRead(MemRequest *mreq, bool ignoreCanIssue)
   //printf("LD id=%lld: @%lld pc=0x%x addr=0x%x data=0x%x\n",
   //(long long)dinst->getID(), (long long)globalClock,dinst->getPC(),dinst->getAddr(),dinst->getData());
   //DEBUG
-  
+
   bool correct;
   if (wcb.loadCheck(dinst,correct)) {
     // The WCB 1st
@@ -136,7 +136,7 @@ void SL0Cache::doWrite(MemRequest *mreq, bool ignoreCanIssue)
   I(dinst->getAddr());
   I(dinst->getAddr() == mreq->getAddr());
   I(dinst->getInst()->isStore());
- 
+
   if (wcb.write(dinst)) {
     I(wcb.displaced.valid);
     AddrType addr = wcb.displaced.tag<<5; // FIXME, 2**5 is cache line size
@@ -206,8 +206,8 @@ void SL0Cache::doInvalidate(MemRequest *mreq)
 
 TimeDelta_t SL0Cache::ffread(AddrType addr, DataType data)
   /* can accept writes? {{{1 */
-{ 
-  I(0);//FIXME: change the WCB 
+{
+  I(0);//FIXME: change the WCB
 
   return Cache::ffread(addr,data);
 }
@@ -215,7 +215,7 @@ TimeDelta_t SL0Cache::ffread(AddrType addr, DataType data)
 
 TimeDelta_t SL0Cache::ffwrite(AddrType addr, DataType data)
   /* can accept writes? {{{1 */
-{ 
+{
   I(0);//FIXME: change the WCB
 
   return Cache::ffwrite(addr,data);
@@ -224,14 +224,14 @@ TimeDelta_t SL0Cache::ffwrite(AddrType addr, DataType data)
 
 void SL0Cache::ffinvalidate(AddrType addr, int32_t ilineSize)
   /* can accept writes? {{{1 */
-{ 
+{
   I(0);//FIXME: change the WCB
 
   Cache::ffinvalidate(addr,ilineSize);
 }
 /* }}} */
 
-bool SL0Cache::canAcceptRead(DInst *dinst) 
+bool SL0Cache::canAcceptRead(DInst *dinst)
 /* SLO can accept read check which avoids fast LD/ST {{{1 */
 {
   bool b = Cache::canAcceptRead(dinst);
@@ -244,7 +244,7 @@ bool SL0Cache::canAcceptRead(DInst *dinst)
 }
 /* }}} */
 
-bool SL0Cache::canAcceptWrite(DInst *dinst) 
+bool SL0Cache::canAcceptWrite(DInst *dinst)
 /* SLO can accept read check which avoids fast LD/ST {{{1 */
 {
   bool b = Cache::canAcceptWrite(dinst);

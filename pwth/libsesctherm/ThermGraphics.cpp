@@ -170,14 +170,14 @@ ThermGraphics_FileType::ThermGraphics_FileType(std::string config_string) {
 
 // output a svg file based on floorplan
 ThermGraphics::ThermGraphics(DataLibrary *datalibrary) {
-  datalibrary_    = datalibrary;
-  num_levels_     = 260;           // number of colors used
-  max_rotate_     = 200;           // maximum hue rotation
-  stroke_coeff_   = pow(10.0, -7); // used to tune the stroke-width
-  stroke_opacity_ = 0;             // used to control the opacity of the floor plan
-  smallest_shown_ = 10000;         // fraction of the entire chip necessary to see macro
-  zoom_           = pow(10.0, 6);
-  txt_offset_     = 100;
+  datalibrary_        = datalibrary;
+  num_levels_         = 260;           // number of colors used
+  max_rotate_         = 200;           // maximum hue rotation
+  stroke_coeff_       = pow(10.0, -7); // used to tune the stroke-width
+  stroke_opacity_     = 0;             // used to control the opacity of the floor plan
+  smallest_shown_     = 10000;         // fraction of the entire chip necessary to see macro
+  zoom_               = pow(10.0, 6);
+  txt_offset_         = 100;
   floorplans_printed_ = false;
   ThermGraphics_Color color1(255, 0, 0, 120);  // blue-green, 12 steps
   ThermGraphics_Color color2(255, 255, 0, 50); // green-yellow, 5 steps

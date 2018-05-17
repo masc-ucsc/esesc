@@ -239,8 +239,8 @@ public:
         zero(data_[i][j]); // zero the element
       }
     }
-    nrows_ = rows;
-    ncols_ = cols;
+    nrows_   = rows;
+    ncols_   = cols;
     max_row_ = 0; // although we allocated the space, the actual size is [0,0]
     max_col_ = 0;
     col_     = 0;
@@ -258,8 +258,8 @@ public:
         zero(data_[i][j]); // zero the element
       }
     }
-    nrows_ = rows;
-    ncols_ = cols;
+    nrows_   = rows;
+    ncols_   = cols;
     max_row_ = 0; // although we allocated the space, the actual size is [0,0]
     max_col_ = 0;
     col_     = 0;

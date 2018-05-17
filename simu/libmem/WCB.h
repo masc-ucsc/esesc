@@ -75,8 +75,8 @@ public:
   }
   std::vector<Time_t>   stID;
   std::vector<DataType> data;
-  std::vector<AddrType> storepc;          // pc of store that wrote this word
-  std::vector<SSID_t> storeset_merge_set; // if MAX_SSID no merging, else merging on for this word
+  std::vector<AddrType> storepc;            // pc of store that wrote this word
+  std::vector<SSID_t>   storeset_merge_set; // if MAX_SSID no merging, else merging on for this word
   std::vector<AddrType> storeset_merge_pc;
   std::vector<bool>     present; // 1 bit per word
 

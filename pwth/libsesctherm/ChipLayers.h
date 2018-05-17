@@ -76,7 +76,7 @@ public:
   int         flp_num_;
   int         layer_number_;
   std::string name_;
-  int type_; // the layer types are defined in the sesctherm3Ddefine.h
+  int         type_; // the layer types are defined in the sesctherm3Ddefine.h
   MATRIX_DATA thickness_;
 
   MATRIX_DATA height_;
@@ -107,7 +107,7 @@ public:
 
   std::vector<std::vector<ModelUnit *>> located_units_;
   DynamicArray<ModelUnit> *             floorplan_layer_dyn_; // this is the dynamic array which corresponds to this layer
-  int unused_dyn_count_;                                      // this stores the number of unused dynamic array entries
+  int                                   unused_dyn_count_;    // this stores the number of unused dynamic array entries
 
   std::map<MATRIX_DATA, int> coord_to_index_x_;
   std::map<MATRIX_DATA, int> coord_to_index_y_;

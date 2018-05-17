@@ -37,46 +37,45 @@ end
 # Back up esesc.conf
 puts "Generating config files..."
 cmd = "cp #{esescConf} esesc.bak"
-res = `#{cmd}`
+`#{cmd}`
 
 # set  reFloorplan = true and save in tmp1
 cmd = "cat #{thermConf} | sed 's/reFloorplan[\ ]*=.*/reFloorplan = true/' > tmp1"
-res = `#{cmd}`
+`#{cmd}`
 
 # get a new esesc.conf that points to tmp1
 cmd = "cat #{esescConf} | sed 's/pwth.conf/tmp1/' > tmp2"
-res = `#{cmd}`
+`#{cmd}`
 
 cmd = "cat tmp2 | sed 's/enablePower.*/enablePower = true/' > tmp"
-res = `#{cmd}`
+`#{cmd}`
 
 cmd = "mv tmp esesc.conf"
-res = `#{cmd}`
+`#{cmd}`
 
 # run esesc
 puts "Generating floorplanning descriptions and power breakdown (might take a few mins)"
 cmd = "#{esesc} -c esesc.conf > refloorplan.log 2>&1"
-res = `#{cmd}`
+`#{cmd}`
 
 # recover original esesc.conf
 puts "reconvering the original config files (except for flp.conf)"
 cmd = "mv esesc.bak #{esescConf}"
-res = `#{cmd}`
-
-
+`#{cmd}`
 
 # run reFloorplan.rb
 puts "Running the floorplanner...(Go have a cup of coffee if it is a floorplaning for a big design (e.g. 4-core))"
 cmd = "#{reFloorplan} #{BuildDir} #{SrcDir} #{MSG} >> #{flpConf}"
-res = `#{cmd}`
+`#{cmd}`
 
 #update pwth.conf
 puts "Updating pwth.conf to point to the new floorplan and layoutDescr (...#{MSG})"
 cmd = "cat #{thermConf} | sed \"s/^floorplan\\[0\\].*=.*/floorplan[0] = 'floorplan#{MSG}'/\" > tmp"
-res = `#{cmd}`
+`#{cmd}`
 cmd = "cat tmp| sed \"s/layoutDescr\\[0\\].*=.*/layoutDescr[0] = 'layoutDescr#{MSG}'/\" > tmp3"
-res = `#{cmd}`
+`#{cmd}`
 cmd = "mv tmp3 pwth.conf"
-res = `#{cmd}`
+`#{cmd}`
 
 puts "Done."
+

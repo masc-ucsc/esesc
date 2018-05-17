@@ -202,7 +202,6 @@ void MemReplay::replayManage(DInst *dinst) {
 
     if(pos != -3) {
       pos = -2;
-      if(lf[i].pc == dinst->getPC()) {}
 #if 0
       printf("1.merging %d and %d : pc %x and %x : addr %x and %x : %dx%d : data %x and %x : id %d and %d (%d) : %x\n"
              ,lf[i].ssid, did, lf[i].pc, dinst->getPC(), lf[i].addr, dinst->getAddr()

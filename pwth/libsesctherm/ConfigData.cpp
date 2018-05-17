@@ -234,17 +234,17 @@ ConfigData::ConfigData(DataLibrary *datalibrary) {
   // and box thickness (500nm process)
   // This is scaled based upon chip_thickness_
   // Many of these taken from "Efficient Thermal Modeling of SOI MOSFETS for Fast Dynamic Operation"
-  sample_oxide_thickness_               = 3e-9;    // 3nm
-  sample_gate_length_                   = 0.22e-6; // 0.22um
-  sample_fox_length_                    = 2e-6;    // 2um
-  sample_eff_channel_length_            = 0.18e-6; //.18um
-  sample_contact_length_                = 0.25e-6; //.25um
-  sample_silicon_substrate_thickness_   = 1.5e-6;  // 1.5um
-  sample_silicon_film_length_           = 1.18e-6; // 1.18um
-  sample_silicon_film_thickness_        = 0.04e-6; // 0.04um
-  sample_box_thickness_                 = 0.15e-6; // 0.15um
-  sample_vthreshold_                    = 0.22;    // 0.22V
-  sample_oxide_conductivity_            = 0.82; // 0.82W/m*K (based upon value from "Measurements of Buried Oxide Thermal Conductivity for..."
+  sample_oxide_thickness_             = 3e-9;    // 3nm
+  sample_gate_length_                 = 0.22e-6; // 0.22um
+  sample_fox_length_                  = 2e-6;    // 2um
+  sample_eff_channel_length_          = 0.18e-6; //.18um
+  sample_contact_length_              = 0.25e-6; //.25um
+  sample_silicon_substrate_thickness_ = 1.5e-6;  // 1.5um
+  sample_silicon_film_length_         = 1.18e-6; // 1.18um
+  sample_silicon_film_thickness_      = 0.04e-6; // 0.04um
+  sample_box_thickness_               = 0.15e-6; // 0.15um
+  sample_vthreshold_                  = 0.22;    // 0.22V
+  sample_oxide_conductivity_ = 0.82; // 0.82W/m*K (based upon value from "Measurements of Buried Oxide Thermal Conductivity for..."
   sample_oxide_conductivity_transistor_ = 1.79; //(2W/m*K) this corresponds to the BOX/Silicon effective conductivity
   // this is different from the sample oxide conductivity
   // which is the bulk conductivity of the BOX/FOX
@@ -366,7 +366,8 @@ void ConfigData::get_config_data() {
   heat_sink_resistance_ = SescConf->getDouble(spreadersinkconfigSec, "heat_sink_resistance") *
                           pow(10.0, -4.0); // total interface resistance (for .02mm epoxy, 0.2-0.9 (x10^4*m^2*K/W)
 
-  heat_sink_microhardness_ = SescConf->getDouble(spreadersinkconfigSec, "heat_sink_microhardness") * pow(10.0, 6.0); // microhardness
+  heat_sink_microhardness_ =
+      SescConf->getDouble(spreadersinkconfigSec, "heat_sink_microhardness") * pow(10.0, 6.0); // microhardness
   heat_sink_surfaceroughness_ =
       SescConf->getDouble(spreadersinkconfigSec, "heat_sink_surfaceroughness") * pow(10.0, -6.0); // surface roughness
   heat_sink_contactpressure_ = SescConf->getDouble(spreadersinkconfigSec, "heat_sink_contactpressure") *
