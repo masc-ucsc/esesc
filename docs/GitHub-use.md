@@ -22,7 +22,7 @@ If you do not need the private repo, just get the public repo by executing:
 If you are working on ESESC at UC Santa Cruz, contact [Jose Renau](http://users.soe.ucsc.edu/~renau/)
 to get access to the private ESESC repo used by the MASC lab. The clone the private ESESC Repo:
 
-    git clone git@github.com:masc-ucsc/esesc-masc.git
+    git clone git@github.com:masc-ucsc/esesc-masc.git esesc
 
 If you are not tasked with synchronizing your work with the public repo then
 you can simply push/pull changes to/from the private repo and someone else
