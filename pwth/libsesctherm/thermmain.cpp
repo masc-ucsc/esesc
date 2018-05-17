@@ -444,8 +444,8 @@ int SescTherm::process_trace(const char *input_files, ThermModel &temp_model, MA
     //-------------
     static MATRIX_DATA print_at = 0;
     if(temp_model.get_time() > print_at) { // eka, TEMPORARY
-      // print_at = temp_model.get_time () + 0.0025;	// every 250us
-      // print_at = temp_model.get_time () ;
+                                           // print_at = temp_model.get_time () + 0.0025;	// every 250us
+                                           // print_at = temp_model.get_time () ;
 #ifdef DUMP_SVG
       temp_model.print_graphics();
 #endif
@@ -616,18 +616,18 @@ void SescTherm::computeTemp(int argc, const char **argv) {
   strcpy(tmp_label_match, (char *)label_match);
   strcpy(tmp_label_file, (char *)label_file);
 
-  char *save=0;
+  char *save = 0;
 
-  p = strtok_r((char *)tmp_label_match, "_",&save);
+  p = strtok_r((char *)tmp_label_match, "_", &save);
 
   while(p != NULL) {
-    p = strtok_r(NULL, "_",&save);
+    p = strtok_r(NULL, "_", &save);
     if(p != NULL)
       bname = p;
   }
-  s = strtok_r((char *)tmp_label_file, "/",&save);
+  s = strtok_r((char *)tmp_label_file, "/", &save);
   while(s != NULL) {
-    s = strtok_r(NULL, "/",&save);
+    s = strtok_r(NULL, "/", &save);
     if(s != NULL)
       label_name = s;
   }

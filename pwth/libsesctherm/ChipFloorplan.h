@@ -111,25 +111,25 @@ public:
     power_per_unit_area_ = v;
   }
 
-  void                                  set_max_power(MATRIX_DATA power);
-  int                                   id_; // number of the floorplan unit
-  std::string                           name_;
-  MATRIX_DATA                           width_;
-  MATRIX_DATA                           height_;
-  MATRIX_DATA                           leftx_;
-  MATRIX_DATA                           bottomy_;
-  MATRIX_DATA                           area_;
-  MATRIX_DATA                           chip_density_;
-  MATRIX_DATA                           interconnect_density_;
-  std::vector<MATRIX_DATA>              ModelUnit_percentages_; // this is a list of the percentages of each of the dependent model units
-  MATRIX_DATA                           max_power_per_unit_area_; // this is the max power density
-  MATRIX_DATA                           max_dynamic_power_;
-  MATRIX_DATA                           leakage_power_;
-  MATRIX_DATA                           dynamic_power_;
-  MATRIX_DATA                           hot_spot_count_;
-  MATRIX_DATA                           hot_spot_duration_;
-  MATRIX_DATA                           temperature_;
-  DataLibrary *                         datalibrary_;
+  void                     set_max_power(MATRIX_DATA power);
+  int                      id_; // number of the floorplan unit
+  std::string              name_;
+  MATRIX_DATA              width_;
+  MATRIX_DATA              height_;
+  MATRIX_DATA              leftx_;
+  MATRIX_DATA              bottomy_;
+  MATRIX_DATA              area_;
+  MATRIX_DATA              chip_density_;
+  MATRIX_DATA              interconnect_density_;
+  std::vector<MATRIX_DATA> ModelUnit_percentages_;   // this is a list of the percentages of each of the dependent model units
+  MATRIX_DATA              max_power_per_unit_area_; // this is the max power density
+  MATRIX_DATA              max_dynamic_power_;
+  MATRIX_DATA              leakage_power_;
+  MATRIX_DATA              dynamic_power_;
+  MATRIX_DATA              hot_spot_count_;
+  MATRIX_DATA              hot_spot_duration_;
+  MATRIX_DATA              temperature_;
+  DataLibrary *            datalibrary_;
   std::vector<std::vector<ModelUnit *>> located_units_;
 };
 

@@ -418,26 +418,26 @@ void test4() {
 void test5()
 {
 
-  GProcessor *gproc0 = TaskHandler::getSimu(0); 
+  GProcessor *gproc0 = TaskHandler::getSimu(0);
   I(gproc0);
 
   MemObj *P0DL1 = gproc0->getMemorySystem()->getDL1();
   I(P0DL1);
-  
-  GProcessor *gproc1 = TaskHandler::getSimu(1); 
+
+  GProcessor *gproc1 = TaskHandler::getSimu(1);
   I(gproc1);
 
   MemObj *P1DL1 = gproc1->getMemorySystem()->getDL1();
   I(P1DL1);
-  
-  GProcessor *gproc2 = TaskHandler::getSimu(2); 
+
+  GProcessor *gproc2 = TaskHandler::getSimu(2);
   I(gproc2);
 
   MemObj *P2DL1 = gproc2->getMemorySystem()->getDL1();
   I(P2DL1);
-  
 
-  GProcessor *gproc3 = TaskHandler::getSimu(3); 
+
+  GProcessor *gproc3 = TaskHandler::getSimu(3);
   I(gproc3);
 
   MemObj *P3DL1 = gproc3->getMemorySystem()->getDL1();
@@ -486,26 +486,26 @@ void test5()
 void test6()
 {
 
-  GProcessor *gproc0 = TaskHandler::getSimu(0); 
+  GProcessor *gproc0 = TaskHandler::getSimu(0);
   I(gproc0);
 
   MemObj *P0DL1 = gproc0->getMemorySystem()->getDL1();
   I(P0DL1);
-  
-  GProcessor *gproc1 = TaskHandler::getSimu(1); 
+
+  GProcessor *gproc1 = TaskHandler::getSimu(1);
   I(gproc1);
 
   MemObj *P1DL1 = gproc1->getMemorySystem()->getDL1();
   I(P1DL1);
-  
-  GProcessor *gproc2 = TaskHandler::getSimu(2); 
+
+  GProcessor *gproc2 = TaskHandler::getSimu(2);
   I(gproc2);
 
   MemObj *P2DL1 = gproc2->getMemorySystem()->getDL1();
   I(P2DL1);
-  
 
-  GProcessor *gproc3 = TaskHandler::getSimu(3); 
+
+  GProcessor *gproc3 = TaskHandler::getSimu(3);
   I(gproc3);
 
   MemObj *P3DL1 = gproc3->getMemorySystem()->getDL1();
@@ -557,25 +557,25 @@ void test6()
 void test7()
 {
 
-  GProcessor *gproc0 = TaskHandler::getSimu(0); 
+  GProcessor *gproc0 = TaskHandler::getSimu(0);
   I(gproc0);
 
   MemObj *P0DL1 = gproc0->getMemorySystem()->getDL1();
   I(P0DL1);
-  
-  GProcessor *gproc1 = TaskHandler::getSimu(1); 
+
+  GProcessor *gproc1 = TaskHandler::getSimu(1);
   I(gproc1);
 
   MemObj *P1DL1 = gproc1->getMemorySystem()->getDL1();
   I(P1DL1);
-  
-  GProcessor *gproc2 = TaskHandler::getSimu(2); 
+
+  GProcessor *gproc2 = TaskHandler::getSimu(2);
   I(gproc2);
 
   MemObj *P2DL1 = gproc2->getMemorySystem()->getDL1();
   I(P2DL1);
-  
-  GProcessor *gproc3 = TaskHandler::getSimu(3); 
+
+  GProcessor *gproc3 = TaskHandler::getSimu(3);
   I(gproc3);
 
   MemObj *P3DL1 = gproc3->getMemorySystem()->getDL1();
@@ -600,7 +600,7 @@ void test7()
 
   }
   printf("Core 2\n");
-  cache = P2DL1;	
+  cache = P2DL1;
   for(int i =0; i< 2; i++)
   {
     addr1 += 1;
@@ -619,7 +619,7 @@ void test7()
 
   }
   printf("Core 1\n");
-  cache = P1DL1;	
+  cache = P1DL1;
   for(int i =0; i< 2; i++)
   {
     addr1 += 1;

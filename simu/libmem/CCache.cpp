@@ -29,12 +29,12 @@ void CCache::trackAddress(MemRequest *mreq) {
 #endif
 
 //#define MTRACE(a...)   do{ if (strcasecmp(getName(),"DL1(0)") == 0) { fprintf(stderr,"@%lld %s %d 0x%x %s :",(long long
-//int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr(), mreq->isPrefetch()?"pref":""); fprintf(stderr,##a);
-//fprintf(stderr,"\n"); } }while(0)
+// int)globalClock,getName(), (int)mreq->getID(), (unsigned int)mreq->getAddr(), mreq->isPrefetch()?"pref":""); fprintf(stderr,##a);
+// fprintf(stderr,"\n"); } }while(0)
 #define MTRACE(a...)
 //#define MTRACE(a...)   do{ if (mreq->getID()==49) { I(0); fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(),
 //(int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0) #define MTRACE(a...)
-//do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(),
+// do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(),
 //(int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 // 1}}}
 
@@ -869,7 +869,7 @@ void CCache::doReq(MemRequest *mreq)
 
   if(l == 0) {
 #if 0
-    if (!retrying && strcasecmp(getName(),"DL1(0)") == 0) { 
+    if (!retrying && strcasecmp(getName(),"DL1(0)") == 0) {
       MSG("miss cl:%llx",mreq->getAddr());
     }
 #endif
