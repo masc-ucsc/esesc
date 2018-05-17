@@ -411,7 +411,7 @@ int SescTherm::process_trace(const char *input_files, ThermModel &temp_model, MA
     MATRIX_DATA total = 0;
     MATRIX_DATA p;
     for (size_t j = 0; j < power.size (); j++) {
-      p = power[j] 
+      p = power[j]
       std::cout << p << "\t";
       total += p;
     }

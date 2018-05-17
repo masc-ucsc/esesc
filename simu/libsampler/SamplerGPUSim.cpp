@@ -57,10 +57,10 @@ SamplerGPUSim::SamplerGPUSim(const char *iname, const char *section, EmulInterfa
 }
 /* }}} */
 
-SamplerGPUSim::~SamplerGPUSim() 
+SamplerGPUSim::~SamplerGPUSim()
   /* DestructorRabbit {{{1 */
 {
-  // Free name, but who cares 
+  // Free name, but who cares
 }
 /* }}} */
 
@@ -69,7 +69,7 @@ void SamplerGPUSim::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fi
 {
   if(!execute(fid,icount))
     return; // QEMU can still send a few additional instructions (emul should stop soon)
-  
+
   I(mode!=EmuInit);
 
   I(insn!=0);
@@ -80,7 +80,7 @@ void SamplerGPUSim::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fi
     uint64_t ti = 0;
     bool callpwr = callPowerModel(ti, fid);
 
-    if (callpwr){ 
+    if (callpwr){
 
       I(ti > 0);
       //printf("totalnInst:%ld, nPassedInst:%ld, interval:%ld\n", totalnInst, nPassedInst, interval);
@@ -88,20 +88,20 @@ void SamplerGPUSim::queue(uint32_t insn, uint64_t pc, uint64_t addr, uint32_t fi
 
       bool dummy = false;
 
-      //std::cout<<"mode "<<mode<<" Timeinterval "<<ti<<" last time "<<lastTime<<"\n";  
+      //std::cout<<"mode "<<mode<<" Timeinterval "<<ti<<" last time "<<lastTime<<"\n";
 
       int simt = 0;
       if (ti > 0){
         setMode(EmuTiming, fid);
-        simt =  BootLoader::pwrmodel.calcStats(ti, 
-            !(mode == EmuTiming), static_cast<float>(freq), dummy, dummy, dummy, dummy); 
+        simt =  BootLoader::pwrmodel.calcStats(ti,
+            !(mode == EmuTiming), static_cast<float>(freq), dummy, dummy, dummy, dummy);
 
         endSimSiged = (simt==90)?1:0;
-        BootLoader::pwrmodel.sescThermWrapper->sesctherm.updateMetrics();  
+        BootLoader::pwrmodel.sescThermWrapper->sesctherm.updateMetrics();
       }
     }
   }// doPower
-  
+
   if (nInstMax < totalnInst || endSimSiged) {
     markDone();
     return;
