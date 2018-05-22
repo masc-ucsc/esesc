@@ -772,6 +772,9 @@ void FUBranch::executed(DInst *dinst) {
 bool FUBranch::preretire(DInst *dinst, bool flushing)
 /* preretire {{{1 */
 {
+  if(drainOnMiss && dinst->isExecuted() && dinst->isBranchMiss()) {
+    (dinst->getFetchEngine())->unBlockFetch(dinst, dinst->getFetchTime());
+  }
   return dinst->isExecuted();
 }
 /* }}} */
@@ -779,9 +782,6 @@ bool FUBranch::preretire(DInst *dinst, bool flushing)
 bool FUBranch::retire(DInst *dinst, bool flushing)
 /* retire {{{1 */
 {
-  if(drainOnMiss && dinst->isBranchMiss()) {
-    (dinst->getFetchEngine())->unBlockFetch(dinst, dinst->getFetchTime());
-  }
   setStats(dinst);
   return true;
 }

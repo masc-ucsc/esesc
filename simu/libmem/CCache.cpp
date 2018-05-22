@@ -125,7 +125,12 @@ CCache::CCache(MemorySystem *gms, const char *section, const char *name)
   // MSG("WARNING: coreCoupledFreq does not work yet");
   //}
 
+  bool nlp = false;
   if(SescConf->checkInt(section, "nlprefetch")) {
+    nlp = SescConf->getInt(section, "nlprefetch")>0;
+  }
+
+  if(nlp) {
     nlprefetch         = SescConf->getInt(section, "nlprefetch");
     nlprefetchDistance = SescConf->getInt(section, "nlprefetchDistance");
     nlprefetchStride   = SescConf->getInt(section, "nlprefetchStride");
