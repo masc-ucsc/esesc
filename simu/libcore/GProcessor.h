@@ -36,7 +36,7 @@
 #ifndef GPROCESSOR_H
 #define GPROCESSOR_H
 
-//#define WAVESNAP_EN
+#define WAVESNAP_EN
 
 #include "estl.h"
 
@@ -70,7 +70,6 @@ class BPredictor;
 
 #ifdef WAVESNAP_EN
 #include "wavesnap.h"
-class wavesnap;
 #endif
 
 class GProcessor {

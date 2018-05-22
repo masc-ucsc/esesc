@@ -468,21 +468,8 @@ StallCause OoOProcessor::addInst(DInst *dinst)
   dinst->markRenamed();
 
 #ifdef WAVESNAP_EN
-  /////////////////////////////////////////
-  // RECORD DEPENDENCIES
-  /////////////////////////////////////////
-  if(inst->isMemory()) {
-    if(inst->isStore()) {
-      snap->addStore(dinst);
-    }
-    if(inst->isLoad()) {
-      snap->addLoad(dinst);
-    }
-  } else if(inst->isControl()) {
-    // TODO
-  } else {
-    snap->add(dinst);
-  }
+//add instruction to wavesnap
+snap->add_instruction(dinst);
 #endif
 
   return NoStall;
@@ -655,6 +642,9 @@ void OoOProcessor::retire()
     fprintf(stderr,"\n");
 #endif
 
+#ifdef WAVESNAP_EN
+snap->update_window(dinst);
+#endif
     if(dinst->getInst()->hasDstRegister())
       nTotalRegs++;
 
