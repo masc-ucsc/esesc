@@ -36,7 +36,7 @@
 #ifndef GPROCESSOR_H
 #define GPROCESSOR_H
 
-#define WAVESNAP_EN
+//#define WAVESNAP_EN
 
 #include "estl.h"
 
