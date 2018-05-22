@@ -3,9 +3,10 @@
 wavesnap::wavesnap() {
   this->window_pointer = 0;
   this->total_count = 0;
+  this->update_count = 0;
   this->first_window_completed = false;
   this->try_count = 0;
-
+  this->curr_min_time = 10000;
   std::vector<float> temp;
   temp.push_back(0.0);
   temp.push_back(0.0);
@@ -27,11 +28,113 @@ wavesnap::wavesnap() {
 wavesnap::~wavesnap() {
   //nothing to do here
 }
+
+void wavesnap::record_pipe(pipeline_info* next) {
+  this->window_sign_info[next->encode];
+  pipeline_info *pipe_info = &(this->window_sign_info[next->encode]);
+  if (pipe_info->execute_cycles.size() == 0) {
+    *pipe_info = *next;
+  } else {
+    pipe_info->count++;
+    for (uint32_t j=0; j<pipe_info->execute_cycles.size(); j++) {
+      pipe_info->wait_cycles[j]+=next->wait_cycles[j];
+      pipe_info->rename_cycles[j]+=next->rename_cycles[j];
+      pipe_info->issue_cycles[j]+=next->issue_cycles[j];
+      pipe_info->execute_cycles[j]+=next->execute_cycles[j];
+    }
+  }
+}
+
 void wavesnap::add_instruction(DInst* dinst) {
-  wait_buffer.push_back(dinst);
+  wait_buffer.push_back(dinst->getID());
+  completed.push_back(false);
+}
+
+void wavesnap::update_window(DInst* dinst) {
+  //update instruction as completed
+  bool found = false;
+  uint64_t i = dinst->getID();
+  uint64_t id = i;
+  while (!found) {
+    if (this->wait_buffer.size()>i) {
+      if (this->wait_buffer[i]==id) {
+        this->completed[i] = true;
+        found = true;
+
+        //TODO: to reduce the size, just capture required info,
+        // not the whole dinst
+        dinst_info[id];
+        dinst_info[id] = *(dinst);
+      }
+    }
+    i--;
+  }
+
+  //poll the very first window, wait until completed
+  if (!this->first_window_completed) {
+    this->first_window_completed = true;
+    for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+      if (!this->completed[i]) {
+        this->first_window_completed = false;
+        break;
+      } else {
+        DInst* d = &(dinst_info[i]);
+        if (d->getFetchedTime()<this->curr_min_time) {
+          this->curr_min_time = d->getFetchedTime();
+          this->min_time_id = d->getID();
+        }
+      }
+    }
+  } else { 
+    // after the first window completed, just check the last element
+    // of the window.
+    while (completed[MAX_MOVING_GRAPH_NODES-1] && completed.size()>=MAX_MOVING_GRAPH_NODES) {
+      //update current min fetch time if it was removed
+      //TODO: check if it is worth updating the minimum,
+      //logically, very first instrcution must be minimum of the window
+      if (this->last_removed_id == this->min_time_id) {
+        this->update_count++;
+        this->curr_min_time = dinst_info[wait_buffer[0]].getFetchedTime();
+        this->min_time_id = dinst_info[wait_buffer[0]].getID();
+        for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+          DInst* d = &(dinst_info[wait_buffer[i]]);
+          if (d->getFetchedTime()<=this->curr_min_time) {
+            this->curr_min_time = d->getFetchedTime();
+            this->min_time_id = d->getID();
+          }
+        }
+      }
+
+      //get pipeline info of the complete window
+      pipeline_info next;
+
+      for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+        DInst c = dinst_info[wait_buffer[i]];
+        next.wait_cycles.push_back(c.getFetchedTime()-this->curr_min_time); 
+        next.rename_cycles.push_back(c.getRenamedTime()-c.getFetchedTime()); 
+        next.issue_cycles.push_back(c.getIssuedTime()-c.getRenamedTime()); 
+        next.execute_cycles.push_back(c.getExecutedTime()-c.getIssuedTime()); 
+        next.instructions.push_back(c.getInst()->getOpcode()); 
+        next.encode+=ENCODING[c.getInst()->getOpcode()];
+      }
+      next.count = 1;
+
+      //record
+      record_pipe(&next);
+
+      //remove first instruction in the window and update stats
+      window_pointer++;
+      this->last_removed_id = dinst_info[wait_buffer[0]].getID();
+      dinst_info.erase(wait_buffer[0]);
+      wait_buffer.erase(wait_buffer.begin()); 
+      completed.erase(completed.begin());
+
+    }
+  }
 }
 ////////////////////////////////////////
 // WINDOW BASED IPC UPDATE AND CALCULATION
+/*
 void wavesnap::update_window() {
   if (this->first_window_completed) {
     //if the last element in the window complete,
@@ -126,13 +229,23 @@ void wavesnap::update_window() {
     }
   }
 }
+*/
 
 void wavesnap::test_uncompleted() {
+
   std::cout << "testing uncompleted instructions... wait buffer size = " << this->wait_buffer.size() << std::endl;
   uint32_t count=0;
+  for (uint64_t i=0; i<completed.size(); i++) {
+    if (!completed[i]) {
+      std::cout << wait_buffer[i] << std::endl;
+      count++;
+    }
+  }
+    /*
   for (uint32_t i=0; i<this->wait_buffer.size(); i++) {
     DInst *c = this->wait_buffer[i];
     if (!c->isExecuted()) {
+      std::cout << "d:" << c->isDispatched() << " ";
       std::cout << "op:" << c->getInst()->getOpcode() << " ";
       std::cout << "fetched:" << c->getFetchedTime() << " ";
       std::cout << "renamed:" << c->getRenamedTime() << " ";
@@ -141,8 +254,13 @@ void wavesnap::test_uncompleted() {
       std::cout << std::endl; 
       count++;
     }
+    if (c->getID() < i) {
+      std::cout << c->getID() << " ";
+      std::cout << i << std::endl;
+    }
   }
 
+    */
   std::cout << "uncomleted instruction = "  << count << std::endl;
 }
 
@@ -221,7 +339,9 @@ void wavesnap::calculate_ipc() {
       total = 0;
       for (auto& kv:e_c) {
         total+=kv.second;
+        std::cout << kv.second << " ";
       }
+      std::cout << std::endl;
       float execute_ipc = total/(1.0*e_c.size());
   
       //determine how much this signature contributes to the overall ipc

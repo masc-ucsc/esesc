@@ -19,8 +19,8 @@
 //node list defines
 #define MAX_NODE_NUM 1000
 #define MAX_EDGE_NUM 1000000
-#define MAX_MOVING_GRAPH_NODES 64
-#define COUNT_ALLOW 0
+#define MAX_MOVING_GRAPH_NODES 1024
+#define COUNT_ALLOW 9
 #define TRY_COUNT_ALLOW 10000
 //dump path
 #define EDGE_DUMP_PATH "dump.txt"
@@ -99,10 +99,17 @@ class wavesnap {
         std::vector<uint32_t> rename_cycles;
         std::vector<uint32_t> issue_cycles;
         std::vector<uint32_t> execute_cycles;
+        std::string encode;
         uint32_t count;
 
         pipeline_info() {
           this->count = 0;
+          this->encode = "";
+          this->wait_cycles.clear();
+          this->rename_cycles.clear();
+          this->issue_cycles.clear();
+          this->execute_cycles.clear();
+          this->instructions.clear();
         }
     };
 
@@ -239,17 +246,25 @@ class wavesnap {
     };
 
     std::map<uint64_t, instruction_window> windows;
+    void record_pipe(pipeline_info* next);
 
   public:
     wavesnap();
     ~wavesnap();
     void test_uncompleted();
-    void update_window();
+    void update_window(DInst* dinst);
     void add_instruction(DInst* dinst); 
     bool first_window_completed;
     std::vector<DInst*> working_window;
     uint64_t curr_min_time;
-    std::vector<DInst*> wait_buffer; 
+    uint64_t min_time_id;
+    uint64_t last_removed_id;
+    uint64_t update_count;
+    std::vector<uint64_t> wait_buffer; 
+    std::vector<bool> completed;
+    std::map<uint64_t, DInst> dinst_info;
+    
+
     uint64_t window_pointer;
     uint64_t try_count;
 
