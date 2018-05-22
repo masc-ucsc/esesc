@@ -547,7 +547,9 @@ void TaskHandler::unplug()
 #ifdef WAVESNAP_EN
   for(size_t i = 0; i < cpus.size(); i++) {
     if(i == 0) {
-      cpus[i]->snap->dumpGraph("dump.txt");
+      std::cout << "DONE!" << std::endl;
+      cpus[i]->snap->calculate_ipc();
+      std::cout << cpus[i]->snap->update_count << std::endl;
     }
   }
 #endif

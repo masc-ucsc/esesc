@@ -70,7 +70,6 @@ class BPredictor;
 
 #ifdef WAVESNAP_EN
 #include "wavesnap.h"
-class wavesnap;
 #endif
 
 class GProcessor {
