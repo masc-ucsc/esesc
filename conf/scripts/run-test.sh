@@ -27,6 +27,8 @@ cp ${ESESC_SRC}/bins/mips64/* .
 cp ${ESESC_SRC}/bins/inputs/* .
 
 
+export ESESC_BenchName="spec00_crafty.mips64"
+
 # Testing with crafty as default app for now
 if ! ../main/esesc < crafty.in
 then

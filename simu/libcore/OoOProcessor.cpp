@@ -585,9 +585,6 @@ void OoOProcessor::retire()
       break;
     }
 
-    I(dinst->isExecuted());
-
-    GI(!flushing, dinst->isExecuted());
     I(dinst->getCluster());
 
     bool done = dinst->getCluster()->retire(dinst, flushing);
