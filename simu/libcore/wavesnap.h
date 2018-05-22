@@ -21,7 +21,7 @@
 #define MAX_EDGE_NUM 1000000
 #define MAX_MOVING_GRAPH_NODES 1024
 #define COUNT_ALLOW 9
-#define TRY_COUNT_ALLOW 10000
+
 //dump path
 #define EDGE_DUMP_PATH "dump.txt"
 
@@ -255,7 +255,6 @@ class wavesnap {
     void update_window(DInst* dinst);
     void add_instruction(DInst* dinst); 
     bool first_window_completed;
-    std::vector<DInst*> working_window;
     uint64_t curr_min_time;
     uint64_t min_time_id;
     uint64_t last_removed_id;
@@ -263,25 +262,15 @@ class wavesnap {
     std::vector<uint64_t> wait_buffer; 
     std::vector<bool> completed;
     std::map<uint64_t, DInst> dinst_info;
-    
-
     uint64_t window_pointer;
-    uint64_t try_count;
 
     void full_ipc_update(DInst* dinst);
     void add_to_RAT(DInst* dinst);
     void merge();
     void calculate_ipc();
     void calculate_full_ipc();
-    void dump_signatures(std::string fileName);
-    void dump_address(std::string fileName);
-    uint64_t total_count;
-    std::string dump_w();
     std::map<std::string, pipeline_info> window_sign_info;
-    std::map<uint64_t, window_info> window_address_info;
     std::map<uint64_t, instruction_info> RAT;
-    std::map<uint8_t, std::vector<float>> IPCs;
-
 
     std::map<uint64_t, uint32_t> full_fetch_ipc;
     std::map<uint64_t, uint32_t> full_rename_ipc;

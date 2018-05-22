@@ -2,27 +2,9 @@
 
 wavesnap::wavesnap() {
   this->window_pointer = 0;
-  this->total_count = 0;
   this->update_count = 0;
   this->first_window_completed = false;
-  this->try_count = 0;
   this->curr_min_time = 10000;
-  std::vector<float> temp;
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  temp.push_back(0.0);
-  for (uint8_t w=W_LOWER; w<W_UPPER; w++) {
-    IPCs[w];
-    IPCs[w] = temp;
-  }
-
-  IPCs[0];
-  IPCs[0] = temp;
 }
 
 wavesnap::~wavesnap() {
@@ -132,104 +114,6 @@ void wavesnap::update_window(DInst* dinst) {
     }
   }
 }
-////////////////////////////////////////
-// WINDOW BASED IPC UPDATE AND CALCULATION
-/*
-void wavesnap::update_window() {
-  if (this->first_window_completed) {
-    //if the last element in the window complete,
-    //good to encode and record the window
-    //else don't do anything, poll until comletes
-     DInst* c = working_window[working_window.size()-1];
-     //if (c->getInst()->getOpcode()==3) 
-     {
-       std::cout << c->getInst()->getOpcode() << " ";
-       std::cout << c->getFetchedTime() << " ";
-       std::cout << c->getRenamedTime() << " ";
-       std::cout << c->getIssuedTime() << " ";
-       std::cout << c->getExecutedTime() << " ";
-       std::cout << " "  << window_pointer << " " << this->wait_buffer.size() << " " << working_window.size() << std::endl;
-    }
-    if (working_window[working_window.size()-1]->isPerformed()) {
-      pipeline_info next;
-      next.count = 1;
-      std::string encode = "";
-
-      //window size and window width must be the same
-      I(working_window.size()==MAX_GRAPH_NODES);
-
-      for (uint32_t i=0; i<working_window.size(); i++) {
-        DInst* c = working_window[i]; // c for current
-        next.wait_cycles.push_back(c->getFetchedTime()-this->curr_min_time); 
-        next.rename_cycles.push_back(c->getRenamedTime()-this->curr_min_time); 
-        next.issue_cycles.push_back(c->getIssuedTime()-this->curr_min_time); 
-        next.execute_cycles.push_back(c->getExecutedTime()-this->curr_min_time); 
-        next.instructions.push_back(c->getInst()->getOpcode()); 
-        encode+=ENCODING[c->getInst()->getOpcode()];
-      }
-      //record completed window
-      window_sign_info[encode];
-      pipeline_info *pipe_info = &(window_sign_info[encode]);
-      if (pipe_info->execute_cycles.size() == 0) {
-        *pipe_info = next;
-      } else {
-        pipe_info->count++;
-        for (uint32_t j=0; j<pipe_info->execute_cycles.size(); j++) {
-          pipe_info->wait_cycles[j]+=next.wait_cycles[j];
-          pipe_info->rename_cycles[j]+=next.rename_cycles[j];
-          pipe_info->issue_cycles[j]+=next.issue_cycles[j];
-          pipe_info->execute_cycles[j]+=next.execute_cycles[j];
-        }
-      }
-
-      //update working window
-      window_pointer++;
-      DInst* removed_dinst = working_window[0];
-      working_window.erase(working_window.begin());
-      wait_buffer.erase(wait_buffer.begin());
-      working_window.push_back(wait_buffer[MAX_MOVING_GRAPH_NODES]);
-
-      //update min_time if the instruction with the same value was removed
-      if (removed_dinst->getFetchedTime()==this->curr_min_time) {
-        this->curr_min_time = working_window[0]->getFetchedTime();
-        for (uint32_t i=0; i<working_window.size(); i++) {
-          if (this->curr_min_time<working_window[i]->getFetchedTime()) {
-            this->curr_min_time = working_window[i]->getFetchedTime();
-          }
-        }
-      }
-    } else {
-      this->try_count++;
-      //flush the window after too many tries
-      if (this->try_count>TRY_COUNT_ALLOW) {
-        this->try_count = 0;
-        this->first_window_completed = false;
-        uint32_t i = MAX_MOVING_GRAPH_NODES;
-        while (i>0) {
-          this->wait_buffer.erase(this->wait_buffer.begin());
-          i--;
-        }
-      }
-    }
-  } else {
-    std::cout << "1";
-    this->first_window_completed = true;
-    this->working_window.clear();
-    this->curr_min_time = wait_buffer[0]->getFetchedTime();
-    for (uint64_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
-      if (wait_buffer[i]->getExecutedTime() == 0) {
-        this->first_window_completed = false;
-        break;
-      } else {
-        this->working_window.push_back(wait_buffer[i]);
-        if (this->curr_min_time>wait_buffer[i]->getFetchedTime()) {
-          this->curr_min_time = wait_buffer[i]->getFetchedTime();
-        }
-      }
-    }
-  }
-}
-*/
 
 void wavesnap::test_uncompleted() {
 
@@ -241,26 +125,6 @@ void wavesnap::test_uncompleted() {
       count++;
     }
   }
-    /*
-  for (uint32_t i=0; i<this->wait_buffer.size(); i++) {
-    DInst *c = this->wait_buffer[i];
-    if (!c->isExecuted()) {
-      std::cout << "d:" << c->isDispatched() << " ";
-      std::cout << "op:" << c->getInst()->getOpcode() << " ";
-      std::cout << "fetched:" << c->getFetchedTime() << " ";
-      std::cout << "renamed:" << c->getRenamedTime() << " ";
-      std::cout << "issued:" << c->getIssuedTime() << " ";
-      std::cout << "executed:" << c->getExecutedTime() << " ";
-      std::cout << std::endl; 
-      count++;
-    }
-    if (c->getID() < i) {
-      std::cout << c->getID() << " ";
-      std::cout << i << std::endl;
-    }
-  }
-
-    */
   std::cout << "uncomleted instruction = "  << count << std::endl;
 }
 
@@ -339,9 +203,7 @@ void wavesnap::calculate_ipc() {
       total = 0;
       for (auto& kv:e_c) {
         total+=kv.second;
-        std::cout << kv.second << " ";
       }
-      std::cout << std::endl;
       float execute_ipc = total/(1.0*e_c.size());
   
       //determine how much this signature contributes to the overall ipc
@@ -470,119 +332,6 @@ void wavesnap::add_to_RAT(DInst* dinst) {
 }
 
 void wavesnap::merge() {
-/*
-  std::vector<uint64_t> merge_candidates;
-  uint32_t i = 0;
-  for (auto& kv:window_address_info) {
-    if (merge_candidates.size() == 0) {
-      merge_candidates.push_back(kv.first);
-    } else {
-      uint32_t diff = kv.first-merge_candidates[merge_candidates.size()-1];
-      if (diff==4) {
-        merge_candidates.push_back(kv.first);
-      } else {
-        //process the candidates
-  
-        //finally clear the candidates
-        merge_candidates.clear();
-        merge_candidates.push_back(kv.first);
-      }
-    }
-  }
-*/
+  //TODO
 }
 
-float average(std::map<uint32_t, uint32_t>* cycles) {
-  uint64_t sum = 0;
-  uint64_t count = 0;
-  for (auto& kv: *cycles) {
-    sum+=kv.second;
-    count++;
-  }
-
-  return sum/(1.0*count);
-}
-
-float max_average(uint8_t w, std::map<uint32_t, uint32_t>* cycles) {
-  uint32_t moving_sum = 0;
-  float max_ave = 0;
-  std::vector<uint32_t> cycles_v;
-  for (auto& kv: *cycles) {
-    cycles_v.push_back(kv.second);
-  }
-
-  for (uint16_t i=0; i<w; i++) {
-    moving_sum+=cycles_v[i];
-  }
-
-  max_ave = moving_sum/w;
-  for (uint16_t i=w; i<cycles_v.size(); i++) {
-    moving_sum += cycles_v[i];
-    moving_sum -= cycles_v[i-w];
-    float ave = moving_sum/w;
-    if (ave>max_ave) {
-      max_ave = ave;
-    }
-  }
-
-  return max_ave;
-}
-
-
-
-
-std::string wavesnap::dump_w() {
-  std::stringstream output;
-  output << std::setw(10) << "width";
-  output << std::setw(10) << "fetch";
-  output << std::setw(10) << "rename";
-  output << std::setw(10) << "issue";
-  output << std::setw(10) << "execute";
-  output << std::endl;
-  for (uint8_t w=W_LOWER; w<W_UPPER; w++) {
-    float fetch_ipc = (IPCs[w][0]-IPCs[w][1])/this->total_count;
-    float rename_ipc = (IPCs[w][2]-IPCs[w][3])/this->total_count;
-    float issue_ipc = (IPCs[w][4]-IPCs[w][5])/this->total_count;
-    float execute_ipc = (IPCs[w][6]-IPCs[w][7])/this->total_count;
-    output << std::setw(10) << (int)w;
-    output << std::setw(10) << fetch_ipc;
-    output << std::setw(10) << rename_ipc;
-    output << std::setw(10) << issue_ipc;
-    output << std::setw(10) << execute_ipc;
-    output << std::endl;
-  }
-
-  return output.str();
-}
-
-void wavesnap::dump_address(std::string fileName) {
-  std::cout << "Dumping window addresses..." << std::endl;
-  std::ofstream output;
-  output.open(fileName);
-  output << dump_w() << std::endl;
-  /*
-  for (auto& kv:window_address_info) {
-    if (kv.second.count>COUNT_ALLOW) {
-      output << kv.first << " ";
-      output << kv.second.count << " ";
-      output << kv.second.p_i.size() << std::endl;
-      if (kv.second.p_i.size()>0) {
-        //output << "+++" << std::endl;
-        for (auto& a_pi:kv.second.p_i) {
-          output << a_pi.first << " " << a_pi.second.count << " ";
-          for (uint16_t i=0; i<a_pi.second.instructions.size(); i++) {
-            output << std::ceil(a_pi.second.wait_cycles[i]/a_pi.second.count) << ".";
-            output << std::ceil(a_pi.second.rename_cycles[i]/a_pi.second.count) << ".";
-            output << std::ceil(a_pi.second.issue_cycles[i]/a_pi.second.count) << ".";
-            output << std::ceil(a_pi.second.execute_cycles[i]/a_pi.second.count) << ".";
-          }
-          output << std::endl;
-        }
-        //output << "+++" << std::endl;
-      }
-    }
-  }
-  */
-
-  output.close();
-}
