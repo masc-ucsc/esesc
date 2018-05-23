@@ -52,10 +52,6 @@ protected:
   PortGeneric *dataPort;
   PortGeneric *cmdPort;
 
-#ifdef ENABLE_NBSD
-  bool dcache;
-#endif
-
 public:
   Bus(MemorySystem *current, const char *device_descr_section, const char *device_name = NULL);
   ~Bus() {

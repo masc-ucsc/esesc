@@ -26,8 +26,10 @@ cp ${ESESC_SRC}/conf/*conf* .
 cp ${ESESC_SRC}/bins/mips64/* .
 cp ${ESESC_SRC}/bins/inputs/* .
 
-
 export ESESC_BenchName="spec00_crafty.mips64"
+export ESESC_TASS_nInstSkip=1e8
+export ESESC_TASS_nInstMax=2e8
+export ESESC_samplerSel="TASS"
 
 # Testing with crafty as default app for now
 ../main/esesc < crafty.in
