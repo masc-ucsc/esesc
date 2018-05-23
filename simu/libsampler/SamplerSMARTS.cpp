@@ -147,6 +147,8 @@ uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, uint64_t data, FlowID 
     if(GProcessor::getWallClock() >= maxnsTime || totalnInst >= nInstMax) {
       markDone();
       pthread_mutex_unlock(&mode_lock);
+      MSG("finishing QEMU thread");
+      pthread_exit(0);
       return 0;
     }
     if(doPower) {
