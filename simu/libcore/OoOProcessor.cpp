@@ -641,7 +641,9 @@ void OoOProcessor::retire()
 
 #ifdef WAVESNAP_EN
 //snap->update_window(dinst);
-  snap->full_ipc_update(dinst, (uint64_t)globalClock);
+  if (!flushing && dinst->getStatsFlag()) {
+    snap->full_ipc_update(dinst, (uint64_t)globalClock);
+  }
 #endif
     if(dinst->getInst()->hasDstRegister())
       nTotalRegs++;

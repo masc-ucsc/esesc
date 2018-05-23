@@ -294,36 +294,30 @@ void wavesnap::calculate_full_ipc() {
   // calculate execute ipc
   uint64_t total_execute = 0;
   uint64_t f, s, execute_zeros = 0;
-  bool first = true;
+  bool first_iter = true;
   for(auto &kv : full_execute_ipc) {
     s = kv.first;
-    if (!first) {
-      if (s-f>2) {
-          execute_zeros+=s-f;
-        //std::cout << s-f << std::endl;
-      }
+    if (!first_iter) {
+      execute_zeros+=s-f-1;
+      //std::cout << s-f << std::endl;
     }
     f = s;
-    first = false;
+    first_iter = false;
     total_execute += kv.second;
   }
   std::cout << "execute ipc: " << (1.0*total_execute)/(full_execute_ipc.size()+execute_zeros) << std::endl;
 
   //calculate commit ipc
-  first = true;
+  first_iter = true;
   uint64_t commit_zeros = 0;
   uint64_t total_commit = 0;
   for (auto& kv:full_commit_ipc) {
     s = kv.first;
-    if (!first) {
-      if (s-f>1) {
-        if (s-f<11) {
-          commit_zeros++;
-        }
-      }
+    if (!first_iter) {
+      commit_zeros+=s-f-1;
     }
     f = s;
-    first = false;
+    first_iter = false;
     total_commit += kv.second;
   }
   std::cout << "commit ipc: " << 1.0*total_commit/(full_commit_ipc.size()+commit_zeros) << " | commit zeros = " << commit_zeros << std::endl;
