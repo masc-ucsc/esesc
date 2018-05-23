@@ -30,8 +30,8 @@ cp ${ESESC_SRC}/bins/inputs/* .
 export ESESC_BenchName="spec00_crafty.mips64"
 
 # Testing with crafty as default app for now
-if ! ../main/esesc < crafty.in
-then
+../main/esesc < crafty.in
+if [ $? -eq 0 ]; then
   ${ESESC_SRC}/conf/scripts/report.pl -last
 else
   exit $?
