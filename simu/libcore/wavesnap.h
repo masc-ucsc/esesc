@@ -19,8 +19,8 @@
 //node list defines
 #define MAX_NODE_NUM 1000
 #define MAX_EDGE_NUM 1000000
-#define MAX_MOVING_GRAPH_NODES 1024
-#define COUNT_ALLOW 9
+#define MAX_MOVING_GRAPH_NODES 2048
+#define COUNT_ALLOW 0
 
 //dump path
 #define EDGE_DUMP_PATH "dump.txt"
@@ -104,6 +104,16 @@ class wavesnap {
 
         pipeline_info() {
           this->count = 0;
+          this->encode = "";
+          this->wait_cycles.clear();
+          this->rename_cycles.clear();
+          this->issue_cycles.clear();
+          this->execute_cycles.clear();
+          this->instructions.clear();
+        }
+  
+        void clear() {
+          this->count = 1;
           this->encode = "";
           this->wait_cycles.clear();
           this->rename_cycles.clear();
@@ -245,8 +255,10 @@ class wavesnap {
         }
     };
 
+    //private methods and member variables
     std::map<uint64_t, instruction_window> windows;
     void record_pipe(pipeline_info* next);
+    void add_pipeline_info(pipeline_info* pipe_info, DInst* dinst);
 
   public:
     wavesnap();
@@ -261,10 +273,11 @@ class wavesnap {
     uint64_t update_count;
     std::vector<uint64_t> wait_buffer; 
     std::vector<bool> completed;
+    pipeline_info working_window;
     std::map<uint64_t, DInst> dinst_info;
     uint64_t window_pointer;
 
-    void full_ipc_update(DInst* dinst);
+    void full_ipc_update(DInst* dinst, uint64_t commited);
     void add_to_RAT(DInst* dinst);
     void merge();
     void calculate_ipc();
@@ -276,5 +289,6 @@ class wavesnap {
     std::map<uint64_t, uint32_t> full_rename_ipc;
     std::map<uint64_t, uint32_t> full_issue_ipc;
     std::map<uint64_t, uint32_t> full_execute_ipc;
+    std::map<uint64_t, uint32_t> full_commit_ipc;
 };
 #endif

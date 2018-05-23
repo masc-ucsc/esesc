@@ -348,9 +348,7 @@ void TaskHandler::terminate()
 
   // GStats::stopAll(1);
 
-  // pthread_mutex_lock (&mutex);
   running_size = 0;
-  // pthread_mutex_unlock (&mutex);
 }
 /* }}} */
 
