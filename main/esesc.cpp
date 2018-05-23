@@ -33,6 +33,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "BootLoader.h"
 
 int main(int argc, const char **argv) {
+
   BootLoader::plug(argc, argv);
   BootLoader::boot();
   BootLoader::report("done");
@@ -41,6 +42,5 @@ int main(int argc, const char **argv) {
 
   MSG("Thats all folks!");
 
-  exit(0);
   return 0;
 }

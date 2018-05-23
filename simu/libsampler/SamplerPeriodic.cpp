@@ -333,6 +333,8 @@ void SamplerPeriodic::coordinateWithOthersAndNextMode(FlowID fid) {
 
     if(getTime() >= maxnsTime || totalnInst >= nInstMax) {
       markDone();
+      MSG("finishing QEMU thread");
+      pthread_exit(0);
       return;
     }
     // std::cout<<"mode "<<lastMode<<" fid:"<<sFid<<" sID:"<<nSamples[sFid]<<" totalSamples:"<<totalnSamples<<"
