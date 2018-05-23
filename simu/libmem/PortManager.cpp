@@ -1,9 +1,6 @@
 
 #include "PortManager.h"
 #include "SescConf.h"
-#ifdef ENABLE_NBSD
-#include "NBSDPortManagerArbitrer.h"
-#endif
 
 PortManager *PortManager::create(const char *section, MemObj *mobj) {
   if(SescConf->checkCharPtr(section, "port")) {
@@ -11,10 +8,6 @@ PortManager *PortManager::create(const char *section, MemObj *mobj) {
     const char *type = SescConf->getCharPtr(sub, "type");
     if(strcasecmp(type, "banked") == 0) {
       return new PortManagerBanked(sub, mobj);
-#ifdef ENABLE_NBSD
-    } else if(strcasecmp(type, "arbitrer") == 0) {
-      return new PortManagerArbitrer(sub, mobj);
-#endif
     } else {
       MSG("ERROR: %s PortManager %s type %s is unknown", section, sub, type);
       SescConf->notCorrect();
