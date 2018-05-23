@@ -234,11 +234,23 @@ void wavesnap::calculate_ipc() {
 
 /////////////////////////////////
 //FULL IPC UPDATE and CALCULATION
-void wavesnap::full_ipc_update(DInst* dinst, uint64_t commited) {
+void wavesnap::full_ipc_update(DInst* dinst, uint64_t commited) {  
   uint64_t fetched = dinst->getFetchedTime();
   uint64_t renamed = dinst->getRenamedTime();
   uint64_t issued = dinst->getIssuedTime();
   uint64_t executed = dinst->getExecutedTime();
+
+  if (dinst->getInst()->doesJump2Label()) {
+    update_count++;/*
+    std::cout << dinst->getInst()->getOpcodeName() << " ";
+    std::cout << fetched << " ";
+    std::cout << renamed << " ";
+    std::cout << issued << " ";
+    std::cout << executed << " ";
+    std::cout << commited << " ";
+    std::cout << std::endl;
+    */
+  }
 
   this->full_fetch_ipc[fetched];
   this->full_fetch_ipc[fetched]++;
@@ -263,7 +275,7 @@ void wavesnap::calculate_full_ipc() {
   for(auto &kv : full_fetch_ipc) {
     total_fetch += kv.second;
   }
-  std::cout << "fetch ipc: " << 1.0 * total_fetch / full_fetch_ipc.size() << std::endl;
+  std::cout << "fetch ipc:  " << 1.0 * total_fetch / full_fetch_ipc.size() << std::endl;
 
   // calculate rename ipc
   uint64_t total_rename = 0;
@@ -281,17 +293,42 @@ void wavesnap::calculate_full_ipc() {
 
   // calculate execute ipc
   uint64_t total_execute = 0;
+  uint64_t f, s, execute_zeros = 0;
+  bool first = true;
   for(auto &kv : full_execute_ipc) {
+    s = kv.first;
+    if (!first) {
+      if (s-f>2) {
+          execute_zeros+=s-f;
+        //std::cout << s-f << std::endl;
+      }
+    }
+    f = s;
+    first = false;
     total_execute += kv.second;
   }
-  std::cout << "execute ipc: " << 1.0*total_execute/full_execute_ipc.size() << std::endl;
+  std::cout << "execute ipc: " << (1.0*total_execute)/(full_execute_ipc.size()+execute_zeros) << std::endl;
 
   //calculate commit ipc
+  first = true;
+  uint64_t commit_zeros = 0;
   uint64_t total_commit = 0;
   for (auto& kv:full_commit_ipc) {
+    s = kv.first;
+    if (!first) {
+      if (s-f>1) {
+        if (s-f<11) {
+          commit_zeros++;
+        }
+      }
+    }
+    f = s;
+    first = false;
     total_commit += kv.second;
   }
-  std::cout << "commit ipc: " << 1.0*total_commit/full_commit_ipc.size() << std::endl;
+  std::cout << "commit ipc: " << 1.0*total_commit/(full_commit_ipc.size()+commit_zeros) << " | commit zeros = " << commit_zeros << std::endl;
+  std::cout << "total_commit: " << total_commit << std::endl;
+  std::cout << "uncommited: " << update_count << std::endl;
 }
 // FULL IPC END
 /////////////////////////////////
