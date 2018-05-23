@@ -4,7 +4,8 @@ wavesnap::wavesnap() {
   this->window_pointer         = 0;
   this->update_count           = 0;
   this->first_window_completed = false;
-  this->curr_min_time          = 10000;
+  this->curr_min_time = 10000;
+  this->working_window.count = 1;
 }
 
 wavesnap::~wavesnap() {
@@ -25,6 +26,15 @@ void wavesnap::record_pipe(pipeline_info *next) {
       pipe_info->execute_cycles[j] += next->execute_cycles[j];
     }
   }
+}
+
+void wavesnap::add_pipeline_info(pipeline_info* pipe_info, DInst* d) {
+  pipe_info->wait_cycles.push_back(d->getFetchedTime()-this->curr_min_time); 
+  pipe_info->rename_cycles.push_back(d->getRenamedTime()-d->getFetchedTime()); 
+  pipe_info->issue_cycles.push_back(d->getIssuedTime()-d->getRenamedTime()); 
+  pipe_info->execute_cycles.push_back(d->getExecutedTime()-d->getIssuedTime()); 
+  pipe_info->instructions.push_back(d->getInst()->getOpcode()); 
+  pipe_info->encode+=ENCODING[d->getInst()->getOpcode()];
 }
 
 void wavesnap::add_instruction(DInst *dinst) {
@@ -58,6 +68,7 @@ void wavesnap::update_window(DInst *dinst) {
     for(uint32_t i = 0; i < MAX_MOVING_GRAPH_NODES; i++) {
       if(!this->completed[i]) {
         this->first_window_completed = false;
+        this->working_window.clear();
         break;
       } else {
         DInst *d = &(dinst_info[i]);
@@ -86,20 +97,12 @@ void wavesnap::update_window(DInst *dinst) {
           }
         }
       }
-
-      // get pipeline info of the complete window
+      //add last instruction of the window
       pipeline_info next;
-
-      for(uint32_t i = 0; i < MAX_MOVING_GRAPH_NODES; i++) {
-        DInst c = dinst_info[wait_buffer[i]];
-        next.wait_cycles.push_back(c.getFetchedTime() - this->curr_min_time);
-        next.rename_cycles.push_back(c.getRenamedTime() - c.getFetchedTime());
-        next.issue_cycles.push_back(c.getIssuedTime() - c.getRenamedTime());
-        next.execute_cycles.push_back(c.getExecutedTime() - c.getIssuedTime());
-        next.instructions.push_back(c.getInst()->getOpcode());
-        next.encode += ENCODING[c.getInst()->getOpcode()];
-      }
       next.count = 1;
+      for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+        add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]));
+      }
 
       // record
       record_pipe(&next);
@@ -230,12 +233,24 @@ void wavesnap::calculate_ipc() {
 ////////////////////////////////////////
 
 /////////////////////////////////
-// FULL IPC UPDATE and CALCULATION
-void wavesnap::full_ipc_update(DInst *dinst) {
-  uint64_t fetched  = dinst->getFetchedTime();
-  uint64_t renamed  = dinst->getRenamedTime();
-  uint64_t issued   = dinst->getIssuedTime();
+//FULL IPC UPDATE and CALCULATION
+void wavesnap::full_ipc_update(DInst* dinst, uint64_t commited) {  
+  uint64_t fetched = dinst->getFetchedTime();
+  uint64_t renamed = dinst->getRenamedTime();
+  uint64_t issued = dinst->getIssuedTime();
   uint64_t executed = dinst->getExecutedTime();
+
+  if (dinst->getInst()->doesJump2Label()) {
+    update_count++;/*
+    std::cout << dinst->getInst()->getOpcodeName() << " ";
+    std::cout << fetched << " ";
+    std::cout << renamed << " ";
+    std::cout << issued << " ";
+    std::cout << executed << " ";
+    std::cout << commited << " ";
+    std::cout << std::endl;
+    */
+  }
 
   this->full_fetch_ipc[fetched];
   this->full_fetch_ipc[fetched]++;
@@ -248,6 +263,10 @@ void wavesnap::full_ipc_update(DInst *dinst) {
 
   this->full_execute_ipc[executed];
   this->full_execute_ipc[executed]++;
+
+  this->full_commit_ipc[commited];
+  this->full_commit_ipc[commited]++;
+
 }
 
 void wavesnap::calculate_full_ipc() {
@@ -256,7 +275,7 @@ void wavesnap::calculate_full_ipc() {
   for(auto &kv : full_fetch_ipc) {
     total_fetch += kv.second;
   }
-  std::cout << "fetch ipc: " << 1.0 * total_fetch / full_fetch_ipc.size() << std::endl;
+  std::cout << "fetch ipc:  " << 1.0 * total_fetch / full_fetch_ipc.size() << std::endl;
 
   // calculate rename ipc
   uint64_t total_rename = 0;
@@ -274,10 +293,36 @@ void wavesnap::calculate_full_ipc() {
 
   // calculate execute ipc
   uint64_t total_execute = 0;
+  uint64_t f, s, execute_zeros = 0;
+  bool first_iter = true;
   for(auto &kv : full_execute_ipc) {
+    s = kv.first;
+    if (!first_iter) {
+      execute_zeros+=s-f-1;
+      //std::cout << s-f << std::endl;
+    }
+    f = s;
+    first_iter = false;
     total_execute += kv.second;
   }
-  std::cout << "execute ipc: " << 1.0 * total_execute / full_execute_ipc.size() << std::endl;
+  std::cout << "execute ipc: " << (1.0*total_execute)/(full_execute_ipc.size()+execute_zeros) << std::endl;
+
+  //calculate commit ipc
+  first_iter = true;
+  uint64_t commit_zeros = 0;
+  uint64_t total_commit = 0;
+  for (auto& kv:full_commit_ipc) {
+    s = kv.first;
+    if (!first_iter) {
+      commit_zeros+=s-f-1;
+    }
+    f = s;
+    first_iter = false;
+    total_commit += kv.second;
+  }
+  std::cout << "commit ipc: " << 1.0*total_commit/(full_commit_ipc.size()+commit_zeros) << " | commit zeros = " << commit_zeros << std::endl;
+  std::cout << "total_commit: " << total_commit << std::endl;
+  std::cout << "uncommited: " << update_count << std::endl;
 }
 // FULL IPC END
 /////////////////////////////////
