@@ -270,59 +270,89 @@ void wavesnap::full_ipc_update(DInst* dinst, uint64_t commited) {
 }
 
 void wavesnap::calculate_full_ipc() {
+  bool first_iter;
+  uint64_t f, s;
+
   // calculate fetch ipc
   uint64_t total_fetch = 0;
+  uint64_t fetch_zeros = 0;
+  first_iter = true;
   for(auto &kv : full_fetch_ipc) {
+    s = kv.first;
+    if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+      fetch_zeros += s - f - 1;
+    }
+    f = s;
+    first_iter = false;
+
     total_fetch += kv.second;
   }
-  std::cout << "fetch ipc:  " << 1.0 * total_fetch / full_fetch_ipc.size() << std::endl;
 
   // calculate rename ipc
   uint64_t total_rename = 0;
+  uint64_t rename_zeros = 0;
+  first_iter = true;
   for(auto &kv : full_rename_ipc) {
+    s = kv.first;
+    if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+      rename_zeros += s - f - 1;
+    }
+    f = s;
+    first_iter = false;
+
     total_rename += kv.second;
   }
-  std::cout << "rename ipc: " << 1.0 * total_rename / full_rename_ipc.size() << std::endl;
 
   // calculate issue ipc
   uint64_t total_issue = 0;
+  uint64_t issue_zeros = 0;
   for(auto &kv : full_issue_ipc) {
+    s = kv.first;
+    if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+      rename_zeros += s - f - 1;
+    }
+    f = s;
+    first_iter = false;
+
     total_issue += kv.second;
   }
-  std::cout << "issue ipc: " << 1.0 * total_issue / full_issue_ipc.size() << std::endl;
 
   // calculate execute ipc
   uint64_t total_execute = 0;
-  uint64_t f, s, execute_zeros = 0;
-  bool first_iter = true;
+  uint64_t execute_zeros = 0;
   for(auto &kv : full_execute_ipc) {
     s = kv.first;
-    if (!first_iter) {
-      execute_zeros+=s-f-1;
-      //std::cout << s-f << std::endl;
-    }
+    if (!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+      execute_zeros += s - f - 1;
+    } 
+
     f = s;
     first_iter = false;
     total_execute += kv.second;
   }
-  std::cout << "execute ipc: " << (1.0*total_execute)/(full_execute_ipc.size()+execute_zeros) << std::endl;
 
   //calculate commit ipc
   first_iter = true;
-  uint64_t commit_zeros = 0;
   uint64_t total_commit = 0;
-  for (auto& kv:full_commit_ipc) {
+  uint64_t commit_zeros = 0;
+  for (auto& kv : full_commit_ipc) {
     s = kv.first;
-    if (!first_iter) {
+    if (!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
       commit_zeros+=s-f-1;
     }
     f = s;
     first_iter = false;
     total_commit += kv.second;
   }
-  std::cout << "commit ipc: " << 1.0*total_commit/(full_commit_ipc.size()+commit_zeros) << " | commit zeros = " << commit_zeros << std::endl;
-  std::cout << "total_commit: " << total_commit << std::endl;
-  std::cout << "uncommited: " << update_count << std::endl;
+
+  //report  
+  std::cout << "--------------------" << std::endl;
+  std::cout << "fetch ipc:   " << 1.0 * total_fetch / (full_fetch_ipc.size() + fetch_zeros) << std::endl;
+  std::cout << "rename ipc:  " << 1.0 * total_rename / (full_rename_ipc.size() + rename_zeros) << std::endl;
+  std::cout << "issue ipc:   " << 1.0 * total_issue / (full_issue_ipc.size() + issue_zeros) << std::endl;
+  std::cout << "execute ipc: " << 1.0 * total_execute / (full_execute_ipc.size() + execute_zeros) << std::endl;
+  std::cout << "commit ipc:  " << 1.0 * total_commit / (full_commit_ipc.size() + commit_zeros) << std::endl;
+  std::cout << "--------------------" << std::endl;
 }
 // FULL IPC END
 /////////////////////////////////

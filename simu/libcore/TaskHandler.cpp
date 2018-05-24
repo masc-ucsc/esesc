@@ -547,7 +547,6 @@ void TaskHandler::unplug()
     if(i == 0) {
       std::cout << "DONE!" << std::endl;
       cpus[i]->snap->calculate_full_ipc();
-      std::cout << cpus[i]->snap->update_count << std::endl;
     }
   }
 #endif

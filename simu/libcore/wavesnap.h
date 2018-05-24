@@ -21,6 +21,7 @@
 #define MAX_EDGE_NUM 1000000
 #define MAX_MOVING_GRAPH_NODES 2048
 #define COUNT_ALLOW 0
+#define INSTRUCTION_GAP 100
 
 //dump path
 #define EDGE_DUMP_PATH "dump.txt"
