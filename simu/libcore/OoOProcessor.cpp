@@ -469,7 +469,9 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
 #ifdef WAVESNAP_EN
 //add instruction to wavesnap
-//snap->add_instruction(dinst);
+if(dinst->getStatsFlag()) {
+  snap->add_instruction(dinst);
+}
 #endif
 
   return NoStall;
@@ -640,10 +642,25 @@ void OoOProcessor::retire()
 #endif
 
 #ifdef WAVESNAP_EN
-//snap->update_window(dinst);
-  if (!flushing && dinst->getStatsFlag()) {
-    snap->full_ipc_update(dinst, (uint64_t)globalClock);
+//updading wavesnap instruction windows
+if(SINGLE_WINDOW) {
+  if(WITH_SAMPLING) {
+    if(!flushing && dinst->getStatsFlag()) {
+      snap->update_single_window(dinst, (uint64_t)globalClock);
+    }
+  } else {
+    snap->update_single_window(dinst, (uint64_t)globalClock);
   }
+} else {
+  if(WITH_SAMPLING) {
+    if(!flushing && dinst->getStatsFlag()) {
+      snap->update_window(dinst);
+    }
+  } else {
+    snap->update_window(dinst);
+  }
+
+}
 #endif
     if(dinst->getInst()->hasDstRegister())
       nTotalRegs++;

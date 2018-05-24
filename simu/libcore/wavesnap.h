@@ -12,26 +12,27 @@
 //functional defines
 //#define REMOVE_REDUNDANT_EDGES
 
+//general wavesnap defines
+#define SINGLE_WINDOW     true
+#define WITH_SAMPLING     true
 //signature defines
 #define REGISTER_NUM 32
-#define HASH_SIZE 4*65536
+#define HASH_SIZE    4*65536
 
-//node list defines
-#define MAX_NODE_NUM 1000
-#define MAX_EDGE_NUM 1000000
-#define MAX_MOVING_GRAPH_NODES 2048
-#define COUNT_ALLOW 0
-#define INSTRUCTION_GAP 100
+//instruction window defines
+#define MAX_NODE_NUM            1000
+#define MAX_EDGE_NUM            1000000
+#define MAX_MOVING_GRAPH_NODES  2048
+
+//ipc calculation defines
+#define COUNT_ALLOW      0
+#define INSTRUCTION_GAP  100
 
 //dump path
 #define EDGE_DUMP_PATH "dump.txt"
 
 //encode instructions
 #define ENCODING "0123456789abcdefghijklmnopqrstuvwxyzABCDEFHIJKLMNPQRSTUVWXYZ"
-
-//misc defines
-#define W_LOWER 2
-#define W_UPPER 13
 
 #include <vector>
 #include <stdint.h>
@@ -264,7 +265,8 @@ class wavesnap {
   public:
     wavesnap();
     ~wavesnap();
-    void test_uncompleted();
+
+    //many windows
     void update_window(DInst* dinst);
     void add_instruction(DInst* dinst); 
     bool first_window_completed;
@@ -278,18 +280,21 @@ class wavesnap {
     std::map<uint64_t, DInst> dinst_info;
     uint64_t window_pointer;
 
-    void full_ipc_update(DInst* dinst, uint64_t commited);
-    void add_to_RAT(DInst* dinst);
-    void merge();
-    void calculate_ipc();
-    void calculate_full_ipc();
-    std::map<std::string, pipeline_info> window_sign_info;
-    std::map<uint64_t, instruction_info> RAT;
-
+    //single huge window, good for debeging
+    void update_single_window(DInst* dinst, uint64_t commited);
+    void calculate_single_window_ipc();
     std::map<uint64_t, uint32_t> full_fetch_ipc;
     std::map<uint64_t, uint32_t> full_rename_ipc;
     std::map<uint64_t, uint32_t> full_issue_ipc;
     std::map<uint64_t, uint32_t> full_execute_ipc;
     std::map<uint64_t, uint32_t> full_commit_ipc;
+
+    void add_to_RAT(DInst* dinst);
+    void merge();
+    void calculate_ipc();
+    std::map<std::string, pipeline_info> window_sign_info;
+    std::map<uint64_t, instruction_info> RAT;
+    void test_uncompleted();
+
 };
 #endif

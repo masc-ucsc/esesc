@@ -4,8 +4,8 @@ wavesnap::wavesnap() {
   this->window_pointer         = 0;
   this->update_count           = 0;
   this->first_window_completed = false;
-  this->curr_min_time = 10000;
-  this->working_window.count = 1;
+  this->curr_min_time          = 10000;
+  this->working_window.count   = 1;
 }
 
 wavesnap::~wavesnap() {
@@ -118,7 +118,6 @@ void wavesnap::update_window(DInst *dinst) {
 }
 
 void wavesnap::test_uncompleted() {
-
   std::cout << "testing uncompleted instructions... wait buffer size = " << this->wait_buffer.size() << std::endl;
   uint32_t count = 0;
   for(uint64_t i = 0; i < completed.size(); i++) {
@@ -234,23 +233,11 @@ void wavesnap::calculate_ipc() {
 
 /////////////////////////////////
 //FULL IPC UPDATE and CALCULATION
-void wavesnap::full_ipc_update(DInst* dinst, uint64_t commited) {  
+void wavesnap::update_single_window(DInst* dinst, uint64_t commited) {  
   uint64_t fetched = dinst->getFetchedTime();
   uint64_t renamed = dinst->getRenamedTime();
   uint64_t issued = dinst->getIssuedTime();
   uint64_t executed = dinst->getExecutedTime();
-
-  if (dinst->getInst()->doesJump2Label()) {
-    update_count++;/*
-    std::cout << dinst->getInst()->getOpcodeName() << " ";
-    std::cout << fetched << " ";
-    std::cout << renamed << " ";
-    std::cout << issued << " ";
-    std::cout << executed << " ";
-    std::cout << commited << " ";
-    std::cout << std::endl;
-    */
-  }
 
   this->full_fetch_ipc[fetched];
   this->full_fetch_ipc[fetched]++;
@@ -269,7 +256,7 @@ void wavesnap::full_ipc_update(DInst* dinst, uint64_t commited) {
 
 }
 
-void wavesnap::calculate_full_ipc() {
+void wavesnap::calculate_single_window_ipc() {
   bool first_iter;
   uint64_t f, s;
 
