@@ -22,7 +22,7 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  2048
+#define MAX_MOVING_GRAPH_NODES  1024
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
@@ -283,19 +283,24 @@ class wavesnap {
 
     //single huge window, good for debeging
     void update_single_window(DInst* dinst, uint64_t committed);
-    void calculate_single_window_ipc();
     std::map<uint64_t, uint32_t> full_fetch_ipc;
     std::map<uint64_t, uint32_t> full_rename_ipc;
     std::map<uint64_t, uint32_t> full_issue_ipc;
     std::map<uint64_t, uint32_t> full_execute_ipc;
     std::map<uint64_t, uint32_t> full_commit_ipc;
 
+    //stats methods
+    void calculate_single_window_ipc();
+    void calculate_ipc(uint64_t count_limit);
+    void test_uncompleted();
+    void window_frequency();
+    
+    //other
     void add_to_RAT(DInst* dinst);
     void merge();
-    void calculate_ipc();
     std::map<std::string, pipeline_info> window_sign_info;
+    uint64_t signature_count;
     std::map<uint64_t, instruction_info> RAT;
-    void test_uncompleted();
 
 };
 #endif

@@ -6,6 +6,7 @@ wavesnap::wavesnap() {
   this->first_window_completed = false;
   this->curr_min_time          = 10000;
   this->working_window.count   = 1;
+  this->signature_count        = 0;
 }
 
 wavesnap::~wavesnap() {
@@ -14,6 +15,7 @@ wavesnap::~wavesnap() {
 
 void wavesnap::record_pipe(pipeline_info *next) {
   this->window_sign_info[next->encode];
+  this->signature_count++;
   pipeline_info *pipe_info = &(this->window_sign_info[next->encode]);
   if(pipe_info->execute_cycles.size() == 0) {
     *pipe_info = *next;
@@ -119,8 +121,7 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
   }
 }
 
-
-void wavesnap::calculate_ipc() {
+void wavesnap::calculate_ipc(uint64_t count_limit) {
   uint64_t total_fetch_ipc    = 0;
   uint64_t total_rename_ipc   = 0;
   uint64_t total_issue_ipc    = 0;
@@ -466,4 +467,35 @@ void wavesnap::add_to_RAT(DInst *dinst) {
 
 void wavesnap::merge() {
   // TODO
+}
+
+void wavesnap::window_frequency() {
+  uint8_t threshold = 80;
+
+  std::vector<uint64_t> counts;
+  for(auto &sign_kv : window_sign_info) {
+    pipeline_info pipe_info = sign_kv.second;
+    uint64_t      count     = pipe_info.count;
+    counts.push_back(count); 
+  }
+
+  std::cout << "window_sign_info size= " << window_sign_info.size() << std::endl;
+  
+  std::sort(counts.rbegin(), counts.rend());
+
+  float total_percent = 0;
+  uint32_t i;
+  for(i=0; i<counts.size(); i++) {
+    float curr_percent = (100.0 * counts[i]) / this->signature_count;
+    total_percent += curr_percent;
+    std::cout << counts[i] << " " << total_percent << " " << curr_percent << std::endl;
+    if(total_percent>threshold) {
+      break;
+    }
+  }
+
+  std::cout << "********************" << std::endl;
+  std::cout << (uint32_t)threshold << " perc of the instructions are covered by " << (100.0 * i) / counts.size() << " of windows" << std::endl;
+  std::cout << "counts size = " << counts.size() << " | " << i << std::endl;
+  std::cout << "********************" << std::endl;
 }
