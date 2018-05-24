@@ -182,38 +182,78 @@ void wavesnap::calculate_ipc() {
       }
 
       // calculate ipc at each stage
-      // fetch
-      uint32_t total = 0;
-      for(auto &kv : w_c) {
-        total += kv.second;
-      }
-      float fetch_ipc = (1.0 * total) / (1.0 * w_c.size());
-      // rename
+      bool first_iter;
+      uint32_t f, s, total, zeros;
+      // fetch:
       total = 0;
-      for(auto &kv : r_c) {
+      zeros = 0;
+      first_iter = true;
+      for(auto &kv : w_c) {
+        s = kv.first;
+        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+          zeros += s - f - 1;
+        }
+        f = s;
+        first_iter = false;
+
         total += kv.second;
       }
-      float rename_ipc = total / (1.0 * r_c.size());
+      float fetch_ipc = 1.0 * total / (w_c.size() + zeros);
+
+      // rename:
+      total = 0;
+      zeros = 0;
+      first_iter = true;
+      for(auto &kv : r_c) {
+        s = kv.first;
+        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+          zeros += s - f - 1;
+        }
+        f = s;
+        first_iter = false;
+
+        total += kv.second;
+      }
+      float rename_ipc = 1.0 * total / (r_c.size() + zeros);
+
       // issue
       total = 0;
+      zeros = 0;
+      first_iter = true;
       for(auto &kv : i_c) {
+        s = kv.first;
+        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+          zeros += s - f - 1;
+        }
+        f = s;
+        first_iter = false;
+
         total += kv.second;
       }
-      float issue_ipc = total / (1.0 * i_c.size());
+      float issue_ipc = 1.0 * total / (i_c.size() + zeros);
+
       // execute
       total = 0;
+      zeros = 0;
+      first_iter = true;
       for(auto &kv : e_c) {
+        s = kv.first;
+        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+          zeros += s - f - 1;
+        }
+        f = s;
+        first_iter = false;
+
         total += kv.second;
       }
-      float execute_ipc = total / (1.0 * e_c.size());
+      float execute_ipc = 1.0 * total / (e_c.size() + zeros);
 
       // determine how much this signature contributes to the overall ipc
       // 1.accumulate diffs
-      total_fetch_diff += (1.0 * std::ceil(fetch_ipc) - 1.0 * fetch_ipc) * c;
-
-      total_rename_diff += (1.0 * std::ceil(rename_ipc) - 1.0 * rename_ipc) * c;
-      total_issue_diff += (1.0 * std::ceil(issue_ipc) - 1.0 * issue_ipc) * c;
-      total_execute_diff += (1.0 * std::ceil(execute_ipc) - 1.0 * execute_ipc) * c;
+      total_fetch_diff += (1.0 * std::ceil(fetch_ipc) - fetch_ipc) * c;
+      total_rename_diff += (1.0 * std::ceil(rename_ipc) - rename_ipc) * c;
+      total_issue_diff += (1.0 * std::ceil(issue_ipc) -  issue_ipc) * c;
+      total_execute_diff += (1.0 * std::ceil(execute_ipc) - execute_ipc) * c;
 
       // 2.accumulate ipcs
       total_fetch_ipc += std::ceil(fetch_ipc) * c;
@@ -223,10 +263,13 @@ void wavesnap::calculate_ipc() {
     }
   }
 
+  //report
+  std::cout << "-------windowed ipc calculation-----------" << std::endl;
   std::cout << "fetch: " << (1.0 * total_fetch_ipc - total_fetch_diff) / total_count << std::endl;
   std::cout << "rename: " << (1.0 * total_rename_ipc - total_rename_diff) / total_count << std::endl;
   std::cout << "issue: " << (1.0 * total_issue_ipc - total_issue_diff) / total_count << std::endl;
   std::cout << "execute: " << (1.0 * total_execute_ipc - total_execute_diff) / total_count << std::endl;
+  std::cout << "------------------------------------------" << std::endl;
 }
 // WINDOW BASED IPC END
 ////////////////////////////////////////

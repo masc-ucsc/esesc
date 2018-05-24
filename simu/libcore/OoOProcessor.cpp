@@ -469,8 +469,14 @@ StallCause OoOProcessor::addInst(DInst *dinst)
 
 #ifdef WAVESNAP_EN
 //add instruction to wavesnap
-if(dinst->getStatsFlag()) {
-  snap->add_instruction(dinst);
+if(!SINGLE_WINDOW) {
+  if(WITH_SAMPLING) {
+    if(dinst->getStatsFlag()) {
+      snap->add_instruction(dinst);
+    }
+  } else {
+    snap->add_instruction(dinst);
+  }
 }
 #endif
 
@@ -653,7 +659,7 @@ if(SINGLE_WINDOW) {
   }
 } else {
   if(WITH_SAMPLING) {
-    if(!flushing && dinst->getStatsFlag()) {
+    if(dinst->getStatsFlag()) {
       snap->update_window(dinst);
     }
   } else {

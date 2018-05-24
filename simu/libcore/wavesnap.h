@@ -13,7 +13,7 @@
 //#define REMOVE_REDUNDANT_EDGES
 
 //general wavesnap defines
-#define SINGLE_WINDOW     true
+#define SINGLE_WINDOW     false
 #define WITH_SAMPLING     true
 //signature defines
 #define REGISTER_NUM 32
