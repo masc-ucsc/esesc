@@ -660,10 +660,10 @@ if(SINGLE_WINDOW) {
 } else {
   if(WITH_SAMPLING) {
     if(dinst->getStatsFlag()) {
-      snap->update_window(dinst);
+      snap->update_window(dinst, (uint64_t)globalClock);
     }
   } else {
-    snap->update_window(dinst);
+    snap->update_window(dinst, (uint64_t)globalClock);
   }
 
 }

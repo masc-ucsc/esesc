@@ -101,6 +101,7 @@ class wavesnap {
         std::vector<uint32_t> rename_cycles;
         std::vector<uint32_t> issue_cycles;
         std::vector<uint32_t> execute_cycles;
+        std::vector<uint32_t> commit_cycles;
         std::string encode;
         uint32_t count;
 
@@ -260,14 +261,14 @@ class wavesnap {
     //private methods and member variables
     std::map<uint64_t, instruction_window> windows;
     void record_pipe(pipeline_info* next);
-    void add_pipeline_info(pipeline_info* pipe_info, DInst* dinst);
+    void add_pipeline_info(pipeline_info* pipe_info, DInst* dinst, uint64_t committed);
 
   public:
     wavesnap();
     ~wavesnap();
 
     //many windows
-    void update_window(DInst* dinst);
+    void update_window(DInst* dinst, uint64_t committed);
     void add_instruction(DInst* dinst); 
     bool first_window_completed;
     uint64_t curr_min_time;
@@ -281,7 +282,7 @@ class wavesnap {
     uint64_t window_pointer;
 
     //single huge window, good for debeging
-    void update_single_window(DInst* dinst, uint64_t commited);
+    void update_single_window(DInst* dinst, uint64_t committed);
     void calculate_single_window_ipc();
     std::map<uint64_t, uint32_t> full_fetch_ipc;
     std::map<uint64_t, uint32_t> full_rename_ipc;

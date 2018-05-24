@@ -24,15 +24,17 @@ void wavesnap::record_pipe(pipeline_info *next) {
       pipe_info->rename_cycles[j] += next->rename_cycles[j];
       pipe_info->issue_cycles[j] += next->issue_cycles[j];
       pipe_info->execute_cycles[j] += next->execute_cycles[j];
+      pipe_info->commit_cycles[j] += next->commit_cycles[j];
     }
   }
 }
 
-void wavesnap::add_pipeline_info(pipeline_info* pipe_info, DInst* d) {
-  pipe_info->wait_cycles.push_back(d->getFetchedTime()-this->curr_min_time); 
-  pipe_info->rename_cycles.push_back(d->getRenamedTime()-d->getFetchedTime()); 
-  pipe_info->issue_cycles.push_back(d->getIssuedTime()-d->getRenamedTime()); 
-  pipe_info->execute_cycles.push_back(d->getExecutedTime()-d->getIssuedTime()); 
+void wavesnap::add_pipeline_info(pipeline_info* pipe_info, DInst* d, uint64_t committed) {
+  pipe_info->wait_cycles.push_back(d->getFetchedTime() - this->curr_min_time); 
+  pipe_info->rename_cycles.push_back(d->getRenamedTime() - d->getFetchedTime()); 
+  pipe_info->issue_cycles.push_back(d->getIssuedTime() - d->getRenamedTime()); 
+  pipe_info->execute_cycles.push_back(d->getExecutedTime() - d->getIssuedTime()); 
+  pipe_info->commit_cycles.push_back(committed - d->getExecutedTime()); 
   pipe_info->instructions.push_back(d->getInst()->getOpcode()); 
   pipe_info->encode+=ENCODING[d->getInst()->getOpcode()];
 }
@@ -42,7 +44,7 @@ void wavesnap::add_instruction(DInst *dinst) {
   completed.push_back(false);
 }
 
-void wavesnap::update_window(DInst *dinst) {
+void wavesnap::update_window(DInst *dinst, uint64_t committed) {
   // update instruction as completed
   bool     found = false;
   uint64_t i     = dinst->getID();
@@ -101,7 +103,7 @@ void wavesnap::update_window(DInst *dinst) {
       pipeline_info next;
       next.count = 1;
       for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
-        add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]));
+        add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]), committed);
       }
 
       // record
@@ -134,33 +136,39 @@ void wavesnap::calculate_ipc() {
   uint64_t total_rename_ipc   = 0;
   uint64_t total_issue_ipc    = 0;
   uint64_t total_execute_ipc  = 0;
+  uint64_t total_commit_ipc   = 0;
   float    total_fetch_diff   = 0;
   float    total_rename_diff  = 0;
   float    total_issue_diff   = 0;
   float    total_execute_diff = 0;
+  float    total_commit_diff  = 0;
   uint64_t total_count        = 0;
 
   for(auto &sign_kv : window_sign_info) {
     pipeline_info pipe_info = sign_kv.second;
-    uint64_t      c         = pipe_info.count;
-    if(c > COUNT_ALLOW) {
-      total_count += c;
+    uint64_t      count     = pipe_info.count;
+    if(count > COUNT_ALLOW) {
+      total_count += count;
       // average the cycles
       std::map<uint32_t, uint32_t> w_c;
       std::map<uint32_t, uint32_t> r_c;
       std::map<uint32_t, uint32_t> i_c;
       std::map<uint32_t, uint32_t> e_c;
+      std::map<uint32_t, uint32_t> c_c;
       w_c.clear();
       r_c.clear();
       i_c.clear();
       e_c.clear();
+      c_c.clear();
 
       for(uint32_t j = 0; j < pipe_info.execute_cycles.size(); j++) {
         // average
-        uint32_t w = pipe_info.wait_cycles[j] / c;
-        uint32_t r = pipe_info.rename_cycles[j] / c;
-        uint32_t i = pipe_info.issue_cycles[j] / c;
-        uint32_t e = pipe_info.execute_cycles[j] / c;
+        uint32_t w = pipe_info.wait_cycles[j] / count;
+        uint32_t r = pipe_info.rename_cycles[j] / count;
+        uint32_t i = pipe_info.issue_cycles[j] / count;
+        uint32_t e = pipe_info.execute_cycles[j] / count;
+        uint32_t c = pipe_info.execute_cycles[j] / count;
+
 
         // count cycles at each stage
         // wait cycles
@@ -179,6 +187,10 @@ void wavesnap::calculate_ipc() {
         f += e;
         e_c[f];
         e_c[f]++;
+        //commit
+        f += c;
+        c_c[f];
+        c_c[f]++;
       }
 
       // calculate ipc at each stage
@@ -248,27 +260,46 @@ void wavesnap::calculate_ipc() {
       }
       float execute_ipc = 1.0 * total / (e_c.size() + zeros);
 
+      // commit
+      total = 0;
+      zeros = 0;
+      first_iter = true;
+      for(auto &kv : c_c) {
+        s = kv.first;
+        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+          zeros += s - f - 1;
+        }
+        f = s;
+        first_iter = false;
+
+        total += kv.second;
+      }
+      float commit_ipc = 1.0 * total / (e_c.size() + zeros);
+
       // determine how much this signature contributes to the overall ipc
       // 1.accumulate diffs
-      total_fetch_diff += (1.0 * std::ceil(fetch_ipc) - fetch_ipc) * c;
-      total_rename_diff += (1.0 * std::ceil(rename_ipc) - rename_ipc) * c;
-      total_issue_diff += (1.0 * std::ceil(issue_ipc) -  issue_ipc) * c;
-      total_execute_diff += (1.0 * std::ceil(execute_ipc) - execute_ipc) * c;
+      total_fetch_diff += (1.0 * std::ceil(fetch_ipc) - fetch_ipc) * count;
+      total_rename_diff += (1.0 * std::ceil(rename_ipc) - rename_ipc) * count;
+      total_issue_diff += (1.0 * std::ceil(issue_ipc) -  issue_ipc) * count;
+      total_execute_diff += (1.0 * std::ceil(execute_ipc) - execute_ipc) * count;
+      total_commit_diff += (1.0 * std::ceil(commit_ipc) - commit_ipc) * count;
 
       // 2.accumulate ipcs
-      total_fetch_ipc += std::ceil(fetch_ipc) * c;
-      total_rename_ipc += std::ceil(rename_ipc) * c;
-      total_issue_ipc += std::ceil(issue_ipc) * c;
-      total_execute_ipc += std::ceil(execute_ipc) * c;
+      total_fetch_ipc += std::ceil(fetch_ipc) * count;
+      total_rename_ipc += std::ceil(rename_ipc) * count;
+      total_issue_ipc += std::ceil(issue_ipc) * count;
+      total_execute_ipc += std::ceil(execute_ipc) * count;
+      total_commit_ipc += std::ceil(commit_ipc) * count;
     }
   }
 
   //report
   std::cout << "-------windowed ipc calculation-----------" << std::endl;
-  std::cout << "fetch: " << (1.0 * total_fetch_ipc - total_fetch_diff) / total_count << std::endl;
-  std::cout << "rename: " << (1.0 * total_rename_ipc - total_rename_diff) / total_count << std::endl;
-  std::cout << "issue: " << (1.0 * total_issue_ipc - total_issue_diff) / total_count << std::endl;
+  std::cout << "fetch:   " << (1.0 * total_fetch_ipc - total_fetch_diff) / total_count << std::endl;
+  std::cout << "rename:  " << (1.0 * total_rename_ipc - total_rename_diff) / total_count << std::endl;
+  std::cout << "issue:   " << (1.0 * total_issue_ipc - total_issue_diff) / total_count << std::endl;
   std::cout << "execute: " << (1.0 * total_execute_ipc - total_execute_diff) / total_count << std::endl;
+  std::cout << "commit:  " << (1.0 * total_commit_ipc - total_commit_diff) / total_count << std::endl;
   std::cout << "------------------------------------------" << std::endl;
 }
 // WINDOW BASED IPC END
@@ -276,7 +307,7 @@ void wavesnap::calculate_ipc() {
 
 /////////////////////////////////
 //FULL IPC UPDATE and CALCULATION
-void wavesnap::update_single_window(DInst* dinst, uint64_t commited) {  
+void wavesnap::update_single_window(DInst* dinst, uint64_t committed) {  
   uint64_t fetched = dinst->getFetchedTime();
   uint64_t renamed = dinst->getRenamedTime();
   uint64_t issued = dinst->getIssuedTime();
@@ -294,8 +325,8 @@ void wavesnap::update_single_window(DInst* dinst, uint64_t commited) {
   this->full_execute_ipc[executed];
   this->full_execute_ipc[executed]++;
 
-  this->full_commit_ipc[commited];
-  this->full_commit_ipc[commited]++;
+  this->full_commit_ipc[committed];
+  this->full_commit_ipc[committed]++;
 
 }
 
