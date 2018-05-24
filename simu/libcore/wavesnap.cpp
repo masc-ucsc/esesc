@@ -119,17 +119,6 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
   }
 }
 
-void wavesnap::test_uncompleted() {
-  std::cout << "testing uncompleted instructions... wait buffer size = " << this->wait_buffer.size() << std::endl;
-  uint32_t count = 0;
-  for(uint64_t i = 0; i < completed.size(); i++) {
-    if(!completed[i]) {
-      std::cout << wait_buffer[i] << std::endl;
-      count++;
-    }
-  }
-  std::cout << "uncomleted instruction = " << count << std::endl;
-}
 
 void wavesnap::calculate_ipc() {
   uint64_t total_fetch_ipc    = 0;
@@ -417,6 +406,18 @@ void wavesnap::calculate_single_window_ipc() {
 }
 // FULL IPC END
 /////////////////////////////////
+
+void wavesnap::test_uncompleted() {
+  std::cout << "testing uncompleted instructions... wait buffer size = " << this->wait_buffer.size() << std::endl;
+  uint32_t count = 0;
+  for(uint64_t i = 0; i < completed.size(); i++) {
+    if(!completed[i]) {
+      std::cout << wait_buffer[i] << std::endl;
+      count++;
+    }
+  }
+  std::cout << "uncomleted instruction = " << count << std::endl;
+}
 
 void wavesnap::add_to_RAT(DInst *dinst) {
   uint64_t dst, src1, src2;
