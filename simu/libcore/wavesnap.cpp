@@ -338,7 +338,7 @@ void wavesnap::calculate_full_ipc() {
   for (auto& kv : full_commit_ipc) {
     s = kv.first;
     if (!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
-      commit_zeros+=s-f-1;
+      commit_zeros += s - f - 1;
     }
     f = s;
     first_iter = false;
