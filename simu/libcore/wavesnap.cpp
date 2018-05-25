@@ -37,7 +37,6 @@ void wavesnap::add_pipeline_info(pipeline_info* pipe_info, instruction_info* d, 
   pipe_info->issue_cycles.push_back(d->issued_time - d->renamed_time); 
   pipe_info->execute_cycles.push_back(d->executed_time - d->issued_time); 
   pipe_info->commit_cycles.push_back(committed - d->executed_time); 
-  pipe_info->instructions.push_back(d->opcode); 
   pipe_info->encode+=ENCODING[d->opcode];
 }
 

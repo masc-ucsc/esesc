@@ -118,7 +118,6 @@ class wavesnap {
       private:
 
       public:
-        std::vector<uint8_t> instructions;
         std::vector<uint32_t> wait_cycles;
         std::vector<uint32_t> rename_cycles;
         std::vector<uint32_t> issue_cycles;
@@ -134,7 +133,6 @@ class wavesnap {
           this->rename_cycles.clear();
           this->issue_cycles.clear();
           this->execute_cycles.clear();
-          this->instructions.clear();
         }
   
         void clear() {
@@ -144,7 +142,6 @@ class wavesnap {
           this->rename_cycles.clear();
           this->issue_cycles.clear();
           this->execute_cycles.clear();
-          this->instructions.clear();
         }
     };
 
