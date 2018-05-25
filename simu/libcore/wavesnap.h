@@ -22,14 +22,14 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  128
+#define MAX_MOVING_GRAPH_NODES  200
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
 #define INSTRUCTION_GAP  100
 
 //dump path
-#define EDGE_DUMP_PATH "dump.txt"
+#define DUMP_PATH "dump.txt"
 
 //encode instructions
 #define ENCODING "0123456789abcdefghijklmnopqrstuvwxyzABCDEFHIJKLMNPQRSTUVWXYZ"
@@ -46,8 +46,13 @@
 #include "InstOpcode.h"
 #include "EmuSampler.h"
 #include "DInst.h"
-#include "BloomFilter.h"
-
+/*
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/map.hpp> 
+#include <boost/serialization/string.hpp> 
+#include <boost/serialization/vector.hpp>
+*/
 class instruction_info {
   public:
     uint64_t fetched_time;
@@ -87,15 +92,15 @@ class wavesnap {
         uint64_t time_stamp;
 
         dependence_info() {
-          this->id = 0;
-          this->dst = 0;
-          this->src1 = 0;
-          this->src2 = 0;
-          this->parent1_id = 0;
-          this->parent2_id = 0;
-          this->depth = 0;
-          this->valid = false;
-          this->time_stamp = 0;
+          this->id          = 0;
+          this->dst         = 0;
+          this->src1        = 0;
+          this->src2        = 0;
+          this->parent1_id  = 0;
+          this->parent2_id  = 0;
+          this->depth       = 0;
+          this->valid       = false;
+          this->time_stamp  = 0;
         }
 
         std::string dump() {
@@ -116,7 +121,19 @@ class wavesnap {
 
     class pipeline_info {
       private:
-
+        /*
+        friend class boost::serialization::access;
+        template<class Archive>
+        void serialize(Archive & ar, const unsigned int version) {
+          ar & this->wait_cycles;
+          ar & this->rename_cycles;
+          ar & this->issue_cycles;
+          ar & this->execute_cycles;
+          ar & this->commit_cycles;
+          ar & encode;
+          ar & count;
+        }
+        */
       public:
         std::vector<uint32_t> wait_cycles;
         std::vector<uint32_t> rename_cycles;
@@ -127,7 +144,7 @@ class wavesnap {
         uint32_t count;
 
         pipeline_info() {
-          this->count = 0;
+          this->count  = 0;
           this->encode = "";
           this->wait_cycles.clear();
           this->rename_cycles.clear();
@@ -136,7 +153,7 @@ class wavesnap {
         }
   
         void clear() {
-          this->count = 1;
+          this->count  = 1;
           this->encode = "";
           this->wait_cycles.clear();
           this->rename_cycles.clear();
@@ -189,5 +206,10 @@ class wavesnap {
     uint64_t signature_count;
     std::map<uint64_t, dependence_info> RAT;
 
+    /*
+    //dumping and reading
+    void save();
+    void load();
+    */
 };
 #endif

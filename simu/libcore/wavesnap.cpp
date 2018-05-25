@@ -487,19 +487,22 @@ void wavesnap::window_frequency() {
     pipeline_info pipe_info = sign_kv.second;
     uint64_t      count     = pipe_info.count;
     counts.push_back(count); 
-    std::cout << sign_kv.first << std::endl;
   }
 
-  std::cout << "window_sign_info size= " << window_sign_info.size() << std::endl;
-  
   std::sort(counts.rbegin(), counts.rend());
+
+  std::ofstream outfile;
+  outfile.open(DUMP_PATH);
+  for (uint64_t i=0; i<counts.size(); i++) {
+    outfile << counts[i] << std::endl;
+  }
+  outfile.close();
 
   float total_percent = 0;
   uint32_t i;
   for(i=0; i<counts.size(); i++) {
     float curr_percent = (100.0 * counts[i]) / this->signature_count;
     total_percent += curr_percent;
-    //std::cout << counts[i] << " " << total_percent << " " << curr_percent << std::endl;
     if(total_percent>threshold) {
       break;
     }
@@ -510,3 +513,11 @@ void wavesnap::window_frequency() {
   std::cout << "counts size = " << counts.size() << " | " << i << std::endl;
   std::cout << "********************" << std::endl;
 }
+
+/*
+void wavesnap::save() {
+  std::ofstream file{DUMP_PATH};
+  boost::archive::text_oarchive oa{file};
+  oa << this->window_sign_info; 
+}
+*/

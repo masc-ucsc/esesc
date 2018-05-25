@@ -550,7 +550,7 @@ void TaskHandler::unplug()
         cpus[i]->snap->calculate_single_window_ipc();
       } else {
         cpus[i]->snap->calculate_ipc();
-        //cpus[i]->snap->window_frequency();
+        cpus[i]->snap->window_frequency();
       }
     }
   }
