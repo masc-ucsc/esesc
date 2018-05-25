@@ -31,19 +31,29 @@ void wavesnap::record_pipe(pipeline_info *next) {
   }
 }
 
-void wavesnap::add_pipeline_info(pipeline_info* pipe_info, DInst* d, uint64_t committed) {
-  pipe_info->wait_cycles.push_back(d->getFetchedTime() - this->curr_min_time); 
-  pipe_info->rename_cycles.push_back(d->getRenamedTime() - d->getFetchedTime()); 
-  pipe_info->issue_cycles.push_back(d->getIssuedTime() - d->getRenamedTime()); 
-  pipe_info->execute_cycles.push_back(d->getExecutedTime() - d->getIssuedTime()); 
-  pipe_info->commit_cycles.push_back(committed - d->getExecutedTime()); 
-  pipe_info->instructions.push_back(d->getInst()->getOpcode()); 
-  pipe_info->encode+=ENCODING[d->getInst()->getOpcode()];
+void wavesnap::add_pipeline_info(pipeline_info* pipe_info, instruction_info* d, uint64_t committed) {
+  pipe_info->wait_cycles.push_back(d->fetched_time - this->curr_min_time); 
+  pipe_info->rename_cycles.push_back(d->renamed_time - d->fetched_time); 
+  pipe_info->issue_cycles.push_back(d->issued_time - d->renamed_time); 
+  pipe_info->execute_cycles.push_back(d->executed_time - d->issued_time); 
+  pipe_info->commit_cycles.push_back(committed - d->executed_time); 
+  pipe_info->instructions.push_back(d->opcode); 
+  pipe_info->encode+=ENCODING[d->opcode];
 }
 
 void wavesnap::add_instruction(DInst *dinst) {
   wait_buffer.push_back(dinst->getID());
   completed.push_back(false);
+}
+
+instruction_info wavesnap::extract_inst_info(DInst* dinst) {
+  instruction_info result;
+  result.fetched_time  = dinst->getFetchedTime();
+  result.renamed_time  = dinst->getRenamedTime();
+  result.issued_time   = dinst->getIssuedTime();
+  result.executed_time = dinst->getExecutedTime();
+  result.opcode        = dinst->getInst()->getOpcode();
+  return result;
 }
 
 void wavesnap::update_window(DInst *dinst, uint64_t committed) {
@@ -59,8 +69,9 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
 
         // TODO: to reduce the size, just capture required info,
         // not the whole dinst
+        instruction_info inst_info = extract_inst_info(dinst);
         dinst_info[id];
-        dinst_info[id] = *(dinst);
+        dinst_info[id] = inst_info;
       }
     }
     i--;
@@ -75,10 +86,10 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
         this->working_window.clear();
         break;
       } else {
-        DInst *d = &(dinst_info[i]);
-        if(d->getFetchedTime() < this->curr_min_time) {
-          this->curr_min_time = d->getFetchedTime();
-          this->min_time_id   = d->getID();
+        instruction_info *d = &(dinst_info[i]);
+        if(d->fetched_time < this->curr_min_time) {
+          this->curr_min_time = d->fetched_time;
+          this->min_time_id   = d->id;
         }
       }
     }
@@ -91,13 +102,13 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
       // logically, very first instrcution must be minimum of the window
       if(this->last_removed_id == this->min_time_id) {
         this->update_count++;
-        this->curr_min_time = dinst_info[wait_buffer[0]].getFetchedTime();
-        this->min_time_id   = dinst_info[wait_buffer[0]].getID();
+        this->curr_min_time = dinst_info[wait_buffer[0]].fetched_time;
+        this->min_time_id   = dinst_info[wait_buffer[0]].id;
         for(uint32_t i = 0; i < MAX_MOVING_GRAPH_NODES; i++) {
-          DInst *d = &(dinst_info[wait_buffer[i]]);
-          if(d->getFetchedTime() <= this->curr_min_time) {
-            this->curr_min_time = d->getFetchedTime();
-            this->min_time_id   = d->getID();
+          instruction_info *d = &(dinst_info[wait_buffer[i]]);
+          if(d->fetched_time <= this->curr_min_time) {
+            this->curr_min_time = d->fetched_time;
+            this->min_time_id   = d->id;
           }
         }
       }
@@ -113,7 +124,7 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
 
       // remove first instruction in the window and update stats
       window_pointer++;
-      this->last_removed_id = dinst_info[wait_buffer[0]].getID();
+      this->last_removed_id = dinst_info[wait_buffer[0]].id;
       dinst_info.erase(wait_buffer[0]);
       wait_buffer.erase(wait_buffer.begin());
       completed.erase(completed.begin());
@@ -121,7 +132,7 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
   }
 }
 
-void wavesnap::calculate_ipc(uint64_t count_limit) {
+void wavesnap::calculate_ipc() {
   uint64_t total_fetch_ipc    = 0;
   uint64_t total_rename_ipc   = 0;
   uint64_t total_issue_ipc    = 0;
@@ -157,7 +168,7 @@ void wavesnap::calculate_ipc(uint64_t count_limit) {
         uint32_t r = pipe_info.rename_cycles[j] / count;
         uint32_t i = pipe_info.issue_cycles[j] / count;
         uint32_t e = pipe_info.execute_cycles[j] / count;
-        uint32_t c = pipe_info.execute_cycles[j] / count;
+        uint32_t c = pipe_info.commit_cycles[j] / count;
 
 
         // count cycles at each stage
@@ -477,6 +488,7 @@ void wavesnap::window_frequency() {
     pipeline_info pipe_info = sign_kv.second;
     uint64_t      count     = pipe_info.count;
     counts.push_back(count); 
+    std::cout << sign_kv.first << std::endl;
   }
 
   std::cout << "window_sign_info size= " << window_sign_info.size() << std::endl;
@@ -488,7 +500,7 @@ void wavesnap::window_frequency() {
   for(i=0; i<counts.size(); i++) {
     float curr_percent = (100.0 * counts[i]) / this->signature_count;
     total_percent += curr_percent;
-    std::cout << counts[i] << " " << total_percent << " " << curr_percent << std::endl;
+    //std::cout << counts[i] << " " << total_percent << " " << curr_percent << std::endl;
     if(total_percent>threshold) {
       break;
     }

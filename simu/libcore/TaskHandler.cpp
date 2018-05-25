@@ -549,7 +549,8 @@ void TaskHandler::unplug()
       if(SINGLE_WINDOW) {
         cpus[i]->snap->calculate_single_window_ipc();
       } else {
-        cpus[i]->snap->window_frequency();
+        cpus[i]->snap->calculate_ipc();
+        //cpus[i]->snap->window_frequency();
       }
     }
   }

@@ -22,7 +22,7 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  1024
+#define MAX_MOVING_GRAPH_NODES  128
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
@@ -48,9 +48,31 @@
 #include "DInst.h"
 #include "BloomFilter.h"
 
+class instruction_info {
+  public:
+    uint64_t fetched_time;
+    uint64_t renamed_time;
+    uint64_t issued_time;
+    uint64_t executed_time;
+    uint64_t committed_time;
+    uint8_t  opcode;
+    uint64_t id;
+
+    instruction_info() {
+      this->fetched_time   = 0;
+      this->renamed_time   = 0;
+      this->issued_time    = 0;
+      this->executed_time  = 0;
+      this->committed_time = 0;
+      this->opcode         = 0;
+      this->id             = 0;
+    }
+};
+
 class wavesnap {
   private:
-    class instruction_info {
+
+    class dependence_info {
       public:
         uint32_t id;
         uint32_t dst;
@@ -64,7 +86,7 @@ class wavesnap {
         uint32_t opcode;
         uint64_t time_stamp;
 
-        instruction_info() {
+        dependence_info() {
           this->id = 0;
           this->dst = 0;
           this->src1 = 0;
@@ -126,142 +148,9 @@ class wavesnap {
         }
     };
 
-    class window_info {
-      private:
-
-      public:
-        std::map<std::string, pipeline_info> p_i;
-        uint32_t count;
-
-        window_info() {
-          this->count = 0;
-        }
-        ~window_info() {
-
-        }
-    };
-
-
-    class instruction_window {
-      private:
-        bool check_window[MAX_MOVING_GRAPH_NODES];
-        bool is_control[MAX_MOVING_GRAPH_NODES];
-        uint64_t start_id;
-        bool set = false;
-        uint32_t size;
-
-      public:
-        DInst window[MAX_MOVING_GRAPH_NODES];
-        uint64_t min_fetch_time;
-        uint64_t min_rename_time;
-
-        instruction_window() {
-          this->set = false;
-          this->size = 0;
-          this->min_fetch_time = std::numeric_limits<uint64_t>::max();
-          this->min_rename_time = std::numeric_limits<uint64_t>::max();
-          for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
-            check_window[i] = false;
-            is_control[i] = false;
-          }
-        }
-        
-        ~instruction_window() {
-          //nothing todo here
-        }
-
-        DInst get_first_inst() {
-          return this->window[0];
-        }
-
-        bool check_if_control(uint16_t i) {
-          return this->is_control[i];
-        }
-
-        std::vector<int32_t> get_pipeline_info(uint32_t n) {
-          std::vector<int32_t> result;
-          int32_t w,r,i,e;
-          if (n>=0 && n<=MAX_MOVING_GRAPH_NODES) {
-            w = window[n].getFetchedTime()-this->min_fetch_time;
-            r = window[n].getRenamedTime()-window[n].getFetchedTime();
-            i = window[n].getIssuedTime()-window[n].getRenamedTime();
-            e = window[n].getExecutedTime()-window[n].getIssuedTime();
-
-            if (w<0 || r<0 || i<0 || e<0) {
-              std::cout << n << " ";
-              std::cout << window[n].getFetchedTime() << " ";
-              std::cout << this->min_fetch_time << " ";
-              std::cout << window[n].getInst()->getOpcode() << " ";
-              std::cout << window[n].getID() << " ";
-              std::cout << w << "w ";
-              std::cout << r << "r ";
-              std::cout << i << "i ";
-              std::cout << e << "e ";
-              std::cout << std::endl;
-            }
-            result.push_back(w);
-            result.push_back(r);
-            result.push_back(i);
-            result.push_back(e);
-            result.push_back(window[n].getInst()->getOpcode());
-          } else {
-            std::cout << "error: DInst get_pipeline_info: out of window" << std::endl;
-          }
-          return result;
-        }
-
-        bool is_set() {
-          return this->set;
-        }
-
-        uint32_t get_size() {
-          return this->size;
-        }
-
-        void set_start_id(uint64_t start_id) {
-          this->start_id = start_id;
-          this->set = true;
-        }
-  
-        void update(DInst* dinst) {
-          //check if this instruction is allowed in this window
-          int32_t window_index = dinst->getID()-(this->start_id);
-          if (window_index>=MAX_MOVING_GRAPH_NODES || window_index<0) {
-            std::cout << "this instruction should not be in this window (" << window_index << "," << this->start_id << ")" << std::endl;
-          } else {
-            window[window_index] = *dinst;
-            if (check_window[window_index] == false) {
-              check_window[window_index] = true;
-              if (dinst->getInst()->isControl()) {
-                is_control[window_index] = true;
-              }
-              size++;
-              if (min_fetch_time>dinst->getFetchTime()) {
-                min_fetch_time = dinst->getFetchTime();
-              }
-              if (min_rename_time>dinst->getRenamedTime()) {
-                min_rename_time = dinst->getRenamedTime();
-              }
-            }
-          }
-        }
-    
-        void dump() {
-          for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
-            std::cout << window[i].getFetchedTime() << " ";
-            if (window[i].getFetchedTime() == 0) {
-              std::cout << window[i].getInst()->getOpcode();
-            }
-            std::cout << std::endl;
-          }
-          std::cout <<  "**------------**" << std::endl;
-        }
-    };
-
     //private methods and member variables
-    std::map<uint64_t, instruction_window> windows;
     void record_pipe(pipeline_info* next);
-    void add_pipeline_info(pipeline_info* pipe_info, DInst* dinst, uint64_t committed);
+    void add_pipeline_info(pipeline_info* pipe_info, instruction_info* dinst, uint64_t committed);
 
   public:
     wavesnap();
@@ -278,7 +167,7 @@ class wavesnap {
     std::vector<uint64_t> wait_buffer; 
     std::vector<bool> completed;
     pipeline_info working_window;
-    std::map<uint64_t, DInst> dinst_info;
+    std::map<uint64_t, instruction_info> dinst_info;
     uint64_t window_pointer;
 
     //single huge window, good for debeging
@@ -291,16 +180,17 @@ class wavesnap {
 
     //stats methods
     void calculate_single_window_ipc();
-    void calculate_ipc(uint64_t count_limit);
+    void calculate_ipc();
     void test_uncompleted();
     void window_frequency();
     
     //other
+    instruction_info extract_inst_info(DInst* dinst);
     void add_to_RAT(DInst* dinst);
     void merge();
     std::map<std::string, pipeline_info> window_sign_info;
     uint64_t signature_count;
-    std::map<uint64_t, instruction_info> RAT;
+    std::map<uint64_t, dependence_info> RAT;
 
 };
 #endif
