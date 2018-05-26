@@ -4,9 +4,9 @@ wavesnap::wavesnap() {
   this->window_pointer         = 0;
   this->update_count           = 0;
   this->first_window_completed = false;
-  this->curr_min_time          = 10000;
   this->working_window.count   = 1;
   this->signature_count        = 0;
+  this->current_encoding       = "";
 }
 
 wavesnap::~wavesnap() {
@@ -14,9 +14,9 @@ wavesnap::~wavesnap() {
 }
 
 void wavesnap::record_pipe(pipeline_info *next) {
-  this->window_sign_info[next->encode];
+  this->window_sign_info[this->current_encoding];
   this->signature_count++;
-  pipeline_info *pipe_info = &(this->window_sign_info[next->encode]);
+  pipeline_info *pipe_info = &(this->window_sign_info[this->current_encoding]);
   if(pipe_info->execute_cycles.size() == 0) {
     *pipe_info = *next;
   } else {
@@ -32,12 +32,13 @@ void wavesnap::record_pipe(pipeline_info *next) {
 }
 
 void wavesnap::add_pipeline_info(pipeline_info* pipe_info, instruction_info* d, uint64_t committed) {
-  pipe_info->wait_cycles.push_back(d->fetched_time - this->curr_min_time); 
+  uint64_t min_time = this->dinst_info[wait_buffer[0]].fetched_time;
+
+  pipe_info->wait_cycles.push_back(d->fetched_time - min_time); 
   pipe_info->rename_cycles.push_back(d->renamed_time - d->fetched_time); 
   pipe_info->issue_cycles.push_back(d->issued_time - d->renamed_time); 
   pipe_info->execute_cycles.push_back(d->executed_time - d->issued_time); 
   pipe_info->commit_cycles.push_back(committed - d->executed_time); 
-  pipe_info->encode+=ENCODING[d->opcode];
 }
 
 void wavesnap::add_instruction(DInst *dinst) {
@@ -47,11 +48,13 @@ void wavesnap::add_instruction(DInst *dinst) {
 
 instruction_info wavesnap::extract_inst_info(DInst* dinst) {
   instruction_info result;
+
   result.fetched_time  = dinst->getFetchedTime();
   result.renamed_time  = dinst->getRenamedTime();
   result.issued_time   = dinst->getIssuedTime();
   result.executed_time = dinst->getExecutedTime();
   result.opcode        = dinst->getInst()->getOpcode();
+
   return result;
 }
 
@@ -60,18 +63,17 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
   bool     found = false;
   uint64_t i     = dinst->getID();
   uint64_t id    = i;
+  if(i > this->wait_buffer.size()) {
+    i = this->wait_buffer.size() - 1;
+  }
   while(!found) {
-    if(this->wait_buffer.size() > i) {
-      if(this->wait_buffer[i] == id) {
-        this->completed[i] = true;
-        found              = true;
+    if(this->wait_buffer[i] == id) {
+      this->completed[i] = true;
+      found              = true;
 
-        // TODO: to reduce the size, just capture required info,
-        // not the whole dinst
-        instruction_info inst_info = extract_inst_info(dinst);
-        dinst_info[id];
-        dinst_info[id] = inst_info;
-      }
+      instruction_info inst_info = extract_inst_info(dinst);
+      dinst_info[id];
+      dinst_info[id] = inst_info;
     }
     i--;
   }
@@ -83,12 +85,12 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
       if(!this->completed[i]) {
         this->first_window_completed = false;
         this->working_window.clear();
+        this->current_encoding = "";
         break;
       } else {
-        instruction_info *d = &(dinst_info[i]);
-        if(d->fetched_time < this->curr_min_time) {
-          this->curr_min_time = d->fetched_time;
-          this->min_time_id   = d->id;
+        instruction_info *d = &(dinst_info[wait_buffer[i]]);
+        if(i < MAX_MOVING_GRAPH_NODES-1) {
+          this->current_encoding += ENCODING[d->opcode];
         }
       }
     }
@@ -96,22 +98,10 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
     // after the first window completed, just check the last element
     // of the window.
     while(completed[MAX_MOVING_GRAPH_NODES - 1] && completed.size() >= MAX_MOVING_GRAPH_NODES) {
-      // update current min fetch time if it was removed
-      // TODO: check if it is worth updating the minimum,
-      // logically, very first instrcution must be minimum of the window
-      if(this->last_removed_id == this->min_time_id) {
-        this->update_count++;
-        this->curr_min_time = dinst_info[wait_buffer[0]].fetched_time;
-        this->min_time_id   = dinst_info[wait_buffer[0]].id;
-        for(uint32_t i = 0; i < MAX_MOVING_GRAPH_NODES; i++) {
-          instruction_info *d = &(dinst_info[wait_buffer[i]]);
-          if(d->fetched_time <= this->curr_min_time) {
-            this->curr_min_time = d->fetched_time;
-            this->min_time_id   = d->id;
-          }
-        }
-      }
+
       //add last instruction of the window
+      instruction_info *d = &(dinst_info[wait_buffer[MAX_MOVING_GRAPH_NODES - 1]]);
+      this->current_encoding += ENCODING[d->opcode];
       pipeline_info next;
       next.count = 1;
       for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
@@ -123,10 +113,10 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
 
       // remove first instruction in the window and update stats
       window_pointer++;
-      this->last_removed_id = dinst_info[wait_buffer[0]].id;
-      dinst_info.erase(wait_buffer[0]);
-      wait_buffer.erase(wait_buffer.begin());
-      completed.erase(completed.begin());
+      this->dinst_info.erase(this->wait_buffer[0]);
+      this->wait_buffer.erase(this->wait_buffer.begin());
+      this->completed.erase(this->completed.begin());
+      this->current_encoding.erase(this->current_encoding.begin());
     }
   }
 }
@@ -483,10 +473,12 @@ void wavesnap::window_frequency() {
   uint8_t threshold = 80;
 
   std::vector<uint64_t> counts;
+  std::vector<std::string> signs;
   for(auto &sign_kv : window_sign_info) {
     pipeline_info pipe_info = sign_kv.second;
     uint64_t      count     = pipe_info.count;
     counts.push_back(count); 
+    signs.push_back(sign_kv.first);
   }
 
   std::sort(counts.rbegin(), counts.rend());
@@ -494,7 +486,7 @@ void wavesnap::window_frequency() {
   std::ofstream outfile;
   outfile.open(DUMP_PATH);
   for (uint64_t i=0; i<counts.size(); i++) {
-    outfile << counts[i] << std::endl;
+    outfile << signs[i] << " " << sizeof(signs[i]) << " " << counts[i] << std::endl;
   }
   outfile.close();
 

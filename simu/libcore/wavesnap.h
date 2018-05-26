@@ -22,7 +22,7 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  200
+#define MAX_MOVING_GRAPH_NODES  2048
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
@@ -174,8 +174,6 @@ class wavesnap {
     void update_window(DInst* dinst, uint64_t committed);
     void add_instruction(DInst* dinst); 
     bool first_window_completed;
-    uint64_t curr_min_time;
-    uint64_t min_time_id;
     uint64_t last_removed_id;
     uint64_t update_count;
     std::vector<uint64_t> wait_buffer; 
@@ -183,6 +181,7 @@ class wavesnap {
     pipeline_info working_window;
     std::map<uint64_t, instruction_info> dinst_info;
     uint64_t window_pointer;
+    std::string current_encoding;
 
     //single huge window, good for debeging
     void update_single_window(DInst* dinst, uint64_t committed);
