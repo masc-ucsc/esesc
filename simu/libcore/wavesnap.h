@@ -164,7 +164,7 @@ class wavesnap {
 
     //private methods and member variables
     void record_pipe(pipeline_info* next);
-    void add_pipeline_info(pipeline_info* pipe_info, instruction_info* dinst, uint64_t committed);
+    void add_pipeline_info(pipeline_info* pipe_info, instruction_info* dinst);
 
   public:
     wavesnap();
@@ -198,7 +198,7 @@ class wavesnap {
     void window_frequency();
     
     //other
-    instruction_info extract_inst_info(DInst* dinst);
+    instruction_info extract_inst_info(DInst* dinst, uint64_t committed);
     void add_to_RAT(DInst* dinst);
     void merge();
     std::map<std::string, pipeline_info> window_sign_info;

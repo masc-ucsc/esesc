@@ -31,14 +31,14 @@ void wavesnap::record_pipe(pipeline_info *next) {
   }
 }
 
-void wavesnap::add_pipeline_info(pipeline_info* pipe_info, instruction_info* d, uint64_t committed) {
+void wavesnap::add_pipeline_info(pipeline_info* pipe_info, instruction_info* d) {
   uint64_t min_time = this->dinst_info[wait_buffer[0]].fetched_time;
 
   pipe_info->wait_cycles.push_back(d->fetched_time - min_time); 
   pipe_info->rename_cycles.push_back(d->renamed_time - d->fetched_time); 
   pipe_info->issue_cycles.push_back(d->issued_time - d->renamed_time); 
   pipe_info->execute_cycles.push_back(d->executed_time - d->issued_time); 
-  pipe_info->commit_cycles.push_back(committed - d->executed_time); 
+  pipe_info->commit_cycles.push_back(d->committed_time - d->executed_time); 
 }
 
 void wavesnap::add_instruction(DInst *dinst) {
@@ -46,14 +46,15 @@ void wavesnap::add_instruction(DInst *dinst) {
   completed.push_back(false);
 }
 
-instruction_info wavesnap::extract_inst_info(DInst* dinst) {
+instruction_info wavesnap::extract_inst_info(DInst* dinst, uint64_t committed) {
   instruction_info result;
 
-  result.fetched_time  = dinst->getFetchedTime();
-  result.renamed_time  = dinst->getRenamedTime();
-  result.issued_time   = dinst->getIssuedTime();
-  result.executed_time = dinst->getExecutedTime();
-  result.opcode        = dinst->getInst()->getOpcode();
+  result.fetched_time   = dinst->getFetchedTime();
+  result.renamed_time   = dinst->getRenamedTime();
+  result.issued_time    = dinst->getIssuedTime();
+  result.executed_time  = dinst->getExecutedTime();
+  result.committed_time = committed;
+  result.opcode         = dinst->getInst()->getOpcode();
 
   return result;
 }
@@ -71,7 +72,7 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
       this->completed[i] = true;
       found              = true;
 
-      instruction_info inst_info = extract_inst_info(dinst);
+      instruction_info inst_info = extract_inst_info(dinst, committed);
       dinst_info[id];
       dinst_info[id] = inst_info;
     }
@@ -105,7 +106,7 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
       pipeline_info next;
       next.count = 1;
       for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
-        add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]), committed);
+        add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]));
       }
 
       // record
@@ -264,7 +265,7 @@ void wavesnap::calculate_ipc() {
 
         total += kv.second;
       }
-      float commit_ipc = 1.0 * total / (e_c.size() + zeros);
+      float commit_ipc = 1.0 * total / (c_c.size() + zeros);
 
       // determine how much this signature contributes to the overall ipc
       // 1.accumulate diffs
