@@ -21,12 +21,14 @@ void wavesnap::record_pipe(pipeline_info *next) {
     *pipe_info = *next;
   } else {
     pipe_info->count++;
-    for(uint32_t j = 0; j < pipe_info->execute_cycles.size(); j++) {
-      pipe_info->wait_cycles[j] += next->wait_cycles[j];
-      pipe_info->rename_cycles[j] += next->rename_cycles[j];
-      pipe_info->issue_cycles[j] += next->issue_cycles[j];
-      pipe_info->execute_cycles[j] += next->execute_cycles[j];
-      pipe_info->commit_cycles[j] += next->commit_cycles[j];
+    if(!RECORD_ONCE) {
+      for(uint32_t j = 0; j < pipe_info->execute_cycles.size(); j++) {
+        pipe_info->wait_cycles[j] += next->wait_cycles[j];
+        pipe_info->rename_cycles[j] += next->rename_cycles[j];
+        pipe_info->issue_cycles[j] += next->issue_cycles[j];
+        pipe_info->execute_cycles[j] += next->execute_cycles[j];
+        pipe_info->commit_cycles[j] += next->commit_cycles[j];
+      }
     }
   }
 }
@@ -154,11 +156,20 @@ void wavesnap::calculate_ipc() {
 
       for(uint32_t j = 0; j < pipe_info.execute_cycles.size(); j++) {
         // average
-        uint32_t w = pipe_info.wait_cycles[j] / count;
-        uint32_t r = pipe_info.rename_cycles[j] / count;
-        uint32_t i = pipe_info.issue_cycles[j] / count;
-        uint32_t e = pipe_info.execute_cycles[j] / count;
-        uint32_t c = pipe_info.commit_cycles[j] / count;
+        uint32_t w, r, i, e, c;
+        if(RECORD_ONCE) {
+          w = pipe_info.wait_cycles[j];
+          r = pipe_info.rename_cycles[j];
+          i = pipe_info.issue_cycles[j];
+          e = pipe_info.execute_cycles[j];
+          c = pipe_info.commit_cycles[j];
+        } else {
+          w = pipe_info.wait_cycles[j] / count;
+          r = pipe_info.rename_cycles[j] / count;
+          i = pipe_info.issue_cycles[j] / count;
+          e = pipe_info.execute_cycles[j] / count;
+          c = pipe_info.commit_cycles[j] / count;
+        }
 
 
         // count cycles at each stage

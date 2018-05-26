@@ -15,6 +15,8 @@
 //general wavesnap defines
 #define SINGLE_WINDOW     false
 #define WITH_SAMPLING     true
+#define RECORD_ONCE       true
+
 //signature defines
 #define REGISTER_NUM 32
 #define HASH_SIZE    4*65536
