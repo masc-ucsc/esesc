@@ -15,7 +15,7 @@
 //general wavesnap defines
 #define SINGLE_WINDOW     false
 #define WITH_SAMPLING     true
-#define RECORD_ONCE       true
+#define RECORD_ONCE       false
 
 //signature defines
 #define REGISTER_NUM 32
@@ -24,7 +24,7 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  2048
+#define MAX_MOVING_GRAPH_NODES  200
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
@@ -207,10 +207,9 @@ class wavesnap {
     uint64_t signature_count;
     std::map<uint64_t, dependence_info> RAT;
 
-    /*
     //dumping and reading
+    std::string break_into_bytes(uint64_t n, uint8_t byte_num);
     void save();
     void load();
-    */
 };
 #endif

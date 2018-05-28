@@ -518,10 +518,34 @@ void wavesnap::window_frequency() {
   std::cout << "********************" << std::endl;
 }
 
-/*
-void wavesnap::save() {
-  std::ofstream file{DUMP_PATH};
-  boost::archive::text_oarchive oa{file};
-  oa << this->window_sign_info; 
+std::string wavesnap::break_into_bytes(uint64_t n, uint8_t byte_num) {
+  std::string result = "";
+  while(byte_num>0) {
+    result = (char)(n&0x00FF) + result;
+    n = n >> 8;
+    byte_num--;
+  }
+
+  return result;
 }
-*/
+
+void wavesnap::save() {
+  std::ofstream outfile;
+  outfile.open(DUMP_PATH);
+  for(auto &sign_kv : window_sign_info) {
+    outfile << sign_kv.first;
+    outfile << break_into_bytes(sign_kv.second.count, 4);
+    for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+      outfile << break_into_bytes(sign_kv.second.wait_cycles[i], 4);
+      outfile << break_into_bytes(sign_kv.second.rename_cycles[i], 4);
+      outfile << break_into_bytes(sign_kv.second.issue_cycles[i], 4);
+      outfile << break_into_bytes(sign_kv.second.execute_cycles[i], 4);
+      outfile << break_into_bytes(sign_kv.second.commit_cycles[i], 4);
+    }
+  }
+  outfile.close();
+}
+
+void wavesnap::load() {
+
+}
