@@ -24,7 +24,7 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  200
+#define MAX_MOVING_GRAPH_NODES  2048
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
@@ -34,7 +34,9 @@
 #define DUMP_PATH "dump.txt"
 
 //encode instructions
-#define ENCODING "0123456789abcdefghijklmnopqrstuvwxyzABCDEFHIJKLMNPQRSTUVWXYZ"
+#define ENCODING   "0123456789abcdefghijklmnopqrstuvwxyzABCDEFHIJKLMNPQRSTUVWXYZ"
+#define HASH_SEED  0x2345
+
 
 #include <vector>
 #include <stdint.h>
@@ -167,6 +169,7 @@ class wavesnap {
     //private methods and member variables
     void record_pipe(pipeline_info* next);
     void add_pipeline_info(pipeline_info* pipe_info, instruction_info* dinst);
+    uint64_t hash(std::string signature);
 
   public:
     wavesnap();
@@ -204,6 +207,7 @@ class wavesnap {
     void add_to_RAT(DInst* dinst);
     void merge();
     std::map<std::string, pipeline_info> window_sign_info;
+    std::map<uint64_t, bool> window_sign_info_h;
     uint64_t signature_count;
     std::map<uint64_t, dependence_info> RAT;
 

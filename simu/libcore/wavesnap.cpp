@@ -13,8 +13,19 @@ wavesnap::~wavesnap() {
   // nothing to do here
 }
 
+uint64_t wavesnap::hash(std::string signature) {
+  uint64_t hash = HASH_SEED;
+  for (uint32_t i = 0; i < signature.length(); i++) {
+    hash = (hash * 101 + (uint32_t)signature[i])%0xFFFFFFFF;
+  }
+
+  return hash;
+}
+
+
 void wavesnap::record_pipe(pipeline_info *next) {
   this->window_sign_info[this->current_encoding];
+  this->window_sign_info_h[this->hash(this->current_encoding)];
   this->signature_count++;
   pipeline_info *pipe_info = &(this->window_sign_info[this->current_encoding]);
   if(pipe_info->execute_cycles.size() == 0) {
@@ -303,6 +314,7 @@ void wavesnap::calculate_ipc() {
   std::cout << "execute: " << (1.0 * total_execute_ipc - total_execute_diff) / total_count << std::endl;
   std::cout << "commit:  " << (1.0 * total_commit_ipc - total_commit_diff) / total_count << std::endl;
   std::cout << "------------------------------------------" << std::endl;
+  std::cout << window_sign_info.size() << " " << window_sign_info_h.size() << std::endl;
 }
 // WINDOW BASED IPC END
 ////////////////////////////////////////
