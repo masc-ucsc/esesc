@@ -16,7 +16,7 @@
 #define SINGLE_WINDOW     false
 #define WITH_SAMPLING     true
 #define RECORD_ONCE       false
-
+#define HASHED_RECORD
 //signature defines
 #define REGISTER_NUM 32
 #define HASH_SIZE    4*65536
@@ -24,7 +24,7 @@
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  2048
+#define MAX_MOVING_GRAPH_NODES  200
 
 //ipc calculation defines
 #define COUNT_ALLOW      0
@@ -206,8 +206,11 @@ class wavesnap {
     instruction_info extract_inst_info(DInst* dinst, uint64_t committed);
     void add_to_RAT(DInst* dinst);
     void merge();
-    std::map<std::string, pipeline_info> window_sign_info;
-    std::map<uint64_t, bool> window_sign_info_h;
+    #ifdef HASHED_RECORD
+      std::map<uint64_t, pipeline_info> window_sign_info;
+    #elif
+      std::map<std::string, pipeline_info> window_sign_info;
+    #endif
     uint64_t signature_count;
     std::map<uint64_t, dependence_info> RAT;
 

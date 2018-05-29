@@ -24,10 +24,16 @@ uint64_t wavesnap::hash(std::string signature) {
 
 
 void wavesnap::record_pipe(pipeline_info *next) {
-  this->window_sign_info[this->current_encoding];
-  this->window_sign_info_h[this->hash(this->current_encoding)];
+  #ifdef HASHED_RECORD
+    uint64_t index = this->hash(this->current_encoding);
+    this->window_sign_info[index];
+  #elif
+    std::string index = this->current_encoding;
+    this->window_sign_info[index];
+  #endif
+
   this->signature_count++;
-  pipeline_info *pipe_info = &(this->window_sign_info[this->current_encoding]);
+  pipeline_info *pipe_info = &(this->window_sign_info[index]);
   if(pipe_info->execute_cycles.size() == 0) {
     *pipe_info = *next;
   } else {
@@ -314,7 +320,6 @@ void wavesnap::calculate_ipc() {
   std::cout << "execute: " << (1.0 * total_execute_ipc - total_execute_diff) / total_count << std::endl;
   std::cout << "commit:  " << (1.0 * total_commit_ipc - total_commit_diff) / total_count << std::endl;
   std::cout << "------------------------------------------" << std::endl;
-  std::cout << window_sign_info.size() << " " << window_sign_info_h.size() << std::endl;
 }
 // WINDOW BASED IPC END
 ////////////////////////////////////////
@@ -497,12 +502,10 @@ void wavesnap::window_frequency() {
   uint8_t threshold = 80;
 
   std::vector<uint64_t> counts;
-  std::vector<std::string> signs;
   for(auto &sign_kv : window_sign_info) {
     pipeline_info pipe_info = sign_kv.second;
     uint64_t      count     = pipe_info.count;
     counts.push_back(count); 
-    signs.push_back(sign_kv.first);
   }
 
   std::sort(counts.rbegin(), counts.rend());
@@ -510,7 +513,7 @@ void wavesnap::window_frequency() {
   std::ofstream outfile;
   outfile.open(DUMP_PATH);
   for (uint64_t i=0; i<counts.size(); i++) {
-    outfile << signs[i] << " " << sizeof(signs[i]) << " " << counts[i] << std::endl;
+    outfile <<  counts[i] << std::endl;
   }
   outfile.close();
 
