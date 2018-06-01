@@ -4,19 +4,23 @@ wavesnap::wavesnap() {
   this->window_pointer         = 0;
   this->update_count           = 0;
   this->first_window_completed = false;
-  this->working_window.count   = 1;
   this->signature_count        = 0;
   this->current_encoding       = "";
+  #ifdef RECORD_ONCE
+    for (uint64_t i=0; i<HASH_SIZE; i++) {
+      this->signature_hit.push_back(false);
+    }
+  #endif
 }
 
 wavesnap::~wavesnap() {
   // nothing to do here
 }
 
-uint64_t wavesnap::hash(std::string signature) {
-  uint64_t hash = HASH_SEED;
+uint64_t wavesnap::hash(std::string signature, uint64_t more) {
+  uint64_t hash = HASH_SEED + more;
   for (uint32_t i = 0; i < signature.length(); i++) {
-    hash = (hash * 101 + (uint32_t)signature[i])%0xFFFFFFFF;
+    hash = (hash * 101 + (uint32_t)signature[i])%HASH_SIZE;
   }
 
   return hash;
@@ -25,20 +29,32 @@ uint64_t wavesnap::hash(std::string signature) {
 
 void wavesnap::record_pipe(pipeline_info *next) {
   #ifdef HASHED_RECORD
-    uint64_t index = this->hash(this->current_encoding);
-    this->window_sign_info[index];
-  #elif
+    uint64_t index = this->current_hash;
+  #else
     std::string index = this->current_encoding;
-    this->window_sign_info[index];
   #endif
 
   this->signature_count++;
+
+  this->window_sign_info[index];
   pipeline_info *pipe_info = &(this->window_sign_info[index]);
   if(pipe_info->execute_cycles.size() == 0) {
-    *pipe_info = *next;
+    #ifdef RECORD_ONCE
+      if(pipe_info->count == 0) {
+        pipe_info->count = 2;
+      } else {
+        pipe_info->count++;
+      }
+
+      if(pipe_info->count > COUNT_ALLOW) {
+        *pipe_info = *next;
+      }
+    #else
+      *pipe_info = *next;
+    #endif
   } else {
     pipe_info->count++;
-    if(!RECORD_ONCE) {
+    #ifndef RECORD_ONCE
       for(uint32_t j = 0; j < pipe_info->execute_cycles.size(); j++) {
         pipe_info->wait_cycles[j] += next->wait_cycles[j];
         pipe_info->rename_cycles[j] += next->rename_cycles[j];
@@ -46,7 +62,7 @@ void wavesnap::record_pipe(pipeline_info *next) {
         pipe_info->execute_cycles[j] += next->execute_cycles[j];
         pipe_info->commit_cycles[j] += next->commit_cycles[j];
       }
-    }
+    #endif
   }
 }
 
@@ -74,7 +90,7 @@ instruction_info wavesnap::extract_inst_info(DInst* dinst, uint64_t committed) {
   result.executed_time  = dinst->getExecutedTime();
   result.committed_time = committed;
   result.opcode         = dinst->getInst()->getOpcode();
-
+  result.pc             = dinst->getPC();
   return result;
 }
 
@@ -104,7 +120,6 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
     for(uint32_t i = 0; i < MAX_MOVING_GRAPH_NODES; i++) {
       if(!this->completed[i]) {
         this->first_window_completed = false;
-        this->working_window.clear();
         this->current_encoding = "";
         break;
       } else {
@@ -122,14 +137,33 @@ void wavesnap::update_window(DInst *dinst, uint64_t committed) {
       //add last instruction of the window
       instruction_info *d = &(dinst_info[wait_buffer[MAX_MOVING_GRAPH_NODES - 1]]);
       this->current_encoding += ENCODING[d->opcode];
-      pipeline_info next;
-      next.count = 1;
-      for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
-        add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]));
-      }
+      this->current_hash = this->hash(this->current_encoding, d->pc);
+      #ifndef RECORD_ONCE
+        pipeline_info next;
+        next.count = 1;
+        for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+          add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]));
+        }
 
-      // record
-      record_pipe(&next);
+        // record
+        record_pipe(&next);
+      #else
+        #ifdef HASHED_RECORD
+          if(!signature_hit[this->current_hash]) {
+            signature_hit[this->current_hash] = true;
+          } else {
+            pipeline_info next;
+            for (uint32_t i=0; i<MAX_MOVING_GRAPH_NODES; i++) {
+              add_pipeline_info(&next, &(dinst_info[wait_buffer[i]]));
+            }
+
+            //record
+            record_pipe(&next);
+          }
+        #else
+          std::cout << "RECORD_ONCE must be used with HASHED_RECORD defined" << std::endl;
+        #endif
+      #endif
 
       // remove first instruction in the window and update stats
       window_pointer++;
@@ -157,159 +191,159 @@ void wavesnap::calculate_ipc() {
   for(auto &sign_kv : window_sign_info) {
     pipeline_info pipe_info = sign_kv.second;
     uint64_t      count     = pipe_info.count;
-    if(count > COUNT_ALLOW) {
-      total_count += count;
-      // average the cycles
-      std::map<uint32_t, uint32_t> w_c;
-      std::map<uint32_t, uint32_t> r_c;
-      std::map<uint32_t, uint32_t> i_c;
-      std::map<uint32_t, uint32_t> e_c;
-      std::map<uint32_t, uint32_t> c_c;
-      w_c.clear();
-      r_c.clear();
-      i_c.clear();
-      e_c.clear();
-      c_c.clear();
+    if(count<=COUNT_ALLOW) continue;
 
-      for(uint32_t j = 0; j < pipe_info.execute_cycles.size(); j++) {
-        // average
-        uint32_t w, r, i, e, c;
-        if(RECORD_ONCE) {
-          w = pipe_info.wait_cycles[j];
-          r = pipe_info.rename_cycles[j];
-          i = pipe_info.issue_cycles[j];
-          e = pipe_info.execute_cycles[j];
-          c = pipe_info.commit_cycles[j];
-        } else {
-          w = pipe_info.wait_cycles[j] / count;
-          r = pipe_info.rename_cycles[j] / count;
-          i = pipe_info.issue_cycles[j] / count;
-          e = pipe_info.execute_cycles[j] / count;
-          c = pipe_info.commit_cycles[j] / count;
-        }
+    total_count += count;
+    // average the cycles
+    std::map<uint32_t, uint32_t> w_c;
+    std::map<uint32_t, uint32_t> r_c;
+    std::map<uint32_t, uint32_t> i_c;
+    std::map<uint32_t, uint32_t> e_c;
+    std::map<uint32_t, uint32_t> c_c;
+    w_c.clear();
+    r_c.clear();
+    i_c.clear();
+    e_c.clear();
+    c_c.clear();
+
+    for(uint32_t j = 0; j < pipe_info.execute_cycles.size(); j++) {
+      // average
+      uint32_t w, r, i, e, c;
+      #ifdef RECORD_ONCE
+        w = pipe_info.wait_cycles[j];
+        r = pipe_info.rename_cycles[j];
+        i = pipe_info.issue_cycles[j];
+        e = pipe_info.execute_cycles[j];
+        c = pipe_info.commit_cycles[j];
+      #else
+        w = pipe_info.wait_cycles[j] / count;
+        r = pipe_info.rename_cycles[j] / count;
+        i = pipe_info.issue_cycles[j] / count;
+        e = pipe_info.execute_cycles[j] / count;
+        c = pipe_info.commit_cycles[j] / count;
+      #endif
 
 
-        // count cycles at each stage
-        // wait cycles
-        uint32_t f = w;
-        w_c[f];
-        w_c[f]++;
-        // rename
-        f += r;
-        r_c[f];
-        r_c[f]++;
-        // issue
-        f += i;
-        i_c[f];
-        i_c[f]++;
-        // execute
-        f += e;
-        e_c[f];
-        e_c[f]++;
-        //commit
-        f += c;
-        c_c[f];
-        c_c[f]++;
-      }
-
-      // calculate ipc at each stage
-      bool first_iter;
-      uint32_t f, s, total, zeros;
-      // fetch:
-      total = 0;
-      zeros = 0;
-      first_iter = true;
-      for(auto &kv : w_c) {
-        s = kv.first;
-        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
-          zeros += s - f - 1;
-        }
-        f = s;
-        first_iter = false;
-
-        total += kv.second;
-      }
-      float fetch_ipc = 1.0 * total / (w_c.size() + zeros);
-
-      // rename:
-      total = 0;
-      zeros = 0;
-      first_iter = true;
-      for(auto &kv : r_c) {
-        s = kv.first;
-        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
-          zeros += s - f - 1;
-        }
-        f = s;
-        first_iter = false;
-
-        total += kv.second;
-      }
-      float rename_ipc = 1.0 * total / (r_c.size() + zeros);
-
+      // count cycles at each stage
+      // wait cycles
+      uint32_t f = w;
+      w_c[f];
+      w_c[f]++;
+      // rename
+      f += r;
+      r_c[f];
+      r_c[f]++;
       // issue
-      total = 0;
-      zeros = 0;
-      first_iter = true;
-      for(auto &kv : i_c) {
-        s = kv.first;
-        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
-          zeros += s - f - 1;
-        }
-        f = s;
-        first_iter = false;
-
-        total += kv.second;
-      }
-      float issue_ipc = 1.0 * total / (i_c.size() + zeros);
-
+      f += i;
+      i_c[f];
+      i_c[f]++;
       // execute
-      total = 0;
-      zeros = 0;
-      first_iter = true;
-      for(auto &kv : e_c) {
-        s = kv.first;
-        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
-          zeros += s - f - 1;
-        }
-        f = s;
-        first_iter = false;
-
-        total += kv.second;
-      }
-      float execute_ipc = 1.0 * total / (e_c.size() + zeros);
-
-      // commit
-      total = 0;
-      zeros = 0;
-      first_iter = true;
-      for(auto &kv : c_c) {
-        s = kv.first;
-        if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
-          zeros += s - f - 1;
-        }
-        f = s;
-        first_iter = false;
-
-        total += kv.second;
-      }
-      float commit_ipc = 1.0 * total / (c_c.size() + zeros);
-
-      // determine how much this signature contributes to the overall ipc
-      // 1.accumulate diffs
-      total_fetch_diff += (1.0 * std::ceil(fetch_ipc) - fetch_ipc) * count;
-      total_rename_diff += (1.0 * std::ceil(rename_ipc) - rename_ipc) * count;
-      total_issue_diff += (1.0 * std::ceil(issue_ipc) -  issue_ipc) * count;
-      total_execute_diff += (1.0 * std::ceil(execute_ipc) - execute_ipc) * count;
-      total_commit_diff += (1.0 * std::ceil(commit_ipc) - commit_ipc) * count;
-
-      // 2.accumulate ipcs
-      total_fetch_ipc += std::ceil(fetch_ipc) * count;
-      total_rename_ipc += std::ceil(rename_ipc) * count;
-      total_issue_ipc += std::ceil(issue_ipc) * count;
-      total_execute_ipc += std::ceil(execute_ipc) * count;
-      total_commit_ipc += std::ceil(commit_ipc) * count;
+      f += e;
+      e_c[f];
+      e_c[f]++;
+      //commit
+      f += c;
+      c_c[f];
+      c_c[f]++;
     }
+
+    // calculate ipc at each stage
+    bool first_iter;
+    uint32_t f, s, total, zeros;
+    // fetch:
+    total = 0;
+    zeros = 0;
+    first_iter = true;
+    for(auto &kv : w_c) {
+      s = kv.first;
+      if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+        zeros += s - f - 1;
+      }
+      f = s;
+      first_iter = false;
+
+      total += kv.second;
+    }
+    float fetch_ipc = 1.0 * total / (w_c.size() + zeros);
+
+    // rename:
+    total = 0;
+    zeros = 0;
+    first_iter = true;
+    for(auto &kv : r_c) {
+      s = kv.first;
+      if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+        zeros += s - f - 1;
+      }
+      f = s;
+      first_iter = false;
+
+      total += kv.second;
+    }
+    float rename_ipc = 1.0 * total / (r_c.size() + zeros);
+
+    // issue
+    total = 0;
+    zeros = 0;
+    first_iter = true;
+    for(auto &kv : i_c) {
+      s = kv.first;
+      if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+        zeros += s - f - 1;
+      }
+      f = s;
+      first_iter = false;
+
+      total += kv.second;
+    }
+    float issue_ipc = 1.0 * total / (i_c.size() + zeros);
+
+    // execute
+    total = 0;
+    zeros = 0;
+    first_iter = true;
+    for(auto &kv : e_c) {
+      s = kv.first;
+      if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+        zeros += s - f - 1;
+      }
+      f = s;
+      first_iter = false;
+
+      total += kv.second;
+    }
+    float execute_ipc = 1.0 * total / (e_c.size() + zeros);
+
+    // commit
+    total = 0;
+    zeros = 0;
+    first_iter = true;
+    for(auto &kv : c_c) {
+      s = kv.first;
+      if(!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
+        zeros += s - f - 1;
+      }
+      f = s;
+      first_iter = false;
+
+      total += kv.second;
+    }
+    float commit_ipc = 1.0 * total / (c_c.size() + zeros);
+
+    // determine how much this signature contributes to the overall ipc
+    // 1.accumulate diffs
+    total_fetch_diff += (1.0 * std::ceil(fetch_ipc) - fetch_ipc) * count;
+    total_rename_diff += (1.0 * std::ceil(rename_ipc) - rename_ipc) * count;
+    total_issue_diff += (1.0 * std::ceil(issue_ipc) -  issue_ipc) * count;
+    total_execute_diff += (1.0 * std::ceil(execute_ipc) - execute_ipc) * count;
+    total_commit_diff += (1.0 * std::ceil(commit_ipc) - commit_ipc) * count;
+
+    // 2.accumulate ipcs
+    total_fetch_ipc += std::ceil(fetch_ipc) * count;
+    total_rename_ipc += std::ceil(rename_ipc) * count;
+    total_issue_ipc += std::ceil(issue_ipc) * count;
+    total_execute_ipc += std::ceil(execute_ipc) * count;
+    total_commit_ipc += std::ceil(commit_ipc) * count;
   }
 
   //report

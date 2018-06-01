@@ -10,24 +10,23 @@
 #ifndef _WAVESNAP_
 #define _WAVESNAP_
 //functional defines
-//#define REMOVE_REDUNDANT_EDGES
 
 //general wavesnap defines
 #define SINGLE_WINDOW     false
 #define WITH_SAMPLING     true
-#define RECORD_ONCE       false
+#define RECORD_ONCE       
 #define HASHED_RECORD
+
 //signature defines
 #define REGISTER_NUM 32
-#define HASH_SIZE    4*65536
 
 //instruction window defines
 #define MAX_NODE_NUM            1000
 #define MAX_EDGE_NUM            1000000
-#define MAX_MOVING_GRAPH_NODES  200
+#define MAX_MOVING_GRAPH_NODES  512
 
 //ipc calculation defines
-#define COUNT_ALLOW      0
+#define COUNT_ALLOW      10
 #define INSTRUCTION_GAP  100
 
 //dump path
@@ -36,6 +35,7 @@
 //encode instructions
 #define ENCODING   "0123456789abcdefghijklmnopqrstuvwxyzABCDEFHIJKLMNPQRSTUVWXYZ"
 #define HASH_SEED  0x2345
+#define HASH_SIZE  0XFFFF
 
 
 #include <vector>
@@ -59,6 +59,7 @@
 */
 class instruction_info {
   public:
+    uint64_t pc;
     uint64_t fetched_time;
     uint64_t renamed_time;
     uint64_t issued_time;
@@ -68,6 +69,7 @@ class instruction_info {
     uint64_t id;
 
     instruction_info() {
+      this->pc             = 0;
       this->fetched_time   = 0;
       this->renamed_time   = 0;
       this->issued_time    = 0;
@@ -148,16 +150,7 @@ class wavesnap {
         uint32_t count;
 
         pipeline_info() {
-          this->count  = 0;
-          this->encode = "";
-          this->wait_cycles.clear();
-          this->rename_cycles.clear();
-          this->issue_cycles.clear();
-          this->execute_cycles.clear();
-        }
-  
-        void clear() {
-          this->count  = 1;
+          this->count = 0;
           this->encode = "";
           this->wait_cycles.clear();
           this->rename_cycles.clear();
@@ -169,7 +162,10 @@ class wavesnap {
     //private methods and member variables
     void record_pipe(pipeline_info* next);
     void add_pipeline_info(pipeline_info* pipe_info, instruction_info* dinst);
-    uint64_t hash(std::string signature);
+    uint64_t hash(std::string signature, uint64_t more);
+    #ifdef RECORD_ONCE
+      std::vector<bool> signature_hit; 
+    #endif
 
   public:
     wavesnap();
@@ -187,6 +183,9 @@ class wavesnap {
     std::map<uint64_t, instruction_info> dinst_info;
     uint64_t window_pointer;
     std::string current_encoding;
+    #ifdef HASHED_RECORD
+      uint64_t current_hash;
+    #endif
 
     //single huge window, good for debeging
     void update_single_window(DInst* dinst, uint64_t committed);
