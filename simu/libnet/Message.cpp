@@ -13,7 +13,8 @@ Message::Message()
     : launchMsgCB(this)
     , forwardMsgCB(this)
     , receiveMsgCB(this)
-    , notifyMsgCB(this) {
+    , notifyMsgCB(this)
+    , interConnection(0) {
 #ifdef DEBUG
   msgID = gMsgCount++;
 #endif

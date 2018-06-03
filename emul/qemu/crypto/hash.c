@@ -18,24 +18,24 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "crypto/hash.h"
+#include "hashpriv.h"
 
-#ifdef CONFIG_GNUTLS_HASH
-#include <gnutls/gnutls.h>
-#include <gnutls/crypto.h>
-
-static int qcrypto_hash_alg_map[QCRYPTO_HASH_ALG_LAST] = {
-    [QCRYPTO_HASH_ALG_MD5] = GNUTLS_DIG_MD5,
-    [QCRYPTO_HASH_ALG_SHA1] = GNUTLS_DIG_SHA1,
-    [QCRYPTO_HASH_ALG_SHA256] = GNUTLS_DIG_SHA256,
+static size_t qcrypto_hash_alg_size[QCRYPTO_HASH_ALG__MAX] = {
+    [QCRYPTO_HASH_ALG_MD5] = 16,
+    [QCRYPTO_HASH_ALG_SHA1] = 20,
+    [QCRYPTO_HASH_ALG_SHA224] = 28,
+    [QCRYPTO_HASH_ALG_SHA256] = 32,
+    [QCRYPTO_HASH_ALG_SHA384] = 48,
+    [QCRYPTO_HASH_ALG_SHA512] = 64,
+    [QCRYPTO_HASH_ALG_RIPEMD160] = 20,
 };
 
-gboolean qcrypto_hash_supports(QCryptoHashAlgorithm alg)
+size_t qcrypto_hash_digest_len(QCryptoHashAlgorithm alg)
 {
-    if (alg < G_N_ELEMENTS(qcrypto_hash_alg_map)) {
-        return true;
-    }
-    return false;
+    assert(alg < G_N_ELEMENTS(qcrypto_hash_alg_size));
+    return qcrypto_hash_alg_size[alg];
 }
 
 int qcrypto_hash_bytesv(QCryptoHashAlgorithm alg,
@@ -45,81 +45,25 @@ int qcrypto_hash_bytesv(QCryptoHashAlgorithm alg,
                         size_t *resultlen,
                         Error **errp)
 {
-    int i, ret;
-    gnutls_hash_hd_t dig;
-
-    if (alg >= G_N_ELEMENTS(qcrypto_hash_alg_map)) {
-        error_setg(errp,
-                   "Unknown hash algorithm %d",
-                   alg);
-        return -1;
+#ifdef CONFIG_AF_ALG
+    int ret;
+    /*
+     * TODO:
+     * Maybe we should treat some afalg errors as fatal
+     */
+    ret = qcrypto_hash_afalg_driver.hash_bytesv(alg, iov, niov,
+                                                result, resultlen,
+                                                NULL);
+    if (ret == 0) {
+        return ret;
     }
+#endif
 
-    ret = gnutls_hash_init(&dig, qcrypto_hash_alg_map[alg]);
-
-    if (ret < 0) {
-        error_setg(errp,
-                   "Unable to initialize hash algorithm: %s",
-                   gnutls_strerror(ret));
-        return -1;
-    }
-
-    for (i = 0; i < niov; i++) {
-        ret = gnutls_hash(dig, iov[i].iov_base, iov[i].iov_len);
-        if (ret < 0) {
-            error_setg(errp,
-                       "Unable process hash data: %s",
-                       gnutls_strerror(ret));
-            goto error;
-        }
-    }
-
-    ret = gnutls_hash_get_len(qcrypto_hash_alg_map[alg]);
-    if (ret <= 0) {
-        error_setg(errp,
-                   "Unable to get hash length: %s",
-                   gnutls_strerror(ret));
-        goto error;
-    }
-    if (*resultlen == 0) {
-        *resultlen = ret;
-        *result = g_new0(uint8_t, *resultlen);
-    } else if (*resultlen != ret) {
-        error_setg(errp,
-                   "Result buffer size %zu is smaller than hash %d",
-                   *resultlen, ret);
-        goto error;
-    }
-
-    gnutls_hash_deinit(dig, *result);
-    return 0;
-
- error:
-    gnutls_hash_deinit(dig, NULL);
-    return -1;
+    return qcrypto_hash_lib_driver.hash_bytesv(alg, iov, niov,
+                                               result, resultlen,
+                                               errp);
 }
 
-#else /* ! CONFIG_GNUTLS_HASH */
-
-gboolean qcrypto_hash_supports(QCryptoHashAlgorithm alg G_GNUC_UNUSED)
-{
-    return false;
-}
-
-int qcrypto_hash_bytesv(QCryptoHashAlgorithm alg,
-                        const struct iovec *iov G_GNUC_UNUSED,
-                        size_t niov G_GNUC_UNUSED,
-                        uint8_t **result G_GNUC_UNUSED,
-                        size_t *resultlen G_GNUC_UNUSED,
-                        Error **errp)
-{
-    error_setg(errp,
-               "Hash algorithm %d not supported without GNUTLS",
-               alg);
-    return -1;
-}
-
-#endif /* ! CONFIG_GNUTLS_HASH */
 
 int qcrypto_hash_bytes(QCryptoHashAlgorithm alg,
                        const char *buf,

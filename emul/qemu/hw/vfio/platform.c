@@ -14,6 +14,8 @@
  *  Copyright Red Hat, Inc. 2012
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include <sys/ioctl.h>
 #include <linux/vfio.h>
 
@@ -42,9 +44,10 @@ static inline bool vfio_irq_is_automasked(VFIOINTp *intp)
  * and add it into the list of IRQs
  * @vbasedev: the VFIO device handle
  * @info: irq info struct retrieved from VFIO driver
+ * @errp: error object
  */
 static VFIOINTp *vfio_init_intp(VFIODevice *vbasedev,
-                                struct vfio_irq_info info)
+                                struct vfio_irq_info info, Error **errp)
 {
     int ret;
     VFIOPlatformDevice *vdev =
@@ -67,7 +70,8 @@ static VFIOINTp *vfio_init_intp(VFIODevice *vbasedev,
     if (ret) {
         g_free(intp->interrupt);
         g_free(intp);
-        error_report("vfio: Error: trigger event_notifier_init failed ");
+        error_setg_errno(errp, -ret,
+                         "failed to initialize trigger eventd notifier");
         return NULL;
     }
     if (vfio_irq_is_automasked(intp)) {
@@ -78,7 +82,8 @@ static VFIOINTp *vfio_init_intp(VFIODevice *vbasedev,
             g_free(intp->interrupt);
             g_free(intp->unmask);
             g_free(intp);
-            error_report("vfio: Error: resamplefd event_notifier_init failed");
+            error_setg_errno(errp, -ret,
+                             "failed to initialize resample eventd notifier");
             return NULL;
         }
     }
@@ -115,11 +120,11 @@ static int vfio_set_trigger_eventfd(VFIOINTp *intp,
     *pfd = event_notifier_get_fd(intp->interrupt);
     qemu_set_fd_handler(*pfd, (IOHandler *)handler, NULL, intp);
     ret = ioctl(vbasedev->fd, VFIO_DEVICE_SET_IRQS, irq_set);
-    g_free(irq_set);
     if (ret < 0) {
         error_report("vfio: Failed to set trigger eventfd: %m");
         qemu_set_fd_handler(*pfd, NULL, NULL, NULL);
     }
+    g_free(irq_set);
     return ret;
 }
 
@@ -142,12 +147,8 @@ static void vfio_mmap_set_enabled(VFIOPlatformDevice *vdev, bool enabled)
 {
     int i;
 
-    trace_vfio_platform_mmap_set_enabled(enabled);
-
     for (i = 0; i < vdev->vbasedev.num_regions; i++) {
-        VFIORegion *region = vdev->regions[i];
-
-        memory_region_set_enabled(&region->mmap_mem, enabled);
+        vfio_region_mmaps_set_enabled(vdev->regions[i], enabled);
     }
 }
 
@@ -458,9 +459,10 @@ static int vfio_platform_hot_reset_multi(VFIODevice *vbasedev)
  * vfio_populate_device - Allocate and populate MMIO region
  * and IRQ structs according to driver returned information
  * @vbasedev: the VFIO device handle
+ * @errp: error object
  *
  */
-static int vfio_populate_device(VFIODevice *vbasedev)
+static int vfio_populate_device(VFIODevice *vbasedev, Error **errp)
 {
     VFIOINTp *intp, *tmp;
     int i, ret = -1;
@@ -468,35 +470,23 @@ static int vfio_populate_device(VFIODevice *vbasedev)
         container_of(vbasedev, VFIOPlatformDevice, vbasedev);
 
     if (!(vbasedev->flags & VFIO_DEVICE_FLAGS_PLATFORM)) {
-        error_report("vfio: Um, this isn't a platform device");
+        error_setg(errp, "this isn't a platform device");
         return ret;
     }
 
     vdev->regions = g_new0(VFIORegion *, vbasedev->num_regions);
 
     for (i = 0; i < vbasedev->num_regions; i++) {
-        struct vfio_region_info reg_info = { .argsz = sizeof(reg_info) };
-        VFIORegion *ptr;
+        char *name = g_strdup_printf("VFIO %s region %d\n", vbasedev->name, i);
 
         vdev->regions[i] = g_new0(VFIORegion, 1);
-        ptr = vdev->regions[i];
-        reg_info.index = i;
-        ret = ioctl(vbasedev->fd, VFIO_DEVICE_GET_REGION_INFO, &reg_info);
+        ret = vfio_region_setup(OBJECT(vdev), vbasedev,
+                                vdev->regions[i], i, name);
+        g_free(name);
         if (ret) {
-            error_report("vfio: Error getting region %d info: %m", i);
+            error_setg_errno(errp, -ret, "failed to get region %d info", i);
             goto reg_error;
         }
-        ptr->flags = reg_info.flags;
-        ptr->size = reg_info.size;
-        ptr->fd_offset = reg_info.offset;
-        ptr->nr = i;
-        ptr->vbasedev = vbasedev;
-
-        trace_vfio_platform_populate_regions(ptr->nr,
-                            (unsigned long)ptr->flags,
-                            (unsigned long)ptr->size,
-                            ptr->vbasedev->fd,
-                            (unsigned long)ptr->fd_offset);
     }
 
     vdev->mmap_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL,
@@ -510,16 +500,15 @@ static int vfio_populate_device(VFIODevice *vbasedev)
         irq.index = i;
         ret = ioctl(vbasedev->fd, VFIO_DEVICE_GET_IRQ_INFO, &irq);
         if (ret) {
-            error_printf("vfio: error getting device %s irq info",
-                         vbasedev->name);
+            error_setg_errno(errp, -ret, "failed to get device irq info");
             goto irq_err;
         } else {
             trace_vfio_platform_populate_interrupts(irq.index,
                                                     irq.count,
                                                     irq.flags);
-            intp = vfio_init_intp(vbasedev, irq);
+            intp = vfio_init_intp(vbasedev, irq, errp);
             if (!intp) {
-                error_report("vfio: Error installing IRQ %d up", i);
+                ret = -1;
                 goto irq_err;
             }
         }
@@ -533,6 +522,9 @@ irq_err:
     }
 reg_error:
     for (i = 0; i < vbasedev->num_regions; i++) {
+        if (vdev->regions[i]) {
+            vfio_region_finalize(vdev->regions[i]);
+        }
         g_free(vdev->regions[i]);
     }
     g_free(vdev->regions);
@@ -549,117 +541,87 @@ static VFIODeviceOps vfio_platform_ops = {
 /**
  * vfio_base_device_init - perform preliminary VFIO setup
  * @vbasedev: the VFIO device handle
+ * @errp: error object
  *
  * Implement the VFIO command sequence that allows to discover
  * assigned device resources: group extraction, device
  * fd retrieval, resource query.
  * Precondition: the device name must be initialized
  */
-static int vfio_base_device_init(VFIODevice *vbasedev)
+static int vfio_base_device_init(VFIODevice *vbasedev, Error **errp)
 {
     VFIOGroup *group;
     VFIODevice *vbasedev_iter;
-    char path[PATH_MAX], iommu_group_path[PATH_MAX], *group_name;
+    char *tmp, group_path[PATH_MAX], *group_name;
     ssize_t len;
     struct stat st;
     int groupid;
     int ret;
 
-    /* name must be set prior to the call */
-    if (!vbasedev->name || strchr(vbasedev->name, '/')) {
-        return -EINVAL;
+    /* @sysfsdev takes precedence over @host */
+    if (vbasedev->sysfsdev) {
+        g_free(vbasedev->name);
+        vbasedev->name = g_path_get_basename(vbasedev->sysfsdev);
+    } else {
+        if (!vbasedev->name || strchr(vbasedev->name, '/')) {
+            error_setg(errp, "wrong host device name");
+            return -EINVAL;
+        }
+
+        vbasedev->sysfsdev = g_strdup_printf("/sys/bus/platform/devices/%s",
+                                             vbasedev->name);
     }
 
-    /* Check that the host device exists */
-    g_snprintf(path, sizeof(path), "/sys/bus/platform/devices/%s/",
-               vbasedev->name);
-
-    if (stat(path, &st) < 0) {
-        error_report("vfio: error: no such host device: %s", path);
+    if (stat(vbasedev->sysfsdev, &st) < 0) {
+        error_setg_errno(errp, errno,
+                         "failed to get the sysfs host device file status");
         return -errno;
     }
 
-    g_strlcat(path, "iommu_group", sizeof(path));
-    len = readlink(path, iommu_group_path, sizeof(iommu_group_path));
-    if (len < 0 || len >= sizeof(iommu_group_path)) {
-        error_report("vfio: error no iommu_group for device");
-        return len < 0 ? -errno : -ENAMETOOLONG;
+    tmp = g_strdup_printf("%s/iommu_group", vbasedev->sysfsdev);
+    len = readlink(tmp, group_path, sizeof(group_path));
+    g_free(tmp);
+
+    if (len < 0 || len >= sizeof(group_path)) {
+        ret = len < 0 ? -errno : -ENAMETOOLONG;
+        error_setg_errno(errp, -ret, "no iommu_group found");
+        return ret;
     }
 
-    iommu_group_path[len] = 0;
-    group_name = basename(iommu_group_path);
+    group_path[len] = 0;
 
+    group_name = basename(group_path);
     if (sscanf(group_name, "%d", &groupid) != 1) {
-        error_report("vfio: error reading %s: %m", path);
+        error_setg_errno(errp, errno, "failed to read %s", group_path);
         return -errno;
     }
 
     trace_vfio_platform_base_device_init(vbasedev->name, groupid);
 
-    group = vfio_get_group(groupid, &address_space_memory);
+    group = vfio_get_group(groupid, &address_space_memory, errp);
     if (!group) {
-        error_report("vfio: failed to get group %d", groupid);
         return -ENOENT;
     }
 
-    g_snprintf(path, sizeof(path), "%s", vbasedev->name);
-
     QLIST_FOREACH(vbasedev_iter, &group->device_list, next) {
         if (strcmp(vbasedev_iter->name, vbasedev->name) == 0) {
-            error_report("vfio: error: device %s is already attached", path);
+            error_setg(errp, "device is already attached");
             vfio_put_group(group);
             return -EBUSY;
         }
     }
-    ret = vfio_get_device(group, path, vbasedev);
+    ret = vfio_get_device(group, vbasedev->name, vbasedev, errp);
     if (ret) {
-        error_report("vfio: failed to get device %s", path);
         vfio_put_group(group);
         return ret;
     }
 
-    ret = vfio_populate_device(vbasedev);
+    ret = vfio_populate_device(vbasedev, errp);
     if (ret) {
-        error_report("vfio: failed to populate device %s", path);
         vfio_put_group(group);
     }
 
     return ret;
-}
-
-/**
- * vfio_map_region - initialize the 2 memory regions for a given
- * MMIO region index
- * @vdev: the VFIO platform device handle
- * @nr: the index of the region
- *
- * Init the top memory region and the mmapped memory region beneath
- * VFIOPlatformDevice is used since VFIODevice is not a QOM Object
- * and could not be passed to memory region functions
-*/
-static void vfio_map_region(VFIOPlatformDevice *vdev, int nr)
-{
-    VFIORegion *region = vdev->regions[nr];
-    uint64_t size = region->size;
-    char name[64];
-
-    if (!size) {
-        return;
-    }
-
-    g_snprintf(name, sizeof(name), "VFIO %s region %d",
-               vdev->vbasedev.name, nr);
-
-    /* A "slow" read/write mapping underlies all regions */
-    memory_region_init_io(&region->mem, OBJECT(vdev), &vfio_region_ops,
-                          region, name, size);
-
-    g_strlcat(name, " mmap", sizeof(name));
-
-    if (vfio_mmap_region(OBJECT(vdev), region, &region->mem,
-                         &region->mmap_mem, &region->mmap, size, 0, name)) {
-        error_report("%s unsupported. Performance may be slow", name);
-    }
 }
 
 /**
@@ -678,20 +640,36 @@ static void vfio_platform_realize(DeviceState *dev, Error **errp)
     int i, ret;
 
     vbasedev->type = VFIO_DEVICE_TYPE_PLATFORM;
+    vbasedev->dev = dev;
     vbasedev->ops = &vfio_platform_ops;
 
-    trace_vfio_platform_realize(vbasedev->name, vdev->compat);
+    qemu_mutex_init(&vdev->intp_mutex);
 
-    ret = vfio_base_device_init(vbasedev);
+    trace_vfio_platform_realize(vbasedev->sysfsdev ?
+                                vbasedev->sysfsdev : vbasedev->name,
+                                vdev->compat);
+
+    ret = vfio_base_device_init(vbasedev, errp);
     if (ret) {
-        error_setg(errp, "vfio: vfio_base_device_init failed for %s",
-                   vbasedev->name);
-        return;
+        goto out;
     }
 
     for (i = 0; i < vbasedev->num_regions; i++) {
-        vfio_map_region(vdev, i);
-        sysbus_init_mmio(sbdev, &vdev->regions[i]->mem);
+        if (vfio_region_mmap(vdev->regions[i])) {
+            error_report("%s mmap unsupported. Performance may be slow",
+                         memory_region_name(vdev->regions[i]->mem));
+        }
+        sysbus_init_mmio(sbdev, vdev->regions[i]->mem);
+    }
+out:
+    if (!ret) {
+        return;
+    }
+
+    if (vdev->vbasedev.name) {
+        error_prepend(errp, ERR_PREFIX, vdev->vbasedev.name);
+    } else {
+        error_prepend(errp, "vfio error: ");
     }
 }
 
@@ -702,6 +680,7 @@ static const VMStateDescription vfio_platform_vmstate = {
 
 static Property vfio_platform_dev_properties[] = {
     DEFINE_PROP_STRING("host", VFIOPlatformDevice, vbasedev.name),
+    DEFINE_PROP_STRING("sysfsdev", VFIOPlatformDevice, vbasedev.sysfsdev),
     DEFINE_PROP_BOOL("x-no-mmap", VFIOPlatformDevice, vbasedev.no_mmap, false),
     DEFINE_PROP_UINT32("mmap-timeout-ms", VFIOPlatformDevice,
                        mmap_timeout, 1100),

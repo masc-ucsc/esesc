@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef _QEMU_VIRTIO_NET_H
-#define _QEMU_VIRTIO_NET_H
+#ifndef QEMU_VIRTIO_NET_H
+#define QEMU_VIRTIO_NET_H
 
 #include "standard-headers/linux/virtio_net.h"
 #include "hw/virtio/virtio.h"
@@ -35,6 +35,12 @@ typedef struct virtio_net_conf
     uint32_t txtimer;
     int32_t txburst;
     char *tx;
+    uint16_t rx_queue_size;
+    uint16_t tx_queue_size;
+    uint16_t mtu;
+    int32_t speed;
+    char *duplex_str;
+    uint8_t duplex;
 } virtio_net_conf;
 
 /* Maximum packet size we can receive from tap device: header + 64k */
@@ -45,9 +51,9 @@ typedef struct VirtIONetQueue {
     VirtQueue *tx_vq;
     QEMUTimer *tx_timer;
     QEMUBH *tx_bh;
-    int tx_waiting;
+    uint32_t tx_waiting;
     struct {
-        VirtQueueElement elem;
+        VirtQueueElement *elem;
     } async_tx;
     struct VirtIONet *n;
 } VirtIONetQueue;
@@ -64,9 +70,9 @@ typedef struct VirtIONet {
     uint32_t has_vnet_hdr;
     size_t host_hdr_len;
     size_t guest_hdr_len;
-    uint32_t host_features;
+    uint64_t host_features;
     uint8_t has_ufo;
-    int mergeable_rx_bufs;
+    uint32_t mergeable_rx_bufs;
     uint8_t promisc;
     uint8_t allmulti;
     uint8_t alluni;
@@ -94,6 +100,8 @@ typedef struct VirtIONet {
     uint64_t curr_guest_offloads;
     QEMUTimer *announce_timer;
     int announce_counter;
+    bool needs_vnet_hdr_swap;
+    bool mtu_bypass_backend;
 } VirtIONet;
 
 void virtio_net_set_netclient_name(VirtIONet *n, const char *name,

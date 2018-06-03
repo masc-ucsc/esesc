@@ -11,24 +11,24 @@
  * See the COPYING file in the top-level directory.
  */
 
-#include <glib.h>
-#include <sys/types.h>
+#include "qemu/osdep.h"
 #include <sys/ioctl.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <dirent.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <inttypes.h>
 #include "qga/guest-agent-core.h"
-#include "qga-qmp-commands.h"
+#include "qga-qapi-commands.h"
+#include "qapi/error.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/queue.h"
 #include "qemu/host-utils.h"
 #include "qemu/sockets.h"
+#include "qemu/base64.h"
+#include "qemu/cutils.h"
+
+#ifdef HAVE_UTMPX
+#include <utmpx.h>
+#endif
 
 #ifndef CONFIG_HAS_ENVIRON
 #ifdef __APPLE__
@@ -133,7 +133,6 @@ int64_t qmp_guest_get_time(Error **errp)
 {
    int ret;
    qemu_timeval tq;
-   int64_t time_ns;
 
    ret = qemu_gettimeofday(&tq);
    if (ret < 0) {
@@ -141,8 +140,7 @@ int64_t qmp_guest_get_time(Error **errp)
        return -1;
    }
 
-   time_ns = tq.tv_sec * 1000000000LL + tq.tv_usec * 1000;
-   return time_ns;
+   return tq.tv_sec * 1000000000LL + tq.tv_usec * 1000;
 }
 
 void qmp_guest_set_time(bool has_time, int64_t time_ns, Error **errp)
@@ -525,7 +523,10 @@ GuestFileWrite *qmp_guest_file_write(int64_t handle, const char *buf_b64,
         gfh->state = RW_STATE_NEW;
     }
 
-    buf = g_base64_decode(buf_b64, &buf_len);
+    buf = qbase64_decode(buf_b64, -1, &buf_len, errp);
+    if (!buf) {
+        return NULL;
+    }
 
     if (!has_count) {
         count = buf_len;
@@ -553,31 +554,24 @@ GuestFileWrite *qmp_guest_file_write(int64_t handle, const char *buf_b64,
 }
 
 struct GuestFileSeek *qmp_guest_file_seek(int64_t handle, int64_t offset,
-                                          int64_t whence_code, Error **errp)
+                                          GuestFileWhence *whence_code,
+                                          Error **errp)
 {
     GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
     GuestFileSeek *seek_data = NULL;
     FILE *fh;
     int ret;
     int whence;
+    Error *err = NULL;
 
     if (!gfh) {
         return NULL;
     }
 
     /* We stupidly exposed 'whence':'int' in our qapi */
-    switch (whence_code) {
-    case QGA_SEEK_SET:
-        whence = SEEK_SET;
-        break;
-    case QGA_SEEK_CUR:
-        whence = SEEK_CUR;
-        break;
-    case QGA_SEEK_END:
-        whence = SEEK_END;
-        break;
-    default:
-        error_setg(errp, "invalid whence code %"PRId64, whence_code);
+    whence = ga_parse_whence(whence_code, &err);
+    if (err) {
+        error_propagate(errp, err);
         return NULL;
     }
 
@@ -814,7 +808,7 @@ static char *get_pci_driver(char const *syspath, int pathlen, Error **errp)
     len = readlink(dpath, buf, sizeof(buf) - 1);
     if (len != -1) {
         buf[len] = 0;
-        driver = g_strdup(basename(buf));
+        driver = g_path_get_basename(buf);
     }
     g_free(dpath);
     g_free(path);
@@ -907,7 +901,7 @@ static void build_guest_fsinfo_for_real_device(char const *syspath,
     if (p && sscanf(q, "%u", &host) == 1) {
         has_host = true;
         nhosts = build_hosts(syspath, p, has_ata, hosts,
-                             sizeof(hosts) / sizeof(hosts[0]), errp);
+                             ARRAY_SIZE(hosts), errp);
         if (nhosts < 0) {
             goto cleanup;
         }
@@ -1011,7 +1005,9 @@ static void build_guest_fsinfo_for_virtual_device(char const *syspath,
     dirpath = g_strdup_printf("%s/slaves", syspath);
     dir = opendir(dirpath);
     if (!dir) {
-        error_setg_errno(errp, errno, "opendir(\"%s\")", dirpath);
+        if (errno != ENOENT) {
+            error_setg_errno(errp, errno, "opendir(\"%s\")", dirpath);
+        }
         g_free(dirpath);
         return;
     }
@@ -1057,7 +1053,7 @@ static void build_guest_fsinfo_for_device(char const *devpath,
     }
 
     if (!fs->name) {
-        fs->name = g_strdup(basename(syspath));
+        fs->name = g_path_get_basename(syspath);
     }
 
     g_debug("  parse sysfs path '%s'", syspath);
@@ -1251,10 +1247,13 @@ int64_t qmp_guest_fsfreeze_freeze_list(bool has_mountpoints,
             goto error;
         }
 
-        /* we try to cull filesytems we know won't work in advance, but other
-         * filesytems may not implement fsfreeze for less obvious reasons.
+        /* we try to cull filesystems we know won't work in advance, but other
+         * filesystems may not implement fsfreeze for less obvious reasons.
          * these will report EOPNOTSUPP. we simply ignore these when tallying
          * the number of frozen filesystems.
+         * if a filesystem is mounted more than once (aka bind mount) a
+         * consecutive attempt to freeze an already frozen filesystem will
+         * return EBUSY.
          *
          * any other error means a failure to freeze a filesystem we
          * expect to be freezable, so return an error in those cases
@@ -1262,7 +1261,7 @@ int64_t qmp_guest_fsfreeze_freeze_list(bool has_mountpoints,
          */
         ret = ioctl(fd, FIFREEZE);
         if (ret == -1) {
-            if (errno != EOPNOTSUPP) {
+            if (errno != EOPNOTSUPP && errno != EBUSY) {
                 error_setg_errno(errp, errno, "failed to freeze %s",
                                  mount->dirname);
                 close(fd);
@@ -1401,10 +1400,10 @@ qmp_guest_fstrim(bool has_minimum, int64_t minimum, Error **errp)
             continue;
         }
 
-        /* We try to cull filesytems we know won't work in advance, but other
-         * filesytems may not implement fstrim for less obvious reasons.  These
-         * will report EOPNOTSUPP; while in some other cases ENOTTY will be
-         * reported (e.g. CD-ROMs).
+        /* We try to cull filesystems we know won't work in advance, but other
+         * filesystems may not implement fstrim for less obvious reasons.
+         * These will report EOPNOTSUPP; while in some other cases ENOTTY
+         * will be reported (e.g. CD-ROMs).
          * Any other error means an unexpected error.
          */
         r.start = 0;
@@ -1645,6 +1644,67 @@ guest_find_interface(GuestNetworkInterfaceList *head,
     return head;
 }
 
+static int guest_get_network_stats(const char *name,
+                       GuestNetworkInterfaceStat *stats)
+{
+    int name_len;
+    char const *devinfo = "/proc/net/dev";
+    FILE *fp;
+    char *line = NULL, *colon;
+    size_t n = 0;
+    fp = fopen(devinfo, "r");
+    if (!fp) {
+        return -1;
+    }
+    name_len = strlen(name);
+    while (getline(&line, &n, fp) != -1) {
+        long long dummy;
+        long long rx_bytes;
+        long long rx_packets;
+        long long rx_errs;
+        long long rx_dropped;
+        long long tx_bytes;
+        long long tx_packets;
+        long long tx_errs;
+        long long tx_dropped;
+        char *trim_line;
+        trim_line = g_strchug(line);
+        if (trim_line[0] == '\0') {
+            continue;
+        }
+        colon = strchr(trim_line, ':');
+        if (!colon) {
+            continue;
+        }
+        if (colon - name_len  == trim_line &&
+           strncmp(trim_line, name, name_len) == 0) {
+            if (sscanf(colon + 1,
+                "%lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld",
+                  &rx_bytes, &rx_packets, &rx_errs, &rx_dropped,
+                  &dummy, &dummy, &dummy, &dummy,
+                  &tx_bytes, &tx_packets, &tx_errs, &tx_dropped,
+                  &dummy, &dummy, &dummy, &dummy) != 16) {
+                continue;
+            }
+            stats->rx_bytes = rx_bytes;
+            stats->rx_packets = rx_packets;
+            stats->rx_errs = rx_errs;
+            stats->rx_dropped = rx_dropped;
+            stats->tx_bytes = tx_bytes;
+            stats->tx_packets = tx_packets;
+            stats->tx_errs = tx_errs;
+            stats->tx_dropped = tx_dropped;
+            fclose(fp);
+            g_free(line);
+            return 0;
+        }
+    }
+    fclose(fp);
+    g_free(line);
+    g_debug("/proc/net/dev: Interface '%s' not found", name);
+    return -1;
+}
+
 /*
  * Build information about guest interfaces
  */
@@ -1661,6 +1721,7 @@ GuestNetworkInterfaceList *qmp_guest_network_get_interfaces(Error **errp)
     for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
         GuestNetworkInterfaceList *info;
         GuestIpAddressList **address_list = NULL, *address_item = NULL;
+        GuestNetworkInterfaceStat  *interface_stat = NULL;
         char addr4[INET_ADDRSTRLEN];
         char addr6[INET6_ADDRSTRLEN];
         int sock;
@@ -1780,7 +1841,17 @@ GuestNetworkInterfaceList *qmp_guest_network_get_interfaces(Error **errp)
 
         info->value->has_ip_addresses = true;
 
-
+        if (!info->value->has_statistics) {
+            interface_stat = g_malloc0(sizeof(*interface_stat));
+            if (guest_get_network_stats(info->value->name,
+                interface_stat) == -1) {
+                info->value->has_statistics = false;
+                g_free(interface_stat);
+            } else {
+                info->value->statistics = interface_stat;
+                info->value->has_statistics = true;
+            }
+        }
     }
 
     freeifaddrs(ifap);
@@ -1963,7 +2034,10 @@ void qmp_guest_set_user_password(const char *username,
     char *chpasswddata = NULL;
     size_t chpasswdlen;
 
-    rawpasswddata = (char *)g_base64_decode(password, &rawpasswdlen);
+    rawpasswddata = (char *)qbase64_decode(password, -1, &rawpasswdlen, errp);
+    if (!rawpasswddata) {
+        return;
+    }
     rawpasswddata = g_renew(char, rawpasswddata, rawpasswdlen + 1);
     rawpasswddata[rawpasswdlen] = '\0';
 
@@ -2128,9 +2202,11 @@ static void transfer_memory_block(GuestMemoryBlock *mem_blk, bool sys2memblk,
          * we think this VM does not support online/offline memory block,
          * any other solution?
          */
-        if (!dp && errno == ENOENT) {
-            result->response =
-                GUEST_MEMORY_BLOCK_RESPONSE_TYPE_OPERATION_NOT_SUPPORTED;
+        if (!dp) {
+            if (errno == ENOENT) {
+                result->response =
+                    GUEST_MEMORY_BLOCK_RESPONSE_TYPE_OPERATION_NOT_SUPPORTED;
+            }
             goto out1;
         }
         closedir(dp);
@@ -2198,12 +2274,10 @@ static void transfer_memory_block(GuestMemoryBlock *mem_blk, bool sys2memblk,
         }
     } else {
         if (mem_blk->online != (strncmp(status, "online", 6) == 0)) {
-            char *new_state = mem_blk->online ? g_strdup("online") :
-                                                g_strdup("offline");
+            const char *new_state = mem_blk->online ? "online" : "offline";
 
             ga_write_sysfs_file(dirfd, "state", new_state, strlen(new_state),
                                 &local_err);
-            g_free(new_state);
             if (local_err) {
                 error_free(local_err);
                 result->response =
@@ -2247,7 +2321,7 @@ GuestMemoryBlockList *qmp_guest_get_memory_blocks(Error **errp)
          */
         if (errno != ENOENT) {
             error_setg_errno(errp, errno, "Can't open directory"
-                             "\"/sys/devices/system/memory/\"\n");
+                             "\"/sys/devices/system/memory/\"");
         }
         return NULL;
     }
@@ -2520,4 +2594,214 @@ void ga_command_state_init(GAState *s, GACommandState *cs)
 #if defined(CONFIG_FSFREEZE)
     ga_command_state_add(cs, NULL, guest_fsfreeze_cleanup);
 #endif
+}
+
+#ifdef HAVE_UTMPX
+
+#define QGA_MICRO_SECOND_TO_SECOND 1000000
+
+static double ga_get_login_time(struct utmpx *user_info)
+{
+    double seconds = (double)user_info->ut_tv.tv_sec;
+    double useconds = (double)user_info->ut_tv.tv_usec;
+    useconds /= QGA_MICRO_SECOND_TO_SECOND;
+    return seconds + useconds;
+}
+
+GuestUserList *qmp_guest_get_users(Error **err)
+{
+    GHashTable *cache = NULL;
+    GuestUserList *head = NULL, *cur_item = NULL;
+    struct utmpx *user_info = NULL;
+    gpointer value = NULL;
+    GuestUser *user = NULL;
+    GuestUserList *item = NULL;
+    double login_time = 0;
+
+    cache = g_hash_table_new(g_str_hash, g_str_equal);
+    setutxent();
+
+    for (;;) {
+        user_info = getutxent();
+        if (user_info == NULL) {
+            break;
+        } else if (user_info->ut_type != USER_PROCESS) {
+            continue;
+        } else if (g_hash_table_contains(cache, user_info->ut_user)) {
+            value = g_hash_table_lookup(cache, user_info->ut_user);
+            user = (GuestUser *)value;
+            login_time = ga_get_login_time(user_info);
+            /* We're ensuring the earliest login time to be sent */
+            if (login_time < user->login_time) {
+                user->login_time = login_time;
+            }
+            continue;
+        }
+
+        item = g_new0(GuestUserList, 1);
+        item->value = g_new0(GuestUser, 1);
+        item->value->user = g_strdup(user_info->ut_user);
+        item->value->login_time = ga_get_login_time(user_info);
+
+        g_hash_table_insert(cache, item->value->user, item->value);
+
+        if (!cur_item) {
+            head = cur_item = item;
+        } else {
+            cur_item->next = item;
+            cur_item = item;
+        }
+    }
+    endutxent();
+    g_hash_table_destroy(cache);
+    return head;
+}
+
+#else
+
+GuestUserList *qmp_guest_get_users(Error **errp)
+{
+    error_setg(errp, QERR_UNSUPPORTED);
+    return NULL;
+}
+
+#endif
+
+/* Replace escaped special characters with theire real values. The replacement
+ * is done in place -- returned value is in the original string.
+ */
+static void ga_osrelease_replace_special(gchar *value)
+{
+    gchar *p, *p2, quote;
+
+    /* Trim the string at first space or semicolon if it is not enclosed in
+     * single or double quotes. */
+    if ((value[0] != '"') || (value[0] == '\'')) {
+        p = strchr(value, ' ');
+        if (p != NULL) {
+            *p = 0;
+        }
+        p = strchr(value, ';');
+        if (p != NULL) {
+            *p = 0;
+        }
+        return;
+    }
+
+    quote = value[0];
+    p2 = value;
+    p = value + 1;
+    while (*p != 0) {
+        if (*p == '\\') {
+            p++;
+            switch (*p) {
+            case '$':
+            case '\'':
+            case '"':
+            case '\\':
+            case '`':
+                break;
+            default:
+                /* Keep literal backslash followed by whatever is there */
+                p--;
+                break;
+            }
+        } else if (*p == quote) {
+            *p2 = 0;
+            break;
+        }
+        *(p2++) = *(p++);
+    }
+}
+
+static GKeyFile *ga_parse_osrelease(const char *fname)
+{
+    gchar *content = NULL;
+    gchar *content2 = NULL;
+    GError *err = NULL;
+    GKeyFile *keys = g_key_file_new();
+    const char *group = "[os-release]\n";
+
+    if (!g_file_get_contents(fname, &content, NULL, &err)) {
+        slog("failed to read '%s', error: %s", fname, err->message);
+        goto fail;
+    }
+
+    if (!g_utf8_validate(content, -1, NULL)) {
+        slog("file is not utf-8 encoded: %s", fname);
+        goto fail;
+    }
+    content2 = g_strdup_printf("%s%s", group, content);
+
+    if (!g_key_file_load_from_data(keys, content2, -1, G_KEY_FILE_NONE,
+                                   &err)) {
+        slog("failed to parse file '%s', error: %s", fname, err->message);
+        goto fail;
+    }
+
+    g_free(content);
+    g_free(content2);
+    return keys;
+
+fail:
+    g_error_free(err);
+    g_free(content);
+    g_free(content2);
+    g_key_file_free(keys);
+    return NULL;
+}
+
+GuestOSInfo *qmp_guest_get_osinfo(Error **errp)
+{
+    GuestOSInfo *info = NULL;
+    struct utsname kinfo;
+    GKeyFile *osrelease = NULL;
+    const char *qga_os_release = g_getenv("QGA_OS_RELEASE");
+
+    info = g_new0(GuestOSInfo, 1);
+
+    if (uname(&kinfo) != 0) {
+        error_setg_errno(errp, errno, "uname failed");
+    } else {
+        info->has_kernel_version = true;
+        info->kernel_version = g_strdup(kinfo.version);
+        info->has_kernel_release = true;
+        info->kernel_release = g_strdup(kinfo.release);
+        info->has_machine = true;
+        info->machine = g_strdup(kinfo.machine);
+    }
+
+    if (qga_os_release != NULL) {
+        osrelease = ga_parse_osrelease(qga_os_release);
+    } else {
+        osrelease = ga_parse_osrelease("/etc/os-release");
+        if (osrelease == NULL) {
+            osrelease = ga_parse_osrelease("/usr/lib/os-release");
+        }
+    }
+
+    if (osrelease != NULL) {
+        char *value;
+
+#define GET_FIELD(field, osfield) do { \
+    value = g_key_file_get_value(osrelease, "os-release", osfield, NULL); \
+    if (value != NULL) { \
+        ga_osrelease_replace_special(value); \
+        info->has_ ## field = true; \
+        info->field = value; \
+    } \
+} while (0)
+        GET_FIELD(id, "ID");
+        GET_FIELD(name, "NAME");
+        GET_FIELD(pretty_name, "PRETTY_NAME");
+        GET_FIELD(version, "VERSION");
+        GET_FIELD(version_id, "VERSION_ID");
+        GET_FIELD(variant, "VARIANT");
+        GET_FIELD(variant_id, "VARIANT_ID");
+#undef GET_FIELD
+
+        g_key_file_free(osrelease);
+    }
+
+    return info;
 }

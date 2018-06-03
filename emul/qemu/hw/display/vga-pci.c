@@ -23,8 +23,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "ui/console.h"
 #include "hw/pci/pci.h"
 #include "vga_int.h"
 #include "ui/pixel_ops.h"
@@ -292,6 +292,14 @@ static void pci_secondary_vga_realize(PCIDevice *dev, Error **errp)
     pci_register_bar(&d->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 }
 
+static void pci_secondary_vga_exit(PCIDevice *dev)
+{
+    PCIVGAState *d = PCI_VGA(dev);
+    VGACommonState *s = &d->vga;
+
+    graphic_console_close(s->con);
+}
+
 static void pci_secondary_vga_init(Object *obj)
 {
     /* Expose framebuffer byteorder via QOM */
@@ -337,6 +345,10 @@ static const TypeInfo vga_pci_type_info = {
     .instance_size = sizeof(PCIVGAState),
     .abstract = true,
     .class_init = vga_pci_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void vga_class_init(ObjectClass *klass, void *data)
@@ -357,6 +369,7 @@ static void secondary_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->realize = pci_secondary_vga_realize;
+    k->exit = pci_secondary_vga_exit;
     k->class_id = PCI_CLASS_DISPLAY_OTHER;
     dc->props = secondary_pci_properties;
     dc->reset = pci_secondary_vga_reset;

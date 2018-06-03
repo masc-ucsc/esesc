@@ -23,6 +23,10 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/hw.h"
 #include "net/net.h"
@@ -32,6 +36,7 @@
 #include "hw/boards.h"
 #include "sysemu/block-backend.h"
 #include "exec/address-spaces.h"
+#include "hw/char/xilinx_uartlite.h"
 
 #include "boot.h"
 
@@ -66,18 +71,17 @@ petalogix_s3adsp1800_init(MachineState *machine)
     MemoryRegion *sysmem = get_system_memory();
 
     cpu = MICROBLAZE_CPU(object_new(TYPE_MICROBLAZE_CPU));
+    object_property_set_str(OBJECT(cpu), "7.10.d", "version", &error_abort);
     object_property_set_bool(OBJECT(cpu), true, "realized", &error_abort);
 
     /* Attach emulated BRAM through the LMB.  */
     memory_region_init_ram(phys_lmb_bram, NULL,
                            "petalogix_s3adsp1800.lmb_bram", LMB_BRAM_SIZE,
                            &error_fatal);
-    vmstate_register_ram_global(phys_lmb_bram);
     memory_region_add_subregion(sysmem, 0x00000000, phys_lmb_bram);
 
     memory_region_init_ram(phys_ram, NULL, "petalogix_s3adsp1800.ram",
                            ram_size, &error_fatal);
-    vmstate_register_ram_global(phys_ram);
     memory_region_add_subregion(sysmem, ddr_base, phys_ram);
 
     dinfo = drive_get(IF_PFLASH, 0, 0);
@@ -98,8 +102,8 @@ petalogix_s3adsp1800_init(MachineState *machine)
         irq[i] = qdev_get_gpio_in(dev, i);
     }
 
-    sysbus_create_simple("xlnx.xps-uartlite", UARTLITE_BASEADDR,
-                         irq[UARTLITE_IRQ]);
+    xilinx_uartlite_create(UARTLITE_BASEADDR, irq[UARTLITE_IRQ],
+                           serial_hd(0));
 
     /* 2 timers at irq 2 @ 62 Mhz.  */
     dev = qdev_create(NULL, "xlnx.xps-timer");

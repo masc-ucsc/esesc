@@ -24,6 +24,14 @@
 #include "ui/console.h"
 #include "sysemu/sysemu.h"
 
+#if defined(CONFIG_OPENGL_DMABUF)
+# if SPICE_SERVER_VERSION >= 0x000d01 /* release 0.13.1 */
+#  define HAVE_SPICE_GL 1
+#  include "ui/egl-helpers.h"
+#  include "ui/egl-context.h"
+# endif
+#endif
+
 #define NUM_MEMSLOTS 8
 #define MEMSLOT_GENERATION_BITS 8
 #define MEMSLOT_SLOT_BITS 8
@@ -50,6 +58,7 @@ enum {
     QXL_COOKIE_TYPE_IO,
     QXL_COOKIE_TYPE_RENDER_UPDATE_AREA,
     QXL_COOKIE_TYPE_POST_LOAD_MONITORS_CONFIG,
+    QXL_COOKIE_TYPE_GL_DRAW_DONE,
 };
 
 typedef struct QXLCookie {
@@ -62,6 +71,7 @@ typedef struct QXLCookie {
             QXLRect area;
             int redraw;
         } render;
+        void *data;
     } u;
 } QXLCookie;
 
@@ -76,7 +86,6 @@ struct SimpleSpiceDisplay {
     DisplayChangeListener dcl;
     void *buf;
     int bufsize;
-    QXLWorker *worker;
     QXLInstance qxl;
     uint32_t unique;
     pixman_image_t *surface;
@@ -104,6 +113,25 @@ struct SimpleSpiceDisplay {
     QEMUCursor *cursor;
     int mouse_x, mouse_y;
     QEMUBH *cursor_bh;
+
+#ifdef HAVE_SPICE_GL
+    /* opengl rendering */
+    QEMUBH *gl_unblock_bh;
+    QEMUTimer *gl_unblock_timer;
+    QemuGLShader *gls;
+    int gl_updates;
+    bool have_scanout;
+    bool have_surface;
+
+    QemuDmaBuf *guest_dmabuf;
+    bool guest_dmabuf_refresh;
+    bool render_cursor;
+
+    egl_fb guest_fb;
+    egl_fb blit_fb;
+    egl_fb cursor_fb;
+    bool have_hot;
+#endif
 };
 
 struct SimpleSpiceUpdate {
@@ -120,6 +148,8 @@ struct SimpleSpiceCursor {
     QXLCursor cursor;
 };
 
+extern bool spice_opengl;
+
 int qemu_spice_rect_is_empty(const QXLRect* r);
 void qemu_spice_rect_union(QXLRect *dest, const QXLRect *r);
 
@@ -127,8 +157,6 @@ void qemu_spice_destroy_update(SimpleSpiceDisplay *sdpy, SimpleSpiceUpdate *upda
 void qemu_spice_create_host_memslot(SimpleSpiceDisplay *ssd);
 void qemu_spice_create_host_primary(SimpleSpiceDisplay *ssd);
 void qemu_spice_destroy_host_primary(SimpleSpiceDisplay *ssd);
-void qemu_spice_vm_change_state_handler(void *opaque, int running,
-                                        RunState state);
 void qemu_spice_display_init_common(SimpleSpiceDisplay *ssd);
 
 void qemu_spice_display_update(SimpleSpiceDisplay *ssd,

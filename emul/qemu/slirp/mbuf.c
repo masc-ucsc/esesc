@@ -10,56 +10,57 @@
  * FreeBSD.  They are fixed size, determined by the MTU,
  * so that one whole packet can fit.  Mbuf's cannot be
  * chained together.  If there's more data than the mbuf
- * could hold, an external malloced buffer is pointed to
+ * could hold, an external g_malloced buffer is pointed to
  * by m_ext (and the data pointers) and M_EXT is set in
  * the flags
  */
 
-#include <slirp.h>
+#include "qemu/osdep.h"
+#include "slirp.h"
 
 #define MBUF_THRESH 30
 
 /*
  * Find a nice value for msize
- * XXX if_maxlinkhdr already in mtu
  */
-#define SLIRP_MSIZE (IF_MTU + IF_MAXLINKHDR + offsetof(struct mbuf, m_dat) + 6)
+#define SLIRP_MSIZE\
+    (offsetof(struct mbuf, m_dat) + IF_MAXLINKHDR + TCPIPHDR_DELTA + IF_MTU)
 
 void
 m_init(Slirp *slirp)
 {
-    slirp->m_freelist.m_next = slirp->m_freelist.m_prev = &slirp->m_freelist;
-    slirp->m_usedlist.m_next = slirp->m_usedlist.m_prev = &slirp->m_usedlist;
+    slirp->m_freelist.qh_link = slirp->m_freelist.qh_rlink = &slirp->m_freelist;
+    slirp->m_usedlist.qh_link = slirp->m_usedlist.qh_rlink = &slirp->m_usedlist;
 }
 
 void m_cleanup(Slirp *slirp)
 {
     struct mbuf *m, *next;
 
-    m = slirp->m_usedlist.m_next;
-    while (m != &slirp->m_usedlist) {
+    m = (struct mbuf *) slirp->m_usedlist.qh_link;
+    while ((struct quehead *) m != &slirp->m_usedlist) {
         next = m->m_next;
         if (m->m_flags & M_EXT) {
-            free(m->m_ext);
+            g_free(m->m_ext);
         }
-        free(m);
+        g_free(m);
         m = next;
     }
-    m = slirp->m_freelist.m_next;
-    while (m != &slirp->m_freelist) {
+    m = (struct mbuf *) slirp->m_freelist.qh_link;
+    while ((struct quehead *) m != &slirp->m_freelist) {
         next = m->m_next;
-        free(m);
+        g_free(m);
         m = next;
     }
 }
 
 /*
  * Get an mbuf from the free list, if there are none
- * malloc one
+ * allocate one
  *
  * Because fragmentation can occur if we alloc new mbufs and
  * free old mbufs, we mark all mbufs above mbuf_thresh as M_DOFREE,
- * which tells m_free to actually free() it
+ * which tells m_free to actually g_free() it
  */
 struct mbuf *
 m_get(Slirp *slirp)
@@ -69,15 +70,14 @@ m_get(Slirp *slirp)
 
 	DEBUG_CALL("m_get");
 
-	if (slirp->m_freelist.m_next == &slirp->m_freelist) {
-		m = (struct mbuf *)malloc(SLIRP_MSIZE);
-		if (m == NULL) goto end_error;
+	if (slirp->m_freelist.qh_link == &slirp->m_freelist) {
+                m = g_malloc(SLIRP_MSIZE);
 		slirp->mbuf_alloced++;
 		if (slirp->mbuf_alloced > MBUF_THRESH)
 			flags = M_DOFREE;
 		m->slirp = slirp;
 	} else {
-		m = slirp->m_freelist.m_next;
+		m = (struct mbuf *) slirp->m_freelist.qh_link;
 		remque(m);
 	}
 
@@ -91,9 +91,8 @@ m_get(Slirp *slirp)
 	m->m_len = 0;
         m->m_nextpkt = NULL;
         m->m_prevpkt = NULL;
-        m->arp_requested = false;
+        m->resolution_requested = false;
         m->expiration_date = (uint64_t)-1;
-end_error:
 	DEBUG_ARG("m = %p", m);
 	return m;
 }
@@ -111,15 +110,15 @@ m_free(struct mbuf *m)
 	   remque(m);
 
 	/* If it's M_EXT, free() it */
-	if (m->m_flags & M_EXT)
-	   free(m->m_ext);
-
+        if (m->m_flags & M_EXT) {
+                g_free(m->m_ext);
+        }
 	/*
 	 * Either free() it or put it on the free list
 	 */
 	if (m->m_flags & M_DOFREE) {
 		m->slirp->mbuf_alloced--;
-		free(m);
+                g_free(m);
 	} else if ((m->m_flags & M_FREELIST) == 0) {
 		insque(m,&m->slirp->m_freelist);
 		m->m_flags = M_FREELIST; /* Clobber other flags */
@@ -129,7 +128,7 @@ m_free(struct mbuf *m)
 
 /*
  * Copy data from one mbuf to the end of
- * the other.. if result is too big for one mbuf, malloc()
+ * the other.. if result is too big for one mbuf, allocate
  * an M_EXT data segment
  */
 void
@@ -159,12 +158,12 @@ m_inc(struct mbuf *m, int size)
 
         if (m->m_flags & M_EXT) {
 	  datasize = m->m_data - m->m_ext;
-	  m->m_ext = (char *)realloc(m->m_ext,size);
+          m->m_ext = g_realloc(m->m_ext, size);
 	  m->m_data = m->m_ext + datasize;
         } else {
 	  char *dat;
 	  datasize = m->m_data - m->m_dat;
-	  dat = (char *)malloc(size);
+          dat = g_malloc(size);
 	  memcpy(dat, m->m_dat, m->m_size);
 
 	  m->m_ext = dat;
@@ -224,7 +223,8 @@ dtom(Slirp *slirp, void *dat)
 	DEBUG_ARG("dat = %p", dat);
 
 	/* bug corrected for M_EXT buffers */
-	for (m = slirp->m_usedlist.m_next; m != &slirp->m_usedlist;
+	for (m = (struct mbuf *) slirp->m_usedlist.qh_link;
+	     (struct quehead *) m != &slirp->m_usedlist;
 	     m = m->m_next) {
 	  if (m->m_flags & M_EXT) {
 	    if( (char *)dat>=m->m_ext && (char *)dat<(m->m_ext + m->m_size) )

@@ -23,14 +23,22 @@
 #include "hw/virtio/virtio-scsi.h"
 #include "hw/virtio/virtio-balloon.h"
 #include "hw/virtio/virtio-bus.h"
-#include "hw/virtio/virtio-9p.h"
 #include "hw/virtio/virtio-input.h"
 #include "hw/virtio/virtio-gpu.h"
+#include "hw/virtio/virtio-crypto.h"
+#include "hw/virtio/vhost-user-scsi.h"
+#if defined(CONFIG_VHOST_USER) && defined(CONFIG_LINUX)
+#include "hw/virtio/vhost-user-blk.h"
+#endif
+
 #ifdef CONFIG_VIRTFS
 #include "hw/9pfs/virtio-9p.h"
 #endif
 #ifdef CONFIG_VHOST_SCSI
 #include "hw/virtio/vhost-scsi.h"
+#endif
+#ifdef CONFIG_VHOST_VSOCK
+#include "hw/virtio/vhost-vsock.h"
 #endif
 
 typedef struct VirtIOPCIProxy VirtIOPCIProxy;
@@ -40,11 +48,15 @@ typedef struct VirtIOBalloonPCI VirtIOBalloonPCI;
 typedef struct VirtIOSerialPCI VirtIOSerialPCI;
 typedef struct VirtIONetPCI VirtIONetPCI;
 typedef struct VHostSCSIPCI VHostSCSIPCI;
+typedef struct VHostUserSCSIPCI VHostUserSCSIPCI;
+typedef struct VHostUserBlkPCI VHostUserBlkPCI;
 typedef struct VirtIORngPCI VirtIORngPCI;
 typedef struct VirtIOInputPCI VirtIOInputPCI;
 typedef struct VirtIOInputHIDPCI VirtIOInputHIDPCI;
 typedef struct VirtIOInputHostPCI VirtIOInputHostPCI;
 typedef struct VirtIOGPUPCI VirtIOGPUPCI;
+typedef struct VHostVSockPCI VHostVSockPCI;
+typedef struct VirtIOCryptoPCI VirtIOCryptoPCI;
 
 /* virtio-pci-bus */
 
@@ -59,32 +71,52 @@ typedef struct VirtioBusClass VirtioPCIBusClass;
 #define VIRTIO_PCI_BUS_CLASS(klass) \
         OBJECT_CLASS_CHECK(VirtioPCIBusClass, klass, TYPE_VIRTIO_PCI_BUS)
 
+enum {
+    VIRTIO_PCI_FLAG_BUS_MASTER_BUG_MIGRATION_BIT,
+    VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT,
+    VIRTIO_PCI_FLAG_MIGRATE_EXTRA_BIT,
+    VIRTIO_PCI_FLAG_MODERN_PIO_NOTIFY_BIT,
+    VIRTIO_PCI_FLAG_DISABLE_PCIE_BIT,
+    VIRTIO_PCI_FLAG_PAGE_PER_VQ_BIT,
+    VIRTIO_PCI_FLAG_ATS_BIT,
+    VIRTIO_PCI_FLAG_INIT_DEVERR_BIT,
+    VIRTIO_PCI_FLAG_INIT_LNKCTL_BIT,
+    VIRTIO_PCI_FLAG_INIT_PM_BIT,
+};
+
 /* Need to activate work-arounds for buggy guests at vmstate load. */
-#define VIRTIO_PCI_FLAG_BUS_MASTER_BUG_MIGRATION_BIT  0
 #define VIRTIO_PCI_FLAG_BUS_MASTER_BUG_MIGRATION \
     (1 << VIRTIO_PCI_FLAG_BUS_MASTER_BUG_MIGRATION_BIT)
 
 /* Performance improves when virtqueue kick processing is decoupled from the
  * vcpu thread using ioeventfd for some devices. */
-#define VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT 1
 #define VIRTIO_PCI_FLAG_USE_IOEVENTFD   (1 << VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT)
 
 /* virtio version flags */
-#define VIRTIO_PCI_FLAG_DISABLE_LEGACY_BIT 2
-#define VIRTIO_PCI_FLAG_DISABLE_MODERN_BIT 3
-#define VIRTIO_PCI_FLAG_DISABLE_PCIE_BIT 4
-#define VIRTIO_PCI_FLAG_DISABLE_LEGACY (1 << VIRTIO_PCI_FLAG_DISABLE_LEGACY_BIT)
-#define VIRTIO_PCI_FLAG_DISABLE_MODERN (1 << VIRTIO_PCI_FLAG_DISABLE_MODERN_BIT)
 #define VIRTIO_PCI_FLAG_DISABLE_PCIE (1 << VIRTIO_PCI_FLAG_DISABLE_PCIE_BIT)
 
 /* migrate extra state */
-#define VIRTIO_PCI_FLAG_MIGRATE_EXTRA_BIT 4
 #define VIRTIO_PCI_FLAG_MIGRATE_EXTRA (1 << VIRTIO_PCI_FLAG_MIGRATE_EXTRA_BIT)
 
 /* have pio notification for modern device ? */
-#define VIRTIO_PCI_FLAG_MODERN_PIO_NOTIFY_BIT 5
 #define VIRTIO_PCI_FLAG_MODERN_PIO_NOTIFY \
     (1 << VIRTIO_PCI_FLAG_MODERN_PIO_NOTIFY_BIT)
+
+/* page per vq flag to be used by split drivers within guests */
+#define VIRTIO_PCI_FLAG_PAGE_PER_VQ \
+    (1 << VIRTIO_PCI_FLAG_PAGE_PER_VQ_BIT)
+
+/* address space translation service */
+#define VIRTIO_PCI_FLAG_ATS (1 << VIRTIO_PCI_FLAG_ATS_BIT)
+
+/* Init error enabling flags */
+#define VIRTIO_PCI_FLAG_INIT_DEVERR (1 << VIRTIO_PCI_FLAG_INIT_DEVERR_BIT)
+
+/* Init Link Control register */
+#define VIRTIO_PCI_FLAG_INIT_LNKCTL (1 << VIRTIO_PCI_FLAG_INIT_LNKCTL_BIT)
+
+/* Init Power Management */
+#define VIRTIO_PCI_FLAG_INIT_PM (1 << VIRTIO_PCI_FLAG_INIT_PM_BIT)
 
 typedef struct {
     MSIMessage msg;
@@ -127,21 +159,27 @@ typedef struct VirtIOPCIQueue {
 struct VirtIOPCIProxy {
     PCIDevice pci_dev;
     MemoryRegion bar;
-    VirtIOPCIRegion common;
-    VirtIOPCIRegion isr;
-    VirtIOPCIRegion device;
-    VirtIOPCIRegion notify;
-    VirtIOPCIRegion notify_pio;
+    union {
+        struct {
+            VirtIOPCIRegion common;
+            VirtIOPCIRegion isr;
+            VirtIOPCIRegion device;
+            VirtIOPCIRegion notify;
+            VirtIOPCIRegion notify_pio;
+        };
+        VirtIOPCIRegion regs[5];
+    };
     MemoryRegion modern_bar;
     MemoryRegion io_bar;
-    MemoryRegion modern_cfg;
-    AddressSpace modern_as;
-    uint32_t legacy_io_bar;
-    uint32_t msix_bar;
-    uint32_t modern_io_bar;
-    uint32_t modern_mem_bar;
+    uint32_t legacy_io_bar_idx;
+    uint32_t msix_bar_idx;
+    uint32_t modern_io_bar_idx;
+    uint32_t modern_mem_bar_idx;
     int config_cap;
     uint32_t flags;
+    bool disable_modern;
+    bool ignore_backend_features;
+    OnOffAuto disable_legacy;
     uint32_t class_code;
     uint32_t nvectors;
     uint32_t dfselect;
@@ -149,13 +187,31 @@ struct VirtIOPCIProxy {
     uint32_t guest_features[2];
     VirtIOPCIQueue vqs[VIRTIO_QUEUE_MAX];
 
-    bool ioeventfd_disabled;
-    bool ioeventfd_started;
     VirtIOIRQFD *vector_irqfd;
     int nvqs_with_notifiers;
     VirtioBusState bus;
 };
 
+static inline bool virtio_pci_modern(VirtIOPCIProxy *proxy)
+{
+    return !proxy->disable_modern;
+}
+
+static inline bool virtio_pci_legacy(VirtIOPCIProxy *proxy)
+{
+    return proxy->disable_legacy == ON_OFF_AUTO_OFF;
+}
+
+static inline void virtio_pci_force_virtio_1(VirtIOPCIProxy *proxy)
+{
+    proxy->disable_modern = false;
+    proxy->disable_legacy = ON_OFF_AUTO_ON;
+}
+
+static inline void virtio_pci_disable_modern(VirtIOPCIProxy *proxy)
+{
+    proxy->disable_modern = true;
+}
 
 /*
  * virtio-scsi-pci: This extends VirtioPCIProxy.
@@ -180,6 +236,29 @@ struct VirtIOSCSIPCI {
 struct VHostSCSIPCI {
     VirtIOPCIProxy parent_obj;
     VHostSCSI vdev;
+};
+#endif
+
+#define TYPE_VHOST_USER_SCSI_PCI "vhost-user-scsi-pci"
+#define VHOST_USER_SCSI_PCI(obj) \
+        OBJECT_CHECK(VHostUserSCSIPCI, (obj), TYPE_VHOST_USER_SCSI_PCI)
+
+struct VHostUserSCSIPCI {
+    VirtIOPCIProxy parent_obj;
+    VHostUserSCSI vdev;
+};
+
+#if defined(CONFIG_VHOST_USER) && defined(CONFIG_LINUX)
+/*
+ * vhost-user-blk-pci: This extends VirtioPCIProxy.
+ */
+#define TYPE_VHOST_USER_BLK_PCI "vhost-user-blk-pci"
+#define VHOST_USER_BLK_PCI(obj) \
+        OBJECT_CHECK(VHostUserBlkPCI, (obj), TYPE_VHOST_USER_BLK_PCI)
+
+struct VHostUserBlkPCI {
+    VirtIOPCIProxy parent_obj;
+    VHostUserBlk vdev;
 };
 #endif
 
@@ -243,7 +322,7 @@ struct VirtIONetPCI {
 
 typedef struct V9fsPCIState {
     VirtIOPCIProxy parent_obj;
-    V9fsState vdev;
+    V9fsVirtioState vdev;
 } V9fsPCIState;
 
 #endif
@@ -307,6 +386,32 @@ struct VirtIOInputHostPCI {
 struct VirtIOGPUPCI {
     VirtIOPCIProxy parent_obj;
     VirtIOGPU vdev;
+};
+
+#ifdef CONFIG_VHOST_VSOCK
+/*
+ * vhost-vsock-pci: This extends VirtioPCIProxy.
+ */
+#define TYPE_VHOST_VSOCK_PCI "vhost-vsock-pci"
+#define VHOST_VSOCK_PCI(obj) \
+        OBJECT_CHECK(VHostVSockPCI, (obj), TYPE_VHOST_VSOCK_PCI)
+
+struct VHostVSockPCI {
+    VirtIOPCIProxy parent_obj;
+    VHostVSock vdev;
+};
+#endif
+
+/*
+ * virtio-crypto-pci: This extends VirtioPCIProxy.
+ */
+#define TYPE_VIRTIO_CRYPTO_PCI "virtio-crypto-pci"
+#define VIRTIO_CRYPTO_PCI(obj) \
+        OBJECT_CHECK(VirtIOCryptoPCI, (obj), TYPE_VIRTIO_CRYPTO_PCI)
+
+struct VirtIOCryptoPCI {
+    VirtIOPCIProxy parent_obj;
+    VirtIOCrypto vdev;
 };
 
 /* Virtio ABI version, if we increment this, we break the guest driver. */

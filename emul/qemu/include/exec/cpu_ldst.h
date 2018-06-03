@@ -51,15 +51,13 @@
 /* All direct uses of g2h and h2g need to go away for usermode softmmu.  */
 #define g2h(x) ((void *)((unsigned long)(target_ulong)(x) + guest_base))
 
-#if HOST_LONG_BITS <= TARGET_VIRT_ADDR_SPACE_BITS
-#define h2g_valid(x) 1
-#else
-#define h2g_valid(x) ({ \
-    unsigned long __guest = (unsigned long)(x) - guest_base; \
-    (__guest < (1ul << TARGET_VIRT_ADDR_SPACE_BITS)) && \
-    (!reserved_va || (__guest < reserved_va)); \
-})
-#endif
+#define guest_addr_valid(x) ((x) <= GUEST_ADDR_MAX)
+#define h2g_valid(x) guest_addr_valid((unsigned long)(x) - guest_base)
+
+static inline int guest_range_valid(unsigned long start, unsigned long len)
+{
+    return len - 1 <= GUEST_ADDR_MAX && start <= GUEST_ADDR_MAX - len + 1;
+}
 
 #define h2g_nocheck(x) ({ \
     unsigned long __ret = (unsigned long)(x) - guest_base; \
@@ -75,6 +73,8 @@
 #endif
 
 #if defined(CONFIG_USER_ONLY)
+
+extern __thread uintptr_t helper_retaddr;
 
 /* In user-only mode we provide only the _code and _data accessors. */
 
@@ -401,7 +401,7 @@ static inline void *tlb_vaddr_to_host(CPUArchState *env, target_ulong addr,
                                       int access_type, int mmu_idx)
 {
 #if defined(CONFIG_USER_ONLY)
-    return g2h(vaddr);
+    return g2h(addr);
 #else
     int index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
     CPUTLBEntry *tlbentry = &env->tlb_table[mmu_idx][index];

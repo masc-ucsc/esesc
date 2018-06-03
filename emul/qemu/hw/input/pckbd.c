@@ -21,10 +21,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/isa/isa.h"
 #include "hw/i386/pc.h"
 #include "hw/input/ps2.h"
+#include "hw/input/i8042.h"
 #include "sysemu/sysemu.h"
 
 /* debug PC keyboard */
@@ -145,7 +147,7 @@ typedef struct KBDState {
 
     qemu_irq irq_kbd;
     qemu_irq irq_mouse;
-    qemu_irq *a20_out;
+    qemu_irq a20_out;
     hwaddr mask;
 } KBDState;
 
@@ -223,11 +225,9 @@ static void outport_write(KBDState *s, uint32_t val)
 {
     DPRINTF("kbd: write outport=0x%02x\n", val);
     s->outport = val;
-    if (s->a20_out) {
-        qemu_set_irq(*s->a20_out, (val >> 1) & 1);
-    }
+    qemu_set_irq(s->a20_out, (val >> 1) & 1);
     if (!(val & 1)) {
-        qemu_system_reset_request();
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
     }
 }
 
@@ -294,19 +294,15 @@ static void kbd_write_command(void *opaque, hwaddr addr,
         kbd_queue(s, s->outport, 0);
         break;
     case KBD_CCMD_ENABLE_A20:
-        if (s->a20_out) {
-            qemu_irq_raise(*s->a20_out);
-        }
+        qemu_irq_raise(s->a20_out);
         s->outport |= KBD_OUT_A20;
         break;
     case KBD_CCMD_DISABLE_A20:
-        if (s->a20_out) {
-            qemu_irq_lower(*s->a20_out);
-        }
+        qemu_irq_lower(s->a20_out);
         s->outport &= ~KBD_OUT_A20;
         break;
     case KBD_CCMD_RESET:
-        qemu_system_reset_request();
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
         break;
     case KBD_CCMD_NO_OP:
         /* ignore that */
@@ -485,7 +481,6 @@ void i8042_mm_init(qemu_irq kbd_irq, qemu_irq mouse_irq,
     qemu_register_reset(kbd_reset, s);
 }
 
-#define TYPE_I8042 "i8042"
 #define I8042(obj) OBJECT_CHECK(ISAKBDState, (obj), TYPE_I8042)
 
 typedef struct ISAKBDState {
@@ -504,12 +499,9 @@ void i8042_isa_mouse_fake_event(void *opaque)
     ps2_mouse_fake_event(s->mouse);
 }
 
-void i8042_setup_a20_line(ISADevice *dev, qemu_irq *a20_out)
+void i8042_setup_a20_line(ISADevice *dev, qemu_irq a20_out)
 {
-    ISAKBDState *isa = I8042(dev);
-    KBDState *s = &isa->kbd;
-
-    s->a20_out = a20_out;
+    qdev_connect_gpio_out_named(DEVICE(dev), I8042_A20_LINE, 0, a20_out);
 }
 
 static const VMStateDescription vmstate_kbd_isa = {
@@ -551,6 +543,8 @@ static void i8042_initfn(Object *obj)
                           "i8042-data", 1);
     memory_region_init_io(isa_s->io + 1, obj, &i8042_cmd_ops, s,
                           "i8042-cmd", 1);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->a20_out, I8042_A20_LINE, 1);
 }
 
 static void i8042_realizefn(DeviceState *dev, Error **errp)

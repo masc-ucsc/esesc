@@ -19,12 +19,12 @@
  * By Richard W.M. Jones (rjones@redhat.com).
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/timer.h"
 #include "sysemu/watchdog.h"
 #include "hw/hw.h"
 #include "hw/isa/isa.h"
-#include "hw/i386/pc.h"
 
 /*#define IB700_DEBUG 1*/
 
@@ -63,7 +63,7 @@ static void ib700_write_enable_reg(void *vp, uint32_t addr, uint32_t data)
 
     ib700_debug("addr = %x, data = %x\n", addr, data);
 
-    timeout = (int64_t) time_map[data & 0xF] * get_ticks_per_sec();
+    timeout = (int64_t) time_map[data & 0xF] * NANOSECONDS_PER_SECOND;
     timer_mod(s->timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + timeout);
 }
 

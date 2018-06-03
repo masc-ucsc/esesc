@@ -22,11 +22,14 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/hw.h"
 #include "hw/char/serial.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/qtest.h"
 #include "hw/devices.h"
 #include "hw/boards.h"
 #include "sysemu/device_tree.h"
@@ -34,6 +37,7 @@
 #include "elf.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qemu/option.h"
 #include "exec/address-spaces.h"
 
 #include "hw/ppc/ppc.h"
@@ -87,18 +91,14 @@ static void mmubooke_create_initial_mapping(CPUPPCState *env,
 
 static PowerPCCPU *ppc440_init_xilinx(ram_addr_t *ram_size,
                                       int do_init,
-                                      const char *cpu_model,
+                                      const char *cpu_type,
                                       uint32_t sysclk)
 {
     PowerPCCPU *cpu;
     CPUPPCState *env;
     qemu_irq *irqs;
 
-    cpu = cpu_ppc_init(cpu_model);
-    if (cpu == NULL) {
-        fprintf(stderr, "Unable to initialize CPU!\n");
-        exit(1);
-    }
+    cpu = POWERPC_CPU(cpu_create(cpu_type));
     env = &cpu->env;
 
     ppc_booke_timers_init(cpu, sysclk, 0/* no flags */);
@@ -212,13 +212,23 @@ static void virtex_init(MachineState *machine)
     int kernel_size;
     int i;
 
+#ifdef TARGET_PPCEMB
+    if (!qtest_enabled()) {
+        warn_report("qemu-system-ppcemb is deprecated, "
+                    "please use qemu-system-ppc instead.");
+    }
+#endif
+
     /* init CPUs */
-    if (machine->cpu_model == NULL) {
-        machine->cpu_model = "440-Xilinx";
+    cpu = ppc440_init_xilinx(&ram_size, 1, machine->cpu_type, 400000000);
+    env = &cpu->env;
+
+    if (env->mmu_model != POWERPC_MMU_BOOKE) {
+        error_report("MMU model %i not supported by this machine",
+                     env->mmu_model);
+        exit(1);
     }
 
-    cpu = ppc440_init_xilinx(&ram_size, 1, machine->cpu_model, 400000000);
-    env = &cpu->env;
     qemu_register_reset(main_cpu_reset, cpu);
 
     memory_region_allocate_system_memory(phys_ram, NULL, "ram", ram_size);
@@ -241,7 +251,7 @@ static void virtex_init(MachineState *machine)
     }
 
     serial_mm_init(address_space_mem, UART16550_BASEADDR, 2, irq[UART16550_IRQ],
-                   115200, serial_hds[0], DEVICE_LITTLE_ENDIAN);
+                   115200, serial_hd(0), DEVICE_LITTLE_ENDIAN);
 
     /* 2 timers at irq 2 @ 62 Mhz.  */
     dev = qdev_create(NULL, "xlnx.xps-timer");
@@ -257,7 +267,8 @@ static void virtex_init(MachineState *machine)
 
         /* Boots a kernel elf binary.  */
         kernel_size = load_elf(kernel_filename, NULL, NULL,
-                               &entry, &low, &high, 1, PPC_ELF_MACHINE, 0);
+                               &entry, &low, &high, 1, PPC_ELF_MACHINE,
+                               0, 0);
         boot_info.bootstrap_pc = entry & 0x00ffffff;
 
         if (kernel_size < 0) {
@@ -301,6 +312,7 @@ static void virtex_machine_init(MachineClass *mc)
 {
     mc->desc = "Xilinx Virtex ML507 reference design";
     mc->init = virtex_init;
+    mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("440-xilinx");
 }
 
 DEFINE_MACHINE("virtex-ml507", virtex_machine_init)

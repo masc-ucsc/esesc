@@ -19,9 +19,6 @@
 #define QERR_BASE_NOT_FOUND \
     "Base '%s' not found"
 
-#define QERR_BLOCK_JOB_NOT_READY \
-    "The active block job for device '%s' cannot be completed"
-
 #define QERR_BUS_NO_HOTPLUG \
     "Bus '%s' does not support hotplugging"
 
@@ -85,23 +82,11 @@
 #define QERR_QGA_COMMAND_FAILED \
     "Guest agent command failed, error was '%s'"
 
-#define QERR_QMP_BAD_INPUT_OBJECT \
-    "Expected '%s' in QMP input"
-
-#define QERR_QMP_BAD_INPUT_OBJECT_MEMBER \
-    "QMP input object member '%s' expects '%s'"
-
-#define QERR_QMP_EXTRA_MEMBER \
-    "QMP input object member '%s' is unexpected"
-
 #define QERR_SET_PASSWD_FAILED \
     "Could not set password"
 
 #define QERR_UNDEFINED_ERROR \
     "An undefined error has occurred"
-
-#define QERR_UNKNOWN_BLOCK_FORMAT_FEATURE \
-    "'%s' uses a %s feature which is not supported by this qemu version: %s"
 
 #define QERR_UNSUPPORTED \
     "this feature or command is not currently supported"

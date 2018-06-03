@@ -22,11 +22,8 @@
  * THE SOFTWARE.
  */
 
-#include <stdint.h>
-#include <string.h>
-#include <stdio.h>
+#include "qemu/osdep.h"
 
-#include <glib.h>
 
 #include "libqtest.h"
 #include "libqos/libqos.h"
@@ -34,6 +31,7 @@
 #include "libqos/malloc-pc.h"
 
 #include "qemu-common.h"
+#include "qemu/bswap.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/pci_regs.h"
 
@@ -54,6 +52,7 @@
 enum {
     reg_data        = 0x0,
     reg_feature     = 0x1,
+    reg_error       = 0x1,
     reg_nsectors    = 0x2,
     reg_lba_low     = 0x3,
     reg_lba_middle  = 0x4,
@@ -71,6 +70,11 @@ enum {
     ERR     = 0x01,
 };
 
+/* Error field */
+enum {
+    ABRT    = 0x04,
+};
+
 enum {
     DEV     = 0x10,
     LBA     = 0x40,
@@ -83,6 +87,7 @@ enum {
 };
 
 enum {
+    CMD_DSM         = 0x06,
     CMD_READ_DMA    = 0xc8,
     CMD_WRITE_DMA   = 0xca,
     CMD_FLUSH_CACHE = 0xe7,
@@ -127,7 +132,7 @@ static void ide_test_start(const char *cmdline_fmt, ...)
     va_end(ap);
 
     qtest_start(cmdline);
-    guest_malloc = pc_alloc_init();
+    guest_malloc = pc_alloc_init(global_qtest);
 
     g_free(cmdline);
 }
@@ -139,13 +144,13 @@ static void ide_test_quit(void)
     qtest_end();
 }
 
-static QPCIDevice *get_pci_device(uint16_t *bmdma_base)
+static QPCIDevice *get_pci_device(QPCIBar *bmdma_bar, QPCIBar *ide_bar)
 {
     QPCIDevice *dev;
     uint16_t vendor_id, device_id;
 
     if (!pcibus) {
-        pcibus = qpci_init_pc();
+        pcibus = qpci_init_pc(global_qtest, NULL);
     }
 
     /* Find PCI device and verify it's the right one */
@@ -158,7 +163,9 @@ static QPCIDevice *get_pci_device(uint16_t *bmdma_base)
     g_assert(device_id == PCI_DEVICE_ID_INTEL_82371SB_1);
 
     /* Map bmdma BAR */
-    *bmdma_base = (uint16_t)(uintptr_t) qpci_iomap(dev, 4, NULL);
+    *bmdma_bar = qpci_iomap(dev, 4, NULL);
+
+    *ide_bar = qpci_legacy_iomap(dev, IDE_BASE);
 
     qpci_device_enable(dev);
 
@@ -179,19 +186,26 @@ typedef struct PrdtEntry {
 #define assert_bit_set(data, mask) g_assert_cmphex((data) & (mask), ==, (mask))
 #define assert_bit_clear(data, mask) g_assert_cmphex((data) & (mask), ==, 0)
 
+static uint64_t trim_range_le(uint64_t sector, uint16_t count)
+{
+    /* 2-byte range, 6-byte LBA */
+    return cpu_to_le64(((uint64_t)count << 48) + sector);
+}
+
 static int send_dma_request(int cmd, uint64_t sector, int nb_sectors,
                             PrdtEntry *prdt, int prdt_entries,
-                            void(*post_exec)(uint64_t sector, int nb_sectors))
+                            void(*post_exec)(QPCIDevice *dev, QPCIBar ide_bar,
+                                             uint64_t sector, int nb_sectors))
 {
     QPCIDevice *dev;
-    uint16_t bmdma_base;
+    QPCIBar bmdma_bar, ide_bar;
     uintptr_t guest_prdt;
     size_t len;
     bool from_dev;
     uint8_t status;
     int flags;
 
-    dev = get_pci_device(&bmdma_base);
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
 
     flags = cmd & ~0xff;
     cmd &= 0xff;
@@ -203,6 +217,7 @@ static int send_dma_request(int cmd, uint64_t sector, int nb_sectors,
          * the SCSI command being sent in the packet, too. */
         from_dev = true;
         break;
+    case CMD_DSM:
     case CMD_WRITE_DMA:
         from_dev = false;
         break;
@@ -216,59 +231,64 @@ static int send_dma_request(int cmd, uint64_t sector, int nb_sectors,
     }
 
     /* Select device 0 */
-    outb(IDE_BASE + reg_device, 0 | LBA);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0 | LBA);
 
     /* Stop any running transfer, clear any pending interrupt */
-    outb(bmdma_base + bmreg_cmd, 0);
-    outb(bmdma_base + bmreg_status, BM_STS_INTR);
+    qpci_io_writeb(dev, bmdma_bar, bmreg_cmd, 0);
+    qpci_io_writeb(dev, bmdma_bar, bmreg_status, BM_STS_INTR);
 
     /* Setup PRDT */
     len = sizeof(*prdt) * prdt_entries;
     guest_prdt = guest_alloc(guest_malloc, len);
     memwrite(guest_prdt, prdt, len);
-    outl(bmdma_base + bmreg_prdt, guest_prdt);
+    qpci_io_writel(dev, bmdma_bar, bmreg_prdt, guest_prdt);
 
     /* ATA DMA command */
     if (cmd == CMD_PACKET) {
         /* Enables ATAPI DMA; otherwise PIO is attempted */
-        outb(IDE_BASE + reg_feature, 0x01);
+        qpci_io_writeb(dev, ide_bar, reg_feature, 0x01);
     } else {
-        outb(IDE_BASE + reg_nsectors, nb_sectors);
-        outb(IDE_BASE + reg_lba_low,    sector & 0xff);
-        outb(IDE_BASE + reg_lba_middle, (sector >> 8) & 0xff);
-        outb(IDE_BASE + reg_lba_high,   (sector >> 16) & 0xff);
+        if (cmd == CMD_DSM) {
+            /* trim bit */
+            qpci_io_writeb(dev, ide_bar, reg_feature, 0x01);
+        }
+        qpci_io_writeb(dev, ide_bar, reg_nsectors, nb_sectors);
+        qpci_io_writeb(dev, ide_bar, reg_lba_low,    sector & 0xff);
+        qpci_io_writeb(dev, ide_bar, reg_lba_middle, (sector >> 8) & 0xff);
+        qpci_io_writeb(dev, ide_bar, reg_lba_high,   (sector >> 16) & 0xff);
     }
 
-    outb(IDE_BASE + reg_command, cmd);
+    qpci_io_writeb(dev, ide_bar, reg_command, cmd);
 
     if (post_exec) {
-        post_exec(sector, nb_sectors);
+        post_exec(dev, ide_bar, sector, nb_sectors);
     }
 
     /* Start DMA transfer */
-    outb(bmdma_base + bmreg_cmd, BM_CMD_START | (from_dev ? BM_CMD_WRITE : 0));
+    qpci_io_writeb(dev, bmdma_bar, bmreg_cmd,
+                   BM_CMD_START | (from_dev ? BM_CMD_WRITE : 0));
 
     if (flags & CMDF_ABORT) {
-        outb(bmdma_base + bmreg_cmd, 0);
+        qpci_io_writeb(dev, bmdma_bar, bmreg_cmd, 0);
     }
 
     /* Wait for the DMA transfer to complete */
     do {
-        status = inb(bmdma_base + bmreg_status);
+        status = qpci_io_readb(dev, bmdma_bar, bmreg_status);
     } while ((status & (BM_STS_ACTIVE | BM_STS_INTR)) == BM_STS_ACTIVE);
 
     g_assert_cmpint(get_irq(IDE_PRIMARY_IRQ), ==, !!(status & BM_STS_INTR));
 
     /* Check IDE status code */
-    assert_bit_set(inb(IDE_BASE + reg_status), DRDY);
-    assert_bit_clear(inb(IDE_BASE + reg_status), BSY | DRQ);
+    assert_bit_set(qpci_io_readb(dev, ide_bar, reg_status), DRDY);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), BSY | DRQ);
 
     /* Reading the status register clears the IRQ */
     g_assert(!get_irq(IDE_PRIMARY_IRQ));
 
     /* Stop DMA transfer if still active */
     if (status & BM_STS_ACTIVE) {
-        outb(bmdma_base + bmreg_cmd, 0);
+        qpci_io_writeb(dev, bmdma_bar, bmreg_cmd, 0);
     }
 
     free_pci_device(dev);
@@ -278,6 +298,8 @@ static int send_dma_request(int cmd, uint64_t sector, int nb_sectors,
 
 static void test_bmdma_simple_rw(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t status;
     uint8_t *buf;
     uint8_t *cmpbuf;
@@ -291,6 +313,8 @@ static void test_bmdma_simple_rw(void)
         },
     };
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
     buf = g_malloc(len);
     cmpbuf = g_malloc(len);
 
@@ -301,7 +325,7 @@ static void test_bmdma_simple_rw(void)
     status = send_dma_request(CMD_WRITE_DMA, 0, 1, prdt,
                               ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     /* Write 0xaa pattern to sector 1 */
     memset(buf, 0xaa, len);
@@ -310,14 +334,14 @@ static void test_bmdma_simple_rw(void)
     status = send_dma_request(CMD_WRITE_DMA, 1, 1, prdt,
                               ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     /* Read and verify 0x55 pattern in sector 0 */
     memset(cmpbuf, 0x55, len);
 
     status = send_dma_request(CMD_READ_DMA, 0, 1, prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     memread(guest_buf, buf, len);
     g_assert(memcmp(buf, cmpbuf, len) == 0);
@@ -327,18 +351,73 @@ static void test_bmdma_simple_rw(void)
 
     status = send_dma_request(CMD_READ_DMA, 1, 1, prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     memread(guest_buf, buf, len);
     g_assert(memcmp(buf, cmpbuf, len) == 0);
 
 
+    free_pci_device(dev);
     g_free(buf);
     g_free(cmpbuf);
 }
 
+static void test_bmdma_trim(void)
+{
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
+    uint8_t status;
+    const uint64_t trim_range[] = { trim_range_le(0, 2),
+                                    trim_range_le(6, 8),
+                                    trim_range_le(10, 1),
+                                  };
+    const uint64_t bad_range = trim_range_le(TEST_IMAGE_SIZE / 512 - 1, 2);
+    size_t len = 512;
+    uint8_t *buf;
+    uintptr_t guest_buf = guest_alloc(guest_malloc, len);
+
+    PrdtEntry prdt[] = {
+        {
+            .addr = cpu_to_le32(guest_buf),
+            .size = cpu_to_le32(len | PRDT_EOT),
+        },
+    };
+
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
+    buf = g_malloc(len);
+
+    /* Normal request */
+    *((uint64_t *)buf) = trim_range[0];
+    *((uint64_t *)buf + 1) = trim_range[1];
+
+    memwrite(guest_buf, buf, 2 * sizeof(uint64_t));
+
+    status = send_dma_request(CMD_DSM, 0, 1, prdt,
+                              ARRAY_SIZE(prdt), NULL);
+    g_assert_cmphex(status, ==, BM_STS_INTR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
+
+    /* Request contains invalid range */
+    *((uint64_t *)buf) = trim_range[2];
+    *((uint64_t *)buf + 1) = bad_range;
+
+    memwrite(guest_buf, buf, 2 * sizeof(uint64_t));
+
+    status = send_dma_request(CMD_DSM, 0, 1, prdt,
+                              ARRAY_SIZE(prdt), NULL);
+    g_assert_cmphex(status, ==, BM_STS_INTR);
+    assert_bit_set(qpci_io_readb(dev, ide_bar, reg_status), ERR);
+    assert_bit_set(qpci_io_readb(dev, ide_bar, reg_error), ABRT);
+
+    free_pci_device(dev);
+    g_free(buf);
+}
+
 static void test_bmdma_short_prdt(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t status;
 
     PrdtEntry prdt[] = {
@@ -348,21 +427,26 @@ static void test_bmdma_short_prdt(void)
         },
     };
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
     /* Normal request */
     status = send_dma_request(CMD_READ_DMA, 0, 1,
                               prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, 0);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     /* Abort the request before it completes */
     status = send_dma_request(CMD_READ_DMA | CMDF_ABORT, 0, 1,
                               prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, 0);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
+    free_pci_device(dev);
 }
 
 static void test_bmdma_one_sector_short_prdt(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t status;
 
     /* Read 2 sectors but only give 1 sector in PRDT */
@@ -373,21 +457,26 @@ static void test_bmdma_one_sector_short_prdt(void)
         },
     };
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
     /* Normal request */
     status = send_dma_request(CMD_READ_DMA, 0, 2,
                               prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, 0);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     /* Abort the request before it completes */
     status = send_dma_request(CMD_READ_DMA | CMDF_ABORT, 0, 2,
                               prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, 0);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
+    free_pci_device(dev);
 }
 
 static void test_bmdma_long_prdt(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t status;
 
     PrdtEntry prdt[] = {
@@ -397,22 +486,29 @@ static void test_bmdma_long_prdt(void)
         },
     };
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
     /* Normal request */
     status = send_dma_request(CMD_READ_DMA, 0, 1,
                               prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, BM_STS_ACTIVE | BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
 
     /* Abort the request before it completes */
     status = send_dma_request(CMD_READ_DMA | CMDF_ABORT, 0, 1,
                               prdt, ARRAY_SIZE(prdt), NULL);
     g_assert_cmphex(status, ==, BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
+    free_pci_device(dev);
 }
 
 static void test_bmdma_no_busmaster(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t status;
+
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
 
     /* No PRDT_EOT, each entry addr 0/size 64k, and in theory qemu shouldn't be
      * able to access it anyway because the Bus Master bit in the PCI command
@@ -426,7 +522,8 @@ static void test_bmdma_no_busmaster(void)
     /* Not entirely clear what the expected result is, but this is what we get
      * in practice. At least we want to be aware of any changes. */
     g_assert_cmphex(status, ==, BM_STS_ACTIVE | BM_STS_INTR);
-    assert_bit_clear(inb(IDE_BASE + reg_status), DF | ERR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
+    free_pci_device(dev);
 }
 
 static void test_bmdma_setup(void)
@@ -456,6 +553,8 @@ static void string_cpu_to_be16(uint16_t *s, size_t bytes)
 
 static void test_identify(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t data;
     uint16_t buf[256];
     int i;
@@ -466,23 +565,25 @@ static void test_identify(void)
         "-global ide-hd.ver=%s",
         tmp_path, "testdisk", "version");
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
     /* IDENTIFY command on device 0*/
-    outb(IDE_BASE + reg_device, 0);
-    outb(IDE_BASE + reg_command, CMD_IDENTIFY);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_IDENTIFY);
 
     /* Read in the IDENTIFY buffer and check registers */
-    data = inb(IDE_BASE + reg_device);
+    data = qpci_io_readb(dev, ide_bar, reg_device);
     g_assert_cmpint(data & DEV, ==, 0);
 
     for (i = 0; i < 256; i++) {
-        data = inb(IDE_BASE + reg_status);
+        data = qpci_io_readb(dev, ide_bar, reg_status);
         assert_bit_set(data, DRDY | DRQ);
         assert_bit_clear(data, BSY | DF | ERR);
 
-        ((uint16_t*) buf)[i] = inw(IDE_BASE + reg_data);
+        buf[i] = qpci_io_readw(dev, ide_bar, reg_data);
     }
 
-    data = inb(IDE_BASE + reg_status);
+    data = qpci_io_readb(dev, ide_bar, reg_status);
     assert_bit_set(data, DRDY);
     assert_bit_clear(data, BSY | DF | ERR | DRQ);
 
@@ -499,25 +600,74 @@ static void test_identify(void)
     assert_bit_set(buf[85], 0x20);
 
     ide_test_quit();
+    free_pci_device(dev);
+}
+
+/*
+ * Write sector 1 with random data to make IDE storage dirty
+ * Needed for flush tests so that flushes actually go though the block layer
+ */
+static void make_dirty(uint8_t device)
+{
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
+    uint8_t status;
+    size_t len = 512;
+    uintptr_t guest_buf;
+    void* buf;
+
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
+    guest_buf = guest_alloc(guest_malloc, len);
+    buf = g_malloc(len);
+    memset(buf, rand() % 255 + 1, len);
+    g_assert(guest_buf);
+    g_assert(buf);
+
+    memwrite(guest_buf, buf, len);
+
+    PrdtEntry prdt[] = {
+        {
+            .addr = cpu_to_le32(guest_buf),
+            .size = cpu_to_le32(len | PRDT_EOT),
+        },
+    };
+
+    status = send_dma_request(CMD_WRITE_DMA, 1, 1, prdt,
+                              ARRAY_SIZE(prdt), NULL);
+    g_assert_cmphex(status, ==, BM_STS_INTR);
+    assert_bit_clear(qpci_io_readb(dev, ide_bar, reg_status), DF | ERR);
+
+    g_free(buf);
+    free_pci_device(dev);
 }
 
 static void test_flush(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t data;
 
     ide_test_start(
         "-drive file=blkdebug::%s,if=ide,cache=writeback,format=raw",
         tmp_path);
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
+    qtest_irq_intercept_in(global_qtest, "ioapic");
+
+    /* Dirty media so that CMD_FLUSH_CACHE will actually go to disk */
+    make_dirty(0);
+
     /* Delay the completion of the flush request until we explicitly do it */
     g_free(hmp("qemu-io ide0-hd0 \"break flush_to_os A\""));
 
     /* FLUSH CACHE command on device 0*/
-    outb(IDE_BASE + reg_device, 0);
-    outb(IDE_BASE + reg_command, CMD_FLUSH_CACHE);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_FLUSH_CACHE);
 
     /* Check status while request is in flight*/
-    data = inb(IDE_BASE + reg_status);
+    data = qpci_io_readb(dev, ide_bar, reg_status);
     assert_bit_set(data, BSY | DRDY);
     assert_bit_clear(data, DF | ERR | DRQ);
 
@@ -525,38 +675,47 @@ static void test_flush(void)
     g_free(hmp("qemu-io ide0-hd0 \"resume A\""));
 
     /* Check registers */
-    data = inb(IDE_BASE + reg_device);
+    data = qpci_io_readb(dev, ide_bar, reg_device);
     g_assert_cmpint(data & DEV, ==, 0);
 
     do {
-        data = inb(IDE_BASE + reg_status);
+        data = qpci_io_readb(dev, ide_bar, reg_status);
     } while (data & BSY);
 
     assert_bit_set(data, DRDY);
     assert_bit_clear(data, BSY | DF | ERR | DRQ);
 
     ide_test_quit();
+    free_pci_device(dev);
 }
 
 static void test_retry_flush(const char *machine)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t data;
     const char *s;
 
     prepare_blkdebug_script(debug_path, "flush_to_disk");
 
     ide_test_start(
-        "-vnc none "
         "-drive file=blkdebug:%s:%s,if=ide,cache=writeback,format=raw,"
         "rerror=stop,werror=stop",
         debug_path, tmp_path);
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
+    qtest_irq_intercept_in(global_qtest, "ioapic");
+
+    /* Dirty media so that CMD_FLUSH_CACHE will actually go to disk */
+    make_dirty(0);
+
     /* FLUSH CACHE command on device 0*/
-    outb(IDE_BASE + reg_device, 0);
-    outb(IDE_BASE + reg_command, CMD_FLUSH_CACHE);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_FLUSH_CACHE);
 
     /* Check status while request is in flight*/
-    data = inb(IDE_BASE + reg_status);
+    data = qpci_io_readb(dev, ide_bar, reg_status);
     assert_bit_set(data, BSY | DRDY);
     assert_bit_clear(data, DF | ERR | DRQ);
 
@@ -567,29 +726,54 @@ static void test_retry_flush(const char *machine)
     qmp_discard_response(s);
 
     /* Check registers */
-    data = inb(IDE_BASE + reg_device);
+    data = qpci_io_readb(dev, ide_bar, reg_device);
     g_assert_cmpint(data & DEV, ==, 0);
 
     do {
-        data = inb(IDE_BASE + reg_status);
+        data = qpci_io_readb(dev, ide_bar, reg_status);
     } while (data & BSY);
 
     assert_bit_set(data, DRDY);
     assert_bit_clear(data, BSY | DF | ERR | DRQ);
 
     ide_test_quit();
+    free_pci_device(dev);
 }
 
 static void test_flush_nodev(void)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
+
     ide_test_start("");
 
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
     /* FLUSH CACHE command on device 0*/
-    outb(IDE_BASE + reg_device, 0);
-    outb(IDE_BASE + reg_command, CMD_FLUSH_CACHE);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_FLUSH_CACHE);
 
     /* Just testing that qemu doesn't crash... */
 
+    free_pci_device(dev);
+    ide_test_quit();
+}
+
+static void test_flush_empty_drive(void)
+{
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
+
+    ide_test_start("-device ide-cd,bus=ide.0");
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
+
+    /* FLUSH CACHE command on device 0 */
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_FLUSH_CACHE);
+
+    /* Just testing that qemu doesn't crash... */
+
+    free_pci_device(dev);
     ide_test_quit();
 }
 
@@ -613,7 +797,8 @@ typedef struct Read10CDB {
     uint16_t padding;
 } __attribute__((__packed__)) Read10CDB;
 
-static void send_scsi_cdb_read10(uint64_t lba, int nblocks)
+static void send_scsi_cdb_read10(QPCIDevice *dev, QPCIBar ide_bar,
+                                 uint64_t lba, int nblocks)
 {
     Read10CDB pkt = { .padding = 0 };
     int i;
@@ -629,7 +814,8 @@ static void send_scsi_cdb_read10(uint64_t lba, int nblocks)
 
     /* Send Packet */
     for (i = 0; i < sizeof(Read10CDB)/2; i++) {
-        outw(IDE_BASE + reg_data, cpu_to_le16(((uint16_t *)&pkt)[i]));
+        qpci_io_writew(dev, ide_bar, reg_data,
+                       le16_to_cpu(((uint16_t *)&pkt)[i]));
     }
 }
 
@@ -642,14 +828,19 @@ static void nsleep(int64_t nsecs)
 
 static uint8_t ide_wait_clear(uint8_t flag)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     uint8_t data;
     time_t st;
+
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
 
     /* Wait with a 5 second timeout */
     time(&st);
     while (true) {
-        data = inb(IDE_BASE + reg_status);
+        data = qpci_io_readb(dev, ide_bar, reg_status);
         if (!(data & flag)) {
+            free_pci_device(dev);
             return data;
         }
         if (difftime(time(NULL), st) > 5.0) {
@@ -682,6 +873,8 @@ static void ide_wait_intr(int irq)
 
 static void cdrom_pio_impl(int nblocks)
 {
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
     FILE *fh;
     int patt_blocks = MAX(16, nblocks);
     size_t patt_len = ATAPI_BLOCK_SIZE * patt_blocks;
@@ -691,22 +884,25 @@ static void cdrom_pio_impl(int nblocks)
     int i, j;
     uint8_t data;
     uint16_t limit;
+    size_t ret;
 
     /* Prepopulate the CDROM with an interesting pattern */
     generate_pattern(pattern, patt_len, ATAPI_BLOCK_SIZE);
     fh = fopen(tmp_path, "w+");
-    fwrite(pattern, ATAPI_BLOCK_SIZE, patt_blocks, fh);
+    ret = fwrite(pattern, ATAPI_BLOCK_SIZE, patt_blocks, fh);
+    g_assert_cmpint(ret, ==, patt_blocks);
     fclose(fh);
 
     ide_test_start("-drive if=none,file=%s,media=cdrom,format=raw,id=sr0,index=0 "
                    "-device ide-cd,drive=sr0,bus=ide.0", tmp_path);
+    dev = get_pci_device(&bmdma_bar, &ide_bar);
     qtest_irq_intercept_in(global_qtest, "ioapic");
 
     /* PACKET command on device 0 */
-    outb(IDE_BASE + reg_device, 0);
-    outb(IDE_BASE + reg_lba_middle, BYTE_COUNT_LIMIT & 0xFF);
-    outb(IDE_BASE + reg_lba_high, (BYTE_COUNT_LIMIT >> 8 & 0xFF));
-    outb(IDE_BASE + reg_command, CMD_PACKET);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_lba_middle, BYTE_COUNT_LIMIT & 0xFF);
+    qpci_io_writeb(dev, ide_bar, reg_lba_high, (BYTE_COUNT_LIMIT >> 8 & 0xFF));
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_PACKET);
     /* HP0: Check_Status_A State */
     nsleep(400);
     data = ide_wait_clear(BSY);
@@ -715,7 +911,7 @@ static void cdrom_pio_impl(int nblocks)
     assert_bit_clear(data, ERR | DF | BSY);
 
     /* SCSI CDB (READ10) -- read n*2048 bytes from block 0 */
-    send_scsi_cdb_read10(0, nblocks);
+    send_scsi_cdb_read10(dev, ide_bar, 0, nblocks);
 
     /* Read data back: occurs in bursts of 'BYTE_COUNT_LIMIT' bytes.
      * If BYTE_COUNT_LIMIT is odd, we transfer BYTE_COUNT_LIMIT - 1 bytes.
@@ -739,7 +935,8 @@ static void cdrom_pio_impl(int nblocks)
 
         /* HP4: Transfer_Data */
         for (j = 0; j < MIN((limit / 2), rem); j++) {
-            rx[offset + j] = le16_to_cpu(inw(IDE_BASE + reg_data));
+            rx[offset + j] = cpu_to_le16(qpci_io_readw(dev, ide_bar,
+                                                       reg_data));
         }
     }
 
@@ -755,6 +952,7 @@ static void cdrom_pio_impl(int nblocks)
     g_free(pattern);
     g_free(rx);
     test_bmdma_teardown();
+    free_pci_device(dev);
 }
 
 static void test_cdrom_pio(void)
@@ -772,6 +970,7 @@ static void test_cdrom_pio_large(void)
 static void test_cdrom_dma(void)
 {
     static const size_t len = ATAPI_BLOCK_SIZE;
+    size_t ret;
     char *pattern = g_malloc(ATAPI_BLOCK_SIZE * 16);
     char *rx = g_malloc0(len);
     uintptr_t guest_buf;
@@ -788,7 +987,8 @@ static void test_cdrom_dma(void)
 
     generate_pattern(pattern, ATAPI_BLOCK_SIZE * 16, ATAPI_BLOCK_SIZE);
     fh = fopen(tmp_path, "w+");
-    fwrite(pattern, ATAPI_BLOCK_SIZE, 16, fh);
+    ret = fwrite(pattern, ATAPI_BLOCK_SIZE, 16, fh);
+    g_assert_cmpint(ret, ==, 16);
     fclose(fh);
 
     send_dma_request(CMD_PACKET, 0, 1, prdt, 1, send_scsi_cdb_read10);
@@ -833,6 +1033,7 @@ int main(int argc, char **argv)
 
     qtest_add_func("/ide/bmdma/setup", test_bmdma_setup);
     qtest_add_func("/ide/bmdma/simple_rw", test_bmdma_simple_rw);
+    qtest_add_func("/ide/bmdma/trim", test_bmdma_trim);
     qtest_add_func("/ide/bmdma/short_prdt", test_bmdma_short_prdt);
     qtest_add_func("/ide/bmdma/one_sector_short_prdt",
                    test_bmdma_one_sector_short_prdt);
@@ -842,6 +1043,7 @@ int main(int argc, char **argv)
 
     qtest_add_func("/ide/flush", test_flush);
     qtest_add_func("/ide/flush/nodev", test_flush_nodev);
+    qtest_add_func("/ide/flush/empty_drive", test_flush_empty_drive);
     qtest_add_func("/ide/flush/retry_pci", test_pci_retry_flush);
     qtest_add_func("/ide/flush/retry_isa", test_isa_retry_flush);
 

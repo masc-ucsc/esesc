@@ -18,6 +18,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "hw/usb.h"
@@ -273,13 +274,13 @@ static void usb_bt_fifo_enqueue(struct usb_hci_in_fifo_s *fifo,
     if (off <= DFIFO_LEN_MASK) {
         if (off + len > DFIFO_LEN_MASK + 1 &&
                         (fifo->dsize = off + len) > (DFIFO_LEN_MASK + 1) * 2) {
-            fprintf(stderr, "%s: can't alloc %i bytes\n", __FUNCTION__, len);
+            fprintf(stderr, "%s: can't alloc %i bytes\n", __func__, len);
             exit(-1);
         }
         buf = fifo->data + off;
     } else {
         if (fifo->dlen > fifo->dsize) {
-            fprintf(stderr, "%s: can't alloc %i bytes\n", __FUNCTION__, len);
+            fprintf(stderr, "%s: can't alloc %i bytes\n", __func__, len);
             exit(-1);
         }
         buf = fifo->data + off - fifo->dsize;
@@ -495,7 +496,7 @@ static void usb_bt_out_hci_packet_acl(void *opaque,
     usb_bt_fifo_enqueue(&s->acl, data, len);
 }
 
-static void usb_bt_handle_destroy(USBDevice *dev)
+static void usb_bt_unrealize(USBDevice *dev, Error **errp)
 {
     struct USBBtState *s = (struct USBBtState *) dev->opaque;
 
@@ -558,7 +559,7 @@ static void usb_bt_class_initfn(ObjectClass *klass, void *data)
     uc->handle_reset   = usb_bt_handle_reset;
     uc->handle_control = usb_bt_handle_control;
     uc->handle_data    = usb_bt_handle_data;
-    uc->handle_destroy = usb_bt_handle_destroy;
+    uc->unrealize      = usb_bt_unrealize;
     dc->vmsd = &vmstate_usb_bt;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 }

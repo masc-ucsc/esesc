@@ -13,6 +13,10 @@
  * i.MX31 SoC
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/arm/fsl-imx31.h"
 #include "hw/boards.h"
 #include "qemu/error-report.h"
@@ -63,7 +67,6 @@ static struct arm_boot_info kzm_binfo = {
 static void kzm_init(MachineState *machine)
 {
     IMX31KZM *s = g_new0(IMX31KZM, 1);
-    Error *err = NULL;
     unsigned int ram_size;
     unsigned int alias_offset;
     unsigned int i;
@@ -72,17 +75,13 @@ static void kzm_init(MachineState *machine)
     object_property_add_child(OBJECT(machine), "soc", OBJECT(&s->soc),
                               &error_abort);
 
-    object_property_set_bool(OBJECT(&s->soc), true, "realized", &err);
-    if (err != NULL) {
-        error_report("%s", error_get_pretty(err));
-        exit(1);
-    }
+    object_property_set_bool(OBJECT(&s->soc), true, "realized", &error_fatal);
 
     /* Check the amount of memory is compatible with the SOC */
     if (machine->ram_size > (FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE)) {
-        error_report("WARNING: RAM size " RAM_ADDR_FMT " above max supported, "
-                     "reduced to %x", machine->ram_size,
-                     FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE);
+        warn_report("RAM size " RAM_ADDR_FMT " above max supported, "
+                    "reduced to %x", machine->ram_size,
+                    FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE);
         machine->ram_size = FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE;
     }
 
@@ -122,10 +121,10 @@ static void kzm_init(MachineState *machine)
                      qdev_get_gpio_in(DEVICE(&s->soc.avic), 52));
     }
 
-    if (serial_hds[2]) { /* touchscreen */
+    if (serial_hd(2)) { /* touchscreen */
         serial_mm_init(get_system_memory(), KZM_FPGA_ADDR+0x10, 0,
                        qdev_get_gpio_in(DEVICE(&s->soc.avic), 52),
-                       14745600, serial_hds[2], DEVICE_NATIVE_ENDIAN);
+                       14745600, serial_hd(2), DEVICE_NATIVE_ENDIAN);
     }
 
     kzm_binfo.ram_size = machine->ram_size;
@@ -143,6 +142,7 @@ static void kzm_machine_init(MachineClass *mc)
 {
     mc->desc = "ARM KZM Emulation Baseboard (ARM1136)";
     mc->init = kzm_init;
+    mc->ignore_memory_transaction_failures = true;
 }
 
 DEFINE_MACHINE("kzm", kzm_machine_init)

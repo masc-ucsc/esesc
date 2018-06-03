@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "tap_int.h"
 #include "tap-linux.h"
 #include "net/tap.h"
@@ -31,8 +32,9 @@
 #include <sys/ioctl.h>
 
 #include "sysemu/sysemu.h"
-#include "qemu-common.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/cutils.h"
 
 #define PATH_NET_TUN "/dev/net/tun"
 
@@ -53,7 +55,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
 
     if (ioctl(fd, TUNGETFEATURES, &features) == -1) {
-        error_report("warning: TUNGETFEATURES failed: %s", strerror(errno));
+        warn_report("TUNGETFEATURES failed: %s", strerror(errno));
         features = 0;
     }
 

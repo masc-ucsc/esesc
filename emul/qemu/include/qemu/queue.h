@@ -37,8 +37,8 @@
  *      @(#)queue.h     8.5 (Berkeley) 8/20/94
  */
 
-#ifndef QEMU_SYS_QUEUE_H_
-#define QEMU_SYS_QUEUE_H_
+#ifndef QEMU_SYS_QUEUE_H
+#define QEMU_SYS_QUEUE_H
 
 /*
  * This file defines four types of data structures: singly-linked lists,
@@ -324,6 +324,14 @@ struct {                                                                \
     }                                                                   \
 } while (/*CONSTCOND*/0)
 
+#define QSIMPLEQ_PREPEND(head1, head2) do {                             \
+    if (!QSIMPLEQ_EMPTY((head2))) {                                     \
+        *(head2)->sqh_last = (head1)->sqh_first;                        \
+        (head1)->sqh_first = (head2)->sqh_first;                          \
+        QSIMPLEQ_INIT((head2));                                         \
+    }                                                                   \
+} while (/*CONSTCOND*/0)
+
 #define QSIMPLEQ_LAST(head, type, field)                                \
     (QSIMPLEQ_EMPTY((head)) ?                                           \
         NULL :                                                          \
@@ -407,6 +415,7 @@ struct {                                                                \
         else                                                            \
                 (head)->tqh_last = (elm)->field.tqe_prev;               \
         *(elm)->field.tqe_prev = (elm)->field.tqe_next;                 \
+        (elm)->field.tqe_prev = NULL;                                   \
 } while (/*CONSTCOND*/0)
 
 #define QTAILQ_FOREACH(var, head, field)                                \
@@ -424,16 +433,82 @@ struct {                                                                \
                 (var);                                                  \
                 (var) = (*(((struct headname *)((var)->field.tqe_prev))->tqh_last)))
 
+#define QTAILQ_FOREACH_REVERSE_SAFE(var, head, headname, field, prev_var) \
+        for ((var) = (*(((struct headname *)((head)->tqh_last))->tqh_last)); \
+             (var) && ((prev_var) = (*(((struct headname *)((var)->field.tqe_prev))->tqh_last)), 1); \
+             (var) = (prev_var))
+
 /*
  * Tail queue access methods.
  */
 #define QTAILQ_EMPTY(head)               ((head)->tqh_first == NULL)
 #define QTAILQ_FIRST(head)               ((head)->tqh_first)
 #define QTAILQ_NEXT(elm, field)          ((elm)->field.tqe_next)
+#define QTAILQ_IN_USE(elm, field)        ((elm)->field.tqe_prev != NULL)
 
 #define QTAILQ_LAST(head, headname) \
         (*(((struct headname *)((head)->tqh_last))->tqh_last))
 #define QTAILQ_PREV(elm, headname, field) \
         (*(((struct headname *)((elm)->field.tqe_prev))->tqh_last))
 
-#endif  /* !QEMU_SYS_QUEUE_H_ */
+#define field_at_offset(base, offset, type)                                    \
+        ((type) (((char *) (base)) + (offset)))
+
+typedef struct DUMMY_Q_ENTRY DUMMY_Q_ENTRY;
+typedef struct DUMMY_Q DUMMY_Q;
+
+struct DUMMY_Q_ENTRY {
+        QTAILQ_ENTRY(DUMMY_Q_ENTRY) next;
+};
+
+struct DUMMY_Q {
+        QTAILQ_HEAD(DUMMY_Q_HEAD, DUMMY_Q_ENTRY) head;
+};
+
+#define dummy_q ((DUMMY_Q *) 0)
+#define dummy_qe ((DUMMY_Q_ENTRY *) 0)
+
+/*
+ * Offsets of layout of a tail queue head.
+ */
+#define QTAILQ_FIRST_OFFSET (offsetof(typeof(dummy_q->head), tqh_first))
+#define QTAILQ_LAST_OFFSET  (offsetof(typeof(dummy_q->head), tqh_last))
+/*
+ * Raw access of elements of a tail queue
+ */
+#define QTAILQ_RAW_FIRST(head)                                                 \
+        (*field_at_offset(head, QTAILQ_FIRST_OFFSET, void **))
+#define QTAILQ_RAW_TQH_LAST(head)                                              \
+        (*field_at_offset(head, QTAILQ_LAST_OFFSET, void ***))
+
+/*
+ * Offsets of layout of a tail queue element.
+ */
+#define QTAILQ_NEXT_OFFSET (offsetof(typeof(dummy_qe->next), tqe_next))
+#define QTAILQ_PREV_OFFSET (offsetof(typeof(dummy_qe->next), tqe_prev))
+
+/*
+ * Raw access of elements of a tail entry
+ */
+#define QTAILQ_RAW_NEXT(elm, entry)                                            \
+        (*field_at_offset(elm, entry + QTAILQ_NEXT_OFFSET, void **))
+#define QTAILQ_RAW_TQE_PREV(elm, entry)                                        \
+        (*field_at_offset(elm, entry + QTAILQ_PREV_OFFSET, void ***))
+/*
+ * Tail queue tranversal using pointer arithmetic.
+ */
+#define QTAILQ_RAW_FOREACH(elm, head, entry)                                   \
+        for ((elm) = QTAILQ_RAW_FIRST(head);                                   \
+             (elm);                                                            \
+             (elm) = QTAILQ_RAW_NEXT(elm, entry))
+/*
+ * Tail queue insertion using pointer arithmetic.
+ */
+#define QTAILQ_RAW_INSERT_TAIL(head, elm, entry) do {                          \
+        QTAILQ_RAW_NEXT(elm, entry) = NULL;                                    \
+        QTAILQ_RAW_TQE_PREV(elm, entry) = QTAILQ_RAW_TQH_LAST(head);           \
+        *QTAILQ_RAW_TQH_LAST(head) = (elm);                                    \
+        QTAILQ_RAW_TQH_LAST(head) = &QTAILQ_RAW_NEXT(elm, entry);              \
+} while (/*CONSTCOND*/0)
+
+#endif /* QEMU_SYS_QUEUE_H */

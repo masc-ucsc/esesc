@@ -9,6 +9,7 @@
 
 /* TODO: Implement PEC.  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus.h"
@@ -66,7 +67,7 @@ static void smbus_do_write(SMBusDevice *dev)
     }
 }
 
-static void smbus_i2c_event(I2CSlave *s, enum i2c_event event)
+static int smbus_i2c_event(I2CSlave *s, enum i2c_event event)
 {
     SMBusDevice *dev = SMBUS_DEVICE(s);
 
@@ -147,6 +148,8 @@ static void smbus_i2c_event(I2CSlave *s, enum i2c_event event)
             break;
         }
     }
+
+    return 0;
 }
 
 static int smbus_i2c_recv(I2CSlave *s)
@@ -247,7 +250,10 @@ int smbus_read_byte(I2CBus *bus, uint8_t addr, uint8_t command)
         return -1;
     }
     i2c_send(bus, command);
-    i2c_start_transfer(bus, addr, 1);
+    if (i2c_start_transfer(bus, addr, 1)) {
+        i2c_end_transfer(bus);
+        return -1;
+    }
     data = i2c_recv(bus);
     i2c_nack(bus);
     i2c_end_transfer(bus);
@@ -272,7 +278,10 @@ int smbus_read_word(I2CBus *bus, uint8_t addr, uint8_t command)
         return -1;
     }
     i2c_send(bus, command);
-    i2c_start_transfer(bus, addr, 1);
+    if (i2c_start_transfer(bus, addr, 1)) {
+        i2c_end_transfer(bus);
+        return -1;
+    }
     data = i2c_recv(bus);
     data |= i2c_recv(bus) << 8;
     i2c_nack(bus);
@@ -301,7 +310,10 @@ int smbus_read_block(I2CBus *bus, uint8_t addr, uint8_t command, uint8_t *data)
         return -1;
     }
     i2c_send(bus, command);
-    i2c_start_transfer(bus, addr, 1);
+    if (i2c_start_transfer(bus, addr, 1)) {
+        i2c_end_transfer(bus);
+        return -1;
+    }
     len = i2c_recv(bus);
     if (len > 32) {
         len = 0;

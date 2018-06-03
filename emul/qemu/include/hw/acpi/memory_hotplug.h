@@ -3,7 +3,7 @@
 
 #include "hw/qdev-core.h"
 #include "hw/acpi/acpi.h"
-#include "migration/vmstate.h"
+#include "hw/acpi/aml-build.h"
 
 /**
  * MemStatus:
@@ -29,11 +29,11 @@ typedef struct MemHotplugState {
 } MemHotplugState;
 
 void acpi_memory_hotplug_init(MemoryRegion *as, Object *owner,
-                              MemHotplugState *state);
+                              MemHotplugState *state, uint16_t io_base);
 
-void acpi_memory_plug_cb(ACPIREGS *ar, qemu_irq irq, MemHotplugState *mem_st,
+void acpi_memory_plug_cb(HotplugHandler *hotplug_dev, MemHotplugState *mem_st,
                          DeviceState *dev, Error **errp);
-void acpi_memory_unplug_request_cb(ACPIREGS *ar, qemu_irq irq,
+void acpi_memory_unplug_request_cb(HotplugHandler *hotplug_dev,
                                    MemHotplugState *mem_st,
                                    DeviceState *dev, Error **errp);
 void acpi_memory_unplug_cb(MemHotplugState *mem_st,
@@ -45,4 +45,8 @@ extern const VMStateDescription vmstate_memory_hotplug;
                    vmstate_memory_hotplug, MemHotplugState)
 
 void acpi_memory_ospm_status(MemHotplugState *mem_st, ACPIOSTInfoList ***list);
+
+void build_memory_hotplug_aml(Aml *table, uint32_t nr_mem,
+                              const char *res_root,
+                              const char *event_handler_method);
 #endif

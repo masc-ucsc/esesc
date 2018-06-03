@@ -181,7 +181,7 @@ void Prefetcher::nextPrefetch()
 
   curPrefetch++;
 
-  if(curPrefetch >= maxPrefetch || pending_preq_conf <= 0) {
+  if(curPrefetch >= maxPrefetch || pending_preq_conf <= 1) {
     pending_prefetch    = false;
     pending_chain_fetch = 0;
     pending_preq_conf   = 0;

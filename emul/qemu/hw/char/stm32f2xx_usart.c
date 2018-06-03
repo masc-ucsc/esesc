@@ -22,7 +22,9 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/char/stm32f2xx_usart.h"
+#include "qemu/log.h"
 
 #ifndef STM_USART_ERR_DEBUG
 #define STM_USART_ERR_DEBUG 0
@@ -32,7 +34,7 @@
     if (STM_USART_ERR_DEBUG >= lvl) { \
         qemu_log("%s: " fmt, __func__, ## args); \
     } \
-} while (0);
+} while (0)
 
 #define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
@@ -94,18 +96,12 @@ static uint64_t stm32f2xx_usart_read(void *opaque, hwaddr addr,
     switch (addr) {
     case USART_SR:
         retvalue = s->usart_sr;
-        s->usart_sr &= ~USART_SR_TC;
-        if (s->chr) {
-            qemu_chr_accept_input(s->chr);
-        }
+        qemu_chr_fe_accept_input(&s->chr);
         return retvalue;
     case USART_DR:
         DB_PRINT("Value: 0x%" PRIx32 ", %c\n", s->usart_dr, (char) s->usart_dr);
-        s->usart_sr |= USART_SR_TXE;
         s->usart_sr &= ~USART_SR_RXNE;
-        if (s->chr) {
-            qemu_chr_accept_input(s->chr);
-        }
+        qemu_chr_fe_accept_input(&s->chr);
         qemu_set_irq(s->irq, 0);
         return s->usart_dr & 0x3FF;
     case USART_BRR:
@@ -139,7 +135,9 @@ static void stm32f2xx_usart_write(void *opaque, hwaddr addr,
     switch (addr) {
     case USART_SR:
         if (value <= 0x3FF) {
-            s->usart_sr = value;
+            /* I/O being synchronous, TXE is always set. In addition, it may
+               only be set by hardware, so keep it set here. */
+            s->usart_sr = value | USART_SR_TXE;
         } else {
             s->usart_sr &= value;
         }
@@ -150,11 +148,15 @@ static void stm32f2xx_usart_write(void *opaque, hwaddr addr,
     case USART_DR:
         if (value < 0xF000) {
             ch = value;
-            if (s->chr) {
-                qemu_chr_fe_write_all(s->chr, &ch, 1);
-            }
+            /* XXX this blocks entire thread. Rewrite to use
+             * qemu_chr_fe_write and background I/O callbacks */
+            qemu_chr_fe_write_all(&s->chr, &ch, 1);
+            /* XXX I/O are currently synchronous, making it impossible for
+               software to observe transient states where TXE or TC aren't
+               set. Unlike TXE however, which is read-only, software may
+               clear TC by writing 0 to the SR register, so set it again
+               on each write. */
             s->usart_sr |= USART_SR_TC;
-            s->usart_sr &= ~USART_SR_TXE;
         }
         return;
     case USART_BRR:
@@ -188,6 +190,11 @@ static const MemoryRegionOps stm32f2xx_usart_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static Property stm32f2xx_usart_properties[] = {
+    DEFINE_PROP_CHR("chardev", STM32F2XXUsartState, chr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void stm32f2xx_usart_init(Object *obj)
 {
     STM32F2XXUsartState *s = STM32F2XX_USART(obj);
@@ -197,14 +204,15 @@ static void stm32f2xx_usart_init(Object *obj)
     memory_region_init_io(&s->mmio, obj, &stm32f2xx_usart_ops, s,
                           TYPE_STM32F2XX_USART, 0x2000);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
+}
 
-    /* FIXME use a qdev chardev prop instead of qemu_char_get_next_serial() */
-    s->chr = qemu_char_get_next_serial();
+static void stm32f2xx_usart_realize(DeviceState *dev, Error **errp)
+{
+    STM32F2XXUsartState *s = STM32F2XX_USART(dev);
 
-    if (s->chr) {
-        qemu_chr_add_handlers(s->chr, stm32f2xx_usart_can_receive,
-                              stm32f2xx_usart_receive, NULL, s);
-    }
+    qemu_chr_fe_set_handlers(&s->chr, stm32f2xx_usart_can_receive,
+                             stm32f2xx_usart_receive, NULL, NULL,
+                             s, NULL, true);
 }
 
 static void stm32f2xx_usart_class_init(ObjectClass *klass, void *data)
@@ -212,8 +220,8 @@ static void stm32f2xx_usart_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = stm32f2xx_usart_reset;
-    /* Reason: instance_init() method uses qemu_char_get_next_serial() */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->props = stm32f2xx_usart_properties;
+    dc->realize = stm32f2xx_usart_realize;
 }
 
 static const TypeInfo stm32f2xx_usart_info = {

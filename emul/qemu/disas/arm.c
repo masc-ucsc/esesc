@@ -22,9 +22,8 @@
 /* Start of qemu specific additions.  Mostly this is stub definitions
    for things we don't care about.  */
 
+#include "qemu/osdep.h"
 #include "disas/bfd.h"
-#define ATTRIBUTE_UNUSED __attribute__((unused))
-#define ISSPACE(x) ((x) == ' ' || (x) == '\t' || (x) == '\n')
 
 #define ARM_EXT_V1	 0
 #define ARM_EXT_V2	 0
@@ -71,16 +70,18 @@ static void floatformat_to_double (unsigned char *data, double *dest)
     *dest = u.f;
 }
 
+static int arm_read_memory(bfd_vma memaddr, bfd_byte *b, int length,
+                           struct disassemble_info *info)
+{
+    assert((info->flags & INSN_ARM_BE32) == 0 || length == 2 || length == 4);
+
+    if ((info->flags & INSN_ARM_BE32) != 0 && length == 2) {
+        memaddr ^= 2;
+    }
+    return info->read_memory_func(memaddr, b, length, info);
+}
+
 /* End of qemu specific additions.  */
-
-/* FIXME: Belongs in global header.  */
-#ifndef strneq
-#define strneq(a,b,n)	(strncmp ((a), (b), (n)) == 0)
-#endif
-
-#ifndef NUM_ELEM
-#define NUM_ELEM(a)     (sizeof (a) / sizeof (a)[0])
-#endif
 
 struct opcode32
 {
@@ -1528,7 +1529,6 @@ static const char *const iwmmxt_cregnames[] =
 /* Default to GCC register name set.  */
 static unsigned int regname_selected = 1;
 
-#define NUM_ARM_REGNAMES  NUM_ELEM (regnames)
 #define arm_regnames      regnames[regname_selected].reg_names
 
 static bfd_boolean force_thumb = false;
@@ -1662,7 +1662,7 @@ print_insn_coprocessor (bfd_vma pc, struct disassemble_info *info, long given,
 	}
       else
 	{
-	  /* Only match unconditional instuctions against unconditional
+          /* Only match unconditional instructions against unconditional
 	     patterns.  */
 	  if ((given & 0xf0000000) == 0xf0000000)
 	    {
@@ -1816,7 +1816,7 @@ print_insn_coprocessor (bfd_vma pc, struct disassemble_info *info, long given,
 			  func (stream, "e");
 			  break;
 			default:
-			  func (stream, _("<illegal precision>"));
+			  func (stream, "<illegal precision>");
 			  break;
 			}
 		      break;
@@ -3821,7 +3821,7 @@ find_ifthen_state (bfd_vma pc, struct disassemble_info *info,
 	  return;
 	}
       addr -= 2;
-      status = info->read_memory_func (addr, (bfd_byte *)b, 2, info);
+      status = arm_read_memory (addr, (bfd_byte *)b, 2, info);
       if (status)
 	return;
 
@@ -3893,7 +3893,7 @@ print_insn_arm (bfd_vma pc, struct disassemble_info *info)
       info->bytes_per_chunk = size;
       printer = print_insn_data;
 
-      status = info->read_memory_func (pc, (bfd_byte *)b, size, info);
+      status = arm_read_memory (pc, (bfd_byte *)b, size, info);
       given = 0;
       if (little)
 	for (i = size - 1; i >= 0; i--)
@@ -3910,11 +3910,11 @@ print_insn_arm (bfd_vma pc, struct disassemble_info *info)
       info->bytes_per_chunk = 4;
       size = 4;
 
-      status = info->read_memory_func (pc, (bfd_byte *)b, 4, info);
+      status = arm_read_memory (pc, (bfd_byte *)b, 4, info);
       if (little)
-	given = (b[0]) | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+	given = (b[0]) | (b[1] << 8) | (b[2] << 16) | ((unsigned)b[3] << 24);
       else
-	given = (b[3]) | (b[2] << 8) | (b[1] << 16) | (b[0] << 24);
+	given = (b[3]) | (b[2] << 8) | (b[1] << 16) | ((unsigned)b[0] << 24);
     }
   else
     {
@@ -3926,7 +3926,7 @@ print_insn_arm (bfd_vma pc, struct disassemble_info *info)
       info->bytes_per_chunk = 2;
       size = 2;
 
-      status = info->read_memory_func (pc, (bfd_byte *)b, 2, info);
+      status = arm_read_memory (pc, (bfd_byte *)b, 2, info);
       if (little)
 	given = (b[0]) | (b[1] << 8);
       else
@@ -3940,7 +3940,7 @@ print_insn_arm (bfd_vma pc, struct disassemble_info *info)
 	      || (given & 0xF800) == 0xF000
 	      || (given & 0xF800) == 0xE800)
 	    {
-	      status = info->read_memory_func (pc + 2, (bfd_byte *)b, 2, info);
+	      status = arm_read_memory (pc + 2, (bfd_byte *)b, 2, info);
 	      if (little)
 		given = (b[0]) | (b[1] << 8) | (given << 16);
 	      else

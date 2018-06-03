@@ -11,18 +11,27 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qapi/qmp/json-lexer.h"
-#include <stdint.h>
 
 #define MAX_TOKEN_SIZE (64ULL << 20)
 
 /*
- * \"([^\\\"]|(\\\"\\'\\\\\\/\\b\\f\\n\\r\\t\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))*\"
- * '([^\\']|(\\\"\\'\\\\\\/\\b\\f\\n\\r\\t\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))*'
- * 0|([1-9][0-9]*(.[0-9]+)?([eE]([-+])?[0-9]+))
+ * Required by JSON (RFC 7159):
+ *
+ * \"([^\\\"]|\\[\"'\\/bfnrt]|\\u[0-9a-fA-F]{4})*\"
+ * -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][-+]?[0-9]+)?
  * [{}\[\],:]
- * [a-z]+
+ * [a-z]+   # covers null, true, false
+ *
+ * Extension of '' strings:
+ *
+ * '([^\\']|\\[\"'\\/bfnrt]|\\u[0-9a-fA-F]{4})*'
+ *
+ * Extension for vararg handling in JSON construction:
+ *
+ * %((l|ll|I64)?d|[ipsf])
  *
  */
 
@@ -213,20 +222,23 @@ static const uint8_t json_lexer[][256] =  {
         ['\t'] = IN_WHITESPACE,
         ['\r'] = IN_WHITESPACE,
         ['\n'] = IN_WHITESPACE,
-    },        
+    },
 
     /* escape */
     [IN_ESCAPE_LL] = {
         ['d'] = JSON_ESCAPE,
+        ['u'] = JSON_ESCAPE,
     },
 
     [IN_ESCAPE_L] = {
         ['d'] = JSON_ESCAPE,
         ['l'] = IN_ESCAPE_LL,
+        ['u'] = JSON_ESCAPE,
     },
 
     [IN_ESCAPE_I64] = {
         ['d'] = JSON_ESCAPE,
+        ['u'] = JSON_ESCAPE,
     },
 
     [IN_ESCAPE_I6] = {
@@ -242,6 +254,7 @@ static const uint8_t json_lexer[][256] =  {
         ['i'] = JSON_ESCAPE,
         ['p'] = JSON_ESCAPE,
         ['s'] = JSON_ESCAPE,
+        ['u'] = JSON_ESCAPE,
         ['f'] = JSON_ESCAPE,
         ['l'] = IN_ESCAPE_L,
         ['I'] = IN_ESCAPE_I,

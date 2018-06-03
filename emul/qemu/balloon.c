@@ -24,14 +24,15 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "exec/cpu-common.h"
 #include "sysemu/kvm.h"
 #include "sysemu/balloon.h"
-#include "trace.h"
-#include "qmp-commands.h"
+#include "trace-root.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-misc.h"
 #include "qapi/qmp/qerror.h"
-#include "qapi/qmp/qjson.h"
 
 static QEMUBalloonEvent *balloon_event_fn;
 static QEMUBalloonStatus *balloon_stat_fn;

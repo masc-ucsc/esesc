@@ -22,7 +22,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/msi.h"
 #include "qemu/timer.h"
 #include "qemu/main-loop.h" /* iothread mutex */
 #include "qapi/visitor.h"
@@ -68,11 +70,20 @@ typedef struct {
     uint64_t dma_mask;
 } EduState;
 
+static bool edu_msi_enabled(EduState *edu)
+{
+    return msi_enabled(&edu->pdev);
+}
+
 static void edu_raise_irq(EduState *edu, uint32_t val)
 {
     edu->irq_status |= val;
     if (edu->irq_status) {
-        pci_set_irq(&edu->pdev, 1);
+        if (edu_msi_enabled(edu)) {
+            msi_notify(&edu->pdev, 0);
+        } else {
+            pci_set_irq(&edu->pdev, 1);
+        }
     }
 }
 
@@ -80,7 +91,7 @@ static void edu_lower_irq(EduState *edu, uint32_t val)
 {
     edu->irq_status &= ~val;
 
-    if (!edu->irq_status) {
+    if (!edu->irq_status && !edu_msi_enabled(edu)) {
         pci_set_irq(&edu->pdev, 0);
     }
 }
@@ -327,10 +338,16 @@ static void *edu_fact_thread(void *opaque)
     return NULL;
 }
 
-static int pci_edu_init(PCIDevice *pdev)
+static void pci_edu_realize(PCIDevice *pdev, Error **errp)
 {
     EduState *edu = DO_UPCAST(EduState, pdev, pdev);
     uint8_t *pci_conf = pdev->config;
+
+    pci_config_set_interrupt_pin(pci_conf, 1);
+
+    if (msi_init(pdev, 0, 1, true, false, errp)) {
+        return;
+    }
 
     timer_init_ms(&edu->dma_timer, QEMU_CLOCK_VIRTUAL, edu_dma_timer, edu);
 
@@ -339,13 +356,9 @@ static int pci_edu_init(PCIDevice *pdev)
     qemu_thread_create(&edu->thread, "edu", edu_fact_thread,
                        edu, QEMU_THREAD_JOINABLE);
 
-    pci_config_set_interrupt_pin(pci_conf, 1);
-
     memory_region_init_io(&edu->mmio, OBJECT(edu), &edu_mmio_ops, edu,
                     "edu-mmio", 1 << 20);
     pci_register_bar(pdev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &edu->mmio);
-
-    return 0;
 }
 
 static void pci_edu_uninit(PCIDevice *pdev)
@@ -364,12 +377,12 @@ static void pci_edu_uninit(PCIDevice *pdev)
     timer_del(&edu->dma_timer);
 }
 
-static void edu_obj_uint64(Object *obj, struct Visitor *v, void *opaque,
-                const char *name, Error **errp)
+static void edu_obj_uint64(Object *obj, Visitor *v, const char *name,
+                           void *opaque, Error **errp)
 {
     uint64_t *val = opaque;
 
-    visit_type_uint64(v, val, name, errp);
+    visit_type_uint64(v, name, val, errp);
 }
 
 static void edu_instance_init(Object *obj)
@@ -385,7 +398,7 @@ static void edu_class_init(ObjectClass *class, void *data)
 {
     PCIDeviceClass *k = PCI_DEVICE_CLASS(class);
 
-    k->init = pci_edu_init;
+    k->realize = pci_edu_realize;
     k->exit = pci_edu_uninit;
     k->vendor_id = PCI_VENDOR_ID_QEMU;
     k->device_id = 0x11e8;
@@ -395,12 +408,17 @@ static void edu_class_init(ObjectClass *class, void *data)
 
 static void pci_edu_register_types(void)
 {
+    static InterfaceInfo interfaces[] = {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    };
     static const TypeInfo edu_info = {
         .name          = "edu",
         .parent        = TYPE_PCI_DEVICE,
         .instance_size = sizeof(EduState),
         .instance_init = edu_instance_init,
         .class_init    = edu_class_init,
+        .interfaces = interfaces,
     };
 
     type_register_static(&edu_info);

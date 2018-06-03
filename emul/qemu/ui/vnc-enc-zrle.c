@@ -26,6 +26,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "vnc.h"
 #include "vnc-enc-zrle.h"
 
@@ -162,7 +163,6 @@ static void zrle_choose_palette_rle(VncState *vs, int w, int h,
             if (packed_bytes < estimated_bytes) {
                 *use_rle = false;
                 *use_palette = true;
-                estimated_bytes = packed_bytes;
             }
         }
     }

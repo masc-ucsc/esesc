@@ -25,8 +25,13 @@
  *
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "trace.h"
+#include "sysemu/kvm.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/xics.h"
 #include "kvm_ppc.h"
@@ -35,16 +40,20 @@
 
 #include <sys/ioctl.h>
 
-typedef struct KVMXICSState {
-    XICSState parent_obj;
+static int kernel_xics_fd = -1;
 
-    int kernel_xics_fd;
-} KVMXICSState;
+typedef struct KVMEnabledICP {
+    unsigned long vcpu_id;
+    QLIST_ENTRY(KVMEnabledICP) node;
+} KVMEnabledICP;
+
+static QLIST_HEAD(, KVMEnabledICP)
+    kvm_enabled_icps = QLIST_HEAD_INITIALIZER(&kvm_enabled_icps);
 
 /*
  * ICP-KVM
  */
-static void icp_get_kvm_state(ICPState *ss)
+static void icp_get_kvm_state(ICPState *icp)
 {
     uint64_t state;
     struct kvm_one_reg reg = {
@@ -54,25 +63,37 @@ static void icp_get_kvm_state(ICPState *ss)
     int ret;
 
     /* ICP for this CPU thread is not in use, exiting */
-    if (!ss->cs) {
+    if (!icp->cs) {
         return;
     }
 
-    ret = kvm_vcpu_ioctl(ss->cs, KVM_GET_ONE_REG, &reg);
+    ret = kvm_vcpu_ioctl(icp->cs, KVM_GET_ONE_REG, &reg);
     if (ret != 0) {
         error_report("Unable to retrieve KVM interrupt controller state"
-                " for CPU %ld: %s", kvm_arch_vcpu_id(ss->cs), strerror(errno));
+                " for CPU %ld: %s", kvm_arch_vcpu_id(icp->cs), strerror(errno));
         exit(1);
     }
 
-    ss->xirr = state >> KVM_REG_PPC_ICP_XISR_SHIFT;
-    ss->mfrr = (state >> KVM_REG_PPC_ICP_MFRR_SHIFT)
+    icp->xirr = state >> KVM_REG_PPC_ICP_XISR_SHIFT;
+    icp->mfrr = (state >> KVM_REG_PPC_ICP_MFRR_SHIFT)
         & KVM_REG_PPC_ICP_MFRR_MASK;
-    ss->pending_priority = (state >> KVM_REG_PPC_ICP_PPRI_SHIFT)
+    icp->pending_priority = (state >> KVM_REG_PPC_ICP_PPRI_SHIFT)
         & KVM_REG_PPC_ICP_PPRI_MASK;
 }
 
-static int icp_set_kvm_state(ICPState *ss, int version_id)
+static void do_icp_synchronize_state(CPUState *cpu, run_on_cpu_data arg)
+{
+    icp_get_kvm_state(arg.host_ptr);
+}
+
+static void icp_synchronize_state(ICPState *icp)
+{
+    if (icp->cs) {
+        run_on_cpu(icp->cs, do_icp_synchronize_state, RUN_ON_CPU_HOST_PTR(icp));
+    }
+}
+
+static int icp_set_kvm_state(ICPState *icp, int version_id)
 {
     uint64_t state;
     struct kvm_one_reg reg = {
@@ -82,18 +103,18 @@ static int icp_set_kvm_state(ICPState *ss, int version_id)
     int ret;
 
     /* ICP for this CPU thread is not in use, exiting */
-    if (!ss->cs) {
+    if (!icp->cs) {
         return 0;
     }
 
-    state = ((uint64_t)ss->xirr << KVM_REG_PPC_ICP_XISR_SHIFT)
-        | ((uint64_t)ss->mfrr << KVM_REG_PPC_ICP_MFRR_SHIFT)
-        | ((uint64_t)ss->pending_priority << KVM_REG_PPC_ICP_PPRI_SHIFT);
+    state = ((uint64_t)icp->xirr << KVM_REG_PPC_ICP_XISR_SHIFT)
+        | ((uint64_t)icp->mfrr << KVM_REG_PPC_ICP_MFRR_SHIFT)
+        | ((uint64_t)icp->pending_priority << KVM_REG_PPC_ICP_PPRI_SHIFT);
 
-    ret = kvm_vcpu_ioctl(ss->cs, KVM_SET_ONE_REG, &reg);
+    ret = kvm_vcpu_ioctl(icp->cs, KVM_SET_ONE_REG, &reg);
     if (ret != 0) {
         error_report("Unable to restore KVM interrupt controller state (0x%"
-                PRIx64 ") for CPU %ld: %s", state, kvm_arch_vcpu_id(ss->cs),
+                PRIx64 ") for CPU %ld: %s", state, kvm_arch_vcpu_id(icp->cs),
                 strerror(errno));
         return ret;
     }
@@ -101,28 +122,53 @@ static int icp_set_kvm_state(ICPState *ss, int version_id)
     return 0;
 }
 
-static void icp_kvm_reset(DeviceState *dev)
+static void icp_kvm_reset(ICPState *icp)
 {
-    ICPState *icp = ICP(dev);
-
-    icp->xirr = 0;
-    icp->pending_priority = 0xff;
-    icp->mfrr = 0xff;
-
-    /* Make all outputs are deasserted */
-    qemu_set_irq(icp->output, 0);
-
     icp_set_kvm_state(icp, 1);
+}
+
+static void icp_kvm_realize(ICPState *icp, Error **errp)
+{
+    CPUState *cs = icp->cs;
+    KVMEnabledICP *enabled_icp;
+    unsigned long vcpu_id = kvm_arch_vcpu_id(cs);
+    int ret;
+
+    if (kernel_xics_fd == -1) {
+        abort();
+    }
+
+    /*
+     * If we are reusing a parked vCPU fd corresponding to the CPU
+     * which was hot-removed earlier we don't have to renable
+     * KVM_CAP_IRQ_XICS capability again.
+     */
+    QLIST_FOREACH(enabled_icp, &kvm_enabled_icps, node) {
+        if (enabled_icp->vcpu_id == vcpu_id) {
+            return;
+        }
+    }
+
+    ret = kvm_vcpu_enable_cap(cs, KVM_CAP_IRQ_XICS, 0, kernel_xics_fd, vcpu_id);
+    if (ret < 0) {
+        error_setg(errp, "Unable to connect CPU%ld to kernel XICS: %s", vcpu_id,
+                   strerror(errno));
+        return;
+    }
+    enabled_icp = g_malloc(sizeof(*enabled_icp));
+    enabled_icp->vcpu_id = vcpu_id;
+    QLIST_INSERT_HEAD(&kvm_enabled_icps, enabled_icp, node);
 }
 
 static void icp_kvm_class_init(ObjectClass *klass, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
     ICPStateClass *icpc = ICP_CLASS(klass);
 
-    dc->reset = icp_kvm_reset;
     icpc->pre_save = icp_get_kvm_state;
     icpc->post_load = icp_set_kvm_state;
+    icpc->realize = icp_kvm_realize;
+    icpc->reset = icp_kvm_reset;
+    icpc->synchronize_state = icp_synchronize_state;
 }
 
 static const TypeInfo icp_kvm_info = {
@@ -138,7 +184,6 @@ static const TypeInfo icp_kvm_info = {
  */
 static void ics_get_kvm_state(ICSState *ics)
 {
-    KVMXICSState *icpkvm = KVM_XICS(ics->icp);
     uint64_t state;
     struct kvm_device_attr attr = {
         .flags = 0,
@@ -153,7 +198,7 @@ static void ics_get_kvm_state(ICSState *ics)
 
         attr.attr = i + ics->offset;
 
-        ret = ioctl(icpkvm->kernel_xics_fd, KVM_GET_DEVICE_ATTR, &attr);
+        ret = ioctl(kernel_xics_fd, KVM_GET_DEVICE_ATTR, &attr);
         if (ret != 0) {
             error_report("Unable to retrieve KVM interrupt controller state"
                     " for IRQ %d: %s", i + ics->offset, strerror(errno));
@@ -177,6 +222,7 @@ static void ics_get_kvm_state(ICSState *ics)
             irq->priority = irq->saved_priority;
         }
 
+        irq->status = 0;
         if (state & KVM_XICS_PENDING) {
             if (state & KVM_XICS_LEVEL_SENSITIVE) {
                 irq->status |= XICS_STATUS_ASSERTED;
@@ -192,12 +238,22 @@ static void ics_get_kvm_state(ICSState *ics)
                     | XICS_STATUS_REJECTED;
             }
         }
+        if (state & KVM_XICS_PRESENTED) {
+                irq->status |= XICS_STATUS_PRESENTED;
+        }
+        if (state & KVM_XICS_QUEUED) {
+                irq->status |= XICS_STATUS_QUEUED;
+        }
     }
+}
+
+static void ics_synchronize_state(ICSState *ics)
+{
+    ics_get_kvm_state(ics);
 }
 
 static int ics_set_kvm_state(ICSState *ics, int version_id)
 {
-    KVMXICSState *icpkvm = KVM_XICS(ics->icp);
     uint64_t state;
     struct kvm_device_attr attr = {
         .flags = 0,
@@ -230,8 +286,14 @@ static int ics_set_kvm_state(ICSState *ics, int version_id)
                 state |= KVM_XICS_PENDING;
             }
         }
+        if (irq->status & XICS_STATUS_PRESENTED) {
+                state |= KVM_XICS_PRESENTED;
+        }
+        if (irq->status & XICS_STATUS_QUEUED) {
+                state |= KVM_XICS_QUEUED;
+        }
 
-        ret = ioctl(icpkvm->kernel_xics_fd, KVM_SET_DEVICE_ATTR, &attr);
+        ret = ioctl(kernel_xics_fd, KVM_SET_DEVICE_ATTR, &attr);
         if (ret != 0) {
             error_report("Unable to restore KVM interrupt controller state"
                     " for IRQs %d: %s", i + ics->offset, strerror(errno));
@@ -263,9 +325,9 @@ static void ics_kvm_set_irq(void *opaque, int srcno, int val)
     }
 }
 
-static void ics_kvm_reset(DeviceState *dev)
+static void ics_kvm_reset(void *dev)
 {
-    ICSState *ics = ICS(dev);
+    ICSState *ics = ICS_SIMPLE(dev);
     int i;
     uint8_t flags[ics->nr_irqs];
 
@@ -284,32 +346,31 @@ static void ics_kvm_reset(DeviceState *dev)
     ics_set_kvm_state(ics, 1);
 }
 
-static void ics_kvm_realize(DeviceState *dev, Error **errp)
+static void ics_kvm_realize(ICSState *ics, Error **errp)
 {
-    ICSState *ics = ICS(dev);
-
     if (!ics->nr_irqs) {
         error_setg(errp, "Number of interrupts needs to be greater 0");
         return;
     }
     ics->irqs = g_malloc0(ics->nr_irqs * sizeof(ICSIRQState));
     ics->qirqs = qemu_allocate_irqs(ics_kvm_set_irq, ics, ics->nr_irqs);
+
+    qemu_register_reset(ics_kvm_reset, ics);
 }
 
 static void ics_kvm_class_init(ObjectClass *klass, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
-    ICSStateClass *icsc = ICS_CLASS(klass);
+    ICSStateClass *icsc = ICS_BASE_CLASS(klass);
 
-    dc->realize = ics_kvm_realize;
-    dc->reset = ics_kvm_reset;
+    icsc->realize = ics_kvm_realize;
     icsc->pre_save = ics_get_kvm_state;
     icsc->post_load = ics_set_kvm_state;
+    icsc->synchronize_state = ics_synchronize_state;
 }
 
 static const TypeInfo ics_kvm_info = {
-    .name = TYPE_KVM_ICS,
-    .parent = TYPE_ICS,
+    .name = TYPE_ICS_KVM,
+    .parent = TYPE_ICS_SIMPLE,
     .instance_size = sizeof(ICSState),
     .class_init = ics_kvm_class_init,
 };
@@ -317,66 +378,6 @@ static const TypeInfo ics_kvm_info = {
 /*
  * XICS-KVM
  */
-static void xics_kvm_cpu_setup(XICSState *icp, PowerPCCPU *cpu)
-{
-    CPUState *cs;
-    ICPState *ss;
-    KVMXICSState *icpkvm = KVM_XICS(icp);
-
-    cs = CPU(cpu);
-    ss = &icp->ss[cs->cpu_index];
-
-    assert(cs->cpu_index < icp->nr_servers);
-    if (icpkvm->kernel_xics_fd == -1) {
-        abort();
-    }
-
-    /*
-     * If we are reusing a parked vCPU fd corresponding to the CPU
-     * which was hot-removed earlier we don't have to renable
-     * KVM_CAP_IRQ_XICS capability again.
-     */
-    if (ss->cap_irq_xics_enabled) {
-        return;
-    }
-
-    if (icpkvm->kernel_xics_fd != -1) {
-        int ret;
-
-        ss->cs = cs;
-
-        ret = kvm_vcpu_enable_cap(cs, KVM_CAP_IRQ_XICS, 0,
-                                  icpkvm->kernel_xics_fd, kvm_arch_vcpu_id(cs));
-        if (ret < 0) {
-            error_report("Unable to connect CPU%ld to kernel XICS: %s",
-                    kvm_arch_vcpu_id(cs), strerror(errno));
-            exit(1);
-        }
-        ss->cap_irq_xics_enabled = true;
-    }
-}
-
-static void xics_kvm_set_nr_irqs(XICSState *icp, uint32_t nr_irqs, Error **errp)
-{
-    icp->nr_irqs = icp->ics->nr_irqs = nr_irqs;
-}
-
-static void xics_kvm_set_nr_servers(XICSState *icp, uint32_t nr_servers,
-                                    Error **errp)
-{
-    int i;
-
-    icp->nr_servers = nr_servers;
-
-    icp->ss = g_malloc0(icp->nr_servers*sizeof(ICPState));
-    for (i = 0; i < icp->nr_servers; i++) {
-        char buffer[32];
-        object_initialize(&icp->ss[i], sizeof(icp->ss[i]), TYPE_KVM_ICP);
-        snprintf(buffer, sizeof(buffer), "icp[%d]", i);
-        object_property_add_child(OBJECT(icp), buffer, OBJECT(&icp->ss[i]),
-                                  errp);
-    }
-}
 
 static void rtas_dummy(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                        uint32_t token,
@@ -387,12 +388,9 @@ static void rtas_dummy(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                  __func__);
 }
 
-static void xics_kvm_realize(DeviceState *dev, Error **errp)
+int xics_kvm_init(sPAPRMachineState *spapr, Error **errp)
 {
-    KVMXICSState *icpkvm = KVM_XICS(dev);
-    XICSState *icp = XICS_COMMON(dev);
-    int i, rc;
-    Error *error = NULL;
+    int rc;
     struct kvm_create_device xics_create_device = {
         .type = KVM_DEV_TYPE_XICS,
         .flags = 0,
@@ -440,67 +438,24 @@ static void xics_kvm_realize(DeviceState *dev, Error **errp)
         goto fail;
     }
 
-    icpkvm->kernel_xics_fd = xics_create_device.fd;
-
-    object_property_set_bool(OBJECT(icp->ics), true, "realized", &error);
-    if (error) {
-        error_propagate(errp, error);
-        goto fail;
-    }
-
-    assert(icp->nr_servers);
-    for (i = 0; i < icp->nr_servers; i++) {
-        object_property_set_bool(OBJECT(&icp->ss[i]), true, "realized", &error);
-        if (error) {
-            error_propagate(errp, error);
-            goto fail;
-        }
-    }
+    kernel_xics_fd = xics_create_device.fd;
 
     kvm_kernel_irqchip = true;
     kvm_msi_via_irqfd_allowed = true;
     kvm_gsi_direct_mapping = true;
 
-    return;
+    return rc;
 
 fail:
     kvmppc_define_rtas_kernel_token(0, "ibm,set-xive");
     kvmppc_define_rtas_kernel_token(0, "ibm,get-xive");
     kvmppc_define_rtas_kernel_token(0, "ibm,int-on");
     kvmppc_define_rtas_kernel_token(0, "ibm,int-off");
+    return -1;
 }
-
-static void xics_kvm_initfn(Object *obj)
-{
-    XICSState *xics = XICS_COMMON(obj);
-
-    xics->ics = ICS(object_new(TYPE_KVM_ICS));
-    object_property_add_child(obj, "ics", OBJECT(xics->ics), NULL);
-    xics->ics->icp = xics;
-}
-
-static void xics_kvm_class_init(ObjectClass *oc, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(oc);
-    XICSStateClass *xsc = XICS_COMMON_CLASS(oc);
-
-    dc->realize = xics_kvm_realize;
-    xsc->cpu_setup = xics_kvm_cpu_setup;
-    xsc->set_nr_irqs = xics_kvm_set_nr_irqs;
-    xsc->set_nr_servers = xics_kvm_set_nr_servers;
-}
-
-static const TypeInfo xics_kvm_info = {
-    .name          = TYPE_KVM_XICS,
-    .parent        = TYPE_XICS_COMMON,
-    .instance_size = sizeof(KVMXICSState),
-    .class_init    = xics_kvm_class_init,
-    .instance_init = xics_kvm_initfn,
-};
 
 static void xics_kvm_register_types(void)
 {
-    type_register_static(&xics_kvm_info);
     type_register_static(&ics_kvm_info);
     type_register_static(&icp_kvm_info);
 }

@@ -7,8 +7,10 @@
  * This code is licensed under the GPL.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
+#include "qemu/log.h"
 
 #define PL080_MAX_CHANNELS 8
 #define PL080_CONF_E    0x1
@@ -349,7 +351,7 @@ static void pl080_write(void *opaque, hwaddr offset,
         break;
     case 12: /* Configuration */
         s->conf = value;
-        if (s->conf & (PL080_CONF_M1 | PL080_CONF_M1)) {
+        if (s->conf & (PL080_CONF_M1 | PL080_CONF_M2)) {
             qemu_log_mask(LOG_UNIMP,
                           "pl080_write: Big-endian DMA not implemented\n");
         }

@@ -17,6 +17,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/arm/omap.h"
 
@@ -108,7 +109,7 @@ static void omap_sdrc_write(void *opaque, hwaddr addr,
     case 0x10:	/* SDRC_SYSCONFIG */
         if ((value >> 3) != 0x2)
             fprintf(stderr, "%s: bad SDRAM idle mode %i\n",
-                    __FUNCTION__, (unsigned)value >> 3);
+                    __func__, (unsigned)value >> 3);
         if (value & 2)
             omap_sdrc_reset(s);
         s->config = value & 0x18;

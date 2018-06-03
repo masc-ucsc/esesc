@@ -28,6 +28,8 @@
 #include "qemu/queue.h"
 #include "qemu/coroutine.h"
 
+#define COROUTINE_STACK_SIZE (1 << 20)
+
 typedef enum {
     COROUTINE_YIELD = 1,
     COROUTINE_TERMINATE = 2,
@@ -38,17 +40,33 @@ struct Coroutine {
     CoroutineEntry *entry;
     void *entry_arg;
     Coroutine *caller;
+
+    /* Only used when the coroutine has terminated.  */
     QSLIST_ENTRY(Coroutine) pool_next;
 
-    /* Coroutines that should be woken up when we yield or terminate */
-    QTAILQ_HEAD(, Coroutine) co_queue_wakeup;
-    QTAILQ_ENTRY(Coroutine) co_queue_next;
+    size_t locks_held;
+
+    /* Only used when the coroutine has yielded.  */
+    AioContext *ctx;
+
+    /* Used to catch and abort on illegal co-routine entry.
+     * Will contain the name of the function that had first
+     * scheduled the coroutine. */
+    const char *scheduled;
+
+    QSIMPLEQ_ENTRY(Coroutine) co_queue_next;
+
+    /* Coroutines that should be woken up when we yield or terminate.
+     * Only used when the coroutine is running.
+     */
+    QSIMPLEQ_HEAD(, Coroutine) co_queue_wakeup;
+
+    QSLIST_ENTRY(Coroutine) co_scheduled_next;
 };
 
 Coroutine *qemu_coroutine_new(void);
 void qemu_coroutine_delete(Coroutine *co);
 CoroutineAction qemu_coroutine_switch(Coroutine *from, Coroutine *to,
                                       CoroutineAction action);
-void coroutine_fn qemu_co_queue_run_restart(Coroutine *co);
 
 #endif

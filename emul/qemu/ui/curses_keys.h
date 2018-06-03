@@ -23,7 +23,7 @@
  */
 
 #ifndef QEMU_CURSES_KEYS_H
-#define QEMU_CURSES_KEYS_H 1
+#define QEMU_CURSES_KEYS_H
 
 #include <curses.h>
 #include "keymaps.h"
@@ -480,7 +480,9 @@ static const name2keysym_t name2keysym[] = {
     { "Left", KEY_LEFT },
     { "Up", KEY_UP },
     { "Down", KEY_DOWN },
+    { "Next", KEY_NPAGE },
     { "Page_Down", KEY_NPAGE },
+    { "Prior", KEY_PPAGE },
     { "Page_Up", KEY_PPAGE },
     { "Insert", KEY_IC },
     { "Delete", KEY_DC },

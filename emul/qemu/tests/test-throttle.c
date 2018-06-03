@@ -12,18 +12,21 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include <glib.h>
+#include "qemu/osdep.h"
 #include <math.h>
 #include "block/aio.h"
+#include "qapi/error.h"
 #include "qemu/throttle.h"
 #include "qemu/error-report.h"
 #include "block/throttle-groups.h"
+#include "sysemu/block-backend.h"
 
 static AioContext     *ctx;
 static LeakyBucket    bkt;
 static ThrottleConfig cfg;
+static ThrottleGroupMember tgm;
 static ThrottleState  ts;
-static ThrottleTimers tt;
+static ThrottleTimers *tt;
 
 /* useful function */
 static bool double_cmp(double x, double y)
@@ -34,6 +37,9 @@ static bool double_cmp(double x, double y)
 /* tests for single bucket operations */
 static void test_leak_bucket(void)
 {
+    throttle_config_init(&cfg);
+    bkt = cfg.buckets[THROTTLE_BPS_TOTAL];
+
     /* set initial value */
     bkt.avg = 150;
     bkt.max = 15;
@@ -56,12 +62,32 @@ static void test_leak_bucket(void)
     g_assert(bkt.avg == 150);
     g_assert(bkt.max == 15);
     g_assert(double_cmp(bkt.level, 0));
+
+    /* check that burst_level leaks correctly */
+    bkt.burst_level = 6;
+    bkt.max = 250;
+    bkt.burst_length = 2; /* otherwise burst_level will not leak */
+    throttle_leak_bucket(&bkt, NANOSECONDS_PER_SECOND / 100);
+    g_assert(double_cmp(bkt.burst_level, 3.5));
+
+    throttle_leak_bucket(&bkt, NANOSECONDS_PER_SECOND / 100);
+    g_assert(double_cmp(bkt.burst_level, 1));
+
+    throttle_leak_bucket(&bkt, NANOSECONDS_PER_SECOND / 100);
+    g_assert(double_cmp(bkt.burst_level, 0));
+
+    throttle_leak_bucket(&bkt, NANOSECONDS_PER_SECOND / 100);
+    g_assert(double_cmp(bkt.burst_level, 0));
 }
 
 static void test_compute_wait(void)
 {
+    unsigned i;
     int64_t wait;
     int64_t result;
+
+    throttle_config_init(&cfg);
+    bkt = cfg.buckets[THROTTLE_BPS_TOTAL];
 
     /* no operation limit set */
     bkt.avg = 0;
@@ -92,6 +118,27 @@ static void test_compute_wait(void)
     /* time required to do half an operation */
     result = (int64_t)  NANOSECONDS_PER_SECOND / 150 / 2;
     g_assert(wait == result);
+
+    /* Perform I/O for 2.2 seconds at a rate of bkt.max */
+    bkt.burst_length = 2;
+    bkt.level = 0;
+    bkt.avg = 10;
+    bkt.max = 200;
+    for (i = 0; i < 22; i++) {
+        double units = bkt.max / 10;
+        bkt.level += units;
+        bkt.burst_level += units;
+        throttle_leak_bucket(&bkt, NANOSECONDS_PER_SECOND / 10);
+        wait = throttle_compute_wait(&bkt);
+        g_assert(double_cmp(bkt.burst_level, 0));
+        g_assert(double_cmp(bkt.level, (i + 1) * (bkt.max - bkt.avg) / 10));
+        /* We can do bursts for the 2 seconds we have configured in
+         * burst_length. We have 100 extra miliseconds of burst
+         * because bkt.level has been leaking during this time.
+         * After that, we have to wait. */
+        result = i < 21 ? 0 : 1.8 * NANOSECONDS_PER_SECOND;
+        g_assert(wait == result);
+    }
 }
 
 /* functions to test ThrottleState initialization/destroy methods */
@@ -107,19 +154,21 @@ static void test_init(void)
 {
     int i;
 
+    tt = &tgm.throttle_timers;
+
     /* fill the structures with crap */
     memset(&ts, 1, sizeof(ts));
-    memset(&tt, 1, sizeof(tt));
+    memset(tt, 1, sizeof(*tt));
 
     /* init structures */
     throttle_init(&ts);
-    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+    throttle_timers_init(tt, ctx, QEMU_CLOCK_VIRTUAL,
                          read_timer_cb, write_timer_cb, &ts);
 
     /* check initialized fields */
-    g_assert(tt.clock_type == QEMU_CLOCK_VIRTUAL);
-    g_assert(tt.timers[0]);
-    g_assert(tt.timers[1]);
+    g_assert(tt->clock_type == QEMU_CLOCK_VIRTUAL);
+    g_assert(tt->timers[0]);
+    g_assert(tt->timers[1]);
 
     /* check other fields where cleared */
     g_assert(!ts.previous_leak);
@@ -130,18 +179,18 @@ static void test_init(void)
         g_assert(!ts.cfg.buckets[i].level);
     }
 
-    throttle_timers_destroy(&tt);
+    throttle_timers_destroy(tt);
 }
 
 static void test_destroy(void)
 {
     int i;
     throttle_init(&ts);
-    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+    throttle_timers_init(tt, ctx, QEMU_CLOCK_VIRTUAL,
                          read_timer_cb, write_timer_cb, &ts);
-    throttle_timers_destroy(&tt);
+    throttle_timers_destroy(tt);
     for (i = 0; i < 2; i++) {
-        g_assert(!tt.timers[i]);
+        g_assert(!tt->timers[i]);
     }
 }
 
@@ -159,8 +208,8 @@ static void test_config_functions(void)
     orig_cfg.buckets[THROTTLE_OPS_READ].avg  = 69;
     orig_cfg.buckets[THROTTLE_OPS_WRITE].avg = 23;
 
-    orig_cfg.buckets[THROTTLE_BPS_TOTAL].max = 0; /* should be corrected */
-    orig_cfg.buckets[THROTTLE_BPS_READ].max  = 1; /* should not be corrected */
+    orig_cfg.buckets[THROTTLE_BPS_TOTAL].max = 0;
+    orig_cfg.buckets[THROTTLE_BPS_READ].max  = 56;
     orig_cfg.buckets[THROTTLE_BPS_WRITE].max = 120;
 
     orig_cfg.buckets[THROTTLE_OPS_TOTAL].max = 150;
@@ -178,11 +227,11 @@ static void test_config_functions(void)
     orig_cfg.op_size = 1;
 
     throttle_init(&ts);
-    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+    throttle_timers_init(tt, ctx, QEMU_CLOCK_VIRTUAL,
                          read_timer_cb, write_timer_cb, &ts);
     /* structure reset by throttle_init previous_leak should be null */
     g_assert(!ts.previous_leak);
-    throttle_config(&ts, &tt, &orig_cfg);
+    throttle_config(&ts, QEMU_CLOCK_VIRTUAL, &orig_cfg);
 
     /* has previous leak been initialized by throttle_config ? */
     g_assert(ts.previous_leak);
@@ -190,7 +239,7 @@ static void test_config_functions(void)
     /* get back the fixed configuration */
     throttle_get_config(&ts, &final_cfg);
 
-    throttle_timers_destroy(&tt);
+    throttle_timers_destroy(tt);
 
     g_assert(final_cfg.buckets[THROTTLE_BPS_TOTAL].avg == 153);
     g_assert(final_cfg.buckets[THROTTLE_BPS_READ].avg  == 56);
@@ -200,8 +249,8 @@ static void test_config_functions(void)
     g_assert(final_cfg.buckets[THROTTLE_OPS_READ].avg  == 69);
     g_assert(final_cfg.buckets[THROTTLE_OPS_WRITE].avg == 23);
 
-    g_assert(final_cfg.buckets[THROTTLE_BPS_TOTAL].max == 15.3);/* fixed */
-    g_assert(final_cfg.buckets[THROTTLE_BPS_READ].max  == 1);   /* not fixed */
+    g_assert(final_cfg.buckets[THROTTLE_BPS_TOTAL].max == 0);
+    g_assert(final_cfg.buckets[THROTTLE_BPS_READ].max  == 56);
     g_assert(final_cfg.buckets[THROTTLE_BPS_WRITE].max == 120);
 
     g_assert(final_cfg.buckets[THROTTLE_OPS_TOTAL].max == 150);
@@ -221,6 +270,8 @@ static void set_cfg_value(bool is_max, int index, int value)
 {
     if (is_max) {
         cfg.buckets[index].max = value;
+        /* If max is set, avg should never be 0 */
+        cfg.buckets[index].avg = MAX(cfg.buckets[index].avg, 1);
     } else {
         cfg.buckets[index].avg = value;
     }
@@ -230,19 +281,20 @@ static void test_enabled(void)
 {
     int i;
 
-    memset(&cfg, 0, sizeof(cfg));
+    throttle_config_init(&cfg);
     g_assert(!throttle_enabled(&cfg));
 
     for (i = 0; i < BUCKETS_COUNT; i++) {
-        memset(&cfg, 0, sizeof(cfg));
+        throttle_config_init(&cfg);
         set_cfg_value(false, i, 150);
+        g_assert(throttle_is_valid(&cfg, NULL));
         g_assert(throttle_enabled(&cfg));
     }
 
     for (i = 0; i < BUCKETS_COUNT; i++) {
-        memset(&cfg, 0, sizeof(cfg));
+        throttle_config_init(&cfg);
         set_cfg_value(false, i, -150);
-        g_assert(!throttle_enabled(&cfg));
+        g_assert(!throttle_is_valid(&cfg, NULL));
     }
 }
 
@@ -253,32 +305,32 @@ static void test_conflicts_for_one_set(bool is_max,
                                        int read,
                                        int write)
 {
-    memset(&cfg, 0, sizeof(cfg));
-    g_assert(!throttle_conflicting(&cfg));
+    throttle_config_init(&cfg);
+    g_assert(throttle_is_valid(&cfg, NULL));
 
     set_cfg_value(is_max, total, 1);
     set_cfg_value(is_max, read,  1);
-    g_assert(throttle_conflicting(&cfg));
+    g_assert(!throttle_is_valid(&cfg, NULL));
 
-    memset(&cfg, 0, sizeof(cfg));
+    throttle_config_init(&cfg);
     set_cfg_value(is_max, total, 1);
     set_cfg_value(is_max, write, 1);
-    g_assert(throttle_conflicting(&cfg));
+    g_assert(!throttle_is_valid(&cfg, NULL));
 
-    memset(&cfg, 0, sizeof(cfg));
+    throttle_config_init(&cfg);
     set_cfg_value(is_max, total, 1);
     set_cfg_value(is_max, read,  1);
     set_cfg_value(is_max, write, 1);
-    g_assert(throttle_conflicting(&cfg));
+    g_assert(!throttle_is_valid(&cfg, NULL));
 
-    memset(&cfg, 0, sizeof(cfg));
+    throttle_config_init(&cfg);
     set_cfg_value(is_max, total, 1);
-    g_assert(!throttle_conflicting(&cfg));
+    g_assert(throttle_is_valid(&cfg, NULL));
 
-    memset(&cfg, 0, sizeof(cfg));
+    throttle_config_init(&cfg);
     set_cfg_value(is_max, read,  1);
     set_cfg_value(is_max, write, 1);
-    g_assert(!throttle_conflicting(&cfg));
+    g_assert(throttle_is_valid(&cfg, NULL));
 }
 
 static void test_conflicting_config(void)
@@ -312,9 +364,9 @@ static void test_is_valid_for_value(int value, bool should_be_valid)
     int is_max, index;
     for (is_max = 0; is_max < 2; is_max++) {
         for (index = 0; index < BUCKETS_COUNT; index++) {
-            memset(&cfg, 0, sizeof(cfg));
+            throttle_config_init(&cfg);
             set_cfg_value(is_max, index, value);
-            g_assert(throttle_is_valid(&cfg) == should_be_valid);
+            g_assert(throttle_is_valid(&cfg, NULL) == should_be_valid);
         }
     }
 }
@@ -329,69 +381,161 @@ static void test_is_valid(void)
     test_is_valid_for_value(1, true);
 }
 
+static void test_ranges(void)
+{
+    int i;
+
+    for (i = 0; i < BUCKETS_COUNT; i++) {
+        LeakyBucket *b = &cfg.buckets[i];
+        throttle_config_init(&cfg);
+
+        /* avg = 0 means throttling is disabled, but the config is valid */
+        b->avg = 0;
+        g_assert(throttle_is_valid(&cfg, NULL));
+        g_assert(!throttle_enabled(&cfg));
+
+        /* These are valid configurations (values <= THROTTLE_VALUE_MAX) */
+        b->avg = 1;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        b->avg = THROTTLE_VALUE_MAX;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        b->avg = THROTTLE_VALUE_MAX;
+        b->max = THROTTLE_VALUE_MAX;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        /* Values over THROTTLE_VALUE_MAX are not allowed */
+        b->avg = THROTTLE_VALUE_MAX + 1;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        b->avg = THROTTLE_VALUE_MAX;
+        b->max = THROTTLE_VALUE_MAX + 1;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        /* burst_length must be between 1 and THROTTLE_VALUE_MAX */
+        b->avg = 1;
+        b->max = 1;
+        b->burst_length = 0;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        b->avg = 1;
+        b->max = 1;
+        b->burst_length = 1;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        b->avg = 1;
+        b->max = 1;
+        b->burst_length = THROTTLE_VALUE_MAX;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        b->avg = 1;
+        b->max = 1;
+        b->burst_length = THROTTLE_VALUE_MAX + 1;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        /* burst_length * max cannot exceed THROTTLE_VALUE_MAX */
+        b->avg = 1;
+        b->max = 2;
+        b->burst_length = THROTTLE_VALUE_MAX / 2;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        b->avg = 1;
+        b->max = 3;
+        b->burst_length = THROTTLE_VALUE_MAX / 2;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        b->avg = 1;
+        b->max = THROTTLE_VALUE_MAX;
+        b->burst_length = 1;
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        b->avg = 1;
+        b->max = THROTTLE_VALUE_MAX;
+        b->burst_length = 2;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+    }
+}
+
 static void test_max_is_missing_limit(void)
 {
     int i;
 
     for (i = 0; i < BUCKETS_COUNT; i++) {
-        memset(&cfg, 0, sizeof(cfg));
+        throttle_config_init(&cfg);
         cfg.buckets[i].max = 100;
         cfg.buckets[i].avg = 0;
-        g_assert(throttle_max_is_missing_limit(&cfg));
+        g_assert(!throttle_is_valid(&cfg, NULL));
 
         cfg.buckets[i].max = 0;
         cfg.buckets[i].avg = 0;
-        g_assert(!throttle_max_is_missing_limit(&cfg));
+        g_assert(throttle_is_valid(&cfg, NULL));
 
         cfg.buckets[i].max = 0;
         cfg.buckets[i].avg = 100;
-        g_assert(!throttle_max_is_missing_limit(&cfg));
+        g_assert(throttle_is_valid(&cfg, NULL));
+
+        cfg.buckets[i].max = 30;
+        cfg.buckets[i].avg = 100;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        cfg.buckets[i].max = 100;
+        cfg.buckets[i].avg = 100;
+        g_assert(throttle_is_valid(&cfg, NULL));
     }
+}
+
+static void test_iops_size_is_missing_limit(void)
+{
+    /* A total/read/write iops limit is required */
+    throttle_config_init(&cfg);
+    cfg.op_size = 4096;
+    g_assert(!throttle_is_valid(&cfg, NULL));
 }
 
 static void test_have_timer(void)
 {
     /* zero structures */
     memset(&ts, 0, sizeof(ts));
-    memset(&tt, 0, sizeof(tt));
+    memset(tt, 0, sizeof(*tt));
 
     /* no timer set should return false */
-    g_assert(!throttle_timers_are_initialized(&tt));
+    g_assert(!throttle_timers_are_initialized(tt));
 
     /* init structures */
     throttle_init(&ts);
-    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+    throttle_timers_init(tt, ctx, QEMU_CLOCK_VIRTUAL,
                          read_timer_cb, write_timer_cb, &ts);
 
     /* timer set by init should return true */
-    g_assert(throttle_timers_are_initialized(&tt));
+    g_assert(throttle_timers_are_initialized(tt));
 
-    throttle_timers_destroy(&tt);
+    throttle_timers_destroy(tt);
 }
 
 static void test_detach_attach(void)
 {
     /* zero structures */
     memset(&ts, 0, sizeof(ts));
-    memset(&tt, 0, sizeof(tt));
+    memset(tt, 0, sizeof(*tt));
 
     /* init the structure */
     throttle_init(&ts);
-    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+    throttle_timers_init(tt, ctx, QEMU_CLOCK_VIRTUAL,
                          read_timer_cb, write_timer_cb, &ts);
 
     /* timer set by init should return true */
-    g_assert(throttle_timers_are_initialized(&tt));
+    g_assert(throttle_timers_are_initialized(tt));
 
     /* timer should no longer exist after detaching */
-    throttle_timers_detach_aio_context(&tt);
-    g_assert(!throttle_timers_are_initialized(&tt));
+    throttle_timers_detach_aio_context(tt);
+    g_assert(!throttle_timers_are_initialized(tt));
 
     /* timer should exist again after attaching */
-    throttle_timers_attach_aio_context(&tt, ctx);
-    g_assert(throttle_timers_are_initialized(&tt));
+    throttle_timers_attach_aio_context(tt, ctx);
+    g_assert(throttle_timers_are_initialized(tt));
 
-    throttle_timers_destroy(&tt);
+    throttle_timers_destroy(tt);
 }
 
 static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
@@ -420,9 +564,9 @@ static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
     cfg.op_size = op_size;
 
     throttle_init(&ts);
-    throttle_timers_init(&tt, ctx, QEMU_CLOCK_VIRTUAL,
+    throttle_timers_init(tt, ctx, QEMU_CLOCK_VIRTUAL,
                          read_timer_cb, write_timer_cb, &ts);
-    throttle_config(&ts, &tt, &cfg);
+    throttle_config(&ts, QEMU_CLOCK_VIRTUAL, &cfg);
 
     /* account a read */
     throttle_account(&ts, false, size);
@@ -447,7 +591,7 @@ static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
         return false;
     }
 
-    throttle_timers_destroy(&tt);
+    throttle_timers_destroy(tt);
 
     return true;
 }
@@ -526,77 +670,76 @@ static void test_accounting(void)
 static void test_groups(void)
 {
     ThrottleConfig cfg1, cfg2;
-    BlockDriverState *bdrv1, *bdrv2, *bdrv3;
+    BlockBackend *blk1, *blk2, *blk3;
+    BlockBackendPublic *blkp1, *blkp2, *blkp3;
+    ThrottleGroupMember *tgm1, *tgm2, *tgm3;
 
-    bdrv1 = bdrv_new();
-    bdrv2 = bdrv_new();
-    bdrv3 = bdrv_new();
+    /* No actual I/O is performed on these devices */
+    blk1 = blk_new(0, BLK_PERM_ALL);
+    blk2 = blk_new(0, BLK_PERM_ALL);
+    blk3 = blk_new(0, BLK_PERM_ALL);
 
-    g_assert(bdrv1->throttle_state == NULL);
-    g_assert(bdrv2->throttle_state == NULL);
-    g_assert(bdrv3->throttle_state == NULL);
+    blkp1 = blk_get_public(blk1);
+    blkp2 = blk_get_public(blk2);
+    blkp3 = blk_get_public(blk3);
 
-    throttle_group_register_bs(bdrv1, "bar");
-    throttle_group_register_bs(bdrv2, "foo");
-    throttle_group_register_bs(bdrv3, "bar");
+    tgm1 = &blkp1->throttle_group_member;
+    tgm2 = &blkp2->throttle_group_member;
+    tgm3 = &blkp3->throttle_group_member;
 
-    g_assert(bdrv1->throttle_state != NULL);
-    g_assert(bdrv2->throttle_state != NULL);
-    g_assert(bdrv3->throttle_state != NULL);
+    g_assert(tgm1->throttle_state == NULL);
+    g_assert(tgm2->throttle_state == NULL);
+    g_assert(tgm3->throttle_state == NULL);
 
-    g_assert(!strcmp(throttle_group_get_name(bdrv1), "bar"));
-    g_assert(!strcmp(throttle_group_get_name(bdrv2), "foo"));
-    g_assert(bdrv1->throttle_state == bdrv3->throttle_state);
+    throttle_group_register_tgm(tgm1, "bar", blk_get_aio_context(blk1));
+    throttle_group_register_tgm(tgm2, "foo", blk_get_aio_context(blk2));
+    throttle_group_register_tgm(tgm3, "bar", blk_get_aio_context(blk3));
+
+    g_assert(tgm1->throttle_state != NULL);
+    g_assert(tgm2->throttle_state != NULL);
+    g_assert(tgm3->throttle_state != NULL);
+
+    g_assert(!strcmp(throttle_group_get_name(tgm1), "bar"));
+    g_assert(!strcmp(throttle_group_get_name(tgm2), "foo"));
+    g_assert(tgm1->throttle_state == tgm3->throttle_state);
 
     /* Setting the config of a group member affects the whole group */
-    memset(&cfg1, 0, sizeof(cfg1));
+    throttle_config_init(&cfg1);
     cfg1.buckets[THROTTLE_BPS_READ].avg  = 500000;
     cfg1.buckets[THROTTLE_BPS_WRITE].avg = 285000;
     cfg1.buckets[THROTTLE_OPS_READ].avg  = 20000;
     cfg1.buckets[THROTTLE_OPS_WRITE].avg = 12000;
-    throttle_group_config(bdrv1, &cfg1);
+    throttle_group_config(tgm1, &cfg1);
 
-    throttle_group_get_config(bdrv1, &cfg1);
-    throttle_group_get_config(bdrv3, &cfg2);
+    throttle_group_get_config(tgm1, &cfg1);
+    throttle_group_get_config(tgm3, &cfg2);
     g_assert(!memcmp(&cfg1, &cfg2, sizeof(cfg1)));
 
     cfg2.buckets[THROTTLE_BPS_READ].avg  = 4547;
     cfg2.buckets[THROTTLE_BPS_WRITE].avg = 1349;
     cfg2.buckets[THROTTLE_OPS_READ].avg  = 123;
     cfg2.buckets[THROTTLE_OPS_WRITE].avg = 86;
-    throttle_group_config(bdrv3, &cfg1);
+    throttle_group_config(tgm3, &cfg1);
 
-    throttle_group_get_config(bdrv1, &cfg1);
-    throttle_group_get_config(bdrv3, &cfg2);
+    throttle_group_get_config(tgm1, &cfg1);
+    throttle_group_get_config(tgm3, &cfg2);
     g_assert(!memcmp(&cfg1, &cfg2, sizeof(cfg1)));
 
-    throttle_group_unregister_bs(bdrv1);
-    throttle_group_unregister_bs(bdrv2);
-    throttle_group_unregister_bs(bdrv3);
+    throttle_group_unregister_tgm(tgm1);
+    throttle_group_unregister_tgm(tgm2);
+    throttle_group_unregister_tgm(tgm3);
 
-    g_assert(bdrv1->throttle_state == NULL);
-    g_assert(bdrv2->throttle_state == NULL);
-    g_assert(bdrv3->throttle_state == NULL);
+    g_assert(tgm1->throttle_state == NULL);
+    g_assert(tgm2->throttle_state == NULL);
+    g_assert(tgm3->throttle_state == NULL);
 }
 
 int main(int argc, char **argv)
 {
-    Error *local_error = NULL;
-
-    qemu_init_main_loop(&local_error);
+    qemu_init_main_loop(&error_fatal);
     ctx = qemu_get_aio_context();
-
-    if (!ctx) {
-        error_report("Failed to create AIO Context: '%s'",
-                     local_error ? error_get_pretty(local_error) :
-                     "Failed to initialize the QEMU main loop");
-        if (local_error) {
-            error_free(local_error);
-        }
-        exit(1);
-    }
-
     bdrv_init();
+    module_call_init(MODULE_INIT_QOM);
 
     do {} while (g_main_context_iteration(NULL, false));
 
@@ -611,7 +754,10 @@ int main(int argc, char **argv)
     g_test_add_func("/throttle/config/enabled",     test_enabled);
     g_test_add_func("/throttle/config/conflicting", test_conflicting_config);
     g_test_add_func("/throttle/config/is_valid",    test_is_valid);
+    g_test_add_func("/throttle/config/ranges",      test_ranges);
     g_test_add_func("/throttle/config/max",         test_max_is_missing_limit);
+    g_test_add_func("/throttle/config/iops_size",
+                    test_iops_size_is_missing_limit);
     g_test_add_func("/throttle/config_functions",   test_config_functions);
     g_test_add_func("/throttle/accounting",         test_accounting);
     g_test_add_func("/throttle/groups",             test_groups);

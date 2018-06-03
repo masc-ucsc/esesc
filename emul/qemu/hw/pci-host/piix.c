@@ -22,12 +22,14 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_host.h"
 #include "hw/isa/isa.h"
 #include "hw/sysbus.h"
+#include "qapi/error.h"
 #include "qemu/range.h"
 #include "hw/xen/xen.h"
 #include "hw/pci-host/pam.h"
@@ -46,8 +48,9 @@
 
 typedef struct I440FXState {
     PCIHostState parent_obj;
-    PcPciInfo pci_info;
+    Range pci_hole;
     uint64_t pci_hole64_size;
+    bool pci_hole64_fix;
     uint32_t short_root_bus;
 } I440FXState;
 
@@ -55,12 +58,6 @@ typedef struct I440FXState {
 #define PIIX_NUM_PIRQS          4ULL    /* PIRQ[A-D] */
 #define XEN_PIIX_NUM_PIRQS      128ULL
 #define PIIX_PIRQC              0x60
-
-/*
- * Reset Control Register: PCI-accessible ISA-Compatible Register at address
- * 0xcf9, provided by the PCI/ISA bridge (PIIX3 PCI function 0, 8086:7000).
- */
-#define RCR_IOPORT 0xcf9
 
 typedef struct PIIX3State {
     PCIDevice dev;
@@ -116,6 +113,9 @@ struct PCII440FXState {
 #define I440FX_PAM_SIZE 7
 #define I440FX_SMRAM    0x72
 
+/* Keep it 2G to comply with older win32 guests */
+#define I440FX_PCI_HOST_HOLE64_SIZE_DEFAULT (1ULL << 31)
+
 /* Older coreboot versions (4.0 and older) read a config register that doesn't
  * exist in real hardware, to get the RAM size from QEMU.
  */
@@ -144,7 +144,7 @@ static void i440fx_update_memory_mappings(PCII440FXState *d)
     memory_region_transaction_begin();
     for (i = 0; i < 13; i++) {
         pam_update(&d->pam_regions[i], i,
-                   pd->config[I440FX_PAM + ((i + 1) / 2)]);
+                   pd->config[I440FX_PAM + (DIV_ROUND_UP(i, 2))]);
     }
     memory_region_set_enabled(&d->smram_region,
                               !(pd->config[I440FX_SMRAM] & SMRAM_D_OPEN));
@@ -215,76 +215,106 @@ static const VMStateDescription vmstate_i440fx = {
 };
 
 static void i440fx_pcihost_get_pci_hole_start(Object *obj, Visitor *v,
-                                              void *opaque, const char *name,
+                                              const char *name, void *opaque,
                                               Error **errp)
 {
     I440FXState *s = I440FX_PCI_HOST_BRIDGE(obj);
-    uint32_t value = s->pci_info.w32.begin;
+    uint64_t val64;
+    uint32_t value;
 
-    visit_type_uint32(v, &value, name, errp);
+    val64 = range_is_empty(&s->pci_hole) ? 0 : range_lob(&s->pci_hole);
+    value = val64;
+    assert(value == val64);
+    visit_type_uint32(v, name, &value, errp);
 }
 
 static void i440fx_pcihost_get_pci_hole_end(Object *obj, Visitor *v,
-                                            void *opaque, const char *name,
+                                            const char *name, void *opaque,
                                             Error **errp)
 {
     I440FXState *s = I440FX_PCI_HOST_BRIDGE(obj);
-    uint32_t value = s->pci_info.w32.end;
+    uint64_t val64;
+    uint32_t value;
 
-    visit_type_uint32(v, &value, name, errp);
+    val64 = range_is_empty(&s->pci_hole) ? 0 : range_upb(&s->pci_hole) + 1;
+    value = val64;
+    assert(value == val64);
+    visit_type_uint32(v, name, &value, errp);
 }
 
+/*
+ * The 64bit PCI hole start is set by the Guest firmware
+ * as the address of the first 64bit PCI MEM resource.
+ * If no PCI device has resources on the 64bit area,
+ * the 64bit PCI hole will start after "over 4G RAM" and the
+ * reserved space for memory hotplug if any.
+ */
 static void i440fx_pcihost_get_pci_hole64_start(Object *obj, Visitor *v,
-                                                void *opaque, const char *name,
-                                                Error **errp)
+                                                const char *name,
+                                                void *opaque, Error **errp)
 {
     PCIHostState *h = PCI_HOST_BRIDGE(obj);
+    I440FXState *s = I440FX_PCI_HOST_BRIDGE(obj);
     Range w64;
+    uint64_t value;
 
     pci_bus_get_w64_range(h->bus, &w64);
-
-    visit_type_uint64(v, &w64.begin, name, errp);
+    value = range_is_empty(&w64) ? 0 : range_lob(&w64);
+    if (!value && s->pci_hole64_fix) {
+        value = pc_pci_hole64_start();
+    }
+    visit_type_uint64(v, name, &value, errp);
 }
 
+/*
+ * The 64bit PCI hole end is set by the Guest firmware
+ * as the address of the last 64bit PCI MEM resource.
+ * Then it is expanded to the PCI_HOST_PROP_PCI_HOLE64_SIZE
+ * that can be configured by the user.
+ */
 static void i440fx_pcihost_get_pci_hole64_end(Object *obj, Visitor *v,
-                                              void *opaque, const char *name,
+                                              const char *name, void *opaque,
                                               Error **errp)
 {
     PCIHostState *h = PCI_HOST_BRIDGE(obj);
+    I440FXState *s = I440FX_PCI_HOST_BRIDGE(obj);
+    uint64_t hole64_start = pc_pci_hole64_start();
     Range w64;
+    uint64_t value, hole64_end;
 
     pci_bus_get_w64_range(h->bus, &w64);
-
-    visit_type_uint64(v, &w64.end, name, errp);
+    value = range_is_empty(&w64) ? 0 : range_upb(&w64) + 1;
+    hole64_end = ROUND_UP(hole64_start + s->pci_hole64_size, 1ULL << 30);
+    if (s->pci_hole64_fix && value < hole64_end) {
+        value = hole64_end;
+    }
+    visit_type_uint64(v, name, &value, errp);
 }
 
 static void i440fx_pcihost_initfn(Object *obj)
 {
     PCIHostState *s = PCI_HOST_BRIDGE(obj);
-    I440FXState *d = I440FX_PCI_HOST_BRIDGE(obj);
 
     memory_region_init_io(&s->conf_mem, obj, &pci_host_conf_le_ops, s,
                           "pci-conf-idx", 4);
     memory_region_init_io(&s->data_mem, obj, &pci_host_data_le_ops, s,
                           "pci-conf-data", 4);
 
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_START, "int",
+    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_START, "uint32",
                         i440fx_pcihost_get_pci_hole_start,
                         NULL, NULL, NULL, NULL);
 
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_END, "int",
+    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_END, "uint32",
                         i440fx_pcihost_get_pci_hole_end,
                         NULL, NULL, NULL, NULL);
 
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_START, "int",
+    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_START, "uint64",
                         i440fx_pcihost_get_pci_hole64_start,
                         NULL, NULL, NULL, NULL);
 
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_END, "int",
+    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_END, "uint64",
                         i440fx_pcihost_get_pci_hole64_end,
                         NULL, NULL, NULL, NULL);
-
-    d->pci_info.w32.end = IO_APIC_DEFAULT_ADDRESS;
 }
 
 static void i440fx_pcihost_realize(DeviceState *dev, Error **errp)
@@ -304,7 +334,7 @@ static void i440fx_realize(PCIDevice *dev, Error **errp)
     dev->config[I440FX_SMRAM] = 0x02;
 
     if (object_property_get_bool(qdev_get_machine(), "iommu", NULL)) {
-        error_report("warning: i440fx doesn't support emulated iommu");
+        warn_report("i440fx doesn't support emulated iommu");
     }
 }
 
@@ -331,8 +361,8 @@ PCIBus *i440fx_init(const char *host_type, const char *pci_type,
 
     dev = qdev_create(NULL, host_type);
     s = PCI_HOST_BRIDGE(dev);
-    b = pci_bus_new(dev, NULL, pci_address_space,
-                    address_space_io, 0, TYPE_PCI_BUS);
+    b = pci_root_bus_new(dev, NULL, pci_address_space,
+                         address_space_io, 0, TYPE_PCI_BUS);
     s->bus = b;
     object_property_add_child(qdev_get_machine(), "i440fx", OBJECT(dev), NULL);
     qdev_init_nofail(dev);
@@ -345,7 +375,8 @@ PCIBus *i440fx_init(const char *host_type, const char *pci_type,
     f->ram_memory = ram_memory;
 
     i440fx = I440FX_PCI_HOST_BRIDGE(dev);
-    i440fx->pci_info.w32.begin = below_4g_mem_size;
+    range_set_bounds(&i440fx->pci_hole, below_4g_mem_size,
+                     IO_APIC_DEFAULT_ADDRESS - 1);
 
     /* setup pci memory mapping */
     pc_pci_as_mapping_init(OBJECT(f), f->system_memory,
@@ -481,12 +512,12 @@ static PCIINTxRoute piix3_route_intx_pin_to_irq(void *opaque, int pin)
 /* irq routing is changed. so rebuild bitmap */
 static void piix3_update_irq_levels(PIIX3State *piix3)
 {
+    PCIBus *bus = pci_get_bus(&piix3->dev);
     int pirq;
 
     piix3->pic_levels = 0;
     for (pirq = 0; pirq < PIIX_NUM_PIRQS; pirq++) {
-        piix3_set_irq_level(piix3, pirq,
-                            pci_bus_get_irq_level(piix3->dev.bus, pirq));
+        piix3_set_irq_level(piix3, pirq, pci_bus_get_irq_level(bus, pirq));
     }
 }
 
@@ -498,7 +529,7 @@ static void piix3_write_config(PCIDevice *dev,
         PIIX3State *piix3 = PIIX3_PCI_DEVICE(dev);
         int pic_irq;
 
-        pci_bus_fire_intx_routing_notifier(piix3->dev.bus);
+        pci_bus_fire_intx_routing_notifier(pci_get_bus(&piix3->dev));
         piix3_update_irq_levels(piix3);
         for (pic_irq = 0; pic_irq < PIIX_NUM_PIC_IRQS; pic_irq++) {
             piix3_set_irq_pic(piix3, pic_irq);
@@ -570,20 +601,22 @@ static int piix3_post_load(void *opaque, int version_id)
     piix3->pic_levels = 0;
     for (pirq = 0; pirq < PIIX_NUM_PIRQS; pirq++) {
         piix3_set_irq_level_internal(piix3, pirq,
-                            pci_bus_get_irq_level(piix3->dev.bus, pirq));
+            pci_bus_get_irq_level(pci_get_bus(&piix3->dev), pirq));
     }
     return 0;
 }
 
-static void piix3_pre_save(void *opaque)
+static int piix3_pre_save(void *opaque)
 {
     int i;
     PIIX3State *piix3 = opaque;
 
     for (i = 0; i < ARRAY_SIZE(piix3->pci_irq_levels_vmstate); i++) {
         piix3->pci_irq_levels_vmstate[i] =
-            pci_bus_get_irq_level(piix3->dev.bus, i);
+            pci_bus_get_irq_level(pci_get_bus(&piix3->dev), i);
     }
+
+    return 0;
 }
 
 static bool piix3_rcr_needed(void *opaque)
@@ -628,7 +661,7 @@ static void rcr_write(void *opaque, hwaddr addr, uint64_t val, unsigned len)
     PIIX3State *d = opaque;
 
     if (val & 4) {
-        qemu_system_reset_request();
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
         return;
     }
     d->rcr = val & 2; /* keep System Reset type only */
@@ -651,8 +684,10 @@ static void piix3_realize(PCIDevice *dev, Error **errp)
 {
     PIIX3State *d = PIIX3_PCI_DEVICE(dev);
 
-    isa_bus_new(DEVICE(d), get_system_memory(),
-                pci_address_space_io(dev));
+    if (!isa_bus_new(DEVICE(d), get_system_memory(),
+                     pci_address_space_io(dev), errp)) {
+        return;
+    }
 
     memory_region_init_io(&d->rcr_mem, OBJECT(dev), &rcr_ops, d,
                           "piix3-reset-control", 1);
@@ -679,7 +714,7 @@ static void pci_piix3_class_init(ObjectClass *klass, void *data)
      * Reason: part of PIIX3 southbridge, needs to be wired up by
      * pc_piix.c's pc_init1()
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
 }
 
 static const TypeInfo piix3_pci_type_info = {
@@ -688,6 +723,10 @@ static const TypeInfo piix3_pci_type_info = {
     .instance_size = sizeof(PIIX3State),
     .abstract = true,
     .class_init = pci_piix3_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void piix3_class_init(ObjectClass *klass, void *data)
@@ -733,7 +772,7 @@ static void i440fx_class_init(ObjectClass *klass, void *data)
      * PCI-facing part of the host bridge, not usable without the
      * host-facing part, which can't be device_add'ed, yet.
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
     dc->hotpluggable   = false;
 }
 
@@ -742,6 +781,10 @@ static const TypeInfo i440fx_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCII440FXState),
     .class_init    = i440fx_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 /* IGD Passthrough Host Bridge. */
@@ -761,58 +804,55 @@ static const IGDHostInfo igd_host_bridge_infos[] = {
     {0xa8, 4},  /* SNB: base of GTT stolen memory */
 };
 
-static int host_pci_config_read(int pos, int len, uint32_t val)
+static void host_pci_config_read(int pos, int len, uint32_t *val, Error **errp)
 {
-    char path[PATH_MAX];
-    int config_fd;
-    ssize_t size = sizeof(path);
+    int rc, config_fd;
     /* Access real host bridge. */
-    int rc = snprintf(path, size, "/sys/bus/pci/devices/%04x:%02x:%02x.%d/%s",
-                      0, 0, 0, 0, "config");
-    int ret = 0;
-
-    if (rc >= size || rc < 0) {
-        return -ENODEV;
-    }
+    char *path = g_strdup_printf("/sys/bus/pci/devices/%04x:%02x:%02x.%d/%s",
+                                 0, 0, 0, 0, "config");
 
     config_fd = open(path, O_RDWR);
     if (config_fd < 0) {
-        return -ENODEV;
+        error_setg_errno(errp, errno, "Failed to open: %s", path);
+        goto out;
     }
 
     if (lseek(config_fd, pos, SEEK_SET) != pos) {
-        ret = -errno;
-        goto out;
+        error_setg_errno(errp, errno, "Failed to seek: %s", path);
+        goto out_close_fd;
     }
+
     do {
-        rc = read(config_fd, (uint8_t *)&val, len);
+        rc = read(config_fd, (uint8_t *)val, len);
     } while (rc < 0 && (errno == EINTR || errno == EAGAIN));
     if (rc != len) {
-        ret = -errno;
+        error_setg_errno(errp, errno, "Failed to read: %s", path);
     }
-out:
+
+out_close_fd:
     close(config_fd);
-    return ret;
+out:
+    g_free(path);
 }
 
-static int igd_pt_i440fx_initfn(struct PCIDevice *pci_dev)
+static void igd_pt_i440fx_realize(PCIDevice *pci_dev, Error **errp)
 {
     uint32_t val = 0;
-    int rc, i, num;
+    int i, num;
     int pos, len;
+    Error *local_err = NULL;
 
     num = ARRAY_SIZE(igd_host_bridge_infos);
     for (i = 0; i < num; i++) {
         pos = igd_host_bridge_infos[i].offset;
         len = igd_host_bridge_infos[i].len;
-        rc = host_pci_config_read(pos, len, val);
-        if (rc) {
-            return -ENODEV;
+        host_pci_config_read(pos, len, &val, &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return;
         }
         pci_default_write_config(pci_dev, pos, val, len);
     }
-
-    return 0;
 }
 
 static void igd_passthrough_i440fx_class_init(ObjectClass *klass, void *data)
@@ -820,7 +860,7 @@ static void igd_passthrough_i440fx_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = igd_pt_i440fx_initfn;
+    k->realize = igd_pt_i440fx_realize;
     dc->desc = "IGD Passthrough Host bridge";
 }
 
@@ -845,8 +885,9 @@ static const char *i440fx_pcihost_root_bus_path(PCIHostState *host_bridge,
 
 static Property i440fx_props[] = {
     DEFINE_PROP_SIZE(PCI_HOST_PROP_PCI_HOLE64_SIZE, I440FXState,
-                     pci_hole64_size, DEFAULT_PCI_HOLE64_SIZE),
+                     pci_hole64_size, I440FX_PCI_HOST_HOLE64_SIZE_DEFAULT),
     DEFINE_PROP_UINT32("short_root_bus", I440FXState, short_root_bus, 0),
+    DEFINE_PROP_BOOL("x-pci-hole64-fix", I440FXState, pci_hole64_fix, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -859,6 +900,8 @@ static void i440fx_pcihost_class_init(ObjectClass *klass, void *data)
     dc->realize = i440fx_pcihost_realize;
     dc->fw_name = "pci";
     dc->props = i440fx_props;
+    /* Reason: needs to be wired up by pc_init1 */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo i440fx_pcihost_info = {

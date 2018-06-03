@@ -18,16 +18,19 @@
  * Contributions after 2012-01-13 are licensed under the terms of the
  * GNU GPL, version 2 or (at your option) any later version.
  */
+
+#include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "hw/hw.h"
-#include "hw/i386/pc.h"
 #include "hw/acpi/acpi.h"
 #include "hw/nvram/fw_cfg.h"
 #include "qemu/config-file.h"
+#include "qapi/error.h"
 #include "qapi/opts-visitor.h"
-#include "qapi/dealloc-visitor.h"
-#include "qapi-visit.h"
-#include "qapi-event.h"
+#include "qapi/qapi-events-run-state.h"
+#include "qapi/qapi-visit-misc.h"
+#include "qemu/error-report.h"
+#include "qemu/option.h"
 
 struct acpi_table_header {
     uint16_t _length;         /* our length, not actual part of the hdr */
@@ -67,7 +70,7 @@ static void acpi_register_config(void)
     qemu_add_opts(&qemu_acpi_opts);
 }
 
-machine_init(acpi_register_config);
+opts_init(acpi_register_config);
 
 static int acpi_checksum(const uint8_t *data, int len)
 {
@@ -183,10 +186,9 @@ static void acpi_table_install(const char unsigned *blob, size_t bloblen,
     }
 
     if (has_header && le32_to_cpu(ext_hdr->length) != acpi_payload_size) {
-        fprintf(stderr,
-                "warning: ACPI table has wrong length, header says "
-                "%" PRIu32 ", actual size %zu bytes\n",
-                le32_to_cpu(ext_hdr->length), acpi_payload_size);
+        warn_report("ACPI table has wrong length, header says "
+                    "%" PRIu32 ", actual size %zu bytes",
+                    le32_to_cpu(ext_hdr->length), acpi_payload_size);
     }
     ext_hdr->length = cpu_to_le32(acpi_payload_size);
 
@@ -221,7 +223,7 @@ static void acpi_table_install(const char unsigned *blob, size_t bloblen,
     }
 
     if (!has_header && changed_fields == 0) {
-        fprintf(stderr, "warning: ACPI table: no headers are specified\n");
+        warn_report("ACPI table: no headers are specified");
     }
 
     /* recalculate checksum */
@@ -239,11 +241,11 @@ void acpi_table_add(const QemuOpts *opts, Error **errp)
     char unsigned *blob = NULL;
 
     {
-        OptsVisitor *ov;
+        Visitor *v;
 
-        ov = opts_visitor_new(opts);
-        visit_type_AcpiTableOptions(opts_get_visitor(ov), &hdrs, NULL, &err);
-        opts_visitor_cleanup(ov);
+        v = opts_visitor_new(opts);
+        visit_type_AcpiTableOptions(v, NULL, &hdrs, &err);
+        visit_free(v);
     }
 
     if (err) {
@@ -296,15 +298,7 @@ void acpi_table_add(const QemuOpts *opts, Error **errp)
 out:
     g_free(blob);
     g_strfreev(pathnames);
-
-    if (hdrs != NULL) {
-        QapiDeallocVisitor *dv;
-
-        dv = qapi_dealloc_visitor_new();
-        visit_type_AcpiTableOptions(qapi_dealloc_get_visitor(dv), &hdrs, NULL,
-                                    NULL);
-        qapi_dealloc_visitor_cleanup(dv);
-    }
+    qapi_free_AcpiTableOptions(hdrs);
 
     error_propagate(errp, err);
 }
@@ -349,6 +343,22 @@ uint8_t *acpi_table_next(uint8_t *current)
     }
 }
 
+int acpi_get_slic_oem(AcpiSlicOem *oem)
+{
+    uint8_t *u;
+
+    for (u = acpi_table_first(); u; u = acpi_table_next(u)) {
+        struct acpi_table_header *hdr = (void *)(u - sizeof(hdr->_length));
+
+        if (memcmp(hdr->sig, "SLIC", 4) == 0) {
+            oem->id = hdr->oem_id;
+            oem->table_id = hdr->oem_table_id;
+            return 0;
+        }
+    }
+    return -1;
+}
+
 static void acpi_notify_wakeup(Notifier *notifier, void *data)
 {
     ACPIREGS *ar = container_of(notifier, ACPIREGS, wakeup);
@@ -381,7 +391,7 @@ uint16_t acpi_pm1_evt_get_sts(ACPIREGS *ar)
        acpi_pm_tmr_update function uses ns for setting the timer. */
     int64_t d = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     if (d >= muldiv64(ar->tmr.overflow_time,
-                      get_ticks_per_sec(), PM_TIMER_FREQUENCY)) {
+                      NANOSECONDS_PER_SECOND, PM_TIMER_FREQUENCY)) {
         ar->pm1.evt.sts |= ACPI_BITMASK_TIMER_STATUS;
     }
     return ar->pm1.evt.sts;
@@ -475,12 +485,18 @@ void acpi_pm_tmr_update(ACPIREGS *ar, bool enable)
 
     /* schedule a timer interruption if needed */
     if (enable) {
-        expire_time = muldiv64(ar->tmr.overflow_time, get_ticks_per_sec(),
+        expire_time = muldiv64(ar->tmr.overflow_time, NANOSECONDS_PER_SECOND,
                                PM_TIMER_FREQUENCY);
         timer_mod(ar->tmr.timer, expire_time);
     } else {
         timer_del(ar->tmr.timer);
     }
+}
+
+static inline int64_t acpi_pm_tmr_get_clock(void)
+{
+    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), PM_TIMER_FREQUENCY,
+                    NANOSECONDS_PER_SECOND);
 }
 
 void acpi_pm_tmr_calc_overflow_time(ACPIREGS *ar)
@@ -528,7 +544,6 @@ void acpi_pm_tmr_init(ACPIREGS *ar, acpi_update_sci_fn update_sci,
     ar->tmr.timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, acpi_pm_tmr_timer, ar);
     memory_region_init_io(&ar->tmr.io, memory_region_owner(parent),
                           &acpi_pm_tmr_ops, ar, "acpi-tmr", 4);
-    memory_region_clear_global_locking(&ar->tmr.io);
     memory_region_add_subregion(parent, 8, &ar->tmr.io);
 }
 
@@ -548,7 +563,7 @@ static void acpi_pm1_cnt_write(ACPIREGS *ar, uint16_t val)
         uint16_t sus_typ = (val >> 10) & 7;
         switch(sus_typ) {
         case 0: /* soft power off */
-            qemu_system_shutdown_request();
+            qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
             break;
         case 1:
             qemu_system_suspend_request();
@@ -556,7 +571,7 @@ static void acpi_pm1_cnt_write(ACPIREGS *ar, uint16_t val)
         default:
             if (sus_typ == ar->pm1.cnt.s4_val) { /* S4 request */
                 qapi_event_send_suspend_disk(&error_abort);
-                qemu_system_shutdown_request();
+                qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
             }
             break;
         }
@@ -685,7 +700,7 @@ uint32_t acpi_gpe_ioport_readb(ACPIREGS *ar, uint32_t addr)
 }
 
 void acpi_send_gpe_event(ACPIREGS *ar, qemu_irq irq,
-                         AcpiGPEStatusBits status)
+                         AcpiEventStatusBits status)
 {
     ar->gpe.sts[0] |= status;
     acpi_update_sci(ar, irq);

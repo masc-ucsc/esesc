@@ -27,9 +27,9 @@
  * AMD Publication# 19436  Rev:E  Amendment/0  Issue Date: June 2000
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci.h"
 #include "net/net.h"
-#include "hw/loader.h"
 #include "qemu/timer.h"
 #include "sysemu/dma.h"
 #include "sysemu/sysemu.h"
@@ -271,7 +271,7 @@ static void pci_pcnet_uninit(PCIDevice *dev)
 }
 
 static NetClientInfo net_pci_pcnet_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = pcnet_receive,
     .link_status_changed = pcnet_set_link_status,
@@ -364,6 +364,10 @@ static const TypeInfo pcnet_info = {
     .instance_size = sizeof(PCIPCNetState),
     .class_init    = pcnet_class_init,
     .instance_init = pcnet_instance_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void pci_pcnet_register_types(void)

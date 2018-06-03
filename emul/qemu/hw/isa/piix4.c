@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
@@ -90,8 +91,10 @@ static void piix4_realize(PCIDevice *dev, Error **errp)
 {
     PIIX4State *d = PIIX4_PCI_DEVICE(dev);
 
-    isa_bus_new(DEVICE(d), pci_address_space(dev),
-                pci_address_space_io(dev));
+    if (!isa_bus_new(DEVICE(d), pci_address_space(dev),
+                     pci_address_space_io(dev), errp)) {
+        return;
+    }
     piix4_dev = &d->dev;
     qemu_register_reset(piix4_reset, d);
 }
@@ -120,7 +123,7 @@ static void piix4_class_init(ObjectClass *klass, void *data)
      * Reason: part of PIIX4 southbridge, needs to be wired up,
      * e.g. by mips_malta_init()
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
     dc->hotpluggable = false;
 }
 
@@ -129,6 +132,10 @@ static const TypeInfo piix4_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PIIX4State),
     .class_init    = piix4_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void piix4_register_types(void)
