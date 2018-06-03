@@ -1,5 +1,5 @@
-#ifndef TARGET_SIGNAL_H
-#define TARGET_SIGNAL_H
+#ifndef AARCH64_TARGET_SIGNAL_H
+#define AARCH64_TARGET_SIGNAL_H
 
 #include "cpu.h"
 
@@ -26,4 +26,5 @@ static inline abi_ulong get_sp_from_cpustate(CPUARMState *state)
    return state->xregs[31];
 }
 
-#endif /* TARGET_SIGNAL_H */
+#define TARGET_ARCH_HAS_SETUP_FRAME
+#endif /* AARCH64_TARGET_SIGNAL_H */

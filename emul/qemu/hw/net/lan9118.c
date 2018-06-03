@@ -10,11 +10,14 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "net/net.h"
+#include "net/eth.h"
 #include "hw/devices.h"
 #include "sysemu/sysemu.h"
 #include "hw/ptimer.h"
+#include "qemu/log.h"
 /* For crc32 */
 #include <zlib.h>
 
@@ -502,7 +505,7 @@ static int lan9118_filter(lan9118_state *s, const uint8_t *addr)
         }
     } else {
         /* Hash matching  */
-        hash = compute_mcast_idx(addr);
+        hash = net_crc32(addr, ETH_ALEN) >> 26;
         if (hash & 0x20) {
             return (s->mac_hashh >> (hash & 0x1f)) & 1;
         } else {
@@ -1311,7 +1314,7 @@ static const MemoryRegionOps lan9118_16bit_mem_ops = {
 };
 
 static NetClientInfo net_lan9118_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = lan9118_receive,
     .link_status_changed = lan9118_set_link,
@@ -1343,7 +1346,7 @@ static int lan9118_init1(SysBusDevice *sbd)
     s->txp = &s->tx_packet;
 
     bh = qemu_bh_new(lan9118_tick, s);
-    s->timer = ptimer_init(bh);
+    s->timer = ptimer_init(bh, PTIMER_POLICY_DEFAULT);
     ptimer_set_freq(s->timer, 10000);
     ptimer_set_limit(s->timer, 0xffff, 1);
 

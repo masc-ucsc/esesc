@@ -11,11 +11,7 @@
  *
  */
 
-#include <glib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include "qemu/osdep.h"
 
 #include "libqtest.h"
 #include "qemu/bswap.h"
@@ -42,7 +38,8 @@ static const TestCase test_cases[] = {
     { "ppc", "prep", 0x80000000, .bswap = true },
     { "ppc", "bamboo", 0xe8000000, .bswap = true, .superio = "i82378" },
     { "ppc64", "mac99", 0xf2000000, .bswap = true, .superio = "i82378" },
-    { "ppc64", "pseries", 0x10080000000ULL,
+    { "ppc64", "pseries", (1ULL << 45), .bswap = true, .superio = "i82378" },
+    { "ppc64", "pseries-2.7", 0x10080000000ULL,
       .bswap = true, .superio = "i82378" },
     { "sh4", "r2d", 0xfe240000, .superio = "i82378" },
     { "sh4eb", "r2d", 0xfe240000, .bswap = true, .superio = "i82378" },
@@ -117,13 +114,11 @@ static void isa_outl(const TestCase *test, uint16_t addr, uint32_t value)
 static void test_endianness(gconstpointer data)
 {
     const TestCase *test = data;
-    char *args;
 
-    args = g_strdup_printf("-M %s%s%s -device pc-testdev",
-                           test->machine,
-                           test->superio ? " -device " : "",
-                           test->superio ?: "");
-    qtest_start(args);
+    global_qtest = qtest_startf("-M %s%s%s -device pc-testdev",
+                                test->machine,
+                                test->superio ? " -device " : "",
+                                test->superio ?: "");
     isa_outl(test, 0xe0, 0x87654321);
     g_assert_cmphex(isa_inl(test, 0xe0), ==, 0x87654321);
     g_assert_cmphex(isa_inw(test, 0xe2), ==, 0x8765);
@@ -186,19 +181,16 @@ static void test_endianness(gconstpointer data)
     g_assert_cmphex(isa_inb(test, 0xe1), ==, 0x43);
     g_assert_cmphex(isa_inb(test, 0xe0), ==, 0x21);
     qtest_quit(global_qtest);
-    g_free(args);
 }
 
 static void test_endianness_split(gconstpointer data)
 {
     const TestCase *test = data;
-    char *args;
 
-    args = g_strdup_printf("-M %s%s%s -device pc-testdev",
-                           test->machine,
-                           test->superio ? " -device " : "",
-                           test->superio ?: "");
-    qtest_start(args);
+    global_qtest = qtest_startf("-M %s%s%s -device pc-testdev",
+                                test->machine,
+                                test->superio ? " -device " : "",
+                                test->superio ?: "");
     isa_outl(test, 0xe8, 0x87654321);
     g_assert_cmphex(isa_inl(test, 0xe0), ==, 0x87654321);
     g_assert_cmphex(isa_inw(test, 0xe2), ==, 0x8765);
@@ -233,19 +225,16 @@ static void test_endianness_split(gconstpointer data)
     g_assert_cmphex(isa_inw(test, 0xe2), ==, 0x8765);
     g_assert_cmphex(isa_inw(test, 0xe0), ==, 0x4321);
     qtest_quit(global_qtest);
-    g_free(args);
 }
 
 static void test_endianness_combine(gconstpointer data)
 {
     const TestCase *test = data;
-    char *args;
 
-    args = g_strdup_printf("-M %s%s%s -device pc-testdev",
-                           test->machine,
-                           test->superio ? " -device " : "",
-                           test->superio ?: "");
-    qtest_start(args);
+    global_qtest = qtest_startf("-M %s%s%s -device pc-testdev",
+                                test->machine,
+                                test->superio ? " -device " : "",
+                                test->superio ?: "");
     isa_outl(test, 0xe0, 0x87654321);
     g_assert_cmphex(isa_inl(test, 0xe8), ==, 0x87654321);
     g_assert_cmphex(isa_inw(test, 0xea), ==, 0x8765);
@@ -280,13 +269,11 @@ static void test_endianness_combine(gconstpointer data)
     g_assert_cmphex(isa_inw(test, 0xea), ==, 0x8765);
     g_assert_cmphex(isa_inw(test, 0xe8), ==, 0x4321);
     qtest_quit(global_qtest);
-    g_free(args);
 }
 
 int main(int argc, char **argv)
 {
     const char *arch = qtest_get_arch();
-    int ret;
     int i;
 
     g_test_init(&argc, &argv, NULL);
@@ -299,17 +286,18 @@ int main(int argc, char **argv)
         path = g_strdup_printf("endianness/%s",
                                test_cases[i].machine);
         qtest_add_data_func(path, &test_cases[i], test_endianness);
+        g_free(path);
 
         path = g_strdup_printf("endianness/split/%s",
                                test_cases[i].machine);
         qtest_add_data_func(path, &test_cases[i], test_endianness_split);
+        g_free(path);
 
         path = g_strdup_printf("endianness/combine/%s",
                                test_cases[i].machine);
         qtest_add_data_func(path, &test_cases[i], test_endianness_combine);
+        g_free(path);
     }
 
-    ret = g_test_run();
-
-    return ret;
+    return g_test_run();
 }

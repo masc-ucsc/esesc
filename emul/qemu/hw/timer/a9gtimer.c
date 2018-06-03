@@ -20,10 +20,13 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/timer/a9gtimer.h"
+#include "qapi/error.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qom/cpu.h"
 
 #ifndef A9_GTIMER_ERR_DEBUG
 #define A9_GTIMER_ERR_DEBUG 0
@@ -34,7 +37,7 @@
         fprintf(stderr,  ": %s: ", __func__); \
         fprintf(stderr, ## __VA_ARGS__); \
     } \
-} while (0);
+} while (0)
 
 #define DB_PRINT(...) DB_PRINT_L(0, ## __VA_ARGS__)
 
@@ -79,15 +82,15 @@ static void a9_gtimer_update(A9GTimerState *s, bool sync)
         if ((s->control & R_CONTROL_TIMER_ENABLE) &&
                 (gtb->control & R_CONTROL_COMP_ENABLE)) {
             /* R2p0+, where the compare function is >= */
-            while (gtb->compare < update.new) {
+            if (gtb->compare < update.new) {
                 DB_PRINT("Compare event happened for CPU %d\n", i);
                 gtb->status = 1;
-                if (gtb->control & R_CONTROL_AUTO_INCREMENT) {
-                    DB_PRINT("Auto incrementing timer compare by %" PRId32 "\n",
-                             gtb->inc);
-                    gtb->compare += gtb->inc;
-                } else {
-                    break;
+                if (gtb->control & R_CONTROL_AUTO_INCREMENT && gtb->inc) {
+                    uint64_t inc =
+                        QEMU_ALIGN_UP(update.new - gtb->compare, gtb->inc);
+                    DB_PRINT("Auto incrementing timer compare by %"
+                                                        PRId64 "\n", inc);
+                    gtb->compare += inc;
                 }
             }
             cdiff = (int64_t)gtb->compare - (int64_t)update.new + 1;
@@ -181,7 +184,7 @@ static void a9_gtimer_write(void *opaque, hwaddr addr, uint64_t value,
     case R_COUNTER_LO:
         /*
          * Keep it simple - ARM docco explicitly says to disable timer before
-         * modding it, so dont bother trying to do all the difficult on the fly
+         * modding it, so don't bother trying to do all the difficult on the fly
          * timer modifications - (if they even work in real hardware??).
          */
         if (s->control & R_CONTROL_TIMER_ENABLE) {

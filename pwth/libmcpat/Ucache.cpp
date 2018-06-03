@@ -610,26 +610,24 @@ void solve(uca_org_t *fin_res) {
   char fadr[140];
   bool is_live = SescConf->getBool("", "live");
 
-  if(1 == 1 || is_live) {
-    // Create hash from input data
-    // char *raw = (char *)g_ip;
-    stringstream                  sgip;
-    boost::archive::text_oarchive oass(sgip);
-    oass << g_ip;
-    strncpy(pwhash, md5(sgip.str()).c_str(), 129);
-    pwhash[128] = 0;
-    sprintf(fadr, "pwdump/%s", pwhash);
-    if(access(fadr, F_OK) != -1) {
-      printf("\npwhit\n");
-      std::ifstream                 ifs(fadr);
-      boost::archive::text_iarchive ia(ifs);
-      ia >> fin_res;
-      ifs.close();
-      printf("%lf\n", fin_res->area);
-      return;
-    } else {
-      printf("\npwmiss\n");
-    }
+  // Create hash from input data
+  // char *raw = (char *)g_ip;
+  stringstream                  sgip;
+  boost::archive::text_oarchive oass(sgip);
+  oass << g_ip;
+  strncpy(pwhash, md5(sgip.str()).c_str(), 129);
+  pwhash[128] = 0;
+  sprintf(fadr, "pwdump/%s", pwhash);
+  if(access(fadr, F_OK) != -1) {
+    printf("\npwhit\n");
+    std::ifstream                 ifs(fadr);
+    boost::archive::text_iarchive ia(ifs);
+    ia >> fin_res;
+    ifs.close();
+    printf("%lf\n", fin_res->area);
+    return;
+  } else {
+    printf("\npwmiss\n");
   }
 #endif
   // bool   is_dram  = false;

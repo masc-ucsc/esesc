@@ -9,29 +9,38 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "sysemu/replay.h"
 #include "replay-internal.h"
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 
-unsigned int replay_data_kind = -1;
-static unsigned int replay_has_unread_data;
-
 /* Mutex to protect reading and writing events to the log.
-   replay_data_kind and replay_has_unread_data are also protected
+   data_kind and has_unread_data are also protected
    by this mutex.
    It also protects replay events queue which stores events to be
    written or read to the log. */
 static QemuMutex lock;
 
 /* File for replay writing */
+static bool write_error;
 FILE *replay_file;
+
+static void replay_write_error(void)
+{
+    if (!write_error) {
+        error_report("replay write error");
+        write_error = true;
+    }
+}
 
 void replay_put_byte(uint8_t byte)
 {
     if (replay_file) {
-        putc(byte, replay_file);
+        if (putc(byte, replay_file) == EOF) {
+            replay_write_error();
+        }
     }
 }
 
@@ -64,7 +73,9 @@ void replay_put_array(const uint8_t *buf, size_t size)
 {
     if (replay_file) {
         replay_put_dword(size);
-        fwrite(buf, 1, size, replay_file);
+        if (fwrite(buf, 1, size, replay_file) != size) {
+            replay_write_error();
+        }
     }
 }
 
@@ -149,15 +160,16 @@ void replay_check_error(void)
 void replay_fetch_data_kind(void)
 {
     if (replay_file) {
-        if (!replay_has_unread_data) {
-            replay_data_kind = replay_get_byte();
-            if (replay_data_kind == EVENT_INSTRUCTION) {
+        if (!replay_state.has_unread_data) {
+            replay_state.data_kind = replay_get_byte();
+            if (replay_state.data_kind == EVENT_INSTRUCTION) {
                 replay_state.instructions_count = replay_get_dword();
             }
             replay_check_error();
-            replay_has_unread_data = 1;
-            if (replay_data_kind >= EVENT_COUNT) {
-                error_report("Replay: unknown event kind %d", replay_data_kind);
+            replay_state.has_unread_data = 1;
+            if (replay_state.data_kind >= EVENT_COUNT) {
+                error_report("Replay: unknown event kind %d",
+                             replay_state.data_kind);
                 exit(1);
             }
         }
@@ -166,41 +178,59 @@ void replay_fetch_data_kind(void)
 
 void replay_finish_event(void)
 {
-    replay_has_unread_data = 0;
+    replay_state.has_unread_data = 0;
     replay_fetch_data_kind();
 }
+
+static __thread bool replay_locked;
 
 void replay_mutex_init(void)
 {
     qemu_mutex_init(&lock);
+    /* Hold the mutex while we start-up */
+    qemu_mutex_lock(&lock);
+    replay_locked = true;
 }
 
-void replay_mutex_destroy(void)
+bool replay_mutex_locked(void)
 {
-    qemu_mutex_destroy(&lock);
+    return replay_locked;
 }
 
+/* Ordering constraints, replay_lock must be taken before BQL */
 void replay_mutex_lock(void)
 {
-    qemu_mutex_lock(&lock);
+    if (replay_mode != REPLAY_MODE_NONE) {
+        g_assert(!qemu_mutex_iothread_locked());
+        g_assert(!replay_mutex_locked());
+        qemu_mutex_lock(&lock);
+        replay_locked = true;
+    }
 }
 
 void replay_mutex_unlock(void)
 {
-    qemu_mutex_unlock(&lock);
+    if (replay_mode != REPLAY_MODE_NONE) {
+        g_assert(replay_mutex_locked());
+        replay_locked = false;
+        qemu_mutex_unlock(&lock);
+    }
 }
 
 /*! Saves cached instructions. */
 void replay_save_instructions(void)
 {
     if (replay_file && replay_mode == REPLAY_MODE_RECORD) {
-        replay_mutex_lock();
+        g_assert(replay_mutex_locked());
         int diff = (int)(replay_get_current_step() - replay_state.current_step);
+
+        /* Time can only go forward */
+        assert(diff >= 0);
+
         if (diff > 0) {
             replay_put_event(EVENT_INSTRUCTION);
             replay_put_dword(diff);
             replay_state.current_step += diff;
         }
-        replay_mutex_unlock();
     }
 }

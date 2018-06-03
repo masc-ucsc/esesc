@@ -37,10 +37,8 @@
  * Therefore, we need both 32 and 64 bit virtual machines (interpreter).
  */
 
-#if !defined(TCG_TARGET_H)
+#ifndef TCG_TARGET_H
 #define TCG_TARGET_H
-
-#include "config-host.h"
 
 #define TCG_TARGET_INTERPRETER 1
 #define TCG_TARGET_INSN_UNIT_SIZE 1
@@ -71,9 +69,14 @@
 #define TCG_TARGET_HAS_ext16u_i32       1
 #define TCG_TARGET_HAS_andc_i32         0
 #define TCG_TARGET_HAS_deposit_i32      1
+#define TCG_TARGET_HAS_extract_i32      0
+#define TCG_TARGET_HAS_sextract_i32     0
 #define TCG_TARGET_HAS_eqv_i32          0
 #define TCG_TARGET_HAS_nand_i32         0
 #define TCG_TARGET_HAS_nor_i32          0
+#define TCG_TARGET_HAS_clz_i32          0
+#define TCG_TARGET_HAS_ctz_i32          0
+#define TCG_TARGET_HAS_ctpop_i32        0
 #define TCG_TARGET_HAS_neg_i32          1
 #define TCG_TARGET_HAS_not_i32          1
 #define TCG_TARGET_HAS_orc_i32          0
@@ -82,6 +85,8 @@
 #define TCG_TARGET_HAS_muls2_i32        0
 #define TCG_TARGET_HAS_muluh_i32        0
 #define TCG_TARGET_HAS_mulsh_i32        0
+#define TCG_TARGET_HAS_goto_ptr         0
+#define TCG_TARGET_HAS_direct_jump      1
 
 #if TCG_TARGET_REG_BITS == 64
 #define TCG_TARGET_HAS_extrl_i64_i32    0
@@ -90,6 +95,8 @@
 #define TCG_TARGET_HAS_bswap32_i64      1
 #define TCG_TARGET_HAS_bswap64_i64      1
 #define TCG_TARGET_HAS_deposit_i64      1
+#define TCG_TARGET_HAS_extract_i64      0
+#define TCG_TARGET_HAS_sextract_i64     0
 #define TCG_TARGET_HAS_div_i64          0
 #define TCG_TARGET_HAS_rem_i64          0
 #define TCG_TARGET_HAS_ext8s_i64        1
@@ -102,6 +109,9 @@
 #define TCG_TARGET_HAS_eqv_i64          0
 #define TCG_TARGET_HAS_nand_i64         0
 #define TCG_TARGET_HAS_nor_i64          0
+#define TCG_TARGET_HAS_clz_i64          0
+#define TCG_TARGET_HAS_ctz_i64          0
+#define TCG_TARGET_HAS_ctpop_i64        0
 #define TCG_TARGET_HAS_neg_i64          1
 #define TCG_TARGET_HAS_not_i64          1
 #define TCG_TARGET_HAS_orc_i64          0
@@ -181,6 +191,19 @@ void tci_disas(uint8_t opc);
 
 static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 {
+}
+
+/* We could notice __i386__ or __s390x__ and reduce the barriers depending
+   on the host.  But if you want performance, you use the normal backend.
+   We prefer consistency across hosts on this.  */
+#define TCG_TARGET_DEFAULT_MO  (0)
+
+static inline void tb_target_set_jmp_target(uintptr_t tc_ptr,
+                                            uintptr_t jmp_addr, uintptr_t addr)
+{
+    /* patch the branch destination */
+    atomic_set((int32_t *)jmp_addr, addr - (jmp_addr + 4));
+    /* no need to flush icache explicitly */
 }
 
 #endif /* TCG_TARGET_H */

@@ -1,5 +1,5 @@
-#ifndef TILEGX_SYSCALL_NR
-#define TILEGX_SYSCALL_NR
+#ifndef TILEGX_SYSCALL_NR_H
+#define TILEGX_SYSCALL_NR_H
 
 /*
  * Copy from linux kernel asm-generic/unistd.h, which tilegx uses.
@@ -274,6 +274,10 @@
 #define TARGET_NR_memfd_create                  279
 #define TARGET_NR_bpf                           280
 #define TARGET_NR_execveat                      281
+#define TARGET_NR_userfaultfd                   282
+#define TARGET_NR_membarrier                    283
+#define TARGET_NR_mlock2                        284
+#define TARGET_NR_copy_file_range               285
 
 #define TARGET_NR_open                          1024
 #define TARGET_NR_link                          1025
@@ -307,7 +311,6 @@
 #define TARGET_NR_creat                         1064
 #define TARGET_NR_getdents                      1065
 #define TARGET_NR_futimesat                     1066
-#define TARGET_NR_select                        1067
 #define TARGET_NR_poll                          1068
 #define TARGET_NR_epoll_wait                    1069
 #define TARGET_NR_ustat                         1070

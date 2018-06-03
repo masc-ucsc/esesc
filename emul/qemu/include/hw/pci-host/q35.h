@@ -55,13 +55,12 @@ typedef struct MCHPCIState {
     MemoryRegion smram_region, open_high_smram;
     MemoryRegion smram, low_smram, high_smram;
     MemoryRegion tseg_blackhole, tseg_window;
-    PcPciInfo pci_info;
-    ram_addr_t below_4g_mem_size;
-    ram_addr_t above_4g_mem_size;
+    Range pci_hole;
+    uint64_t below_4g_mem_size;
+    uint64_t above_4g_mem_size;
     uint64_t pci_hole64_size;
-    PcGuestInfo *guest_info;
     uint32_t short_root_bus;
-    IntelIOMMUState *iommu;
+    uint16_t ext_tseg_mbytes;
 } MCHPCIState;
 
 typedef struct Q35PCIHost {
@@ -69,6 +68,7 @@ typedef struct Q35PCIHost {
     PCIExpressHost parent_obj;
     /*< public >*/
 
+    bool pci_hole64_fix;
     MCHPCIState mch;
 } Q35PCIHost;
 
@@ -79,6 +79,11 @@ typedef struct Q35PCIHost {
  * gmch part
  */
 
+#define MCH_HOST_PROP_RAM_MEM "ram-mem"
+#define MCH_HOST_PROP_PCI_MEM "pci-mem"
+#define MCH_HOST_PROP_SYSTEM_MEM "system-mem"
+#define MCH_HOST_PROP_IO_MEM "io-mem"
+
 /* PCI configuration */
 #define MCH_HOST_BRIDGE                        "MCH"
 
@@ -87,6 +92,11 @@ typedef struct Q35PCIHost {
 
 /* D0:F0 configuration space */
 #define MCH_HOST_BRIDGE_REVISION_DEFAULT       0x0
+
+#define MCH_HOST_BRIDGE_EXT_TSEG_MBYTES        0x50
+#define MCH_HOST_BRIDGE_EXT_TSEG_MBYTES_SIZE   2
+#define MCH_HOST_BRIDGE_EXT_TSEG_MBYTES_QUERY  0xffff
+#define MCH_HOST_BRIDGE_EXT_TSEG_MBYTES_MAX    0xfff
 
 #define MCH_HOST_BRIDGE_PCIEXBAR               0x60    /* 64bit register */
 #define MCH_HOST_BRIDGE_PCIEXBAR_SIZE          8       /* 64bit register */
@@ -175,5 +185,13 @@ typedef struct Q35PCIHost {
 #define MCH_PCIE_FUNC                          0
 
 uint64_t mch_mcfg_base(void);
+
+/*
+ * Arbitrary but unique BNF number for IOAPIC device.
+ *
+ * TODO: make sure there would have no conflict with real PCI bus
+ */
+#define Q35_PSEUDO_BUS_PLATFORM         (0xff)
+#define Q35_PSEUDO_DEVFN_IOAPIC         (0x00)
 
 #endif /* HW_Q35_H */

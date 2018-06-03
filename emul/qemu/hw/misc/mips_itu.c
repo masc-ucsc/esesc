@@ -19,14 +19,13 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "cpu.h"
+#include "qemu/log.h"
+#include "exec/exec-all.h"
 #include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
 #include "hw/misc/mips_itu.h"
-
-#ifdef CONFIG_ESESC
-#include "../../esesc_qemu.h"
-#endif
 
 #define ITC_TAG_ADDRSPACE_SZ (ITC_ADDRESSMAP_NUM * 8)
 /* Initialize as 4kB area to fit all 32 cells with default 128B grain.
@@ -166,9 +165,6 @@ static void wake_blocked_threads(ITCStorageCell *c)
     CPUState *cs;
     CPU_FOREACH(cs) {
         if (cs->halted && (c->blocked_threads & (1ULL << cs->cpu_index))) {
-#ifdef CONFIG_ESESC
-            QEMUReader_cpu_start(cs->cpu_index);
-#endif
             cpu_interrupt(cs, CPU_INTERRUPT_WAKE);
         }
     }
@@ -178,13 +174,9 @@ static void wake_blocked_threads(ITCStorageCell *c)
 static void QEMU_NORETURN block_thread_and_exit(ITCStorageCell *c)
 {
     c->blocked_threads |= 1ULL << current_cpu->cpu_index;
-    cpu_restore_state(current_cpu, current_cpu->mem_io_pc);
     current_cpu->halted = 1;
-#ifdef CONFIG_ESESC
-    QEMUReader_cpu_stop(current_cpu->cpu_index);
-#endif
     current_cpu->exception_index = EXCP_HLT;
-    cpu_loop_exit(current_cpu);
+    cpu_loop_exit_restore(current_cpu, current_cpu->mem_io_pc);
 }
 
 /* ITC Bypass View */

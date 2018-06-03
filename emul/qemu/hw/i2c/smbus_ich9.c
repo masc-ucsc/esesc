@@ -24,8 +24,8 @@
  * GNU GPL, version 2 or (at your option) any later version.
  *
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "hw/i386/pc.h"
 #include "hw/i2c/pm_smbus.h"
 #include "hw/pci/pci.h"
 #include "sysemu/sysemu.h"
@@ -34,7 +34,6 @@
 
 #include "hw/i386/ich9.h"
 
-#define TYPE_ICH9_SMB_DEVICE "ICH9 SMB"
 #define ICH9_SMB_DEVICE(obj) \
      OBJECT_CHECK(ICH9SMBState, (obj), TYPE_ICH9_SMB_DEVICE)
 
@@ -103,7 +102,7 @@ static void ich9_smb_class_init(ObjectClass *klass, void *data)
      * Reason: part of ICH9 southbridge, needs to be wired up by
      * pc_q35_init()
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
 }
 
 I2CBus *ich9_smb_init(PCIBus *bus, int devfn, uint32_t smb_io_base)
@@ -119,6 +118,10 @@ static const TypeInfo ich9_smb_info = {
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(ICH9SMBState),
     .class_init = ich9_smb_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void ich9_smb_register(void)

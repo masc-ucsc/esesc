@@ -543,8 +543,10 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     } else {
       I(lastpc);
 
+#if 0
+      // MIPS version is more complex
       if(lastpc == dinst->getPC()) { // Multiple uOPS no re-fetch issues
-        // n2Fetch--;
+        n2Fetch--;
       } else if((lastpc + 4) == dinst->getPC()) {
         n2Fetch--;
       } else if((lastpc + 8) != dinst->getPC()) {
@@ -558,6 +560,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       } else {
         n2Fetch -= 2; // NOP still consumes delay slot
       }
+#else
+        n2Fetch--;
+#endif
       if(FetchOneLine) {
         if((lastpc >> LineSizeBits) != (dinst->getPC() >> LineSizeBits)) {
           break;
@@ -709,8 +714,10 @@ void FetchEngine::unBlockFetchBPredDelay(DInst *dinst, Time_t missFetchTime) {
 void FetchEngine::unBlockFetch(DInst *dinst, Time_t missFetchTime) {
   clearMissInst(dinst, missFetchTime);
 
-  I(missFetchTime != 0);
-  Time_t n = (globalClock - missFetchTime) - 1;
+  I(missFetchTime != 0 || globalClock < 1000); // The first branch can have time zero fetch
+
+  I(globalClock > missFetchTime);
+  Time_t n = (globalClock - missFetchTime);
   avgBranchTime.sample(n, dinst->getStatsFlag()); // Not short branches
   // n *= FetchWidth;  //FOR CPU
   n *= 1; // FOR GPU and for MIMD

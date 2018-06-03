@@ -30,6 +30,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "ui/console.h"
 #include "hw/usb.h"
@@ -40,8 +41,7 @@ void hmp_info_usbhost(Monitor *mon, const QDict *qdict)
     monitor_printf(mon, "USB host devices not supported\n");
 }
 
-/* XXX: modify configure to compile the right host driver */
-USBDevice *usb_host_device_open(USBBus *bus, const char *devname)
+bool usb_host_dev_is_scsi_storage(USBDevice *ud)
 {
-    return NULL;
+    return false;
 }

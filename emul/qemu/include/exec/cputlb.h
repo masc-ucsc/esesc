@@ -23,9 +23,6 @@
 /* cputlb.c */
 void tlb_protect_code(ram_addr_t ram_addr);
 void tlb_unprotect_code(ram_addr_t ram_addr);
-void tlb_reset_dirty_range(CPUTLBEntry *tlb_entry, uintptr_t start,
-                           uintptr_t length);
-extern int tlb_flush_count;
-
+size_t tlb_flush_count(void);
 #endif
 #endif

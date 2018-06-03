@@ -17,6 +17,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "intel-hda.h"
@@ -315,7 +316,7 @@ static void hda_audio_command(HDACodecDevice *hda, uint32_t nid, uint32_t data)
         goto fail;
     }
     dprint(a, 2, "%s: nid %d (%s), verb 0x%x, payload 0x%x\n",
-           __FUNCTION__, nid, node->name, verb, payload);
+           __func__, nid, node->name, verb, payload);
 
     switch (verb) {
     /* all nodes */
@@ -448,7 +449,7 @@ static void hda_audio_command(HDACodecDevice *hda, uint32_t nid, uint32_t data)
 
 fail:
     dprint(a, 1, "%s: not handled: nid %d (%s), verb 0x%x, payload 0x%x\n",
-           __FUNCTION__, nid, node ? node->name : "?", verb, payload);
+           __func__, nid, node ? node->name : "?", verb, payload);
     hda_codec_response(hda, true, 0);
 }
 
@@ -483,7 +484,7 @@ static int hda_audio_init(HDACodecDevice *hda, const struct desc_codec *desc)
 
     a->desc = desc;
     a->name = object_get_typename(OBJECT(a));
-    dprint(a, 1, "%s: cad %d\n", __FUNCTION__, a->hda.cad);
+    dprint(a, 1, "%s: cad %d\n", __func__, a->hda.cad);
 
     AUD_register_card("hda", &a->card);
     for (i = 0; i < a->desc->nnodes; i++) {
@@ -519,13 +520,13 @@ static int hda_audio_init(HDACodecDevice *hda, const struct desc_codec *desc)
     return 0;
 }
 
-static int hda_audio_exit(HDACodecDevice *hda)
+static void hda_audio_exit(HDACodecDevice *hda)
 {
     HDAAudioState *a = HDA_AUDIO(hda);
     HDAAudioStream *st;
     int i;
 
-    dprint(a, 1, "%s\n", __FUNCTION__);
+    dprint(a, 1, "%s\n", __func__);
     for (i = 0; i < ARRAY_SIZE(a->st); i++) {
         st = a->st + i;
         if (st->node == NULL) {
@@ -538,7 +539,6 @@ static int hda_audio_exit(HDACodecDevice *hda)
         }
     }
     AUD_remove_card(&a->card);
-    return 0;
 }
 
 static int hda_audio_post_load(void *opaque, int version)
@@ -547,7 +547,7 @@ static int hda_audio_post_load(void *opaque, int version)
     HDAAudioStream *st;
     int i;
 
-    dprint(a, 1, "%s\n", __FUNCTION__);
+    dprint(a, 1, "%s\n", __func__);
     if (version == 1) {
         /* assume running_compat[] is for output streams */
         for (i = 0; i < ARRAY_SIZE(a->running_compat); i++)

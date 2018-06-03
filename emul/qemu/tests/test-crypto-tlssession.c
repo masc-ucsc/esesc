@@ -18,14 +18,13 @@
  * Author: Daniel P. Berrange <berrange@redhat.com>
  */
 
-#include <stdlib.h>
-#include <fcntl.h>
+#include "qemu/osdep.h"
 
-#include "config-host.h"
 #include "crypto-tls-x509-helpers.h"
 #include "crypto/tlscredsx509.h"
 #include "crypto/tlssession.h"
 #include "qom/object_interfaces.h"
+#include "qapi/error.h"
 #include "qemu/sockets.h"
 #include "qemu/acl.h"
 
@@ -76,6 +75,7 @@ static QCryptoTLSCreds *test_tls_creds_create(QCryptoTLSCredsEndpoint endpoint,
                      "server" : "client"),
         "dir", certdir,
         "verify-peer", "yes",
+        "priority", "NORMAL",
         /* We skip initial sanity checks here because we
          * want to make sure that problems are being
          * detected at the TLS session validation stage,

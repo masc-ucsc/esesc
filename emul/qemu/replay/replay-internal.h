@@ -12,8 +12,7 @@
  *
  */
 
-#include <stdio.h>
-
+/* Any changes to order/number of events will need to bump REPLAY_VERSION */
 enum ReplayEvents {
     /* for instruction event */
     EVENT_INSTRUCTION,
@@ -23,8 +22,18 @@ enum ReplayEvents {
     EVENT_EXCEPTION,
     /* for async events */
     EVENT_ASYNC,
-    /* for shutdown request */
+    /* for shutdown requests, range allows recovery of ShutdownCause */
     EVENT_SHUTDOWN,
+    EVENT_SHUTDOWN_LAST = EVENT_SHUTDOWN + SHUTDOWN_CAUSE__MAX,
+    /* for character device write event */
+    EVENT_CHAR_WRITE,
+    /* for character device read all event */
+    EVENT_CHAR_READ_ALL,
+    EVENT_CHAR_READ_ALL_ERROR,
+    /* for audio out event */
+    EVENT_AUDIO_OUT,
+    /* for audio in event */
+    EVENT_AUDIO_IN,
     /* for clock read/writes */
     /* some of greater codes are reserved for clocks */
     EVENT_CLOCK,
@@ -44,6 +53,9 @@ enum ReplayAsyncEventKind {
     REPLAY_ASYNC_EVENT_BH,
     REPLAY_ASYNC_EVENT_INPUT,
     REPLAY_ASYNC_EVENT_INPUT_SYNC,
+    REPLAY_ASYNC_EVENT_CHAR_READ,
+    REPLAY_ASYNC_EVENT_BLOCK,
+    REPLAY_ASYNC_EVENT_NET,
     REPLAY_ASYNC_COUNT
 };
 
@@ -56,10 +68,26 @@ typedef struct ReplayState {
     uint64_t current_step;
     /*! Number of instructions to be executed before other events happen. */
     int instructions_count;
+    /*! Type of the currently executed event. */
+    unsigned int data_kind;
+    /*! Flag which indicates that event is not processed yet. */
+    unsigned int has_unread_data;
+    /*! Temporary variable for saving current log offset. */
+    uint64_t file_offset;
+    /*! Next block operation id.
+        This counter is global, because requests from different
+        block devices should not get overlapping ids. */
+    uint64_t block_request_id;
+    /*! Prior value of the host clock */
+    uint64_t host_clock_last;
+    /*! Asynchronous event type read from the log */
+    int32_t read_event_kind;
+    /*! Asynchronous event id read from the log */
+    uint64_t read_event_id;
+    /*! Asynchronous event checkpoint id read from the log */
+    int32_t read_event_checkpoint;
 } ReplayState;
 extern ReplayState replay_state;
-
-extern unsigned int replay_data_kind;
 
 /* File for replay writing */
 extern FILE *replay_file;
@@ -78,12 +106,11 @@ int64_t replay_get_qword(void);
 void replay_get_array(uint8_t *buf, size_t *size);
 void replay_get_array_alloc(uint8_t **buf, size_t *size);
 
-/* Mutex functions for protecting replay log file */
+/* Mutex functions for protecting replay log file and ensuring
+ * synchronisation between vCPU and main-loop threads. */
 
 void replay_mutex_init(void);
-void replay_mutex_destroy(void);
-void replay_mutex_lock(void);
-void replay_mutex_unlock(void);
+bool replay_mutex_locked(void);
 
 /*! Checks error status of the file. */
 void replay_check_error(void);
@@ -92,7 +119,7 @@ void replay_check_error(void);
     the next event from the log. */
 void replay_finish_event(void);
 /*! Reads data type from the file and stores it in the
-    replay_data_kind variable. */
+    data_kind variable. */
 void replay_fetch_data_kind(void);
 
 /*! Saves queued events (like instructions and sound). */
@@ -113,8 +140,6 @@ void replay_read_next_clock(unsigned int kind);
 void replay_init_events(void);
 /*! Clears internal data structures for events handling */
 void replay_finish_events(void);
-/*! Enables storing events in the queue */
-void replay_enable_events(void);
 /*! Flushes events queue */
 void replay_flush_events(void);
 /*! Clears events list before loading new VM state */
@@ -125,6 +150,9 @@ bool replay_has_events(void);
 void replay_save_events(int checkpoint);
 /*! Read events from the file into the input queue */
 void replay_read_events(int checkpoint);
+/*! Adds specified async event to the queue */
+void replay_add_event(ReplayAsyncEventKind event_kind, void *opaque,
+                      void *opaque2, uint64_t id);
 
 /* Input events */
 
@@ -136,5 +164,30 @@ InputEvent *replay_read_input_event(void);
 void replay_add_input_event(struct InputEvent *event);
 /*! Adds input sync event to the queue */
 void replay_add_input_sync_event(void);
+
+/* Character devices */
+
+/*! Called to run char device read event. */
+void replay_event_char_read_run(void *opaque);
+/*! Writes char read event to the file. */
+void replay_event_char_read_save(void *opaque);
+/*! Reads char event read from the file. */
+void *replay_event_char_read_load(void);
+
+/* Network devices */
+
+/*! Called to run network event. */
+void replay_event_net_run(void *opaque);
+/*! Writes network event to the file. */
+void replay_event_net_save(void *opaque);
+/*! Reads network from the file. */
+void *replay_event_net_load(void);
+
+/* VMState-related functions */
+
+/* Registers replay VMState.
+   Should be called before virtual devices initialization
+   to make cached timers available for post_load functions. */
+void replay_vmstate_register(void);
 
 #endif

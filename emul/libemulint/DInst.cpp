@@ -197,10 +197,12 @@ void DInst::addDataSign(int ds, int64_t _data, AddrType _ldpc) {
       data_sign = DS_EQ;
     else if(data < _data) // bltc; rs < rt (bgtc alias for bltc)
       data_sign = DS_LTC;
-    else if(data >= _data) // bgec; rs >= rt (blec is alias for bgec)
+    else if(data > _data) // bgec; rs >= rt (blec is alias for bgec)
       data_sign = DS_GEC;
-    else if(_data != data) // bne; rs ! = rt
+    else {
+      I(_data != data); // bne; rs ! = rt
       data_sign = DS_NE;
+    }
   } else if(ds == 1) {
     // DataType mix = data ^ (_data<<3) + (data>>1);
     DataType mix = data ^ (_data << 3);

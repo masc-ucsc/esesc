@@ -11,7 +11,8 @@
  *
  */
 
-#include <glib.h>
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 
 #include "qemu-common.h"
 #include "cpu.h"
@@ -177,6 +178,7 @@ void guest_phys_blocks_free(GuestPhysBlockList *list)
 
     QTAILQ_FOREACH_SAFE(p, &list->head, next, q) {
         QTAILQ_REMOVE(&list->head, p, next);
+        memory_region_unref(p->mr);
         g_free(p);
     }
     list->num = 0;
@@ -204,7 +206,7 @@ static void guest_phys_blocks_region_add(MemoryListener *listener,
 
     /* we only care about RAM */
     if (!memory_region_is_ram(section->mr) ||
-        memory_region_is_skip_dump(section->mr)) {
+        memory_region_is_ram_device(section->mr)) {
         return;
     }
 
@@ -240,6 +242,8 @@ static void guest_phys_blocks_region_add(MemoryListener *listener,
         block->target_start = target_start;
         block->target_end   = target_end;
         block->host_addr    = host_addr;
+        block->mr           = section->mr;
+        memory_region_ref(section->mr);
 
         QTAILQ_INSERT_TAIL(&g->list->head, block, next);
         ++g->list->num;
@@ -252,7 +256,7 @@ static void guest_phys_blocks_region_add(MemoryListener *listener,
 
 #ifdef DEBUG_GUEST_PHYS_REGION_ADD
     fprintf(stderr, "%s: target_start=" TARGET_FMT_plx " target_end="
-            TARGET_FMT_plx ": %s (count: %u)\n", __FUNCTION__, target_start,
+            TARGET_FMT_plx ": %s (count: %u)\n", __func__, target_start,
             target_end, predecessor ? "joined" : "added", g->list->num);
 #endif
 }
@@ -333,6 +337,7 @@ void memory_mapping_filter(MemoryMappingList *list, int64_t begin,
         if (cur->phys_addr >= begin + length ||
             cur->phys_addr + cur->length <= begin) {
             QTAILQ_REMOVE(&list->head, cur, next);
+            g_free(cur);
             list->num--;
             continue;
         }

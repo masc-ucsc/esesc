@@ -95,18 +95,20 @@ ELSE(CMAKE_BUILD_TYPE MATCHES "Debug")
 ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 
 IF(ESESC_SYSTEM)
-  SET(QEMU_TARGET --target-list=mips64el-softmmu)
+  SET(QEMU_TARGET --target-list=riscv64-softmmu)
 ELSE(ESESC_SYSTEM)
   IF(ESESC_N32)
-    SET(QEMU_TARGET --target-list=mipsn32el-linux-user)
+    SET(QEMU_TARGET --target-list=riscv32-linux-user)
   ELSE(ESESC_N32)
-    SET(QEMU_TARGET --target-list=mips64el-linux-user)
+    SET(QEMU_TARGET --target-list=riscv64-linux-user)
   ENDIF(ESESC_N32)
 ENDIF(ESESC_SYSTEM)
 
 ExternalProject_Add(qemu
   SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET} --disable-virtfs --disable-numa --disable-nettle --disable-gcrypt --disable-bzip2 --disable-libssh2 --disable-curl --disable-linux-aio --disable-vhdx --disable-sdl --disable-docs --enable-esesc --python=python2 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
+  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET}
+  --disable-virtfs --disable-numa --disable-nettle --disable-gcrypt --disable-bzip2 --disable-libssh2 --disable-curl
+  --disable-linux-aio --disable-vhdx --disable-sdl --disable-docs --enable-esesc --python=python2.7 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0

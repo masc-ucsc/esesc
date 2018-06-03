@@ -24,10 +24,6 @@
 #include "hw/mips/cpudevs.h"
 #include "sysemu/kvm.h"
 
-#ifdef CONFIG_ESESC
-#include "../../esesc_qemu.h"
-#endif
-
 qemu_irq get_cps_irq(MIPSCPSState *s, int pin_number)
 {
     assert(pin_number < s->num_irq);
@@ -54,9 +50,6 @@ static void main_cpu_reset(void *opaque)
 
     /* All VPs are halted on reset. Leave powering up to CPC. */
     cs->halted = 1;
-#ifdef CONFIG_ESESC
-    QEMUReader_cpu_stop(cs->cpu_index);
-#endif
 }
 
 static bool cpu_mips_itu_supported(CPUMIPSState *env)
@@ -78,16 +71,13 @@ static void mips_cps_realize(DeviceState *dev, Error **errp)
     bool itu_present = false;
 
     for (i = 0; i < s->num_vp; i++) {
-        cpu = cpu_mips_init(s->cpu_model);
-        if (cpu == NULL) {
-            error_setg(errp, "%s: CPU initialization failed\n",  __func__);
-            return;
-        }
-        env = &cpu->env;
+        cpu = MIPS_CPU(cpu_create(s->cpu_type));
 
         /* Init internal devices */
-        cpu_mips_irq_init_cpu(env);
-        cpu_mips_clock_init(env);
+        cpu_mips_irq_init_cpu(cpu);
+        cpu_mips_clock_init(cpu);
+
+        env = &cpu->env;
         if (cpu_mips_itu_supported(env)) {
             itu_present = true;
             /* Attach ITC Tag to the VP */
@@ -170,7 +160,7 @@ static void mips_cps_realize(DeviceState *dev, Error **errp)
 static Property mips_cps_properties[] = {
     DEFINE_PROP_UINT32("num-vp", MIPSCPSState, num_vp, 1),
     DEFINE_PROP_UINT32("num-irq", MIPSCPSState, num_irq, 256),
-    DEFINE_PROP_STRING("cpu-model", MIPSCPSState, cpu_model),
+    DEFINE_PROP_STRING("cpu-type", MIPSCPSState, cpu_type),
     DEFINE_PROP_END_OF_LIST()
 };
 

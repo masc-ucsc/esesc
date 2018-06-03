@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef _QEMU_VIRTIO_SCSI_H
-#define _QEMU_VIRTIO_SCSI_H
+#ifndef QEMU_VIRTIO_SCSI_H
+#define QEMU_VIRTIO_SCSI_H
 
 /* Override CDB/sense data size: they are dynamic (guest controlled) in QEMU */
 #define VIRTIO_SCSI_CDB_SIZE 0
@@ -21,8 +21,8 @@
 #include "hw/virtio/virtio.h"
 #include "hw/pci/pci.h"
 #include "hw/scsi/scsi.h"
+#include "chardev/char-fe.h"
 #include "sysemu/iothread.h"
-#include "hw/virtio/dataplane/vring.h"
 
 #define TYPE_VIRTIO_SCSI_COMMON "virtio-scsi-common"
 #define VIRTIO_SCSI_COMMON(obj) \
@@ -32,7 +32,6 @@
 #define VIRTIO_SCSI(obj) \
         OBJECT_CHECK(VirtIOSCSI, (obj), TYPE_VIRTIO_SCSI)
 
-#define VIRTIO_SCSI_VQ_SIZE     128
 #define VIRTIO_SCSI_MAX_CHANNEL 0
 #define VIRTIO_SCSI_MAX_TARGET  255
 #define VIRTIO_SCSI_MAX_LUN     16383
@@ -48,22 +47,19 @@ typedef struct virtio_scsi_config VirtIOSCSIConfig;
 
 struct VirtIOSCSIConf {
     uint32_t num_queues;
+    uint32_t virtqueue_size;
     uint32_t max_sectors;
     uint32_t cmd_per_lun;
+#ifdef CONFIG_VHOST_SCSI
     char *vhostfd;
     char *wwpn;
+#endif
+    CharBackend chardev;
     uint32_t boot_tpgt;
     IOThread *iothread;
 };
 
 struct VirtIOSCSI;
-
-typedef struct {
-    struct VirtIOSCSI *parent;
-    Vring vring;
-    EventNotifier host_notifier;
-    EventNotifier guest_notifier;
-} VirtIOSCSIVring;
 
 typedef struct VirtIOSCSICommon {
     VirtIODevice parent_obj;
@@ -86,36 +82,24 @@ typedef struct VirtIOSCSI {
     /* Fields for dataplane below */
     AioContext *ctx; /* one iothread per virtio-scsi-pci for now */
 
-    /* Vring is used instead of vq in dataplane code, because of the underlying
-     * memory layer thread safety */
-    VirtIOSCSIVring *ctrl_vring;
-    VirtIOSCSIVring *event_vring;
-    VirtIOSCSIVring **cmd_vrings;
     bool dataplane_started;
     bool dataplane_starting;
     bool dataplane_stopping;
-    bool dataplane_disabled;
     bool dataplane_fenced;
-    Error *blocker;
-    Notifier migration_state_notifier;
     uint32_t host_features;
 } VirtIOSCSI;
 
 typedef struct VirtIOSCSIReq {
+    /* Note:
+     * - fields up to resp_iov are initialized by virtio_scsi_init_req;
+     * - fields starting at vring are zeroed by virtio_scsi_init_req.
+     * */
+    VirtQueueElement elem;
+
     VirtIOSCSI *dev;
     VirtQueue *vq;
     QEMUSGList qsgl;
     QEMUIOVector resp_iov;
-
-    /* Note:
-     * - fields before elem are initialized by virtio_scsi_init_req;
-     * - elem is uninitialized at the time of allocation.
-     * - fields after elem are zeroed by virtio_scsi_init_req.
-     * */
-
-    VirtQueueElement elem;
-    /* Set by dataplane code. */
-    VirtIOSCSIVring *vring;
 
     union {
         /* Used for two-stage request submission */
@@ -141,26 +125,37 @@ typedef struct VirtIOSCSIReq {
     } req;
 } VirtIOSCSIReq;
 
-typedef void (*HandleOutput)(VirtIODevice *, VirtQueue *);
+static inline void virtio_scsi_acquire(VirtIOSCSI *s)
+{
+    if (s->ctx) {
+        aio_context_acquire(s->ctx);
+    }
+}
 
-void virtio_scsi_common_realize(DeviceState *dev, Error **errp,
-                                HandleOutput ctrl, HandleOutput evt,
-                                HandleOutput cmd);
+static inline void virtio_scsi_release(VirtIOSCSI *s)
+{
+    if (s->ctx) {
+        aio_context_release(s->ctx);
+    }
+}
+
+void virtio_scsi_common_realize(DeviceState *dev,
+                                VirtIOHandleOutput ctrl,
+                                VirtIOHandleOutput evt,
+                                VirtIOHandleOutput cmd,
+                                Error **errp);
 
 void virtio_scsi_common_unrealize(DeviceState *dev, Error **errp);
-void virtio_scsi_handle_ctrl_req(VirtIOSCSI *s, VirtIOSCSIReq *req);
-bool virtio_scsi_handle_cmd_req_prepare(VirtIOSCSI *s, VirtIOSCSIReq *req);
-void virtio_scsi_handle_cmd_req_submit(VirtIOSCSI *s, VirtIOSCSIReq *req);
-VirtIOSCSIReq *virtio_scsi_init_req(VirtIOSCSI *s, VirtQueue *vq);
+bool virtio_scsi_handle_event_vq(VirtIOSCSI *s, VirtQueue *vq);
+bool virtio_scsi_handle_cmd_vq(VirtIOSCSI *s, VirtQueue *vq);
+bool virtio_scsi_handle_ctrl_vq(VirtIOSCSI *s, VirtQueue *vq);
+void virtio_scsi_init_req(VirtIOSCSI *s, VirtQueue *vq, VirtIOSCSIReq *req);
 void virtio_scsi_free_req(VirtIOSCSIReq *req);
 void virtio_scsi_push_event(VirtIOSCSI *s, SCSIDevice *dev,
                             uint32_t event, uint32_t reason);
 
-void virtio_scsi_set_iothread(VirtIOSCSI *s, IOThread *iothread);
-void virtio_scsi_dataplane_start(VirtIOSCSI *s);
-void virtio_scsi_dataplane_stop(VirtIOSCSI *s);
-void virtio_scsi_vring_push_notify(VirtIOSCSIReq *req);
-VirtIOSCSIReq *virtio_scsi_pop_req_vring(VirtIOSCSI *s,
-                                         VirtIOSCSIVring *vring);
+void virtio_scsi_dataplane_setup(VirtIOSCSI *s, Error **errp);
+int virtio_scsi_dataplane_start(VirtIODevice *s);
+void virtio_scsi_dataplane_stop(VirtIODevice *s);
 
-#endif /* _QEMU_VIRTIO_SCSI_H */
+#endif /* QEMU_VIRTIO_SCSI_H */

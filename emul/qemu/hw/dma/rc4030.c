@@ -22,17 +22,17 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/mips/mips.h"
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
+#include "qemu/log.h"
 #include "exec/address-spaces.h"
 #include "trace.h"
 
 /********************************************************/
 /* rc4030 emulation                                     */
-
-#define MAX_TL_ENTRIES 512
 
 typedef struct dma_pagetable_entry {
     int32_t frame;
@@ -53,6 +53,8 @@ typedef struct dma_pagetable_entry {
 #define TYPE_RC4030 "rc4030"
 #define RC4030(obj) \
     OBJECT_CHECK(rc4030State, (obj), TYPE_RC4030)
+
+#define TYPE_RC4030_IOMMU_MEMORY_REGION "rc4030-iommu-memory-region"
 
 typedef struct rc4030State
 {
@@ -89,14 +91,8 @@ typedef struct rc4030State
     qemu_irq timer_irq;
     qemu_irq jazz_bus_irq;
 
-    /* biggest translation table */
-    MemoryRegion dma_tt;
-    /* translation table memory region alias, added to system RAM */
-    MemoryRegion dma_tt_alias;
     /* whole DMA memory region, root of DMA address space */
-    MemoryRegion dma_mr;
-    /* translation table entry aliases, added to DMA memory region */
-    MemoryRegion dma_mrs[MAX_TL_ENTRIES];
+    IOMMUMemoryRegion dma_mr;
     AddressSpace dma_as;
 
     MemoryRegion iomem_chipset;
@@ -105,13 +101,13 @@ typedef struct rc4030State
 
 static void set_next_tick(rc4030State *s)
 {
-    qemu_irq_lower(s->timer_irq);
     uint32_t tm_hz;
+    qemu_irq_lower(s->timer_irq);
 
     tm_hz = 1000 / (s->itr + 1);
 
     timer_mod(s->periodic_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                   get_ticks_per_sec() / tm_hz);
+                   NANOSECONDS_PER_SECOND / tm_hz);
 }
 
 /* called for accesses to rc4030 */
@@ -254,96 +250,6 @@ static uint64_t rc4030_read(void *opaque, hwaddr addr, unsigned int size)
     return val;
 }
 
-static void rc4030_dma_as_update_one(rc4030State *s, int index, uint32_t frame)
-{
-    if (index < MAX_TL_ENTRIES) {
-        memory_region_set_enabled(&s->dma_mrs[index], false);
-    }
-
-    if (!frame) {
-        return;
-    }
-
-    if (index >= MAX_TL_ENTRIES) {
-        qemu_log_mask(LOG_UNIMP,
-                      "rc4030: trying to use too high "
-                      "translation table entry %d (max allowed=%d)",
-                      index, MAX_TL_ENTRIES);
-        return;
-    }
-    memory_region_set_alias_offset(&s->dma_mrs[index], frame);
-    memory_region_set_enabled(&s->dma_mrs[index], true);
-}
-
-static void rc4030_dma_tt_write(void *opaque, hwaddr addr, uint64_t data,
-                                unsigned int size)
-{
-    rc4030State *s = opaque;
-
-    /* write memory */
-    memcpy(memory_region_get_ram_ptr(&s->dma_tt) + addr, &data, size);
-
-    /* update dma address space (only if frame field has been written) */
-    if (addr % sizeof(dma_pagetable_entry) == 0) {
-        int index = addr / sizeof(dma_pagetable_entry);
-        memory_region_transaction_begin();
-        rc4030_dma_as_update_one(s, index, (uint32_t)data);
-        memory_region_transaction_commit();
-    }
-}
-
-static const MemoryRegionOps rc4030_dma_tt_ops = {
-    .write = rc4030_dma_tt_write,
-    .impl.min_access_size = 4,
-    .impl.max_access_size = 4,
-};
-
-static void rc4030_dma_tt_update(rc4030State *s, uint32_t new_tl_base,
-                                 uint32_t new_tl_limit)
-{
-    int entries, i;
-    dma_pagetable_entry *dma_tl_contents;
-
-    if (s->dma_tl_limit) {
-        /* write old dma tl table to physical memory */
-        memory_region_del_subregion(get_system_memory(), &s->dma_tt_alias);
-        cpu_physical_memory_write(s->dma_tl_limit & 0x7fffffff,
-                                  memory_region_get_ram_ptr(&s->dma_tt),
-                                  memory_region_size(&s->dma_tt_alias));
-    }
-    object_unparent(OBJECT(&s->dma_tt_alias));
-
-    s->dma_tl_base = new_tl_base;
-    s->dma_tl_limit = new_tl_limit;
-    new_tl_base &= 0x7fffffff;
-
-    if (s->dma_tl_limit) {
-        uint64_t dma_tt_size;
-        if (s->dma_tl_limit <= memory_region_size(&s->dma_tt)) {
-            dma_tt_size = s->dma_tl_limit;
-        } else {
-            dma_tt_size = memory_region_size(&s->dma_tt);
-        }
-        memory_region_init_alias(&s->dma_tt_alias, OBJECT(s),
-                                 "dma-table-alias",
-                                 &s->dma_tt, 0, dma_tt_size);
-        dma_tl_contents = memory_region_get_ram_ptr(&s->dma_tt);
-        cpu_physical_memory_read(new_tl_base, dma_tl_contents, dma_tt_size);
-
-        memory_region_transaction_begin();
-        entries = dma_tt_size / sizeof(dma_pagetable_entry);
-        for (i = 0; i < entries; i++) {
-            rc4030_dma_as_update_one(s, i, dma_tl_contents[i].frame);
-        }
-        memory_region_add_subregion(get_system_memory(), new_tl_base,
-                                    &s->dma_tt_alias);
-        memory_region_transaction_commit();
-    } else {
-        memory_region_init(&s->dma_tt_alias, OBJECT(s),
-                           "dma-table-alias", 0);
-    }
-}
-
 static void rc4030_write(void *opaque, hwaddr addr, uint64_t data,
                          unsigned int size)
 {
@@ -360,11 +266,11 @@ static void rc4030_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     /* DMA transl. table base */
     case 0x0018:
-        rc4030_dma_tt_update(s, val, s->dma_tl_limit);
+        s->dma_tl_base = val;
         break;
     /* DMA transl. table limit */
     case 0x0020:
-        rc4030_dma_tt_update(s, s->dma_tl_base, val);
+        s->dma_tl_limit = val;
         break;
     /* DMA transl. table invalidated */
     case 0x0028:
@@ -458,7 +364,7 @@ static void rc4030_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     /* Interval timer reload */
     case 0x0228:
-        s->itr = val;
+        s->itr = val & 0x01FF;
         qemu_irq_lower(s->timer_irq);
         set_next_tick(s);
         break;
@@ -584,6 +490,34 @@ static const MemoryRegionOps jazzio_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static IOMMUTLBEntry rc4030_dma_translate(IOMMUMemoryRegion *iommu, hwaddr addr,
+                                          IOMMUAccessFlags flag)
+{
+    rc4030State *s = container_of(iommu, rc4030State, dma_mr);
+    IOMMUTLBEntry ret = {
+        .target_as = &address_space_memory,
+        .iova = addr & ~(DMA_PAGESIZE - 1),
+        .translated_addr = 0,
+        .addr_mask = DMA_PAGESIZE - 1,
+        .perm = IOMMU_NONE,
+    };
+    uint64_t i, entry_address;
+    dma_pagetable_entry entry;
+
+    i = addr / DMA_PAGESIZE;
+    if (i < s->dma_tl_limit / sizeof(entry)) {
+        entry_address = (s->dma_tl_base & 0x7fffffff) + i * sizeof(entry);
+        if (address_space_read(ret.target_as, entry_address,
+                               MEMTXATTRS_UNSPECIFIED, (unsigned char *)&entry,
+                               sizeof(entry)) == MEMTX_OK) {
+            ret.translated_addr = entry.frame & ~(DMA_PAGESIZE - 1);
+            ret.perm = IOMMU_RW;
+        }
+    }
+
+    return ret;
+}
+
 static void rc4030_reset(DeviceState *dev)
 {
     rc4030State *s = RC4030(dev);
@@ -594,7 +528,6 @@ static void rc4030_reset(DeviceState *dev)
     s->invalid_address_register = 0;
 
     memset(s->dma_regs, 0, sizeof(s->dma_regs));
-    rc4030_dma_tt_update(s, 0, 0);
 
     s->remote_failed_address = s->memory_failed_address = 0;
     s->cache_maint = 0;
@@ -614,34 +547,9 @@ static void rc4030_reset(DeviceState *dev)
     qemu_irq_lower(s->jazz_bus_irq);
 }
 
-static int rc4030_load(QEMUFile *f, void *opaque, int version_id)
+static int rc4030_post_load(void *opaque, int version_id)
 {
     rc4030State* s = opaque;
-    int i, j;
-
-    if (version_id != 2)
-        return -EINVAL;
-
-    s->config = qemu_get_be32(f);
-    s->invalid_address_register = qemu_get_be32(f);
-    for (i = 0; i < 8; i++)
-        for (j = 0; j < 4; j++)
-            s->dma_regs[i][j] = qemu_get_be32(f);
-    s->dma_tl_base = qemu_get_be32(f);
-    s->dma_tl_limit = qemu_get_be32(f);
-    s->cache_maint = qemu_get_be32(f);
-    s->remote_failed_address = qemu_get_be32(f);
-    s->memory_failed_address = qemu_get_be32(f);
-    s->cache_ptag = qemu_get_be32(f);
-    s->cache_ltag = qemu_get_be32(f);
-    s->cache_bmask = qemu_get_be32(f);
-    s->memory_refresh_rate = qemu_get_be32(f);
-    s->nvram_protect = qemu_get_be32(f);
-    for (i = 0; i < 15; i++)
-        s->rem_speed[i] = qemu_get_be32(f);
-    s->imr_jazz = qemu_get_be32(f);
-    s->isr_jazz = qemu_get_be32(f);
-    s->itr = qemu_get_be32(f);
 
     set_next_tick(s);
     update_jazz_irq(s);
@@ -649,32 +557,31 @@ static int rc4030_load(QEMUFile *f, void *opaque, int version_id)
     return 0;
 }
 
-static void rc4030_save(QEMUFile *f, void *opaque)
-{
-    rc4030State* s = opaque;
-    int i, j;
-
-    qemu_put_be32(f, s->config);
-    qemu_put_be32(f, s->invalid_address_register);
-    for (i = 0; i < 8; i++)
-        for (j = 0; j < 4; j++)
-            qemu_put_be32(f, s->dma_regs[i][j]);
-    qemu_put_be32(f, s->dma_tl_base);
-    qemu_put_be32(f, s->dma_tl_limit);
-    qemu_put_be32(f, s->cache_maint);
-    qemu_put_be32(f, s->remote_failed_address);
-    qemu_put_be32(f, s->memory_failed_address);
-    qemu_put_be32(f, s->cache_ptag);
-    qemu_put_be32(f, s->cache_ltag);
-    qemu_put_be32(f, s->cache_bmask);
-    qemu_put_be32(f, s->memory_refresh_rate);
-    qemu_put_be32(f, s->nvram_protect);
-    for (i = 0; i < 15; i++)
-        qemu_put_be32(f, s->rem_speed[i]);
-    qemu_put_be32(f, s->imr_jazz);
-    qemu_put_be32(f, s->isr_jazz);
-    qemu_put_be32(f, s->itr);
-}
+static const VMStateDescription vmstate_rc4030 = {
+    .name = "rc4030",
+    .version_id = 3,
+    .post_load = rc4030_post_load,
+    .fields = (VMStateField []) {
+        VMSTATE_UINT32(config, rc4030State),
+        VMSTATE_UINT32(invalid_address_register, rc4030State),
+        VMSTATE_UINT32_2DARRAY(dma_regs, rc4030State, 8, 4),
+        VMSTATE_UINT32(dma_tl_base, rc4030State),
+        VMSTATE_UINT32(dma_tl_limit, rc4030State),
+        VMSTATE_UINT32(cache_maint, rc4030State),
+        VMSTATE_UINT32(remote_failed_address, rc4030State),
+        VMSTATE_UINT32(memory_failed_address, rc4030State),
+        VMSTATE_UINT32(cache_ptag, rc4030State),
+        VMSTATE_UINT32(cache_ltag, rc4030State),
+        VMSTATE_UINT32(cache_bmask, rc4030State),
+        VMSTATE_UINT32(memory_refresh_rate, rc4030State),
+        VMSTATE_UINT32(nvram_protect, rc4030State),
+        VMSTATE_UINT32_ARRAY(rem_speed, rc4030State, 16),
+        VMSTATE_UINT32(imr_jazz, rc4030State),
+        VMSTATE_UINT32(isr_jazz, rc4030State),
+        VMSTATE_UINT32(itr, rc4030State),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static void rc4030_do_dma(void *opaque, int n, uint8_t *buf, int len, int is_write)
 {
@@ -751,8 +658,6 @@ static void rc4030_initfn(Object *obj)
     sysbus_init_irq(sysbus, &s->timer_irq);
     sysbus_init_irq(sysbus, &s->jazz_bus_irq);
 
-    register_savevm(NULL, "rc4030", 0, 2, rc4030_save, rc4030_load, s);
-
     sysbus_init_mmio(sysbus, &s->iomem_chipset);
     sysbus_init_mmio(sysbus, &s->iomem_jazzio);
 }
@@ -761,7 +666,6 @@ static void rc4030_realize(DeviceState *dev, Error **errp)
 {
     rc4030State *s = RC4030(dev);
     Object *o = OBJECT(dev);
-    int i;
 
     s->periodic_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
                                      rc4030_periodic_timer, s);
@@ -771,37 +675,20 @@ static void rc4030_realize(DeviceState *dev, Error **errp)
     memory_region_init_io(&s->iomem_jazzio, NULL, &jazzio_ops, s,
                           "rc4030.jazzio", 0x00001000);
 
-    memory_region_init_rom_device(&s->dma_tt, o,
-                                  &rc4030_dma_tt_ops, s, "dma-table",
-                                  MAX_TL_ENTRIES * sizeof(dma_pagetable_entry),
-                                  NULL);
-    memory_region_init(&s->dma_tt_alias, o, "dma-table-alias", 0);
-    memory_region_init(&s->dma_mr, o, "dma", INT32_MAX);
-    for (i = 0; i < MAX_TL_ENTRIES; ++i) {
-        memory_region_init_alias(&s->dma_mrs[i], o, "dma-alias",
-                                 get_system_memory(), 0, DMA_PAGESIZE);
-        memory_region_set_enabled(&s->dma_mrs[i], false);
-        memory_region_add_subregion(&s->dma_mr, i * DMA_PAGESIZE,
-                                    &s->dma_mrs[i]);
-    }
-    address_space_init(&s->dma_as, &s->dma_mr, "rc4030-dma");
+    memory_region_init_iommu(&s->dma_mr, sizeof(s->dma_mr),
+                             TYPE_RC4030_IOMMU_MEMORY_REGION,
+                             o, "rc4030.dma", UINT32_MAX);
+    address_space_init(&s->dma_as, MEMORY_REGION(&s->dma_mr), "rc4030-dma");
 }
 
 static void rc4030_unrealize(DeviceState *dev, Error **errp)
 {
     rc4030State *s = RC4030(dev);
-    int i;
 
     timer_free(s->periodic_timer);
 
     address_space_destroy(&s->dma_as);
-    object_unparent(OBJECT(&s->dma_tt));
-    object_unparent(OBJECT(&s->dma_tt_alias));
     object_unparent(OBJECT(&s->dma_mr));
-    for (i = 0; i < MAX_TL_ENTRIES; ++i) {
-        memory_region_del_subregion(&s->dma_mr, &s->dma_mrs[i]);
-        object_unparent(OBJECT(&s->dma_mrs[i]));
-    }
 }
 
 static void rc4030_class_init(ObjectClass *klass, void *class_data)
@@ -811,6 +698,7 @@ static void rc4030_class_init(ObjectClass *klass, void *class_data)
     dc->realize = rc4030_realize;
     dc->unrealize = rc4030_unrealize;
     dc->reset = rc4030_reset;
+    dc->vmsd = &vmstate_rc4030;
 }
 
 static const TypeInfo rc4030_info = {
@@ -821,14 +709,29 @@ static const TypeInfo rc4030_info = {
     .class_init = rc4030_class_init,
 };
 
+static void rc4030_iommu_memory_region_class_init(ObjectClass *klass,
+                                                  void *data)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
+
+    imrc->translate = rc4030_dma_translate;
+}
+
+static const TypeInfo rc4030_iommu_memory_region_info = {
+    .parent = TYPE_IOMMU_MEMORY_REGION,
+    .name = TYPE_RC4030_IOMMU_MEMORY_REGION,
+    .class_init = rc4030_iommu_memory_region_class_init,
+};
+
 static void rc4030_register_types(void)
 {
     type_register_static(&rc4030_info);
+    type_register_static(&rc4030_iommu_memory_region_info);
 }
 
 type_init(rc4030_register_types)
 
-DeviceState *rc4030_init(rc4030_dma **dmas, MemoryRegion **dma_mr)
+DeviceState *rc4030_init(rc4030_dma **dmas, IOMMUMemoryRegion **dma_mr)
 {
     DeviceState *dev;
 

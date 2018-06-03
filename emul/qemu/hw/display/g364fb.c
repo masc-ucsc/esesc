@@ -17,6 +17,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "qemu/error-report.h"
 #include "ui/console.h"
@@ -61,28 +62,19 @@ typedef struct G364State {
 
 #define G364_PAGE_SIZE 4096
 
-static inline int check_dirty(G364State *s, ram_addr_t page)
+static inline int check_dirty(G364State *s, DirtyBitmapSnapshot *snap, ram_addr_t page)
 {
-    return memory_region_get_dirty(&s->mem_vram, page, G364_PAGE_SIZE,
-                                   DIRTY_MEMORY_VGA);
-}
-
-static inline void reset_dirty(G364State *s,
-                               ram_addr_t page_min, ram_addr_t page_max)
-{
-    memory_region_reset_dirty(&s->mem_vram,
-                              page_min,
-                              page_max + G364_PAGE_SIZE - page_min - 1,
-                              DIRTY_MEMORY_VGA);
+    return memory_region_snapshot_get_dirty(&s->mem_vram, snap, page, G364_PAGE_SIZE);
 }
 
 static void g364fb_draw_graphic8(G364State *s)
 {
     DisplaySurface *surface = qemu_console_surface(s->con);
+    DirtyBitmapSnapshot *snap;
     int i, w;
     uint8_t *vram;
     uint8_t *data_display, *dd;
-    ram_addr_t page, page_min, page_max;
+    ram_addr_t page;
     int x, y;
     int xmin, xmax;
     int ymin, ymax;
@@ -113,8 +105,6 @@ static void g364fb_draw_graphic8(G364State *s)
     }
 
     page = 0;
-    page_min = (ram_addr_t)-1;
-    page_max = 0;
 
     x = y = 0;
     xmin = s->width;
@@ -132,13 +122,12 @@ static void g364fb_draw_graphic8(G364State *s)
     vram = s->vram + s->top_of_screen;
     /* XXX: out of range in vram? */
     data_display = dd = surface_data(surface);
+    snap = memory_region_snapshot_and_clear_dirty(&s->mem_vram, 0, s->vram_size,
+                                                  DIRTY_MEMORY_VGA);
     while (y < s->height) {
-        if (check_dirty(s, page)) {
+        if (check_dirty(s, snap, page)) {
             if (y < ymin)
                 ymin = ymax = y;
-            if (page_min == (ram_addr_t)-1)
-                page_min = page;
-            page_max = page;
             if (x < xmin)
                 xmin = x;
             for (i = 0; i < G364_PAGE_SIZE; i++) {
@@ -195,10 +184,7 @@ static void g364fb_draw_graphic8(G364State *s)
                 ymax = y;
         } else {
             int dy;
-            if (page_min != (ram_addr_t)-1) {
-                reset_dirty(s, page_min, page_max);
-                page_min = (ram_addr_t)-1;
-                page_max = 0;
+            if (xmax || ymax) {
                 dpy_gfx_update(s->con, xmin, ymin,
                                xmax - xmin + 1, ymax - ymin + 1);
                 xmin = s->width;
@@ -218,10 +204,10 @@ static void g364fb_draw_graphic8(G364State *s)
     }
 
 done:
-    if (page_min != (ram_addr_t)-1) {
+    if (xmax || ymax) {
         dpy_gfx_update(s->con, xmin, ymin, xmax - xmin + 1, ymax - ymin + 1);
-        reset_dirty(s, page_min, page_max);
     }
+    g_free(snap);
 }
 
 static void g364fb_draw_blank(G364State *s)
@@ -261,7 +247,6 @@ static void g364fb_update_display(void *opaque)
         qemu_console_resize(s->con, s->width, s->height);
     }
 
-    memory_region_sync_dirty_bitmap(&s->mem_vram);
     if (s->ctla & CTLA_FORCE_BLANK) {
         g364fb_draw_blank(s);
     } else if (s->depth == 8) {
@@ -463,7 +448,7 @@ static const VMStateDescription vmstate_g364fb = {
     .minimum_version_id = 1,
     .post_load = g364fb_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_VBUFFER_UINT32(vram, G364State, 1, NULL, 0, vram_size),
+        VMSTATE_VBUFFER_UINT32(vram, G364State, 1, NULL, vram_size),
         VMSTATE_BUFFER_UNSAFE(color_palette, G364State, 0, 256 * 3),
         VMSTATE_BUFFER_UNSAFE(cursor_palette, G364State, 0, 9),
         VMSTATE_UINT16_ARRAY(cursor, G364State, 512),

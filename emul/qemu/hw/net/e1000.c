@@ -25,21 +25,21 @@
  */
 
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "net/net.h"
 #include "net/checksum.h"
-#include "hw/loader.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "qemu/iov.h"
 #include "qemu/range.h"
 
-#include "e1000_regs.h"
+#include "e1000x_common.h"
 
 static const uint8_t bcast[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
-#define E1000_DEBUG
+/* #define E1000_DEBUG */
 
 #ifdef E1000_DEBUG
 enum {
@@ -62,11 +62,6 @@ static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
 #define IOPORT_SIZE       0x40
 #define PNPMMIO_SIZE      0x20000
 #define MIN_BUF_SIZE      60 /* Min. octets in an ethernet frame sans FCS */
-
-/* this is the size past which hardware will drop packets when setting LPE=0 */
-#define MAXIMUM_ETHERNET_VLAN_SIZE 1522
-/* this is the size past which hardware will drop packets when setting LPE=1 */
-#define MAXIMUM_ETHERNET_LPE_SIZE 16384
 
 #define MAXIMUM_ETHERNET_HDR_LEN (14+4)
 
@@ -101,22 +96,12 @@ typedef struct E1000State_st {
         unsigned char vlan[4];
         unsigned char data[0x10000];
         uint16_t size;
-        unsigned char sum_needed;
         unsigned char vlan_needed;
-        uint8_t ipcss;
-        uint8_t ipcso;
-        uint16_t ipcse;
-        uint8_t tucss;
-        uint8_t tucso;
-        uint16_t tucse;
-        uint8_t hdr_len;
-        uint16_t mss;
-        uint32_t paylen;
+        unsigned char sum_needed;
+        bool cptse;
+        e1000x_txd_props props;
+        e1000x_txd_props tso_props;
         uint16_t tso_frames;
-        char tse;
-        int8_t ip;
-        int8_t tcp;
-        char cptse;     // current packet tse bit
     } tx;
 
     struct {
@@ -138,10 +123,15 @@ typedef struct E1000State_st {
 #define E1000_FLAG_AUTONEG_BIT 0
 #define E1000_FLAG_MIT_BIT 1
 #define E1000_FLAG_MAC_BIT 2
+#define E1000_FLAG_TSO_BIT 3
 #define E1000_FLAG_AUTONEG (1 << E1000_FLAG_AUTONEG_BIT)
 #define E1000_FLAG_MIT (1 << E1000_FLAG_MIT_BIT)
 #define E1000_FLAG_MAC (1 << E1000_FLAG_MAC_BIT)
+#define E1000_FLAG_TSO (1 << E1000_FLAG_TSO_BIT)
     uint32_t compat_flags;
+    bool received_tx_tso;
+    bool use_tso_for_migration;
+    e1000x_txd_props mig_props;
 } E1000State;
 
 #define chkflag(x)     (s->compat_flags & E1000_FLAG_##x)
@@ -161,52 +151,19 @@ typedef struct E1000BaseClass {
 #define E1000_DEVICE_GET_CLASS(obj) \
     OBJECT_GET_CLASS(E1000BaseClass, (obj), TYPE_E1000_BASE)
 
-#define defreg(x)    x = (E1000_##x>>2)
-enum {
-    defreg(CTRL),    defreg(EECD),    defreg(EERD),    defreg(GPRC),
-    defreg(GPTC),    defreg(ICR),     defreg(ICS),     defreg(IMC),
-    defreg(IMS),     defreg(LEDCTL),  defreg(MANC),    defreg(MDIC),
-    defreg(MPC),     defreg(PBA),     defreg(RCTL),    defreg(RDBAH),
-    defreg(RDBAL),   defreg(RDH),     defreg(RDLEN),   defreg(RDT),
-    defreg(STATUS),  defreg(SWSM),    defreg(TCTL),    defreg(TDBAH),
-    defreg(TDBAL),   defreg(TDH),     defreg(TDLEN),   defreg(TDT),
-    defreg(TORH),    defreg(TORL),    defreg(TOTH),    defreg(TOTL),
-    defreg(TPR),     defreg(TPT),     defreg(TXDCTL),  defreg(WUFC),
-    defreg(RA),      defreg(MTA),     defreg(CRCERRS), defreg(VFTA),
-    defreg(VET),     defreg(RDTR),    defreg(RADV),    defreg(TADV),
-    defreg(ITR),     defreg(FCRUC),   defreg(TDFH),    defreg(TDFT),
-    defreg(TDFHS),   defreg(TDFTS),   defreg(TDFPC),   defreg(RDFH),
-    defreg(RDFT),    defreg(RDFHS),   defreg(RDFTS),   defreg(RDFPC),
-    defreg(IPAV),    defreg(WUC),     defreg(WUS),     defreg(AIT),
-    defreg(IP6AT),   defreg(IP4AT),   defreg(FFLT),    defreg(FFMT),
-    defreg(FFVT),    defreg(WUPM),    defreg(PBM),     defreg(SCC),
-    defreg(ECOL),    defreg(MCC),     defreg(LATECOL), defreg(COLC),
-    defreg(DC),      defreg(TNCRS),   defreg(SEC),     defreg(CEXTERR),
-    defreg(RLEC),    defreg(XONRXC),  defreg(XONTXC),  defreg(XOFFRXC),
-    defreg(XOFFTXC), defreg(RFC),     defreg(RJC),     defreg(RNBC),
-    defreg(TSCTFC),  defreg(MGTPRC),  defreg(MGTPDC),  defreg(MGTPTC),
-    defreg(RUC),     defreg(ROC),     defreg(GORCL),   defreg(GORCH),
-    defreg(GOTCL),   defreg(GOTCH),   defreg(BPRC),    defreg(MPRC),
-    defreg(TSCTC),   defreg(PRC64),   defreg(PRC127),  defreg(PRC255),
-    defreg(PRC511),  defreg(PRC1023), defreg(PRC1522), defreg(PTC64),
-    defreg(PTC127),  defreg(PTC255),  defreg(PTC511),  defreg(PTC1023),
-    defreg(PTC1522), defreg(MPTC),    defreg(BPTC)
-};
-
-static void
-e1000_link_down(E1000State *s)
-{
-    s->mac_reg[STATUS] &= ~E1000_STATUS_LU;
-    s->phy_reg[PHY_STATUS] &= ~MII_SR_LINK_STATUS;
-    s->phy_reg[PHY_STATUS] &= ~MII_SR_AUTONEG_COMPLETE;
-    s->phy_reg[PHY_LP_ABILITY] &= ~MII_LPAR_LPACK;
-}
-
 static void
 e1000_link_up(E1000State *s)
 {
-    s->mac_reg[STATUS] |= E1000_STATUS_LU;
-    s->phy_reg[PHY_STATUS] |= MII_SR_LINK_STATUS;
+    e1000x_update_regs_on_link_up(s->mac_reg, s->phy_reg);
+
+    /* E1000_STATUS_LU is tested by e1000_can_receive() */
+    qemu_flush_queued_packets(qemu_get_queue(s->nic));
+}
+
+static void
+e1000_autoneg_done(E1000State *s)
+{
+    e1000x_update_regs_on_autoneg_done(s->mac_reg, s->phy_reg);
 
     /* E1000_STATUS_LU is tested by e1000_can_receive() */
     qemu_flush_queued_packets(qemu_get_queue(s->nic));
@@ -232,10 +189,7 @@ set_phy_ctrl(E1000State *s, int index, uint16_t val)
      * down.
      */
     if (have_autoneg(s) && (val & MII_CR_RESTART_AUTO_NEG)) {
-        e1000_link_down(s);
-        DBGOUT(PHY, "Start link auto negotiation\n");
-        timer_mod(s->autoneg_timer,
-                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 500);
+        e1000x_restart_autoneg(s->mac_reg, s->phy_reg, s->autoneg_timer);
     }
 }
 
@@ -356,11 +310,17 @@ set_interrupt_cause(E1000State *s, int index, uint32_t val)
             }
             mit_update_delay(&mit_delay, s->mac_reg[ITR]);
 
-            if (mit_delay) {
-                s->mit_timer_on = 1;
-                timer_mod(s->mit_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                          mit_delay * 256);
-            }
+            /*
+             * According to e1000 SPEC, the Ethernet controller guarantees
+             * a maximum observable interrupt rate of 7813 interrupts/sec.
+             * Thus if mit_delay < 500 then the delay should be set to the
+             * minimum delay possible which is 500.
+             */
+            mit_delay = (mit_delay < 500) ? 500 : mit_delay;
+
+            s->mit_timer_on = 1;
+            timer_mod(s->mit_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                      mit_delay * 256);
             s->mit_ide = 0;
         }
     }
@@ -392,35 +352,9 @@ e1000_autoneg_timer(void *opaque)
 {
     E1000State *s = opaque;
     if (!qemu_get_queue(s->nic)->link_down) {
-        e1000_link_up(s);
-        s->phy_reg[PHY_LP_ABILITY] |= MII_LPAR_LPACK;
-        s->phy_reg[PHY_STATUS] |= MII_SR_AUTONEG_COMPLETE;
-        DBGOUT(PHY, "Auto negotiation is completed\n");
+        e1000_autoneg_done(s);
         set_ics(s, 0, E1000_ICS_LSC); /* signal link status change to guest */
     }
-}
-
-static int
-rxbufsize(uint32_t v)
-{
-    v &= E1000_RCTL_BSEX | E1000_RCTL_SZ_16384 | E1000_RCTL_SZ_8192 |
-         E1000_RCTL_SZ_4096 | E1000_RCTL_SZ_2048 | E1000_RCTL_SZ_1024 |
-         E1000_RCTL_SZ_512 | E1000_RCTL_SZ_256;
-    switch (v) {
-    case E1000_RCTL_BSEX | E1000_RCTL_SZ_16384:
-        return 16384;
-    case E1000_RCTL_BSEX | E1000_RCTL_SZ_8192:
-        return 8192;
-    case E1000_RCTL_BSEX | E1000_RCTL_SZ_4096:
-        return 4096;
-    case E1000_RCTL_SZ_1024:
-        return 1024;
-    case E1000_RCTL_SZ_512:
-        return 512;
-    case E1000_RCTL_SZ_256:
-        return 256;
-    }
-    return 2048;
 }
 
 static void e1000_reset(void *opaque)
@@ -428,7 +362,6 @@ static void e1000_reset(void *opaque)
     E1000State *d = opaque;
     E1000BaseClass *edc = E1000_DEVICE_GET_CLASS(d);
     uint8_t *macaddr = d->conf.macaddr.a;
-    int i;
 
     timer_del(d->autoneg_timer);
     timer_del(d->mit_timer);
@@ -444,22 +377,10 @@ static void e1000_reset(void *opaque)
     memset(&d->tx, 0, sizeof d->tx);
 
     if (qemu_get_queue(d->nic)->link_down) {
-        e1000_link_down(d);
+        e1000x_update_regs_on_link_down(d->mac_reg, d->phy_reg);
     }
 
-    /* Throttle interrupts to prevent guest (e.g Win 2012) from
-     * reinjecting interrupts endlessly. TODO: fix non ITR case.
-     */
-    d->mac_reg[ITR] = 250;
-
-    /* Some guests expect pre-initialized RAH/RAL (AddrValid flag + MACaddr) */
-    d->mac_reg[RA] = 0;
-    d->mac_reg[RA + 1] = E1000_RAH_AV;
-    for (i = 0; i < 4; i++) {
-        d->mac_reg[RA] |= macaddr[i] << (8 * i);
-        d->mac_reg[RA + 1] |= (i < 2) ? macaddr[i + 4] << (8 * i) : 0;
-    }
-    qemu_format_nic_info_str(qemu_get_queue(d->nic), macaddr);
+    e1000x_reset_mac_addr(d->nic, d->mac_reg, macaddr);
 }
 
 static void
@@ -473,7 +394,7 @@ static void
 set_rx_control(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[RCTL] = val;
-    s->rxbuf_size = rxbufsize(val);
+    s->rxbuf_size = e1000x_rxbufsize(val);
     s->rxbuf_min_shift = ((val / E1000_RCTL_RDMTS_QUAT) & 3) + 1;
     DBGOUT(RX, "RCTL: %d, mac_reg[RCTL] = 0x%x\n", s->mac_reg[RDT],
            s->mac_reg[RCTL]);
@@ -589,15 +510,7 @@ putsum(uint8_t *data, uint32_t n, uint32_t sloc, uint32_t css, uint32_t cse)
         n = cse + 1;
     if (sloc < n-1) {
         sum = net_checksum_add(n-css, data+css);
-        stw_be_p(data + sloc, net_checksum_finish(sum));
-    }
-}
-
-static inline void
-inc_reg_if_not_full(E1000State *s, int index)
-{
-    if (s->mac_reg[index] != 0xffffffff) {
-        s->mac_reg[index]++;
+        stw_be_p(data + sloc, net_checksum_finish_nozero(sum));
     }
 }
 
@@ -605,76 +518,10 @@ static inline void
 inc_tx_bcast_or_mcast_count(E1000State *s, const unsigned char *arr)
 {
     if (!memcmp(arr, bcast, sizeof bcast)) {
-        inc_reg_if_not_full(s, BPTC);
+        e1000x_inc_reg_if_not_full(s->mac_reg, BPTC);
     } else if (arr[0] & 1) {
-        inc_reg_if_not_full(s, MPTC);
+        e1000x_inc_reg_if_not_full(s->mac_reg, MPTC);
     }
-}
-
-static void
-grow_8reg_if_not_full(E1000State *s, int index, int size)
-{
-    uint64_t sum = s->mac_reg[index] | (uint64_t)s->mac_reg[index+1] << 32;
-
-    if (sum + size < sum) {
-        sum = ~0ULL;
-    } else {
-        sum += size;
-    }
-    s->mac_reg[index] = sum;
-    s->mac_reg[index+1] = sum >> 32;
-}
-
-static void
-increase_size_stats(E1000State *s, const int *size_regs, int size)
-{
-    if (size > 1023) {
-        inc_reg_if_not_full(s, size_regs[5]);
-    } else if (size > 511) {
-        inc_reg_if_not_full(s, size_regs[4]);
-    } else if (size > 255) {
-        inc_reg_if_not_full(s, size_regs[3]);
-    } else if (size > 127) {
-        inc_reg_if_not_full(s, size_regs[2]);
-    } else if (size > 64) {
-        inc_reg_if_not_full(s, size_regs[1]);
-    } else if (size == 64) {
-        inc_reg_if_not_full(s, size_regs[0]);
-    }
-}
-
-static inline int
-vlan_enabled(E1000State *s)
-{
-    return ((s->mac_reg[CTRL] & E1000_CTRL_VME) != 0);
-}
-
-static inline int
-vlan_rx_filter_enabled(E1000State *s)
-{
-    return ((s->mac_reg[RCTL] & E1000_RCTL_VFE) != 0);
-}
-
-static inline int
-is_vlan_packet(E1000State *s, const uint8_t *buf)
-{
-    return (be16_to_cpup((uint16_t *)(buf + 12)) ==
-                le16_to_cpu(s->mac_reg[VET]));
-}
-
-static inline int
-is_vlan_txd(uint32_t txd_lower)
-{
-    return ((txd_lower & E1000_TXD_CMD_VLE) != 0);
-}
-
-/* FCS aka Ethernet CRC-32. We don't get it from backends and can't
- * fill it in, just pad descriptor length by 4 bytes unless guest
- * told us to strip it off the packet. */
-static inline int
-fcs_len(E1000State *s)
-{
-    return (s->mac_reg[RCTL] & E1000_RCTL_SECRC) ? 0 : 4;
 }
 
 static void
@@ -690,55 +537,60 @@ e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
         qemu_send_packet(nc, buf, size);
     }
     inc_tx_bcast_or_mcast_count(s, buf);
-    increase_size_stats(s, PTCregs, size);
+    e1000x_increase_size_stats(s->mac_reg, PTCregs, size);
 }
 
 static void
 xmit_seg(E1000State *s)
 {
-    uint16_t len, *sp;
+    uint16_t len;
     unsigned int frames = s->tx.tso_frames, css, sofar;
     struct e1000_tx *tp = &s->tx;
+    struct e1000x_txd_props *props = tp->cptse ? &tp->tso_props : &tp->props;
 
-    if (tp->tse && tp->cptse) {
-        css = tp->ipcss;
+    if (tp->cptse) {
+        css = props->ipcss;
         DBGOUT(TXSUM, "frames %d size %d ipcss %d\n",
                frames, tp->size, css);
-        if (tp->ip) {    /* IPv4 */
+        if (props->ip) {    /* IPv4 */
             stw_be_p(tp->data+css+2, tp->size - css);
             stw_be_p(tp->data+css+4,
-                     be16_to_cpup((uint16_t *)(tp->data+css+4))+frames);
+                     lduw_be_p(tp->data + css + 4) + frames);
         } else {         /* IPv6 */
             stw_be_p(tp->data+css+4, tp->size - css);
         }
-        css = tp->tucss;
+        css = props->tucss;
         len = tp->size - css;
-        DBGOUT(TXSUM, "tcp %d tucss %d len %d\n", tp->tcp, css, len);
-        if (tp->tcp) {
-            sofar = frames * tp->mss;
+        DBGOUT(TXSUM, "tcp %d tucss %d len %d\n", props->tcp, css, len);
+        if (props->tcp) {
+            sofar = frames * props->mss;
             stl_be_p(tp->data+css+4, ldl_be_p(tp->data+css+4)+sofar); /* seq */
-            if (tp->paylen - sofar > tp->mss) {
+            if (props->paylen - sofar > props->mss) {
                 tp->data[css + 13] &= ~9;    /* PSH, FIN */
             } else if (frames) {
-                inc_reg_if_not_full(s, TSCTC);
+                e1000x_inc_reg_if_not_full(s->mac_reg, TSCTC);
             }
-        } else    /* UDP */
+        } else {    /* UDP */
             stw_be_p(tp->data+css+4, len);
+        }
         if (tp->sum_needed & E1000_TXD_POPTS_TXSM) {
             unsigned int phsum;
             // add pseudo-header length before checksum calculation
-            sp = (uint16_t *)(tp->data + tp->tucso);
-            phsum = be16_to_cpup(sp) + len;
+            void *sp = tp->data + props->tucso;
+
+            phsum = lduw_be_p(sp) + len;
             phsum = (phsum >> 16) + (phsum & 0xffff);
             stw_be_p(sp, phsum);
         }
         tp->tso_frames++;
     }
 
-    if (tp->sum_needed & E1000_TXD_POPTS_TXSM)
-        putsum(tp->data, tp->size, tp->tucso, tp->tucss, tp->tucse);
-    if (tp->sum_needed & E1000_TXD_POPTS_IXSM)
-        putsum(tp->data, tp->size, tp->ipcso, tp->ipcss, tp->ipcse);
+    if (tp->sum_needed & E1000_TXD_POPTS_TXSM) {
+        putsum(tp->data, tp->size, props->tucso, props->tucss, props->tucse);
+    }
+    if (tp->sum_needed & E1000_TXD_POPTS_IXSM) {
+        putsum(tp->data, tp->size, props->ipcso, props->ipcss, props->ipcse);
+    }
     if (tp->vlan_needed) {
         memmove(tp->vlan, tp->data, 4);
         memmove(tp->data, tp->data + 4, 8);
@@ -748,8 +600,8 @@ xmit_seg(E1000State *s)
         e1000_send_packet(s, tp->data, tp->size);
     }
 
-    inc_reg_if_not_full(s, TPT);
-    grow_8reg_if_not_full(s, TOTL, s->tx.size);
+    e1000x_inc_reg_if_not_full(s->mac_reg, TPT);
+    e1000x_grow_8reg_if_not_full(s->mac_reg, TOTL, s->tx.size);
     s->mac_reg[GPTC] = s->mac_reg[TPT];
     s->mac_reg[GOTCL] = s->mac_reg[TOTL];
     s->mac_reg[GOTCH] = s->mac_reg[TOTH];
@@ -761,7 +613,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
     PCIDevice *d = PCI_DEVICE(s);
     uint32_t txd_lower = le32_to_cpu(dp->lower.data);
     uint32_t dtype = txd_lower & (E1000_TXD_CMD_DEXT | E1000_TXD_DTYP_D);
-    unsigned int split_size = txd_lower & 0xffff, bytes, sz, op;
+    unsigned int split_size = txd_lower & 0xffff, bytes, sz;
     unsigned int msh = 0xfffff;
     uint64_t addr;
     struct e1000_context_desc *xp = (struct e1000_context_desc *)dp;
@@ -769,23 +621,13 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
 
     s->mit_ide |= (txd_lower & E1000_TXD_CMD_IDE);
     if (dtype == E1000_TXD_CMD_DEXT) {    /* context descriptor */
-        op = le32_to_cpu(xp->cmd_and_length);
-        tp->ipcss = xp->lower_setup.ip_fields.ipcss;
-        tp->ipcso = xp->lower_setup.ip_fields.ipcso;
-        tp->ipcse = le16_to_cpu(xp->lower_setup.ip_fields.ipcse);
-        tp->tucss = xp->upper_setup.tcp_fields.tucss;
-        tp->tucso = xp->upper_setup.tcp_fields.tucso;
-        tp->tucse = le16_to_cpu(xp->upper_setup.tcp_fields.tucse);
-        tp->paylen = op & 0xfffff;
-        tp->hdr_len = xp->tcp_seg_setup.fields.hdr_len;
-        tp->mss = le16_to_cpu(xp->tcp_seg_setup.fields.mss);
-        tp->ip = (op & E1000_TXD_CMD_IP) ? 1 : 0;
-        tp->tcp = (op & E1000_TXD_CMD_TCP) ? 1 : 0;
-        tp->tse = (op & E1000_TXD_CMD_TSE) ? 1 : 0;
-        tp->tso_frames = 0;
-        if (tp->tucso == 0) {    /* this is probably wrong */
-            DBGOUT(TXSUM, "TCP/UDP: cso 0!\n");
-            tp->tucso = tp->tucss + (tp->tcp ? 16 : 6);
+        if (le32_to_cpu(xp->cmd_and_length) & E1000_TXD_CMD_TSE) {
+            e1000x_read_tx_ctx_descr(xp, &tp->tso_props);
+            s->use_tso_for_migration = 1;
+            tp->tso_frames = 0;
+        } else {
+            e1000x_read_tx_ctx_descr(xp, &tp->props);
+            s->use_tso_for_migration = 0;
         }
         return;
     } else if (dtype == (E1000_TXD_CMD_DEXT | E1000_TXD_DTYP_D)) {
@@ -793,13 +635,14 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
         if (tp->size == 0) {
             tp->sum_needed = le32_to_cpu(dp->upper.data) >> 8;
         }
-        tp->cptse = ( txd_lower & E1000_TXD_CMD_TSE ) ? 1 : 0;
+        tp->cptse = (txd_lower & E1000_TXD_CMD_TSE) ? 1 : 0;
     } else {
         // legacy descriptor
         tp->cptse = 0;
     }
 
-    if (vlan_enabled(s) && is_vlan_txd(txd_lower) &&
+    if (e1000x_vlan_enabled(s->mac_reg) &&
+        e1000x_is_vlan_txd(txd_lower) &&
         (tp->cptse || txd_lower & E1000_TXD_CMD_EOP)) {
         tp->vlan_needed = 1;
         stw_be_p(tp->vlan_header,
@@ -809,8 +652,8 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
     }
 
     addr = le64_to_cpu(dp->buffer_addr);
-    if (tp->tse && tp->cptse) {
-        msh = tp->hdr_len + tp->mss;
+    if (tp->cptse) {
+        msh = tp->tso_props.hdr_len + tp->tso_props.mss;
         do {
             bytes = split_size;
             if (tp->size + bytes > msh)
@@ -819,21 +662,19 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
             bytes = MIN(sizeof(tp->data) - tp->size, bytes);
             pci_dma_read(d, addr, tp->data + tp->size, bytes);
             sz = tp->size + bytes;
-            if (sz >= tp->hdr_len && tp->size < tp->hdr_len) {
-                memmove(tp->header, tp->data, tp->hdr_len);
+            if (sz >= tp->tso_props.hdr_len
+                && tp->size < tp->tso_props.hdr_len) {
+                memmove(tp->header, tp->data, tp->tso_props.hdr_len);
             }
             tp->size = sz;
             addr += bytes;
             if (sz == msh) {
                 xmit_seg(s);
-                memmove(tp->data, tp->header, tp->hdr_len);
-                tp->size = tp->hdr_len;
+                memmove(tp->data, tp->header, tp->tso_props.hdr_len);
+                tp->size = tp->tso_props.hdr_len;
             }
             split_size -= bytes;
         } while (bytes && split_size);
-    } else if (!tp->tse && tp->cptse) {
-        // context descriptor TSE is not set, while data descriptor TSE is set
-        DBGOUT(TXERR, "TCP segmentation error\n");
     } else {
         split_size = MIN(sizeof(tp->data) - tp->size, split_size);
         pci_dma_read(d, addr, tp->data + tp->size, split_size);
@@ -842,7 +683,7 @@ process_tx_desc(E1000State *s, struct e1000_tx_desc *dp)
 
     if (!(txd_lower & E1000_TXD_CMD_EOP))
         return;
-    if (!(tp->tse && tp->cptse && tp->size < tp->hdr_len)) {
+    if (!(tp->cptse && tp->size < tp->tso_props.hdr_len)) {
         xmit_seg(s);
     }
     tp->tso_frames = 0;
@@ -908,7 +749,8 @@ start_xmit(E1000State *s)
          * bogus values to TDT/TDLEN.
          * there's nothing too intelligent we could do about this.
          */
-        if (s->mac_reg[TDH] == tdh_start) {
+        if (s->mac_reg[TDH] == tdh_start ||
+            tdh_start >= s->mac_reg[TDLEN] / sizeof(desc)) {
             DBGOUT(TXERR, "TDH wraparound @%x, TDT %x, TDLEN %x\n",
                    tdh_start, s->mac_reg[TDT], s->mac_reg[TDLEN]);
             break;
@@ -920,14 +762,14 @@ start_xmit(E1000State *s)
 static int
 receive_filter(E1000State *s, const uint8_t *buf, int size)
 {
-    static const int mta_shift[] = {4, 3, 2, 0};
-    uint32_t f, rctl = s->mac_reg[RCTL], ra[2], *rp;
+    uint32_t rctl = s->mac_reg[RCTL];
     int isbcast = !memcmp(buf, bcast, sizeof bcast), ismcast = (buf[0] & 1);
 
-    if (is_vlan_packet(s, buf) && vlan_rx_filter_enabled(s)) {
-        uint16_t vid = be16_to_cpup((uint16_t *)(buf + 14));
-        uint32_t vfta = le32_to_cpup((uint32_t *)(s->mac_reg + VFTA) +
-                                     ((vid >> 5) & 0x7f));
+    if (e1000x_is_vlan_packet(buf, le16_to_cpu(s->mac_reg[VET])) &&
+        e1000x_vlan_rx_filter_enabled(s->mac_reg)) {
+        uint16_t vid = lduw_be_p(buf + 14);
+        uint32_t vfta = ldl_le_p((uint32_t*)(s->mac_reg + VFTA) +
+                                 ((vid >> 5) & 0x7f));
         if ((vfta & (1 << (vid & 0x1f))) == 0)
             return 0;
     }
@@ -937,44 +779,16 @@ receive_filter(E1000State *s, const uint8_t *buf, int size)
     }
 
     if (ismcast && (rctl & E1000_RCTL_MPE)) {          /* promiscuous mcast */
-        inc_reg_if_not_full(s, MPRC);
+        e1000x_inc_reg_if_not_full(s->mac_reg, MPRC);
         return 1;
     }
 
     if (isbcast && (rctl & E1000_RCTL_BAM)) {          /* broadcast enabled */
-        inc_reg_if_not_full(s, BPRC);
+        e1000x_inc_reg_if_not_full(s->mac_reg, BPRC);
         return 1;
     }
 
-    for (rp = s->mac_reg + RA; rp < s->mac_reg + RA + 32; rp += 2) {
-        if (!(rp[1] & E1000_RAH_AV))
-            continue;
-        ra[0] = cpu_to_le32(rp[0]);
-        ra[1] = cpu_to_le32(rp[1]);
-        if (!memcmp(buf, (uint8_t *)ra, 6)) {
-            DBGOUT(RXFILTER,
-                   "unicast match[%d]: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                   (int)(rp - s->mac_reg - RA)/2,
-                   buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
-            return 1;
-        }
-    }
-    DBGOUT(RXFILTER, "unicast mismatch: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
-
-    f = mta_shift[(rctl >> E1000_RCTL_MO_SHIFT) & 3];
-    f = (((buf[5] << 8) | buf[4]) >> f) & 0xfff;
-    if (s->mac_reg[MTA + (f >> 5)] & (1 << (f & 0x1f))) {
-        inc_reg_if_not_full(s, MPRC);
-        return 1;
-    }
-    DBGOUT(RXFILTER,
-           "dropping, inexact filter mismatch: %02x:%02x:%02x:%02x:%02x:%02x MO %d MTA[%d] %x\n",
-           buf[0], buf[1], buf[2], buf[3], buf[4], buf[5],
-           (rctl >> E1000_RCTL_MO_SHIFT) & 3, f >> 5,
-           s->mac_reg[MTA + (f >> 5)]);
-
-    return 0;
+    return e1000x_rx_group_filter(s->mac_reg, buf);
 }
 
 static void
@@ -984,13 +798,11 @@ e1000_set_link_status(NetClientState *nc)
     uint32_t old_status = s->mac_reg[STATUS];
 
     if (nc->link_down) {
-        e1000_link_down(s);
+        e1000x_update_regs_on_link_down(s->mac_reg, s->phy_reg);
     } else {
         if (have_autoneg(s) &&
             !(s->phy_reg[PHY_STATUS] & MII_SR_AUTONEG_COMPLETE)) {
-            /* emulate auto-negotiation if supported */
-            timer_mod(s->autoneg_timer,
-                      qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 500);
+            e1000x_restart_autoneg(s->mac_reg, s->phy_reg, s->autoneg_timer);
         } else {
             e1000_link_up(s);
         }
@@ -1023,9 +835,7 @@ e1000_can_receive(NetClientState *nc)
 {
     E1000State *s = qemu_get_nic_opaque(nc);
 
-    return (s->mac_reg[STATUS] & E1000_STATUS_LU) &&
-        (s->mac_reg[RCTL] & E1000_RCTL_EN) &&
-        (s->parent_obj.config[PCI_COMMAND] & PCI_COMMAND_MASTER) &&
+    return e1000x_rx_ready(&s->parent_obj, s->mac_reg) &&
         e1000_has_rxbufs(s, 1);
 }
 
@@ -1056,14 +866,8 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     size_t desc_offset;
     size_t desc_size;
     size_t total_size;
-    static const int PRCregs[6] = { PRC64, PRC127, PRC255, PRC511,
-                                    PRC1023, PRC1522 };
 
-    if (!(s->mac_reg[STATUS] & E1000_STATUS_LU)) {
-        return -1;
-    }
-
-    if (!(s->mac_reg[RCTL] & E1000_RCTL_EN)) {
+    if (!e1000x_hw_rx_enabled(s->mac_reg)) {
         return -1;
     }
 
@@ -1071,7 +875,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     if (size < sizeof(min_buf)) {
         iov_to_buf(iov, iovcnt, 0, min_buf, size);
         memset(&min_buf[size], 0, sizeof(min_buf) - size);
-        inc_reg_if_not_full(s, RUC);
+        e1000x_inc_reg_if_not_full(s->mac_reg, RUC);
         min_iov.iov_base = filter_buf = min_buf;
         min_iov.iov_len = size = sizeof(min_buf);
         iovcnt = 1;
@@ -1083,11 +887,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     }
 
     /* Discard oversized packets if !LPE and !SBP. */
-    if ((size > MAXIMUM_ETHERNET_LPE_SIZE ||
-        (size > MAXIMUM_ETHERNET_VLAN_SIZE
-        && !(s->mac_reg[RCTL] & E1000_RCTL_LPE)))
-        && !(s->mac_reg[RCTL] & E1000_RCTL_SBP)) {
-        inc_reg_if_not_full(s, ROC);
+    if (e1000x_is_oversized(s->mac_reg, size)) {
         return size;
     }
 
@@ -1095,9 +895,9 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
         return size;
     }
 
-    if (vlan_enabled(s) && is_vlan_packet(s, filter_buf)) {
-        vlan_special = cpu_to_le16(be16_to_cpup((uint16_t *)(filter_buf
-                                                                + 14)));
+    if (e1000x_vlan_enabled(s->mac_reg) &&
+        e1000x_is_vlan_packet(filter_buf, le16_to_cpu(s->mac_reg[VET]))) {
+        vlan_special = cpu_to_le16(lduw_be_p(filter_buf + 14));
         iov_ofs = 4;
         if (filter_buf == iov->iov_base) {
             memmove(filter_buf + 4, filter_buf, 12);
@@ -1114,7 +914,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
 
     rdh_start = s->mac_reg[RDH];
     desc_offset = 0;
-    total_size = size + fcs_len(s);
+    total_size = size + e1000x_fcs_len(s->mac_reg);
     if (!e1000_has_rxbufs(s, total_size)) {
             set_ics(s, 0, E1000_ICS_RXO);
             return -1;
@@ -1165,7 +965,8 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
         if (++s->mac_reg[RDH] * sizeof(desc) >= s->mac_reg[RDLEN])
             s->mac_reg[RDH] = 0;
         /* see comment in start_xmit; same here */
-        if (s->mac_reg[RDH] == rdh_start) {
+        if (s->mac_reg[RDH] == rdh_start ||
+            rdh_start >= s->mac_reg[RDLEN] / sizeof(desc)) {
             DBGOUT(RXERR, "RDH wraparound @%x, RDT %x, RDLEN %x\n",
                    rdh_start, s->mac_reg[RDT], s->mac_reg[RDLEN]);
             set_ics(s, 0, E1000_ICS_RXO);
@@ -1173,17 +974,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
         }
     } while (desc_offset < total_size);
 
-    increase_size_stats(s, PRCregs, total_size);
-    inc_reg_if_not_full(s, TPR);
-    s->mac_reg[GPRC] = s->mac_reg[TPR];
-    /* TOR - Total Octets Received:
-     * This register includes bytes received in a packet from the <Destination
-     * Address> field through the <CRC> field, inclusively.
-     * Always include FCS length (4) in size.
-     */
-    grow_8reg_if_not_full(s, TORL, size+4);
-    s->mac_reg[GORCL] = s->mac_reg[TORL];
-    s->mac_reg[GORCH] = s->mac_reg[TORH];
+    e1000x_update_rx_total_stats(s->mac_reg, size, total_size);
 
     n = E1000_ICS_RXT0;
     if ((rdt = s->mac_reg[RDT]) < s->mac_reg[RDH])
@@ -1343,7 +1134,7 @@ static uint32_t (*macreg_readops[])(E1000State *, int) = {
     getreg(TADV),     getreg(ITR),      getreg(FCRUC),    getreg(IPAV),
     getreg(WUC),      getreg(WUS),      getreg(SCC),      getreg(ECOL),
     getreg(MCC),      getreg(LATECOL),  getreg(COLC),     getreg(DC),
-    getreg(TNCRS),    getreg(SEC),      getreg(CEXTERR),  getreg(RLEC),
+    getreg(TNCRS),    getreg(SEQEC),    getreg(CEXTERR),  getreg(RLEC),
     getreg(XONRXC),   getreg(XONTXC),   getreg(XOFFRXC),  getreg(XOFFTXC),
     getreg(RFC),      getreg(RJC),      getreg(RNBC),     getreg(TSCTFC),
     getreg(MGTPRC),   getreg(MGTPDC),   getreg(MGTPTC),   getreg(GORCL),
@@ -1439,7 +1230,7 @@ static const uint8_t mac_reg_access[0x8000] = {
     [FFLT]    = markflag(MAC),    [FFMT]    = markflag(MAC),
     [SCC]     = markflag(MAC),    [FCRUC]   = markflag(MAC),
     [LATECOL] = markflag(MAC),    [COLC]    = markflag(MAC),
-    [SEC]     = markflag(MAC),    [CEXTERR] = markflag(MAC),
+    [SEQEC]   = markflag(MAC),    [CEXTERR] = markflag(MAC),
     [XONTXC]  = markflag(MAC),    [XOFFRXC] = markflag(MAC),
     [RJC]     = markflag(MAC),    [RNBC]    = markflag(MAC),
     [MGTPDC]  = markflag(MAC),    [MGTPTC]  = markflag(MAC),
@@ -1559,7 +1350,7 @@ static bool is_version_1(void *opaque, int version_id)
     return version_id == 1;
 }
 
-static void e1000_pre_save(void *opaque)
+static int e1000_pre_save(void *opaque)
 {
     E1000State *s = opaque;
     NetClientState *nc = qemu_get_queue(s->nic);
@@ -1577,6 +1368,22 @@ static void e1000_pre_save(void *opaque)
     if (nc->link_down && have_autoneg(s)) {
         s->phy_reg[PHY_STATUS] |= MII_SR_AUTONEG_COMPLETE;
     }
+
+    /* Decide which set of props to migrate in the main structure */
+    if (chkflag(TSO) || !s->use_tso_for_migration) {
+        /* Either we're migrating with the extra subsection, in which
+         * case the mig_props is always 'props' OR
+         * we've not got the subsection, but 'props' was the last
+         * updated.
+         */
+        s->mig_props = s->tx.props;
+    } else {
+        /* We're not using the subsection, and 'tso_props' was
+         * the last updated.
+         */
+        s->mig_props = s->tx.tso_props;
+    }
+    return 0;
 }
 
 static int e1000_post_load(void *opaque, int version_id)
@@ -1604,6 +1411,21 @@ static int e1000_post_load(void *opaque, int version_id)
                   qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 500);
     }
 
+    s->tx.props = s->mig_props;
+    if (!s->received_tx_tso) {
+        /* We received only one set of offload data (tx.props)
+         * and haven't got tx.tso_props.  The best we can do
+         * is dupe the data.
+         */
+        s->tx.tso_props = s->mig_props;
+    }
+    return 0;
+}
+
+static int e1000_tx_tso_post_load(void *opaque, int version_id)
+{
+    E1000State *s = opaque;
+    s->received_tx_tso = true;
     return 0;
 }
 
@@ -1619,6 +1441,13 @@ static bool e1000_full_mac_needed(void *opaque)
     E1000State *s = opaque;
 
     return chkflag(MAC);
+}
+
+static bool e1000_tso_state_needed(void *opaque)
+{
+    E1000State *s = opaque;
+
+    return chkflag(TSO);
 }
 
 static const VMStateDescription vmstate_e1000_mit_state = {
@@ -1647,6 +1476,28 @@ static const VMStateDescription vmstate_e1000_full_mac_state = {
     }
 };
 
+static const VMStateDescription vmstate_e1000_tx_tso_state = {
+    .name = "e1000/tx_tso_state",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = e1000_tso_state_needed,
+    .post_load = e1000_tx_tso_post_load,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT8(tx.tso_props.ipcss, E1000State),
+        VMSTATE_UINT8(tx.tso_props.ipcso, E1000State),
+        VMSTATE_UINT16(tx.tso_props.ipcse, E1000State),
+        VMSTATE_UINT8(tx.tso_props.tucss, E1000State),
+        VMSTATE_UINT8(tx.tso_props.tucso, E1000State),
+        VMSTATE_UINT16(tx.tso_props.tucse, E1000State),
+        VMSTATE_UINT32(tx.tso_props.paylen, E1000State),
+        VMSTATE_UINT8(tx.tso_props.hdr_len, E1000State),
+        VMSTATE_UINT16(tx.tso_props.mss, E1000State),
+        VMSTATE_INT8(tx.tso_props.ip, E1000State),
+        VMSTATE_INT8(tx.tso_props.tcp, E1000State),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_e1000 = {
     .name = "e1000",
     .version_id = 2,
@@ -1664,20 +1515,20 @@ static const VMStateDescription vmstate_e1000 = {
         VMSTATE_UINT16(eecd_state.bitnum_out, E1000State),
         VMSTATE_UINT16(eecd_state.reading, E1000State),
         VMSTATE_UINT32(eecd_state.old_eecd, E1000State),
-        VMSTATE_UINT8(tx.ipcss, E1000State),
-        VMSTATE_UINT8(tx.ipcso, E1000State),
-        VMSTATE_UINT16(tx.ipcse, E1000State),
-        VMSTATE_UINT8(tx.tucss, E1000State),
-        VMSTATE_UINT8(tx.tucso, E1000State),
-        VMSTATE_UINT16(tx.tucse, E1000State),
-        VMSTATE_UINT32(tx.paylen, E1000State),
-        VMSTATE_UINT8(tx.hdr_len, E1000State),
-        VMSTATE_UINT16(tx.mss, E1000State),
+        VMSTATE_UINT8(mig_props.ipcss, E1000State),
+        VMSTATE_UINT8(mig_props.ipcso, E1000State),
+        VMSTATE_UINT16(mig_props.ipcse, E1000State),
+        VMSTATE_UINT8(mig_props.tucss, E1000State),
+        VMSTATE_UINT8(mig_props.tucso, E1000State),
+        VMSTATE_UINT16(mig_props.tucse, E1000State),
+        VMSTATE_UINT32(mig_props.paylen, E1000State),
+        VMSTATE_UINT8(mig_props.hdr_len, E1000State),
+        VMSTATE_UINT16(mig_props.mss, E1000State),
         VMSTATE_UINT16(tx.size, E1000State),
         VMSTATE_UINT16(tx.tso_frames, E1000State),
         VMSTATE_UINT8(tx.sum_needed, E1000State),
-        VMSTATE_INT8(tx.ip, E1000State),
-        VMSTATE_INT8(tx.tcp, E1000State),
+        VMSTATE_INT8(mig_props.ip, E1000State),
+        VMSTATE_INT8(mig_props.tcp, E1000State),
         VMSTATE_BUFFER(tx.header, E1000State),
         VMSTATE_BUFFER(tx.data, E1000State),
         VMSTATE_UINT16_ARRAY(eeprom_data, E1000State, 64),
@@ -1727,6 +1578,7 @@ static const VMStateDescription vmstate_e1000 = {
     .subsections = (const VMStateDescription*[]) {
         &vmstate_e1000_mit_state,
         &vmstate_e1000_full_mac_state,
+        &vmstate_e1000_tx_tso_state,
         NULL
     }
 };
@@ -1779,7 +1631,7 @@ pci_e1000_uninit(PCIDevice *dev)
 }
 
 static NetClientInfo net_e1000_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .can_receive = e1000_can_receive,
     .receive = e1000_receive,
@@ -1800,15 +1652,11 @@ static void e1000_write_config(PCIDevice *pci_dev, uint32_t address,
     }
 }
 
-
 static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
 {
     DeviceState *dev = DEVICE(pci_dev);
     E1000State *d = E1000(pci_dev);
-    PCIDeviceClass *pdc = PCI_DEVICE_GET_CLASS(pci_dev);
     uint8_t *pci_conf;
-    uint16_t checksum = 0;
-    int i;
     uint8_t *macaddr;
 
     pci_dev->config_write = e1000_write_config;
@@ -1826,17 +1674,14 @@ static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
 
     pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
 
-    memmove(d->eeprom_data, e1000_eeprom_template,
-        sizeof e1000_eeprom_template);
     qemu_macaddr_default_if_unset(&d->conf.macaddr);
     macaddr = d->conf.macaddr.a;
-    for (i = 0; i < 3; i++)
-        d->eeprom_data[i] = (macaddr[2*i+1]<<8) | macaddr[2*i];
-    d->eeprom_data[11] = d->eeprom_data[13] = pdc->device_id;
-    for (i = 0; i < EEPROM_CHECKSUM_REG; i++)
-        checksum += d->eeprom_data[i];
-    checksum = (uint16_t) EEPROM_SUM - checksum;
-    d->eeprom_data[EEPROM_CHECKSUM_REG] = checksum;
+
+    e1000x_core_prepare_eeprom(d->eeprom_data,
+                               e1000_eeprom_template,
+                               sizeof(e1000_eeprom_template),
+                               PCI_DEVICE_GET_CLASS(pci_dev)->device_id,
+                               macaddr);
 
     d->nic = qemu_new_nic(&net_e1000_info, &d->conf,
                           object_get_typename(OBJECT(d)), dev->id, d);
@@ -1861,6 +1706,8 @@ static Property e1000_properties[] = {
                     compat_flags, E1000_FLAG_MIT_BIT, true),
     DEFINE_PROP_BIT("extra_mac_registers", E1000State,
                     compat_flags, E1000_FLAG_MAC_BIT, true),
+    DEFINE_PROP_BIT("migrate_tso_props", E1000State,
+                    compat_flags, E1000_FLAG_TSO_BIT, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1908,6 +1755,10 @@ static const TypeInfo e1000_base_info = {
     .instance_init = e1000_instance_init,
     .class_size    = sizeof(E1000BaseClass),
     .abstract      = true,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static const E1000Info e1000_devices[] = {

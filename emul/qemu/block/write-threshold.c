@@ -10,13 +10,14 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "block/block_int.h"
 #include "qemu/coroutine.h"
 #include "block/write-threshold.h"
 #include "qemu/notify.h"
-#include "qapi-event.h"
-#include "qmp-commands.h"
-
+#include "qapi/error.h"
+#include "qapi/qapi-commands-block-core.h"
+#include "qapi/qapi-events-block-core.h"
 
 uint64_t bdrv_write_threshold_get(const BlockDriverState *bs)
 {
@@ -75,8 +76,7 @@ static int coroutine_fn before_write_notify(NotifierWithReturn *notifier,
 static void write_threshold_register_notifier(BlockDriverState *bs)
 {
     bs->write_threshold_notifier.notify = before_write_notify;
-    notifier_with_return_list_add(&bs->before_write_notifiers,
-                                  &bs->write_threshold_notifier);
+    bdrv_add_before_write_notifier(bs, &bs->write_threshold_notifier);
 }
 
 static void write_threshold_update(BlockDriverState *bs,

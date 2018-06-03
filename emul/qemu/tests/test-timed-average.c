@@ -10,8 +10,7 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include <glib.h>
-#include <unistd.h>
+#include "qemu/osdep.h"
 
 #include "qemu/timed-average.h"
 

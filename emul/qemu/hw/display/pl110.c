@@ -7,16 +7,21 @@
  * This code is licensed under the GNU LGPL
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "ui/console.h"
 #include "framebuffer.h"
 #include "ui/pixel_ops.h"
+#include "qemu/timer.h"
+#include "qemu/log.h"
 
 #define PL110_CR_EN   0x001
 #define PL110_CR_BGR  0x100
 #define PL110_CR_BEBO 0x200
 #define PL110_CR_BEPO 0x400
 #define PL110_CR_PWR  0x800
+#define PL110_IE_NB   0x004
+#define PL110_IE_VC   0x008
 
 enum pl110_bppmode
 {
@@ -48,6 +53,7 @@ typedef struct PL110State {
     MemoryRegion iomem;
     MemoryRegionSection fbsection;
     QemuConsole *con;
+    QEMUTimer *vblank_timer;
 
     int version;
     uint32_t timing[4];
@@ -318,7 +324,24 @@ static void pl110_resize(PL110State *s, int width, int height)
 /* Update interrupts.  */
 static void pl110_update(PL110State *s)
 {
-  /* TODO: Implement interrupts.  */
+    /* Raise IRQ if enabled and any status bit is 1 */
+    if (s->int_status & s->int_mask) {
+        qemu_irq_raise(s->irq);
+    } else {
+        qemu_irq_lower(s->irq);
+    }
+}
+
+static void pl110_vblank_interrupt(void *opaque)
+{
+    PL110State *s = opaque;
+
+    /* Fire the vertical compare and next base IRQs and re-arm */
+    s->int_status |= (PL110_IE_NB | PL110_IE_VC);
+    timer_mod(s->vblank_timer,
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                                NANOSECONDS_PER_SECOND / 60);
+    pl110_update(s);
 }
 
 static uint64_t pl110_read(void *opaque, hwaddr offset,
@@ -427,6 +450,11 @@ static void pl110_write(void *opaque, hwaddr offset,
         s->bpp = (val >> 1) & 7;
         if (pl110_enabled(s)) {
             qemu_console_resize(s->con, s->cols, s->rows);
+            timer_mod(s->vblank_timer,
+                      qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                                        NANOSECONDS_PER_SECOND / 60);
+        } else {
+            timer_del(s->vblank_timer);
         }
         break;
     case 10: /* LCDICR */
@@ -464,17 +492,18 @@ static const GraphicHwOps pl110_gfx_ops = {
     .gfx_update  = pl110_update_display,
 };
 
-static int pl110_initfn(SysBusDevice *sbd)
+static void pl110_realize(DeviceState *dev, Error **errp)
 {
-    DeviceState *dev = DEVICE(sbd);
     PL110State *s = PL110(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     memory_region_init_io(&s->iomem, OBJECT(s), &pl110_ops, s, "pl110", 0x1000);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
+    s->vblank_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+                                   pl110_vblank_interrupt, s);
     qdev_init_gpio_in(dev, pl110_mux_ctrl_set, 1);
     s->con = graphic_console_init(dev, 0, &pl110_gfx_ops, s);
-    return 0;
 }
 
 static void pl110_init(Object *obj)
@@ -501,11 +530,10 @@ static void pl111_init(Object *obj)
 static void pl110_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = pl110_initfn;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->vmsd = &vmstate_pl110;
+    dc->realize = pl110_realize;
 }
 
 static const TypeInfo pl110_info = {

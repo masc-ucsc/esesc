@@ -48,6 +48,7 @@ extern "C" uint32_t QEMUReader_getFid(FlowID last_fid) {
 }
 
 extern "C" void QEMUReader_finish_thread(uint32_t fid) {
+  printf("QEMUReader_finishThread(%d)\n",fid);
 }
 
 extern "C" uint64_t QEMUReader_get_time() {
@@ -58,34 +59,50 @@ extern "C" uint32_t QEMUReader_setnoStats() {
   return 0;
 }
 
+extern "C" void QEMUReader_start_roi(uint32_t fid) {
+}
+
+extern "C" uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t data, uint16_t fid, uint16_t src1, uint16_t dest) {
+  return 0;
+}
 extern "C" void QEMUReader_queue_inst(uint64_t pc, uint64_t addr, int fid, int op, int src1, int src2, int dest, void *env) {
   // printf("%d pc=0x%llx addr=0x%llx op=%d src1=%d src2=%d dest=%d\n",fid,(long long)pc,(long long)addr, op, src1, src2, dest);
 }
 
 extern "C" void QEMUReader_finish(uint32_t fid) {
+  printf("QEMUReader_finish(%d)\n",fid);
+  exit(0);
 }
 
 extern "C" void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid) {
 }
 
-extern "C" FlowID QEMUReader_resumeThreadGPU(FlowID uid) {
-  return 0;
-}
-
 extern "C" FlowID QEMUReader_resumeThread(FlowID uid, FlowID last_fid) {
   static int conta = 0;
+  printf("QEMUReader_resumeThread(%d,%d)\n",uid,last_fid);
   return conta++;
 }
 
 extern "C" void QEMUReader_pauseThread(FlowID fid) {
+  printf("QEMUReader_pauseThread(%d)\n",fid);
 }
 
 extern "C" void QEMUReader_setFlowCmd(bool *flowStatus) {
 }
 
+extern "C" uint32_t QEMUReader_cpu_start(uint32_t cpuid) {
+  static int cpu_counter=0;
+  printf("QEMUReader_cpu_start(%d)\n",cpuid);
+  return cpu_counter++;
+}
+
+extern "C" void QEMUReader_cpu_stop(uint32_t cpuid) {
+  printf("QEMUReader_cpu_stop(%d)\n",cpuid);
+}
+
 int main(int argc, char **argv) {
 
-  esesc_set_timing(0);
+  //esesc_set_timing(0);
 
   start_qemu(argc, argv);
 }

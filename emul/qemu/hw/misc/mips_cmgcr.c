@@ -10,7 +10,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
+#include "qemu/log.h"
 #include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
@@ -26,6 +26,20 @@ static inline bool is_cpc_connected(MIPSGCRState *s)
 static inline bool is_gic_connected(MIPSGCRState *s)
 {
     return s->gic_mr != NULL;
+}
+
+static inline void update_gcr_base(MIPSGCRState *gcr, uint64_t val)
+{
+    CPUState *cpu;
+    MIPSCPU *mips_cpu;
+
+    gcr->gcr_base = val & GCR_BASE_GCRBASE_MSK;
+    memory_region_set_address(&gcr->iomem, gcr->gcr_base);
+
+    CPU_FOREACH(cpu) {
+        mips_cpu = MIPS_CPU(cpu);
+        mips_cpu->env.CP0_CMGCRBase = gcr->gcr_base >> 4;
+    }
 }
 
 static inline void update_cpc_base(MIPSGCRState *gcr, uint64_t val)
@@ -81,18 +95,17 @@ static uint64_t gcr_read(void *opaque, hwaddr addr, unsigned size)
     case GCR_L2_CONFIG_OFS:
         /* L2 BYPASS */
         return GCR_L2_CONFIG_BYPASS_MSK;
-    /* Core-Local Registers */
+        /* Core-Local and Core-Other Control Blocks */
     case MIPS_CLCB_OFS + GCR_CL_CONFIG_OFS:
+    case MIPS_COCB_OFS + GCR_CL_CONFIG_OFS:
+        /* Set PVP to # of VPs - 1 */
         return gcr->num_vps - 1;
     case MIPS_CLCB_OFS + GCR_CL_RESETBASE_OFS:
         return current_vps->reset_base;
-    case MIPS_CLCB_OFS + GCR_CL_OTHER_OFS:
-        return current_vps->other;
-    /* Core-Other Registers */
-    case MIPS_COCB_OFS + GCR_CL_CONFIG_OFS:
-        return gcr->num_vps - 1;
     case MIPS_COCB_OFS + GCR_CL_RESETBASE_OFS:
         return other_vps->reset_base;
+    case MIPS_CLCB_OFS + GCR_CL_OTHER_OFS:
+        return current_vps->other;
     case MIPS_COCB_OFS + GCR_CL_OTHER_OFS:
         return other_vps->other;
     default:
@@ -100,14 +113,13 @@ static uint64_t gcr_read(void *opaque, hwaddr addr, unsigned size)
                       "\n", size, addr);
         return 0;
     }
+    return 0;
 }
 
-static inline void update_cpu_exception_base(MIPSGCRVPState *vps, int vp_index)
+static inline target_ulong get_exception_base(MIPSGCRVPState *vps)
 {
-    MIPSCPU *vp = MIPS_CPU(qemu_get_cpu(vp_index));
-    vp->env.exception_base = (int32_t)(vps->reset_base &
-                                       GCR_CL_RESET_BASE_RESETBASE_MSK);
-    /* TODO: support BEV_BASE and SELECT_BEV */
+    /* TODO: BEV_BASE and SELECT_BEV */
+    return (int32_t)(vps->reset_base & GCR_CL_RESET_BASE_RESETBASE_MSK);
 }
 
 /* Write GCR registers */
@@ -118,29 +130,32 @@ static void gcr_write(void *opaque, hwaddr addr, uint64_t data, unsigned size)
     MIPSGCRVPState *other_vps = &gcr->vps[current_vps->other];
 
     switch (addr) {
+    case GCR_BASE_OFS:
+        update_gcr_base(gcr, data);
+        break;
     case GCR_GIC_BASE_OFS:
         update_gic_base(gcr, data);
         break;
     case GCR_CPC_BASE_OFS:
         update_cpc_base(gcr, data);
         break;
-    /* Core-Local Registers */
     case MIPS_CLCB_OFS + GCR_CL_RESETBASE_OFS:
         current_vps->reset_base = data & GCR_CL_RESET_BASE_MSK;
-        update_cpu_exception_base(current_vps, current_cpu->cpu_index);
+        cpu_set_exception_base(current_cpu->cpu_index,
+                               get_exception_base(current_vps));
+        break;
+    case MIPS_COCB_OFS + GCR_CL_RESETBASE_OFS:
+        other_vps->reset_base = data & GCR_CL_RESET_BASE_MSK;
+        cpu_set_exception_base(current_vps->other,
+                               get_exception_base(other_vps));
         break;
     case MIPS_CLCB_OFS + GCR_CL_OTHER_OFS:
-        if (gcr->num_vps > (data & GCR_CL_OTHER_MSK)) {
+        if ((data & GCR_CL_OTHER_MSK) < gcr->num_vps) {
             current_vps->other = data & GCR_CL_OTHER_MSK;
         }
         break;
-    /* Core-Other Registers */
-    case MIPS_COCB_OFS + GCR_CL_RESETBASE_OFS:
-        other_vps->reset_base = data & GCR_CL_RESET_BASE_MSK;
-        update_cpu_exception_base(other_vps, current_vps->other);
-        break;
     case MIPS_COCB_OFS + GCR_CL_OTHER_OFS:
-        if (gcr->num_vps > (data & GCR_CL_OTHER_MSK)) {
+        if ((data & GCR_CL_OTHER_MSK) < gcr->num_vps) {
             other_vps->other = data & GCR_CL_OTHER_MSK;
         }
         break;
@@ -165,18 +180,6 @@ static void mips_gcr_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     MIPSGCRState *s = MIPS_GCR(obj);
 
-    object_property_add_link(obj, "gic", TYPE_MEMORY_REGION,
-                             (Object **)&s->gic_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                             &error_abort);
-
-    object_property_add_link(obj, "cpc", TYPE_MEMORY_REGION,
-                             (Object **)&s->cpc_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                             &error_abort);
-
     memory_region_init_io(&s->iomem, OBJECT(s), &gcr_ops, s,
                           "mips-gcr", GCR_ADDRSPACE_SZ);
     sysbus_init_mmio(sbd, &s->iomem);
@@ -193,7 +196,7 @@ static void mips_gcr_reset(DeviceState *dev)
     for (i = 0; i < s->num_vps; i++) {
         s->vps[i].other = 0;
         s->vps[i].reset_base = 0xBFC00000 & GCR_CL_RESET_BASE_MSK;
-        update_cpu_exception_base(&s->vps[i], i);
+        cpu_set_exception_base(i, get_exception_base(&s->vps[i]));
     }
 }
 
@@ -211,6 +214,10 @@ static Property mips_gcr_properties[] = {
     DEFINE_PROP_INT32("num-vp", MIPSGCRState, num_vps, 1),
     DEFINE_PROP_INT32("gcr-rev", MIPSGCRState, gcr_rev, 0x800),
     DEFINE_PROP_UINT64("gcr-base", MIPSGCRState, gcr_base, GCR_BASE_ADDR),
+    DEFINE_PROP_LINK("gic", MIPSGCRState, gic_mr, TYPE_MEMORY_REGION,
+                     MemoryRegion *),
+    DEFINE_PROP_LINK("cpc", MIPSGCRState, cpc_mr, TYPE_MEMORY_REGION,
+                     MemoryRegion *),
     DEFINE_PROP_END_OF_LIST(),
 };
 

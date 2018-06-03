@@ -67,17 +67,26 @@ static void __bufread(uint8_t *buf, ssize_t len)
     int last = buf[len-1];
 }
 
-MemTxResult address_space_rw(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
-                             uint8_t *buf, int len, bool is_write)
+MemTxResult address_space_read(AddressSpace *as, hwaddr addr,
+                               MemTxAttrs attrs,
+                               uint8_t *buf, int len)
 {
     MemTxResult result;
-
     // TODO: investigate impact of treating reads as producing
     // tainted data, with __coverity_tainted_data_argument__(buf).
-    if (is_write) __bufread(buf, len); else __bufwrite(buf, len);
-
+    __bufwrite(buf, len);
     return result;
 }
+
+MemTxResult address_space_write(AddressSpace *as, hwaddr addr,
+                                MemTxAttrs attrs,
+                                const uint8_t *buf, int len)
+{
+    MemTxResult result;
+    __bufread(buf, len);
+    return result;
+}
+
 
 /* Tainting */
 
@@ -236,6 +245,23 @@ void *g_try_realloc(void *ptr, size_t size)
     return g_try_realloc_n(ptr, 1, size);
 }
 
+/* Other memory allocation functions */
+
+void *g_memdup(const void *ptr, unsigned size)
+{
+    unsigned char *dup;
+    unsigned i;
+
+    if (!ptr) {
+        return NULL;
+    }
+
+    dup = g_malloc(size);
+    for (i = 0; i < size; i++)
+        dup[i] = ((unsigned char *)ptr)[i];
+    return dup;
+}
+
 /*
  * GLib string allocation functions
  */
@@ -324,6 +350,15 @@ char *g_strconcat(const char *s, ...)
 }
 
 /* Other glib functions */
+
+typedef struct pollfd GPollFD;
+
+int poll();
+
+int g_poll (GPollFD *fds, unsigned nfds, int timeout)
+{
+    return poll(fds, nfds, timeout);
+}
 
 typedef struct _GIOChannel GIOChannel;
 GIOChannel *g_io_channel_unix_new(int fd)

@@ -2,16 +2,16 @@
  * QEMU TEWS TPCI200 IndustryPack carrier emulation
  *
  * Copyright (C) 2012 Igalia, S.L.
- * Author: Alberto Garcia <agarcia@igalia.com>
+ * Author: Alberto Garcia <berto@igalia.com>
  *
  * This code is licensed under the GNU GPL v2 or (at your option) any
  * later version.
  */
 
+#include "qemu/osdep.h"
 #include "hw/ipack/ipack.h"
 #include "hw/pci/pci.h"
 #include "qemu/bitops.h"
-#include <stdio.h>
 
 /* #define DEBUG_TPCI */
 
@@ -646,6 +646,10 @@ static const TypeInfo tpci200_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(TPCI200State),
     .class_init    = tpci200_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void tpci200_register_types(void)

@@ -24,9 +24,11 @@
  * This driver attempts to emulate an HPET device in software.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "ui/console.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "hw/timer/hpet.h"
@@ -68,6 +70,7 @@ typedef struct HPETState {
 
     MemoryRegion iomem;
     uint64_t hpet_offset;
+    bool hpet_offset_saved;
     qemu_irq irqs[HPET_NUM_IRQ_ROUTES];
     uint32_t flags;
     uint8_t rtc_irq_level;
@@ -199,12 +202,7 @@ static void update_irq(struct HPETTimer *timer, int set)
     if (!set || !timer_enabled(timer) || !hpet_enabled(timer->state)) {
         s->isr &= ~mask;
         if (!timer_fsb_route(timer)) {
-            /* fold the ICH PIRQ# pin's internal inversion logic into hpet */
-            if (route >= ISA_NUM_IRQS) {
-                qemu_irq_raise(s->irqs[route]);
-            } else {
-                qemu_irq_lower(s->irqs[route]);
-            }
+            qemu_irq_lower(s->irqs[route]);
         }
     } else if (timer_fsb_route(timer)) {
         address_space_stl_le(&address_space_memory, timer->fsb >> 32,
@@ -212,24 +210,23 @@ static void update_irq(struct HPETTimer *timer, int set)
                              NULL);
     } else if (timer->config & HPET_TN_TYPE_LEVEL) {
         s->isr |= mask;
-        /* fold the ICH PIRQ# pin's internal inversion logic into hpet */
-        if (route >= ISA_NUM_IRQS) {
-            qemu_irq_lower(s->irqs[route]);
-        } else {
-            qemu_irq_raise(s->irqs[route]);
-        }
+        qemu_irq_raise(s->irqs[route]);
     } else {
         s->isr &= ~mask;
         qemu_irq_pulse(s->irqs[route]);
     }
 }
 
-static void hpet_pre_save(void *opaque)
+static int hpet_pre_save(void *opaque)
 {
     HPETState *s = opaque;
 
     /* save current counter value */
-    s->hpet_counter = hpet_get_ticks(s);
+    if (hpet_enabled(s)) {
+        s->hpet_counter = hpet_get_ticks(s);
+    }
+
+    return 0;
 }
 
 static int hpet_pre_load(void *opaque)
@@ -258,7 +255,10 @@ static int hpet_post_load(void *opaque, int version_id)
     HPETState *s = opaque;
 
     /* Recalculate the offset between the main counter and guest time */
-    s->hpet_offset = ticks_to_ns(s->hpet_counter) - qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    if (!s->hpet_offset_saved) {
+        s->hpet_offset = ticks_to_ns(s->hpet_counter)
+                        - qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    }
 
     /* Push number of timers into capability returned via HPET_ID */
     s->capability &= ~HPET_ID_NUM_TIM_MASK;
@@ -271,6 +271,13 @@ static int hpet_post_load(void *opaque, int version_id)
         s->flags |= 1 << HPET_MSI_SUPPORT;
     }
     return 0;
+}
+
+static bool hpet_offset_needed(void *opaque)
+{
+    HPETState *s = opaque;
+
+    return hpet_enabled(s) && s->hpet_offset_saved;
 }
 
 static bool hpet_rtc_irq_level_needed(void *opaque)
@@ -287,6 +294,17 @@ static const VMStateDescription vmstate_hpet_rtc_irq_level = {
     .needed = hpet_rtc_irq_level_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(rtc_irq_level, HPETState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_hpet_offset = {
+    .name = "hpet/offset",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = hpet_offset_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(hpet_offset, HPETState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -326,6 +344,7 @@ static const VMStateDescription vmstate_hpet = {
     },
     .subsections = (const VMStateDescription*[]) {
         &vmstate_hpet_rtc_irq_level,
+        &vmstate_hpet_offset,
         NULL
     }
 };
@@ -713,7 +732,7 @@ static void hpet_init(Object *obj)
     HPETState *s = HPET(obj);
 
     /* HPET Area */
-    memory_region_init_io(&s->iomem, obj, &hpet_ram_ops, s, "hpet", 0x400);
+    memory_region_init_io(&s->iomem, obj, &hpet_ram_ops, s, "hpet", HPET_LEN);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
@@ -768,6 +787,7 @@ static Property hpet_device_properties[] = {
     DEFINE_PROP_UINT8("timers", HPETState, num_timers, HPET_MIN_TIMERS),
     DEFINE_PROP_BIT("msi", HPETState, flags, HPET_MSI_SUPPORT, false),
     DEFINE_PROP_UINT32(HPET_INTCAP, HPETState, intcap, 0),
+    DEFINE_PROP_BOOL("hpet-offset-saved", HPETState, hpet_offset_saved, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 

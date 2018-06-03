@@ -17,13 +17,12 @@
 void ich9_lpc_set_irq(void *opaque, int irq_num, int level);
 int ich9_lpc_map_irq(PCIDevice *pci_dev, int intx);
 PCIINTxRoute ich9_route_intx_pin_to_irq(void *opaque, int pirq_pin);
-void ich9_lpc_pm_init(PCIDevice *pci_lpc, bool smm_enabled, bool enable_tco);
+void ich9_lpc_pm_init(PCIDevice *pci_lpc, bool smm_enabled);
 I2CBus *ich9_smb_init(PCIBus *bus, int devfn, uint32_t smb_io_base);
 
 void ich9_generate_smi(void);
-void ich9_generate_nmi(void);
 
-#define ICH9_CC_SIZE                            (16 * 1024)     /* 16KB */
+#define ICH9_CC_SIZE (16 * 1024) /* 16KB. Chipset configuration registers */
 
 #define TYPE_ICH9_LPC_DEVICE "ICH9-LPC"
 #define ICH9_LPC_DEVICE(obj) \
@@ -35,7 +34,7 @@ typedef struct ICH9LPCState {
 
     /* (pci device, intx) -> pirq
      * In real chipset case, the unused slots are never used
-     * as ICH9 supports only D25-D32 irq routing.
+     * as ICH9 supports only D25-D31 irq routing.
      * On the other hand in qemu case, any slot/function can be populated
      * via command line option.
      * So fallback interrupt routing for any devices in any slots is necessary.
@@ -45,6 +44,7 @@ typedef struct ICH9LPCState {
     APMState apm;
     ICH9LPCPMRegs pm;
     uint32_t sci_level; /* track sci level */
+    uint8_t sci_gsi;
 
     /* 2.24 Pin Straps */
     struct {
@@ -63,13 +63,22 @@ typedef struct ICH9LPCState {
     uint8_t rst_cnt;
     MemoryRegion rst_cnt_mem;
 
+    /* SMI feature negotiation via fw_cfg */
+    uint64_t smi_host_features;       /* guest-invisible, host endian */
+    uint8_t smi_host_features_le[8];  /* guest-visible, read-only, little
+                                       * endian uint64_t */
+    uint8_t smi_guest_features_le[8]; /* guest-visible, read-write, little
+                                       * endian uint64_t */
+    uint8_t smi_features_ok;          /* guest-visible, read-only; selecting it
+                                       * triggers feature lockdown */
+    uint64_t smi_negotiated_features; /* guest-invisible, host endian */
+
     /* isa bus */
     ISABus *isa_bus;
-    MemoryRegion rbca_mem;
+    MemoryRegion rcrb_mem; /* root complex register block */
     Notifier machine_ready;
 
-    qemu_irq *pic;
-    qemu_irq *ioapic;
+    qemu_irq gsi[GSI_NUM_PINS];
 } ICH9LPCState;
 
 Object *ich9_lpc_find(void);
@@ -177,11 +186,13 @@ Object *ich9_lpc_find(void);
 #define ICH9_LPC_PIC_NUM_PINS                   16
 #define ICH9_LPC_IOAPIC_NUM_PINS                24
 
+#define ICH9_GPIO_GSI "gsi"
+
 /* D31:F2 SATA Controller #1 */
 #define ICH9_SATA1_DEV                          31
 #define ICH9_SATA1_FUNC                         2
 
-/* D30:F1 power management I/O registers
+/* D31:F0 power management I/O registers
    offset from the address ICH9_LPC_PMBASE */
 
 /* ICH9 LPC PM I/O registers are 128 ports and 128-aligned */
@@ -208,6 +219,8 @@ Object *ich9_lpc_find(void);
 
 
 /* D31:F3 SMBus controller */
+#define TYPE_ICH9_SMB_DEVICE "ICH9 SMB"
+
 #define ICH9_A2_SMB_REVISION                    0x02
 #define ICH9_SMB_PI                             0x00
 
@@ -235,5 +248,8 @@ Object *ich9_lpc_find(void);
 #define ICH9_SMB_HST_D0                         0x05
 #define ICH9_SMB_HST_D1                         0x06
 #define ICH9_SMB_HOST_BLOCK_DB                  0x07
+
+/* bit positions used in fw_cfg SMI feature negotiation */
+#define ICH9_LPC_SMI_F_BROADCAST_BIT            0
 
 #endif /* HW_ICH9_H */

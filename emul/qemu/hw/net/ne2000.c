@@ -21,11 +21,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "hw/hw.h"
+#include "qemu/osdep.h"
 #include "hw/pci/pci.h"
-#include "net/net.h"
+#include "net/eth.h"
 #include "ne2000.h"
-#include "hw/loader.h"
 #include "sysemu/sysemu.h"
 
 /* debug NE2000 card */
@@ -154,6 +153,10 @@ static int ne2000_buffer_full(NE2000State *s)
 {
     int avail, index, boundary;
 
+    if (s->stop <= s->start) {
+        return 1;
+    }
+
     index = s->curpag << 8;
     boundary = s->boundary << 8;
     if (index < boundary)
@@ -196,7 +199,7 @@ ssize_t ne2000_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
             /* multicast */
             if (!(s->rxcr & 0x08))
                 return size;
-            mcast_idx = compute_mcast_idx(buf);
+            mcast_idx = net_crc32(buf, ETH_ALEN) >> 26;
             if (!(s->mult[mcast_idx >> 3] & (1 << (mcast_idx & 7))))
                 return size;
         } else if (s->mem[0] == buf[0] &&
@@ -467,8 +470,9 @@ static inline void ne2000_mem_writel(NE2000State *s, uint32_t addr,
                                      uint32_t val)
 {
     addr &= ~1; /* XXX: check exact behaviour if not even */
-    if (addr < 32 ||
-        (addr >= NE2000_PMEM_START && addr < NE2000_MEM_SIZE)) {
+    if (addr < 32
+        || (addr >= NE2000_PMEM_START
+            && addr + sizeof(uint32_t) <= NE2000_MEM_SIZE)) {
         stl_le_p(s->mem + addr, val);
     }
 }
@@ -497,8 +501,9 @@ static inline uint32_t ne2000_mem_readw(NE2000State *s, uint32_t addr)
 static inline uint32_t ne2000_mem_readl(NE2000State *s, uint32_t addr)
 {
     addr &= ~1; /* XXX: check exact behaviour if not even */
-    if (addr < 32 ||
-        (addr >= NE2000_PMEM_START && addr < NE2000_MEM_SIZE)) {
+    if (addr < 32
+        || (addr >= NE2000_PMEM_START
+            && addr + sizeof(uint32_t) <= NE2000_MEM_SIZE)) {
         return ldl_le_p(s->mem + addr);
     } else {
         return 0xffffffff;
@@ -705,7 +710,7 @@ void ne2000_setup_io(NE2000State *s, DeviceState *dev, unsigned size)
 }
 
 static NetClientInfo net_ne2000_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = ne2000_receive,
 };
@@ -779,6 +784,10 @@ static const TypeInfo ne2000_info = {
     .instance_size = sizeof(PCINE2000State),
     .class_init    = ne2000_class_init,
     .instance_init = ne2000_instance_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void ne2000_register_types(void)

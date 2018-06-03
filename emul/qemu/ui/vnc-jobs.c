@@ -26,6 +26,7 @@
  */
 
 
+#include "qemu/osdep.h"
 #include "vnc.h"
 #include "vnc-jobs.h"
 #include "qemu/sockets.h"
@@ -127,29 +128,6 @@ static bool vnc_has_job_locked(VncState *vs)
     return false;
 }
 
-bool vnc_has_job(VncState *vs)
-{
-    bool ret;
-
-    vnc_lock_queue(queue);
-    ret = vnc_has_job_locked(vs);
-    vnc_unlock_queue(queue);
-    return ret;
-}
-
-void vnc_jobs_clear(VncState *vs)
-{
-    VncJob *job, *tmp;
-
-    vnc_lock_queue(queue);
-    QTAILQ_FOREACH_SAFE(job, &queue->jobs, next, tmp) {
-        if (job->vs == vs || !vs) {
-            QTAILQ_REMOVE(&queue->jobs, job, next);
-        }
-    }
-    vnc_unlock_queue(queue);
-}
-
 void vnc_jobs_join(VncState *vs)
 {
     vnc_lock_queue(queue);
@@ -166,13 +144,23 @@ void vnc_jobs_consume_buffer(VncState *vs)
 
     vnc_lock_output(vs);
     if (vs->jobs_buffer.offset) {
-        if (vs->csock != -1 && buffer_empty(&vs->output)) {
-            qemu_set_fd_handler(vs->csock, vnc_client_read,
-                                vnc_client_write, vs);
+        if (vs->ioc != NULL && buffer_empty(&vs->output)) {
+            if (vs->ioc_tag) {
+                g_source_remove(vs->ioc_tag);
+            }
+            if (vs->disconnecting == FALSE) {
+                vs->ioc_tag = qio_channel_add_watch(
+                    vs->ioc, G_IO_IN | G_IO_OUT, vnc_client_io, vs, NULL);
+            }
         }
         buffer_move(&vs->output, &vs->jobs_buffer);
+
+        if (vs->job_update == VNC_STATE_UPDATE_FORCE) {
+            vs->force_update_offset = vs->output.offset;
+        }
+        vs->job_update = VNC_STATE_UPDATE_NONE;
     }
-    flush = vs->csock != -1 && vs->abort != true;
+    flush = vs->ioc != NULL && vs->abort != true;
     vnc_unlock_output(vs);
 
     if (flush) {
@@ -186,7 +174,8 @@ void vnc_jobs_consume_buffer(VncState *vs)
 static void vnc_async_encoding_start(VncState *orig, VncState *local)
 {
     buffer_init(&local->output, "vnc-worker-output");
-    local->csock = -1; /* Don't do any network work on this thread */
+    local->sioc = NULL; /* Don't do any network work on this thread */
+    local->ioc = NULL; /* Don't do any network work on this thread */
 
     local->vnc_encoding = orig->vnc_encoding;
     local->features = orig->features;
@@ -231,7 +220,7 @@ static int vnc_worker_thread_loop(VncJobQueue *queue)
     }
 
     vnc_lock_output(job->vs);
-    if (job->vs->csock == -1 || job->vs->abort == true) {
+    if (job->vs->ioc == NULL || job->vs->abort == true) {
         vnc_unlock_output(job->vs);
         goto disconnected;
     }
@@ -259,7 +248,7 @@ static int vnc_worker_thread_loop(VncJobQueue *queue)
     QLIST_FOREACH_SAFE(entry, &job->rectangles, next, tmp) {
         int n;
 
-        if (job->vs->csock == -1) {
+        if (job->vs->ioc == NULL) {
             vnc_unlock_display(job->vs->vd);
             /* Copy persistent encoding data */
             vnc_async_encoding_end(job->vs, &vs);
@@ -281,7 +270,7 @@ static int vnc_worker_thread_loop(VncJobQueue *queue)
     vs.output.buffer[saved_offset + 1] = n_rectangles & 0xFF;
 
     vnc_lock_output(job->vs);
-    if (job->vs->csock != -1) {
+    if (job->vs->ioc != NULL) {
         buffer_move(&job->vs->jobs_buffer, &vs.output);
         /* Copy persistent encoding data */
         vnc_async_encoding_end(job->vs, &vs);

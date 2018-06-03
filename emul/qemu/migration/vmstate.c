@@ -1,14 +1,28 @@
+/*
+ * VMState interpreter
+ *
+ * Copyright (c) 2009-2017 Red Hat Inc
+ *
+ * Authors:
+ *  Juan Quintela <quintela@redhat.com>
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * See the COPYING file in the top-level directory.
+ */
+
+#include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "migration/migration.h"
-#include "migration/qemu-file.h"
+#include "migration.h"
 #include "migration/vmstate.h"
+#include "migration/savevm.h"
+#include "qemu-file.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
 #include "trace.h"
 #include "qjson.h"
 
-static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
-                                    void *opaque, QJSON *vmdesc);
+static int vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
+                                   void *opaque, QJSON *vmdesc);
 static int vmstate_subsection_load(QEMUFile *f, const VMStateDescription *vmsd,
                                    void *opaque);
 
@@ -28,6 +42,11 @@ static int vmstate_n_elems(void *opaque, VMStateField *field)
         n_elems = *(uint8_t *)(opaque+field->num_offset);
     }
 
+    if (field->flags & VMS_MULTIPLY_ELEMENTS) {
+        n_elems *= field->num;
+    }
+
+    trace_vmstate_n_elems(field->name, n_elems);
     return n_elems;
 }
 
@@ -45,29 +64,15 @@ static int vmstate_size(void *opaque, VMStateField *field)
     return size;
 }
 
-static void *vmstate_base_addr(void *opaque, VMStateField *field, bool alloc)
+static void vmstate_handle_alloc(void *ptr, VMStateField *field, void *opaque)
 {
-    void *base_addr = opaque + field->offset;
-
-    if (field->flags & VMS_POINTER) {
-        if (alloc && (field->flags & VMS_ALLOC)) {
-            gsize size = 0;
-            if (field->flags & VMS_VBUFFER) {
-                size = vmstate_size(opaque, field);
-            } else {
-                int n_elems = vmstate_n_elems(opaque, field);
-                if (n_elems) {
-                    size = n_elems * field->size;
-                }
-            }
-            if (size) {
-                *((void **)base_addr + field->start) = g_malloc(size);
-            }
+    if (field->flags & VMS_POINTER && field->flags & VMS_ALLOC) {
+        gsize size = vmstate_size(opaque, field);
+        size *= vmstate_n_elems(opaque, field);
+        if (size) {
+            *(void **)ptr = g_malloc(size);
         }
-        base_addr = *(void **)base_addr + field->start;
     }
-
-    return base_addr;
 }
 
 int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
@@ -78,6 +83,9 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
 
     trace_vmstate_load_state(vmsd->name, version_id);
     if (version_id > vmsd->version_id) {
+        error_report("%s: incoming version_id %d is too new "
+                     "for local version_id %d",
+                     vmsd->name, version_id, vmsd->version_id);
         trace_vmstate_load_state_end(vmsd->name, "too new", -EINVAL);
         return -EINVAL;
     }
@@ -88,6 +96,9 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
             trace_vmstate_load_state_end(vmsd->name, "old path", ret);
             return ret;
         }
+        error_report("%s: incoming version_id %d is too old "
+                     "for local minimum version_id  %d",
+                     vmsd->name, version_id, vmsd->minimum_version_id);
         trace_vmstate_load_state_end(vmsd->name, "too old", -EINVAL);
         return -EINVAL;
     }
@@ -103,28 +114,38 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
              field->field_exists(opaque, version_id)) ||
             (!field->field_exists &&
              field->version_id <= version_id)) {
-            void *base_addr = vmstate_base_addr(opaque, field, true);
+            void *first_elem = opaque + field->offset;
             int i, n_elems = vmstate_n_elems(opaque, field);
             int size = vmstate_size(opaque, field);
 
+            vmstate_handle_alloc(first_elem, field, opaque);
+            if (field->flags & VMS_POINTER) {
+                first_elem = *(void **)first_elem;
+                assert(first_elem || !n_elems || !size);
+            }
             for (i = 0; i < n_elems; i++) {
-                void *addr = base_addr + size * i;
+                void *curr_elem = first_elem + size * i;
 
                 if (field->flags & VMS_ARRAY_OF_POINTER) {
-                    addr = *(void **)addr;
+                    curr_elem = *(void **)curr_elem;
                 }
-                if (field->flags & VMS_STRUCT) {
-                    ret = vmstate_load_state(f, field->vmsd, addr,
+                if (!curr_elem && size) {
+                    /* if null pointer check placeholder and do not follow */
+                    assert(field->flags & VMS_ARRAY_OF_POINTER);
+                    ret = vmstate_info_nullptr.get(f, curr_elem, size, NULL);
+                } else if (field->flags & VMS_STRUCT) {
+                    ret = vmstate_load_state(f, field->vmsd, curr_elem,
                                              field->vmsd->version_id);
                 } else {
-                    ret = field->info->get(f, addr, size);
-
+                    ret = field->info->get(f, curr_elem, size, field);
                 }
                 if (ret >= 0) {
                     ret = qemu_file_get_error(f);
                 }
                 if (ret < 0) {
                     qemu_file_set_error(f, ret);
+                    error_report("Failed to load %s:%s", vmsd->name,
+                                 field->name);
                     trace_vmstate_load_field_error(field->name, ret);
                     return ret;
                 }
@@ -287,13 +308,21 @@ bool vmstate_save_needed(const VMStateDescription *vmsd, void *opaque)
 }
 
 
-void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
+int vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
                         void *opaque, QJSON *vmdesc)
 {
+    int ret = 0;
     VMStateField *field = vmsd->fields;
 
+    trace_vmstate_save_state_top(vmsd->name);
+
     if (vmsd->pre_save) {
-        vmsd->pre_save(opaque);
+        ret = vmsd->pre_save(opaque);
+        trace_vmstate_save_state_pre_save_res(vmsd->name, ret);
+        if (ret) {
+            error_report("pre-save failed: %s", vmsd->name);
+            return ret;
+        }
     }
 
     if (vmdesc) {
@@ -305,25 +334,43 @@ void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
     while (field->name) {
         if (!field->field_exists ||
             field->field_exists(opaque, vmsd->version_id)) {
-            void *base_addr = vmstate_base_addr(opaque, field, false);
+            void *first_elem = opaque + field->offset;
             int i, n_elems = vmstate_n_elems(opaque, field);
             int size = vmstate_size(opaque, field);
             int64_t old_offset, written_bytes;
             QJSON *vmdesc_loop = vmdesc;
 
+            trace_vmstate_save_state_loop(vmsd->name, field->name, n_elems);
+            if (field->flags & VMS_POINTER) {
+                first_elem = *(void **)first_elem;
+                assert(first_elem || !n_elems || !size);
+            }
             for (i = 0; i < n_elems; i++) {
-                void *addr = base_addr + size * i;
+                void *curr_elem = first_elem + size * i;
+                ret = 0;
 
                 vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems);
                 old_offset = qemu_ftell_fast(f);
-
                 if (field->flags & VMS_ARRAY_OF_POINTER) {
-                    addr = *(void **)addr;
+                    assert(curr_elem);
+                    curr_elem = *(void **)curr_elem;
                 }
-                if (field->flags & VMS_STRUCT) {
-                    vmstate_save_state(f, field->vmsd, addr, vmdesc_loop);
+                if (!curr_elem && size) {
+                    /* if null pointer write placeholder and do not follow */
+                    assert(field->flags & VMS_ARRAY_OF_POINTER);
+                    ret = vmstate_info_nullptr.put(f, curr_elem, size, NULL,
+                                                   NULL);
+                } else if (field->flags & VMS_STRUCT) {
+                    ret = vmstate_save_state(f, field->vmsd, curr_elem,
+                                             vmdesc_loop);
                 } else {
-                    field->info->put(f, addr, size);
+                    ret = field->info->put(f, curr_elem, size, field,
+                                     vmdesc_loop);
+                }
+                if (ret) {
+                    error_report("Save of field %s/%s failed",
+                                 vmsd->name, field->name);
+                    return ret;
                 }
 
                 written_bytes = qemu_ftell_fast(f) - old_offset;
@@ -348,7 +395,7 @@ void vmstate_save_state(QEMUFile *f, const VMStateDescription *vmsd,
         json_end_array(vmdesc);
     }
 
-    vmstate_subsection_save(f, vmsd, opaque, vmdesc);
+    return vmstate_subsection_save(f, vmsd, opaque, vmdesc);
 }
 
 static const VMStateDescription *
@@ -377,25 +424,25 @@ static int vmstate_subsection_load(QEMUFile *f, const VMStateDescription *vmsd,
         len = qemu_peek_byte(f, 1);
         if (len < strlen(vmsd->name) + 1) {
             /* subsection name has be be "section_name/a" */
-            trace_vmstate_subsection_load_bad(vmsd->name, "(short)");
+            trace_vmstate_subsection_load_bad(vmsd->name, "(short)", "");
             return 0;
         }
         size = qemu_peek_buffer(f, (uint8_t **)&idstr_ret, len, 2);
         if (size != len) {
-            trace_vmstate_subsection_load_bad(vmsd->name, "(peek fail)");
+            trace_vmstate_subsection_load_bad(vmsd->name, "(peek fail)", "");
             return 0;
         }
         memcpy(idstr, idstr_ret, size);
         idstr[size] = 0;
 
         if (strncmp(vmsd->name, idstr, strlen(vmsd->name)) != 0) {
-            trace_vmstate_subsection_load_bad(vmsd->name, idstr);
-            /* it don't have a valid subsection name */
+            trace_vmstate_subsection_load_bad(vmsd->name, idstr, "(prefix)");
+            /* it doesn't have a valid subsection name */
             return 0;
         }
         sub_vmsd = vmstate_get_subsection(vmsd->subsections, idstr);
         if (sub_vmsd == NULL) {
-            trace_vmstate_subsection_load_bad(vmsd->name, "(lookup)");
+            trace_vmstate_subsection_load_bad(vmsd->name, idstr, "(lookup)");
             return -ENOENT;
         }
         qemu_file_skip(f, 1); /* subsection */
@@ -405,7 +452,7 @@ static int vmstate_subsection_load(QEMUFile *f, const VMStateDescription *vmsd,
 
         ret = vmstate_load_state(f, sub_vmsd, opaque, version_id);
         if (ret) {
-            trace_vmstate_subsection_load_bad(vmsd->name, "(child)");
+            trace_vmstate_subsection_load_bad(vmsd->name, idstr, "(child)");
             return ret;
         }
     }
@@ -414,17 +461,20 @@ static int vmstate_subsection_load(QEMUFile *f, const VMStateDescription *vmsd,
     return 0;
 }
 
-static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
-                                    void *opaque, QJSON *vmdesc)
+static int vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
+                                   void *opaque, QJSON *vmdesc)
 {
     const VMStateDescription **sub = vmsd->subsections;
     bool subsection_found = false;
+    int ret = 0;
 
+    trace_vmstate_subsection_save_top(vmsd->name);
     while (sub && *sub && (*sub)->needed) {
         if ((*sub)->needed(opaque)) {
-            const VMStateDescription *vmsd = *sub;
+            const VMStateDescription *vmsdsub = *sub;
             uint8_t len;
 
+            trace_vmstate_subsection_save_loop(vmsd->name, vmsdsub->name);
             if (vmdesc) {
                 /* Only create subsection array when we have any */
                 if (!subsection_found) {
@@ -436,11 +486,14 @@ static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
             }
 
             qemu_put_byte(f, QEMU_VM_SUBSECTION);
-            len = strlen(vmsd->name);
+            len = strlen(vmsdsub->name);
             qemu_put_byte(f, len);
-            qemu_put_buffer(f, (uint8_t *)vmsd->name, len);
-            qemu_put_be32(f, vmsd->version_id);
-            vmstate_save_state(f, vmsd, opaque, vmdesc);
+            qemu_put_buffer(f, (uint8_t *)vmsdsub->name, len);
+            qemu_put_be32(f, vmsdsub->version_id);
+            ret = vmstate_save_state(f, vmsdsub, opaque, vmdesc);
+            if (ret) {
+                return ret;
+            }
 
             if (vmdesc) {
                 json_end_object(vmdesc);
@@ -452,439 +505,6 @@ static void vmstate_subsection_save(QEMUFile *f, const VMStateDescription *vmsd,
     if (vmdesc && subsection_found) {
         json_end_array(vmdesc);
     }
+
+    return ret;
 }
-
-/* bool */
-
-static int get_bool(QEMUFile *f, void *pv, size_t size)
-{
-    bool *v = pv;
-    *v = qemu_get_byte(f);
-    return 0;
-}
-
-static void put_bool(QEMUFile *f, void *pv, size_t size)
-{
-    bool *v = pv;
-    qemu_put_byte(f, *v);
-}
-
-const VMStateInfo vmstate_info_bool = {
-    .name = "bool",
-    .get  = get_bool,
-    .put  = put_bool,
-};
-
-/* 8 bit int */
-
-static int get_int8(QEMUFile *f, void *pv, size_t size)
-{
-    int8_t *v = pv;
-    qemu_get_s8s(f, v);
-    return 0;
-}
-
-static void put_int8(QEMUFile *f, void *pv, size_t size)
-{
-    int8_t *v = pv;
-    qemu_put_s8s(f, v);
-}
-
-const VMStateInfo vmstate_info_int8 = {
-    .name = "int8",
-    .get  = get_int8,
-    .put  = put_int8,
-};
-
-/* 16 bit int */
-
-static int get_int16(QEMUFile *f, void *pv, size_t size)
-{
-    int16_t *v = pv;
-    qemu_get_sbe16s(f, v);
-    return 0;
-}
-
-static void put_int16(QEMUFile *f, void *pv, size_t size)
-{
-    int16_t *v = pv;
-    qemu_put_sbe16s(f, v);
-}
-
-const VMStateInfo vmstate_info_int16 = {
-    .name = "int16",
-    .get  = get_int16,
-    .put  = put_int16,
-};
-
-/* 32 bit int */
-
-static int get_int32(QEMUFile *f, void *pv, size_t size)
-{
-    int32_t *v = pv;
-    qemu_get_sbe32s(f, v);
-    return 0;
-}
-
-static void put_int32(QEMUFile *f, void *pv, size_t size)
-{
-    int32_t *v = pv;
-    qemu_put_sbe32s(f, v);
-}
-
-const VMStateInfo vmstate_info_int32 = {
-    .name = "int32",
-    .get  = get_int32,
-    .put  = put_int32,
-};
-
-/* 32 bit int. See that the received value is the same than the one
-   in the field */
-
-static int get_int32_equal(QEMUFile *f, void *pv, size_t size)
-{
-    int32_t *v = pv;
-    int32_t v2;
-    qemu_get_sbe32s(f, &v2);
-
-    if (*v == v2) {
-        return 0;
-    }
-    return -EINVAL;
-}
-
-const VMStateInfo vmstate_info_int32_equal = {
-    .name = "int32 equal",
-    .get  = get_int32_equal,
-    .put  = put_int32,
-};
-
-/* 32 bit int. Check that the received value is non-negative
- * and less than or equal to the one in the field.
- */
-
-static int get_int32_le(QEMUFile *f, void *pv, size_t size)
-{
-    int32_t *cur = pv;
-    int32_t loaded;
-    qemu_get_sbe32s(f, &loaded);
-
-    if (loaded >= 0 && loaded <= *cur) {
-        *cur = loaded;
-        return 0;
-    }
-    return -EINVAL;
-}
-
-const VMStateInfo vmstate_info_int32_le = {
-    .name = "int32 le",
-    .get  = get_int32_le,
-    .put  = put_int32,
-};
-
-/* 64 bit int */
-
-static int get_int64(QEMUFile *f, void *pv, size_t size)
-{
-    int64_t *v = pv;
-    qemu_get_sbe64s(f, v);
-    return 0;
-}
-
-static void put_int64(QEMUFile *f, void *pv, size_t size)
-{
-    int64_t *v = pv;
-    qemu_put_sbe64s(f, v);
-}
-
-const VMStateInfo vmstate_info_int64 = {
-    .name = "int64",
-    .get  = get_int64,
-    .put  = put_int64,
-};
-
-/* 8 bit unsigned int */
-
-static int get_uint8(QEMUFile *f, void *pv, size_t size)
-{
-    uint8_t *v = pv;
-    qemu_get_8s(f, v);
-    return 0;
-}
-
-static void put_uint8(QEMUFile *f, void *pv, size_t size)
-{
-    uint8_t *v = pv;
-    qemu_put_8s(f, v);
-}
-
-const VMStateInfo vmstate_info_uint8 = {
-    .name = "uint8",
-    .get  = get_uint8,
-    .put  = put_uint8,
-};
-
-/* 16 bit unsigned int */
-
-static int get_uint16(QEMUFile *f, void *pv, size_t size)
-{
-    uint16_t *v = pv;
-    qemu_get_be16s(f, v);
-    return 0;
-}
-
-static void put_uint16(QEMUFile *f, void *pv, size_t size)
-{
-    uint16_t *v = pv;
-    qemu_put_be16s(f, v);
-}
-
-const VMStateInfo vmstate_info_uint16 = {
-    .name = "uint16",
-    .get  = get_uint16,
-    .put  = put_uint16,
-};
-
-/* 32 bit unsigned int */
-
-static int get_uint32(QEMUFile *f, void *pv, size_t size)
-{
-    uint32_t *v = pv;
-    qemu_get_be32s(f, v);
-    return 0;
-}
-
-static void put_uint32(QEMUFile *f, void *pv, size_t size)
-{
-    uint32_t *v = pv;
-    qemu_put_be32s(f, v);
-}
-
-const VMStateInfo vmstate_info_uint32 = {
-    .name = "uint32",
-    .get  = get_uint32,
-    .put  = put_uint32,
-};
-
-/* 32 bit uint. See that the received value is the same than the one
-   in the field */
-
-static int get_uint32_equal(QEMUFile *f, void *pv, size_t size)
-{
-    uint32_t *v = pv;
-    uint32_t v2;
-    qemu_get_be32s(f, &v2);
-
-    if (*v == v2) {
-        return 0;
-    }
-    return -EINVAL;
-}
-
-const VMStateInfo vmstate_info_uint32_equal = {
-    .name = "uint32 equal",
-    .get  = get_uint32_equal,
-    .put  = put_uint32,
-};
-
-/* 64 bit unsigned int */
-
-static int get_uint64(QEMUFile *f, void *pv, size_t size)
-{
-    uint64_t *v = pv;
-    qemu_get_be64s(f, v);
-    return 0;
-}
-
-static void put_uint64(QEMUFile *f, void *pv, size_t size)
-{
-    uint64_t *v = pv;
-    qemu_put_be64s(f, v);
-}
-
-const VMStateInfo vmstate_info_uint64 = {
-    .name = "uint64",
-    .get  = get_uint64,
-    .put  = put_uint64,
-};
-
-/* 64 bit unsigned int. See that the received value is the same than the one
-   in the field */
-
-static int get_uint64_equal(QEMUFile *f, void *pv, size_t size)
-{
-    uint64_t *v = pv;
-    uint64_t v2;
-    qemu_get_be64s(f, &v2);
-
-    if (*v == v2) {
-        return 0;
-    }
-    return -EINVAL;
-}
-
-const VMStateInfo vmstate_info_uint64_equal = {
-    .name = "int64 equal",
-    .get  = get_uint64_equal,
-    .put  = put_uint64,
-};
-
-/* 8 bit int. See that the received value is the same than the one
-   in the field */
-
-static int get_uint8_equal(QEMUFile *f, void *pv, size_t size)
-{
-    uint8_t *v = pv;
-    uint8_t v2;
-    qemu_get_8s(f, &v2);
-
-    if (*v == v2) {
-        return 0;
-    }
-    return -EINVAL;
-}
-
-const VMStateInfo vmstate_info_uint8_equal = {
-    .name = "uint8 equal",
-    .get  = get_uint8_equal,
-    .put  = put_uint8,
-};
-
-/* 16 bit unsigned int int. See that the received value is the same than the one
-   in the field */
-
-static int get_uint16_equal(QEMUFile *f, void *pv, size_t size)
-{
-    uint16_t *v = pv;
-    uint16_t v2;
-    qemu_get_be16s(f, &v2);
-
-    if (*v == v2) {
-        return 0;
-    }
-    return -EINVAL;
-}
-
-const VMStateInfo vmstate_info_uint16_equal = {
-    .name = "uint16 equal",
-    .get  = get_uint16_equal,
-    .put  = put_uint16,
-};
-
-/* floating point */
-
-static int get_float64(QEMUFile *f, void *pv, size_t size)
-{
-    float64 *v = pv;
-
-    *v = make_float64(qemu_get_be64(f));
-    return 0;
-}
-
-static void put_float64(QEMUFile *f, void *pv, size_t size)
-{
-    uint64_t *v = pv;
-
-    qemu_put_be64(f, float64_val(*v));
-}
-
-const VMStateInfo vmstate_info_float64 = {
-    .name = "float64",
-    .get  = get_float64,
-    .put  = put_float64,
-};
-
-/* uint8_t buffers */
-
-static int get_buffer(QEMUFile *f, void *pv, size_t size)
-{
-    uint8_t *v = pv;
-    qemu_get_buffer(f, v, size);
-    return 0;
-}
-
-static void put_buffer(QEMUFile *f, void *pv, size_t size)
-{
-    uint8_t *v = pv;
-    qemu_put_buffer(f, v, size);
-}
-
-const VMStateInfo vmstate_info_buffer = {
-    .name = "buffer",
-    .get  = get_buffer,
-    .put  = put_buffer,
-};
-
-/* unused buffers: space that was used for some fields that are
-   not useful anymore */
-
-static int get_unused_buffer(QEMUFile *f, void *pv, size_t size)
-{
-    uint8_t buf[1024];
-    int block_len;
-
-    while (size > 0) {
-        block_len = MIN(sizeof(buf), size);
-        size -= block_len;
-        qemu_get_buffer(f, buf, block_len);
-    }
-   return 0;
-}
-
-static void put_unused_buffer(QEMUFile *f, void *pv, size_t size)
-{
-    static const uint8_t buf[1024];
-    int block_len;
-
-    while (size > 0) {
-        block_len = MIN(sizeof(buf), size);
-        size -= block_len;
-        qemu_put_buffer(f, buf, block_len);
-    }
-}
-
-const VMStateInfo vmstate_info_unused_buffer = {
-    .name = "unused_buffer",
-    .get  = get_unused_buffer,
-    .put  = put_unused_buffer,
-};
-
-/* bitmaps (as defined by bitmap.h). Note that size here is the size
- * of the bitmap in bits. The on-the-wire format of a bitmap is 64
- * bit words with the bits in big endian order. The in-memory format
- * is an array of 'unsigned long', which may be either 32 or 64 bits.
- */
-/* This is the number of 64 bit words sent over the wire */
-#define BITS_TO_U64S(nr) DIV_ROUND_UP(nr, 64)
-static int get_bitmap(QEMUFile *f, void *pv, size_t size)
-{
-    unsigned long *bmp = pv;
-    int i, idx = 0;
-    for (i = 0; i < BITS_TO_U64S(size); i++) {
-        uint64_t w = qemu_get_be64(f);
-        bmp[idx++] = w;
-        if (sizeof(unsigned long) == 4 && idx < BITS_TO_LONGS(size)) {
-            bmp[idx++] = w >> 32;
-        }
-    }
-    return 0;
-}
-
-static void put_bitmap(QEMUFile *f, void *pv, size_t size)
-{
-    unsigned long *bmp = pv;
-    int i, idx = 0;
-    for (i = 0; i < BITS_TO_U64S(size); i++) {
-        uint64_t w = bmp[idx++];
-        if (sizeof(unsigned long) == 4 && idx < BITS_TO_LONGS(size)) {
-            w |= ((uint64_t)bmp[idx++]) << 32;
-        }
-        qemu_put_be64(f, w);
-    }
-}
-
-const VMStateInfo vmstate_info_bitmap = {
-    .name = "bitmap",
-    .get = get_bitmap,
-    .put = put_bitmap,
-};

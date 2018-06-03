@@ -18,6 +18,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i2c/i2c.h"
 #include "qemu/timer.h"
@@ -238,7 +239,7 @@ static uint8_t lm_kbd_read(LM823KbdState *s, int reg, int byte)
 
     default:
         lm_kbd_error(s, ERR_CMDUNK);
-        fprintf(stderr, "%s: unknown command %02x\n", __FUNCTION__, reg);
+        fprintf(stderr, "%s: unknown command %02x\n", __func__, reg);
         return 0x00;
     }
 
@@ -330,7 +331,7 @@ static void lm_kbd_write(LM823KbdState *s, int reg, int byte, uint8_t value)
         if ((value & 3) && (value & 3) != 3) {
             lm_kbd_error(s, ERR_BADPAR);
             fprintf(stderr, "%s: invalid clock setting in RCPWM\n",
-                            __FUNCTION__);
+                            __func__);
         }
         /* TODO: Validate that the command is only issued once */
         break;
@@ -377,12 +378,12 @@ static void lm_kbd_write(LM823KbdState *s, int reg, int byte, uint8_t value)
         break;
     default:
         lm_kbd_error(s, ERR_CMDUNK);
-        fprintf(stderr, "%s: unknown command %02x\n", __FUNCTION__, reg);
+        fprintf(stderr, "%s: unknown command %02x\n", __func__, reg);
         break;
     }
 }
 
-static void lm_i2c_event(I2CSlave *i2c, enum i2c_event event)
+static int lm_i2c_event(I2CSlave *i2c, enum i2c_event event)
 {
     LM823KbdState *s = LM8323(i2c);
 
@@ -396,6 +397,8 @@ static void lm_i2c_event(I2CSlave *i2c, enum i2c_event event)
     default:
         break;
     }
+
+    return 0;
 }
 
 static int lm_i2c_rx(I2CSlave *i2c)

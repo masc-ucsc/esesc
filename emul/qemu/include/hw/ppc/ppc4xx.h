@@ -22,8 +22,8 @@
  * THE SOFTWARE.
  */
 
-#if !defined(PPC_4XX_H)
-#define PPC_4XX_H
+#ifndef PPC4XX_H
+#define PPC4XX_H
 
 #include "hw/pci/pci.h"
 
@@ -53,12 +53,9 @@ void ppc4xx_sdram_init (CPUPPCState *env, qemu_irq irq, int nbanks,
                         hwaddr *ram_sizes,
                         int do_init);
 
+void ppc4xx_mal_init(CPUPPCState *env, uint8_t txcnum, uint8_t rxcnum,
+                     qemu_irq irqs[4]);
+
 #define TYPE_PPC4xx_PCI_HOST_BRIDGE "ppc4xx-pcihost"
 
-PCIBus *ppc4xx_pci_init(CPUPPCState *env, qemu_irq pci_irqs[4],
-                        hwaddr config_space,
-                        hwaddr int_ack,
-                        hwaddr special_cycle,
-                        hwaddr registers);
-
-#endif /* !defined(PPC_4XX_H) */
+#endif /* PPC4XX_H */
