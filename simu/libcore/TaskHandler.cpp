@@ -545,9 +545,13 @@ void TaskHandler::unplug()
 #ifdef WAVESNAP_EN
   for(size_t i = 0; i < cpus.size(); i++) {
     if(i == 0) {
-      std::cout << "DONE!" << std::endl;
-      cpus[i]->snap->calculate_full_ipc();
-      std::cout << cpus[i]->snap->update_count << std::endl;
+      std::cout << "Done! Getting wavesnap info." << std::endl;
+      if(SINGLE_WINDOW) {
+        cpus[i]->snap->calculate_single_window_ipc();
+      } else {
+        cpus[i]->snap->calculate_ipc();
+        cpus[i]->snap->window_frequency();
+      }
     }
   }
 #endif
