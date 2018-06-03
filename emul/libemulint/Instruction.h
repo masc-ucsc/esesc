@@ -129,14 +129,14 @@ public:
     return opcode == iLALU_LD;
   }
   bool isStore() const {
-    return opcode == iSALU_ST || opcode == iSALU_SC;
+    return opcode == iSALU_ST || opcode == iSALU_SC || opcode == iSALU_LL;
   }
   bool isStoreAddress() const {
     return opcode == iSALU_ADDR;
   }
 
   bool isMemory() const {
-    return opcode == iSALU_ST || opcode == iLALU_LD;
+    return isLoad() || isStore();
   }
 
   void dump(const char *str) const;

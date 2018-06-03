@@ -23,15 +23,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <hw/hw.h>
-#include <hw/i386/pc.h>
-#include <hw/pci/pci.h>
-#include <hw/isa/isa.h>
+#include "qemu/osdep.h"
+#include "hw/hw.h"
+#include "hw/pci/pci.h"
+#include "hw/isa/isa.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 
-#include <hw/ide/pci.h>
+#include "hw/ide/pci.h"
+#include "trace.h"
 
 static uint64_t bmdma_read(void *opaque, hwaddr addr,
                            unsigned size)
@@ -54,9 +55,8 @@ static uint64_t bmdma_read(void *opaque, hwaddr addr,
         val = 0xff;
         break;
     }
-#ifdef DEBUG_IDE
-    printf("bmdma: readb 0x%02x : 0x%02x\n", addr, val);
-#endif
+
+    trace_bmdma_read_via(addr, val);
     return val;
 }
 
@@ -69,9 +69,7 @@ static void bmdma_write(void *opaque, hwaddr addr,
         return;
     }
 
-#ifdef DEBUG_IDE
-    printf("bmdma: writeb 0x%02x : 0x%02x\n", addr, val);
-#endif
+    trace_bmdma_write_via(addr, val);
     switch (addr & 3) {
     case 0:
         bmdma_cmd_writeb(bm, val);

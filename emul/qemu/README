@@ -42,12 +42,11 @@ of other UNIX targets. The simple steps to build QEMU are:
   ../configure
   make
 
-Complete details of the process for building and configuring QEMU for
-all supported host platforms can be found in the qemu-tech.html file.
 Additional information can also be found online via the QEMU website:
 
-  http://qemu-project.org/Hosts/Linux
-  http://qemu-project.org/Hosts/W32
+  https://qemu.org/Hosts/Linux
+  https://qemu.org/Hosts/Mac
+  https://qemu.org/Hosts/W32
 
 
 Submitting patches
@@ -55,9 +54,9 @@ Submitting patches
 
 The QEMU source code is maintained under the GIT version control system.
 
-   git clone git://git.qemu-project.org/qemu.git
+   git clone git://git.qemu.org/qemu.git
 
-When submitting patches, the preferred approach is to use 'git
+When submitting patches, one common approach is to use 'git
 format-patch' and/or 'git send-email' to format & send the mail to the
 qemu-devel@nongnu.org mailing list. All patches submitted must contain
 a 'Signed-off-by' line from the author. Patches should follow the
@@ -66,9 +65,42 @@ guidelines set out in the HACKING and CODING_STYLE files.
 Additional information on submitting patches can be found online via
 the QEMU website
 
-  http://qemu-project.org/Contribute/SubmitAPatch
-  http://qemu-project.org/Contribute/TrivialPatches
+  https://qemu.org/Contribute/SubmitAPatch
+  https://qemu.org/Contribute/TrivialPatches
 
+The QEMU website is also maintained under source control.
+
+  git clone git://git.qemu.org/qemu-web.git
+  https://www.qemu.org/2017/02/04/the-new-qemu-website-is-up/
+
+A 'git-publish' utility was created to make above process less
+cumbersome, and is highly recommended for making regular contributions,
+or even just for sending consecutive patch series revisions. It also
+requires a working 'git send-email' setup, and by default doesn't
+automate everything, so you may want to go through the above steps
+manually for once.
+
+For installation instructions, please go to
+
+  https://github.com/stefanha/git-publish
+
+The workflow with 'git-publish' is:
+
+  $ git checkout master -b my-feature
+  $ # work on new commits, add your 'Signed-off-by' lines to each
+  $ git publish
+
+Your patch series will be sent and tagged as my-feature-v1 if you need to refer
+back to it in the future.
+
+Sending v2:
+
+  $ git checkout my-feature # same topic branch
+  $ # making changes to the commits (using 'git rebase', for example)
+  $ git publish
+
+Your patch series will be sent with 'v2' tag in the subject and the git tip
+will be tagged as my-feature-v2.
 
 Bug reporting
 =============
@@ -86,7 +118,7 @@ reported via launchpad.
 
 For additional information on bug reporting consult:
 
-  http://qemu-project.org/Contribute/ReportABug
+  https://qemu.org/Contribute/ReportABug
 
 
 Contact
@@ -96,12 +128,12 @@ The QEMU community can be contacted in a number of ways, with the two
 main methods being email and IRC
 
  - qemu-devel@nongnu.org
-   http://lists.nongnu.org/mailman/listinfo/qemu-devel
+   https://lists.nongnu.org/mailman/listinfo/qemu-devel
  - #qemu on irc.oftc.net
 
 Information on additional methods of contacting the community can be
 found online via the QEMU website:
 
-  http://qemu-project.org/Contribute/StartHere
+  https://qemu.org/Contribute/StartHere
 
 -- End

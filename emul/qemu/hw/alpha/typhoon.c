@@ -6,6 +6,8 @@
  * This work is licensed under the GNU GPL license version 2 or later.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "cpu.h"
 #include "hw/hw.h"
 #include "hw/devices.h"
@@ -15,6 +17,7 @@
 
 
 #define TYPE_TYPHOON_PCI_HOST_BRIDGE "typhoon-pcihost"
+#define TYPE_TYPHOON_IOMMU_MEMORY_REGION "typhoon-iommu-memory-region"
 
 typedef struct TyphoonCchip {
     MemoryRegion region;
@@ -39,7 +42,7 @@ typedef struct TyphoonPchip {
     MemoryRegion reg_conf;
 
     AddressSpace iommu_as;
-    MemoryRegion iommu;
+    IOMMUMemoryRegion iommu;
 
     uint64_t ctl;
     TyphoonWindow win[4];
@@ -374,7 +377,7 @@ static void cchip_write(void *opaque, hwaddr addr,
         break;
     case 0x0240: /* DIM1 */
         /* DIM: Device Interrupt Mask Register, CPU1.  */
-        s->cchip.dim[0] = val;
+        s->cchip.dim[1] = val;
         cpu_irq_change(s->cchip.cpu[1], val & s->cchip.drir);
         break;
 
@@ -661,8 +664,9 @@ static bool window_translate(TyphoonWindow *win, hwaddr addr,
 /* Handle PCI-to-system address translation.  */
 /* TODO: A translation failure here ought to set PCI error codes on the
    Pchip and generate a machine check interrupt.  */
-static IOMMUTLBEntry typhoon_translate_iommu(MemoryRegion *iommu, hwaddr addr,
-                                             bool is_write)
+static IOMMUTLBEntry typhoon_translate_iommu(IOMMUMemoryRegion *iommu,
+                                             hwaddr addr,
+                                             IOMMUAccessFlags flag)
 {
     TyphoonPchip *pchip = container_of(iommu, TyphoonPchip, iommu);
     IOMMUTLBEntry ret;
@@ -721,10 +725,6 @@ static IOMMUTLBEntry typhoon_translate_iommu(MemoryRegion *iommu, hwaddr addr,
  success:
     return ret;
 }
-
-static const MemoryRegionIOMMUOps typhoon_iommu_ops = {
-    .translate = typhoon_translate_iommu,
-};
 
 static AddressSpace *typhoon_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
 {
@@ -822,7 +822,6 @@ PCIBus *typhoon_init(ram_addr_t ram_size, ISABus **isa_bus,
     int i;
 
     dev = qdev_create(NULL, TYPE_TYPHOON_PCI_HOST_BRIDGE);
-    qdev_init_nofail(dev);
 
     s = TYPHOON_PCI_HOST_BRIDGE(dev);
     phb = PCI_HOST_BRIDGE(dev);
@@ -882,16 +881,19 @@ PCIBus *typhoon_init(ram_addr_t ram_size, ISABus **isa_bus,
     memory_region_add_subregion(addr_space, 0x801fc000000ULL,
                                 &s->pchip.reg_io);
 
-    b = pci_register_bus(dev, "pci",
-                         typhoon_set_irq, sys_map_irq, s,
-                         &s->pchip.reg_mem, &s->pchip.reg_io,
-                         0, 64, TYPE_PCI_BUS);
+    b = pci_register_root_bus(dev, "pci",
+                              typhoon_set_irq, sys_map_irq, s,
+                              &s->pchip.reg_mem, &s->pchip.reg_io,
+                              0, 64, TYPE_PCI_BUS);
     phb->bus = b;
+    qdev_init_nofail(dev);
 
     /* Host memory as seen from the PCI side, via the IOMMU.  */
-    memory_region_init_iommu(&s->pchip.iommu, OBJECT(s), &typhoon_iommu_ops,
+    memory_region_init_iommu(&s->pchip.iommu, sizeof(s->pchip.iommu),
+                             TYPE_TYPHOON_IOMMU_MEMORY_REGION, OBJECT(s),
                              "iommu-typhoon", UINT64_MAX);
-    address_space_init(&s->pchip.iommu_as, &s->pchip.iommu, "pchip0-pci");
+    address_space_init(&s->pchip.iommu_as, MEMORY_REGION(&s->pchip.iommu),
+                       "pchip0-pci");
     pci_setup_iommu(b, typhoon_pci_dma_iommu, s);
 
     /* Pchip0 PCI special/interrupt acknowledge, 0x801.F800.0000, 64MB.  */
@@ -920,7 +922,8 @@ PCIBus *typhoon_init(ram_addr_t ram_size, ISABus **isa_bus,
     {
         qemu_irq *isa_irqs;
 
-        *isa_bus = isa_bus_new(NULL, get_system_memory(), &s->pchip.reg_io);
+        *isa_bus = isa_bus_new(NULL, get_system_memory(), &s->pchip.reg_io,
+                               &error_abort);
         isa_irqs = i8259_init(*isa_bus,
                               qemu_allocate_irq(typhoon_set_isa_irq, s, 0));
         isa_bus_irqs(*isa_bus, isa_irqs);
@@ -948,9 +951,24 @@ static const TypeInfo typhoon_pcihost_info = {
     .class_init    = typhoon_pcihost_class_init,
 };
 
+static void typhoon_iommu_memory_region_class_init(ObjectClass *klass,
+                                                   void *data)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
+
+    imrc->translate = typhoon_translate_iommu;
+}
+
+static const TypeInfo typhoon_iommu_memory_region_info = {
+    .parent = TYPE_IOMMU_MEMORY_REGION,
+    .name = TYPE_TYPHOON_IOMMU_MEMORY_REGION,
+    .class_init = typhoon_iommu_memory_region_class_init,
+};
+
 static void typhoon_register_types(void)
 {
     type_register_static(&typhoon_pcihost_info);
+    type_register_static(&typhoon_iommu_memory_region_info);
 }
 
 type_init(typhoon_register_types)

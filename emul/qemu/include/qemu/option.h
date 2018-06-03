@@ -23,22 +23,13 @@
  * THE SOFTWARE.
  */
 
-#ifndef QEMU_OPTIONS_H
-#define QEMU_OPTIONS_H
+#ifndef QEMU_OPTION_H
+#define QEMU_OPTION_H
 
-#include <stdint.h>
 #include "qemu/queue.h"
-#include "qapi/error.h"
-#include "qapi/qmp/qdict.h"
-#include "qemu/typedefs.h"
 
 const char *get_opt_name(char *buf, int buf_size, const char *p, char delim);
 const char *get_opt_value(char *buf, int buf_size, const char *p);
-int get_next_param_value(char *buf, int buf_size,
-                         const char *tag, const char **pstr);
-int get_param_value(char *buf, int buf_size,
-                    const char *tag, const char *str);
-
 
 void parse_option_size(const char *name, const char *value,
                        uint64_t *ret, Error **errp);
@@ -103,6 +94,15 @@ typedef int (*qemu_opt_loopfunc)(void *opaque,
 int qemu_opt_foreach(QemuOpts *opts, qemu_opt_loopfunc func, void *opaque,
                      Error **errp);
 
+typedef struct {
+    QemuOpts *opts;
+    QemuOpt *opt;
+    const char *name;
+} QemuOptsIter;
+
+void qemu_opt_iter_init(QemuOptsIter *iter, QemuOpts *opts, const char *name);
+const char *qemu_opt_iter_next(QemuOptsIter *iter);
+
 QemuOpts *qemu_opts_find(QemuOptsList *list, const char *id);
 QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
                            int fail_if_exists, Error **errp);
@@ -124,6 +124,8 @@ void qemu_opts_set_defaults(QemuOptsList *list, const char *params,
                             int permit_abbrev);
 QemuOpts *qemu_opts_from_qdict(QemuOptsList *list, const QDict *qdict,
                                Error **errp);
+QDict *qemu_opts_to_qdict_filtered(QemuOpts *opts, QDict *qdict,
+                                   QemuOptsList *list, bool del);
 QDict *qemu_opts_to_qdict(QemuOpts *opts, QDict *qdict);
 void qemu_opts_absorb_qdict(QemuOpts *opts, QDict *qdict, Error **errp);
 
@@ -134,5 +136,8 @@ void qemu_opts_print(QemuOpts *opts, const char *sep);
 void qemu_opts_print_help(QemuOptsList *list);
 void qemu_opts_free(QemuOptsList *list);
 QemuOptsList *qemu_opts_append(QemuOptsList *dst, QemuOptsList *list);
+
+QDict *keyval_parse(const char *params, const char *implied_key,
+                    Error **errp);
 
 #endif

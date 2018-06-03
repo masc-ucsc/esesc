@@ -21,7 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <slirp.h>
+#include "qemu/osdep.h"
+#include "slirp.h"
 
 #if defined(_WIN32)
 /* Windows ntohl() returns an u_long value.
@@ -122,6 +123,9 @@ static void dhcp_decode(const struct bootp_t *bp, int *pmsg_type,
             if (p >= p_end)
                 break;
             len = *p++;
+            if (p + len > p_end) {
+                break;
+            }
             DPRINTF("dhcp: tag=%d len=%d\n", tag, len);
 
             switch(tag) {
@@ -325,7 +329,7 @@ static void bootp_reply(Slirp *slirp, const struct bootp_t *bp)
 
     m->m_len = sizeof(struct bootp_t) -
         sizeof(struct ip) - sizeof(struct udphdr);
-    udp_output2(NULL, m, &saddr, &daddr, IPTOS_LOWDELAY);
+    udp_output(NULL, m, &saddr, &daddr, IPTOS_LOWDELAY);
 }
 
 void bootp_input(struct mbuf *m)

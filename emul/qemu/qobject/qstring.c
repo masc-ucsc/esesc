@@ -10,16 +10,9 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 
-#include "qapi/qmp/qobject.h"
+#include "qemu/osdep.h"
 #include "qapi/qmp/qstring.h"
 #include "qemu-common.h"
-
-static void qstring_destroy_obj(QObject *obj);
-
-static const QType qstring_type = {
-    .code = QTYPE_QSTRING,
-    .destroy = qstring_destroy_obj,
-};
 
 /**
  * qstring_new(): Create a new empty QString
@@ -49,6 +42,7 @@ QString *qstring_from_substr(const char *str, int start, int end)
     QString *qstring;
 
     qstring = g_malloc(sizeof(*qstring));
+    qobject_init(QOBJECT(qstring), QTYPE_QSTRING);
 
     qstring->length = end - start + 1;
     qstring->capacity = qstring->length;
@@ -57,7 +51,6 @@ QString *qstring_from_substr(const char *str, int start, int end)
     memcpy(qstring->string, str + start, qstring->length);
     qstring->string[qstring->length] = 0;
 
-    QOBJECT_INIT(qstring, &qstring_type);
 
     return qstring;
 }
@@ -113,17 +106,6 @@ void qstring_append_chr(QString *qstring, int c)
 }
 
 /**
- * qobject_to_qstring(): Convert a QObject to a QString
- */
-QString *qobject_to_qstring(const QObject *obj)
-{
-    if (!obj || qobject_type(obj) != QTYPE_QSTRING) {
-        return NULL;
-    }
-    return container_of(obj, QString, base);
-}
-
-/**
  * qstring_get_str(): Return a pointer to the stored string
  *
  * NOTE: Should be used with caution, if the object is deallocated
@@ -135,15 +117,45 @@ const char *qstring_get_str(const QString *qstring)
 }
 
 /**
+ * qstring_get_try_str(): Return a pointer to the stored string
+ *
+ * NOTE: will return NULL if qstring is not provided.
+ */
+const char *qstring_get_try_str(const QString *qstring)
+{
+    return qstring ? qstring_get_str(qstring) : NULL;
+}
+
+/**
+ * qobject_get_try_str(): Return a pointer to the corresponding string
+ *
+ * NOTE: the string will only be returned if the object is valid, and
+ * its type is QString, otherwise NULL is returned.
+ */
+const char *qobject_get_try_str(const QObject *qstring)
+{
+    return qstring_get_try_str(qobject_to(QString, qstring));
+}
+
+/**
+ * qstring_is_equal(): Test whether the two QStrings are equal
+ */
+bool qstring_is_equal(const QObject *x, const QObject *y)
+{
+    return !strcmp(qobject_to(QString, x)->string,
+                   qobject_to(QString, y)->string);
+}
+
+/**
  * qstring_destroy_obj(): Free all memory allocated by a QString
  * object
  */
-static void qstring_destroy_obj(QObject *obj)
+void qstring_destroy_obj(QObject *obj)
 {
     QString *qs;
 
     assert(obj != NULL);
-    qs = qobject_to_qstring(obj);
+    qs = qobject_to(QString, obj);
     g_free(qs->string);
     g_free(qs);
 }

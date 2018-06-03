@@ -23,11 +23,11 @@
 #error cpu.h included from common code
 #endif
 
-#include "config.h"
-#include <inttypes.h>
-#include "qemu/osdep.h"
+#include "qemu/host-utils.h"
 #include "qemu/queue.h"
+#ifdef CONFIG_TCG
 #include "tcg-target.h"
+#endif
 #ifndef CONFIG_USER_ONLY
 #include "exec/hwaddr.h"
 #endif
@@ -56,7 +56,7 @@ typedef uint64_t target_ulong;
 #error TARGET_LONG_SIZE undefined
 #endif
 
-#if !defined(CONFIG_USER_ONLY)
+#if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TCG)
 /* use a fully associative victim tlb of 8 entries */
 #define CPU_VTLB_SIZE 8
 
@@ -137,6 +137,7 @@ typedef struct CPUIOTLBEntry {
     CPUTLBEntry tlb_v_table[NB_MMU_MODES][CPU_VTLB_SIZE];               \
     CPUIOTLBEntry iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                    \
     CPUIOTLBEntry iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                 \
+    size_t tlb_flush_count;                                             \
     target_ulong tlb_flush_addr;                                        \
     target_ulong tlb_flush_mask;                                        \
     target_ulong vtlb_index;                                            \

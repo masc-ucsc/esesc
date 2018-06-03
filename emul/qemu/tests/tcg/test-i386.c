@@ -1720,7 +1720,7 @@ int tab[2];
 
 void sig_handler(int sig, siginfo_t *info, void *puc)
 {
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
 
     printf("si_signo=%d si_errno=%d si_code=%d",
            info->si_signo, info->si_errno, info->si_code);
@@ -1912,7 +1912,7 @@ void test_exceptions(void)
 /* specific precise single step test */
 void sig_trap_handler(int sig, siginfo_t *info, void *puc)
 {
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
     printf("EIP=" FMTLX "\n", (long)uc->uc_mcontext.gregs[REG_EIP]);
 }
 
@@ -2250,14 +2250,14 @@ SSE_OP(a ## sd);
 
 #define SSE_COMI(op, field)\
 {\
-    unsigned int eflags;\
+    unsigned long eflags;\
     XMMReg a, b;\
     a.field[0] = a1;\
     b.field[0] = b1;\
     asm volatile (#op " %2, %1\n"\
         "pushf\n"\
         "pop %0\n"\
-        : "=m" (eflags)\
+        : "=rm" (eflags)\
         : "x" (a.dq), "x" (b.dq));\
     printf("%-9s: a=%f b=%f cc=%04x\n",\
            #op, a1, b1,\

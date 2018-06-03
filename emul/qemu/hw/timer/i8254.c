@@ -21,8 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "hw/i386/pc.h"
 #include "hw/isa/isa.h"
 #include "qemu/timer.h"
 #include "hw/timer/i8254.h"
@@ -52,7 +52,7 @@ static int pit_get_count(PITChannelState *s)
     int counter;
 
     d = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->count_load_time, PIT_FREQ,
-                 get_ticks_per_sec());
+                 NANOSECONDS_PER_SECOND);
     switch(s->mode) {
     case 0:
     case 1:
@@ -262,7 +262,7 @@ static void pit_irq_timer_update(PITChannelState *s, int64_t current_time)
 #ifdef DEBUG_PIT
     printf("irq_level=%d next_delay=%f\n",
            irq_level,
-           (double)(expire_time - current_time) / get_ticks_per_sec());
+           (double)(expire_time - current_time) / NANOSECONDS_PER_SECOND);
 #endif
     s->next_transition_time = expire_time;
     if (expire_time != -1)
@@ -358,8 +358,7 @@ static void pit_class_initfn(ObjectClass *klass, void *data)
     PITCommonClass *k = PIT_COMMON_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    pc->parent_realize = dc->realize;
-    dc->realize = pit_realizefn;
+    device_class_set_parent_realize(dc, pit_realizefn, &pc->parent_realize);
     k->set_channel_gate = pit_set_channel_gate;
     k->get_channel_info = pit_get_channel_info_common;
     k->post_load = pit_post_load;

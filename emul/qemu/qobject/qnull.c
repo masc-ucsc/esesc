@@ -10,20 +10,22 @@
  * or later.  See the COPYING.LIB file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "qapi/qmp/qobject.h"
+#include "qapi/qmp/qnull.h"
 
-static void qnull_destroy_obj(QObject *obj)
+QNull qnull_ = {
+    .base = {
+        .type = QTYPE_QNULL,
+        .refcnt = 1,
+    },
+};
+
+/**
+ * qnull_is_equal(): Always return true because any two QNull objects
+ * are equal.
+ */
+bool qnull_is_equal(const QObject *x, const QObject *y)
 {
-    assert(0);
+    return true;
 }
-
-static const QType qnull_type = {
-    .code = QTYPE_QNULL,
-    .destroy = qnull_destroy_obj,
-};
-
-QObject qnull_ = {
-    .type = &qnull_type,
-    .refcnt = 1,
-};

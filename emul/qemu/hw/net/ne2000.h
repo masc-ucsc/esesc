@@ -1,5 +1,8 @@
 #ifndef HW_NE2000_H
-#define HW_NE2000_H 1
+#define HW_NE2000_H
+
+#include "hw/hw.h"
+#include "net/net.h"
 
 #define NE2000_PMEM_SIZE    (32*1024)
 #define NE2000_PMEM_START   (16*1024)

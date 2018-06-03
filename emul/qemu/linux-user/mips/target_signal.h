@@ -1,5 +1,5 @@
-#ifndef TARGET_SIGNAL_H
-#define TARGET_SIGNAL_H
+#ifndef MIPS_TARGET_SIGNAL_H
+#define MIPS_TARGET_SIGNAL_H
 
 #include "cpu.h"
 
@@ -26,4 +26,8 @@ static inline abi_ulong get_sp_from_cpustate(CPUMIPSState *state)
     return state->active_tc.gpr[29];
 }
 
-#endif /* TARGET_SIGNAL_H */
+#if defined(TARGET_ABI_MIPSO32)
+/* compare linux/arch/mips/kernel/signal.c:setup_frame() */
+#define TARGET_ARCH_HAS_SETUP_FRAME
+#endif
+#endif /* MIPS_TARGET_SIGNAL_H */

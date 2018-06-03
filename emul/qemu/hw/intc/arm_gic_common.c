@@ -18,10 +18,12 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "gic_internal.h"
 #include "hw/arm/linux-boot-if.h"
 
-static void gic_pre_save(void *opaque)
+static int gic_pre_save(void *opaque)
 {
     GICState *s = (GICState *)opaque;
     ARMGICCommonClass *c = ARM_GIC_COMMON_GET_CLASS(s);
@@ -29,6 +31,8 @@ static void gic_pre_save(void *opaque)
     if (c->pre_save) {
         c->pre_save(s);
     }
+
+    return 0;
 }
 
 static int gic_post_load(void *opaque, int version_id)
@@ -97,9 +101,7 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
      *  [N+32..N+63] PPIs for CPU 1
      *   ...
      */
-    if (s->revision != REV_NVIC) {
-        i += (GIC_INTERNAL * s->num_cpu);
-    }
+    i += (GIC_INTERNAL * s->num_cpu);
     qdev_init_gpio_in(DEVICE(s), handler, i);
 
     for (i = 0; i < s->num_cpu; i++) {
@@ -108,21 +110,23 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
     for (i = 0; i < s->num_cpu; i++) {
         sysbus_init_irq(sbd, &s->parent_fiq[i]);
     }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_virq[i]);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_vfiq[i]);
+    }
 
     /* Distributor */
     memory_region_init_io(&s->iomem, OBJECT(s), ops, s, "gic_dist", 0x1000);
     sysbus_init_mmio(sbd, &s->iomem);
 
-    if (s->revision != REV_NVIC) {
-        /* This is the main CPU interface "for this core". It is always
-         * present because it is required by both software emulation and KVM.
-         * NVIC is not handled here because its CPU interface is different,
-         * neither it can use KVM.
-         */
-        memory_region_init_io(&s->cpuiomem[0], OBJECT(s), ops ? &ops[1] : NULL,
-                              s, "gic_cpu", s->revision == 2 ? 0x1000 : 0x100);
-        sysbus_init_mmio(sbd, &s->cpuiomem[0]);
-    }
+    /* This is the main CPU interface "for this core". It is always
+     * present because it is required by both software emulation and KVM.
+     */
+    memory_region_init_io(&s->cpuiomem[0], OBJECT(s), ops ? &ops[1] : NULL,
+                          s, "gic_cpu", s->revision == 2 ? 0x2000 : 0x100);
+    sysbus_init_mmio(sbd, &s->cpuiomem[0]);
 }
 
 static void arm_gic_common_realize(DeviceState *dev, Error **errp)
@@ -154,7 +158,7 @@ static void arm_gic_common_realize(DeviceState *dev, Error **errp)
     }
 
     if (s->security_extn &&
-        (s->revision == REV_11MPCORE || s->revision == REV_NVIC)) {
+        (s->revision == REV_11MPCORE)) {
         error_setg(errp, "this GIC revision does not implement "
                    "the security extensions");
         return;
@@ -247,7 +251,6 @@ static Property arm_gic_common_properties[] = {
     DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 32),
     /* Revision can be 1 or 2 for GIC architecture specification
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
-     * (Internally, 0xffffffff also indicates "not a GIC but an NVIC".)
      */
     DEFINE_PROP_UINT32("revision", GICState, revision, 1),
     /* True if the GIC should implement the security extensions */

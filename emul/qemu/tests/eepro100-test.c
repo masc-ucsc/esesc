@@ -7,10 +7,8 @@
  * See the COPYING file in the top-level directory.
  */
 
-#include <glib.h>
-#include <string.h>
-#include "libqtest.h"
 #include "qemu/osdep.h"
+#include "libqtest.h"
 
 static void test_device(gconstpointer data)
 {
@@ -56,6 +54,7 @@ int main(int argc, char **argv)
 
         path = g_strdup_printf("eepro100/%s", models[i]);
         qtest_add_data_func(path, models[i], test_device);
+        g_free(path);
     }
 
     return g_test_run();

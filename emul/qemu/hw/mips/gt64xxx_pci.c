@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/mips/mips.h"
 #include "hw/pci/pci.h"
@@ -32,7 +33,7 @@
 //#define DEBUG
 
 #ifdef DEBUG
-#define DPRINTF(fmt, ...) fprintf(stderr, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+#define DPRINTF(fmt, ...) fprintf(stderr, "%s: " fmt, __func__, ##__VA_ARGS__)
 #else
 #define DPRINTF(fmt, ...)
 #endif
@@ -1166,17 +1167,17 @@ PCIBus *gt64120_register(qemu_irq *pic)
     DeviceState *dev;
 
     dev = qdev_create(NULL, TYPE_GT64120_PCI_HOST_BRIDGE);
-    qdev_init_nofail(dev);
     d = GT64120_PCI_HOST_BRIDGE(dev);
     phb = PCI_HOST_BRIDGE(dev);
     memory_region_init(&d->pci0_mem, OBJECT(dev), "pci0-mem", UINT32_MAX);
     address_space_init(&d->pci0_mem_as, &d->pci0_mem, "pci0-mem");
-    phb->bus = pci_register_bus(dev, "pci",
-                                gt64120_pci_set_irq, gt64120_pci_map_irq,
-                                pic,
-                                &d->pci0_mem,
-                                get_system_io(),
-                                PCI_DEVFN(18, 0), 4, TYPE_PCI_BUS);
+    phb->bus = pci_register_root_bus(dev, "pci",
+                                     gt64120_pci_set_irq, gt64120_pci_map_irq,
+                                     pic,
+                                     &d->pci0_mem,
+                                     get_system_io(),
+                                     PCI_DEVFN(18, 0), 4, TYPE_PCI_BUS);
+    qdev_init_nofail(dev);
     memory_region_init_io(&d->ISD_mem, OBJECT(dev), &isd_mem_ops, d, "isd-mem", 0x1000);
 
     pci_create_simple(phb->bus, PCI_DEVFN(0, 0), "gt64120_pci");
@@ -1193,7 +1194,7 @@ static int gt64120_init(SysBusDevice *dev)
     return 0;
 }
 
-static int gt64120_pci_init(PCIDevice *d)
+static void gt64120_pci_realize(PCIDevice *d, Error **errp)
 {
     /* FIXME: Malta specific hw assumptions ahead */
     pci_set_word(d->config + PCI_COMMAND, 0);
@@ -1207,8 +1208,6 @@ static int gt64120_pci_init(PCIDevice *d)
     pci_set_long(d->config + PCI_BASE_ADDRESS_4, 0x14000000);
     pci_set_long(d->config + PCI_BASE_ADDRESS_5, 0x14000001);
     pci_set_byte(d->config + 0x3d, 0x01);
-
-    return 0;
 }
 
 static void gt64120_pci_class_init(ObjectClass *klass, void *data)
@@ -1216,7 +1215,7 @@ static void gt64120_pci_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    k->init = gt64120_pci_init;
+    k->realize = gt64120_pci_realize;
     k->vendor_id = PCI_VENDOR_ID_MARVELL;
     k->device_id = PCI_DEVICE_ID_MARVELL_GT6412X;
     k->revision = 0x10;
@@ -1225,7 +1224,7 @@ static void gt64120_pci_class_init(ObjectClass *klass, void *data)
      * PCI-facing part of the host bridge, not usable without the
      * host-facing part, which can't be device_add'ed, yet.
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
 }
 
 static const TypeInfo gt64120_pci_info = {
@@ -1233,6 +1232,10 @@ static const TypeInfo gt64120_pci_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIDevice),
     .class_init    = gt64120_pci_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void gt64120_class_init(ObjectClass *klass, void *data)

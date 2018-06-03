@@ -17,6 +17,10 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/device_tree.h"
@@ -76,13 +80,13 @@ static target_ulong h_random(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     hrdata.val.v64 = 0;
     hrdata.received = 0;
 
-    qemu_mutex_unlock_iothread();
     while (hrdata.received < 8) {
         rng_backend_request_entropy(rngstate->backend, 8 - hrdata.received,
                                     random_recv, &hrdata);
+        qemu_mutex_unlock_iothread();
         qemu_sem_wait(&hrdata.sem);
+        qemu_mutex_lock_iothread();
     }
-    qemu_mutex_lock_iothread();
 
     qemu_sem_destroy(&hrdata.sem);
     args[0] = hrdata.val.v64;
@@ -92,17 +96,11 @@ static target_ulong h_random(PowerPCCPU *cpu, sPAPRMachineState *spapr,
 
 static void spapr_rng_instance_init(Object *obj)
 {
-    sPAPRRngState *rngstate = SPAPR_RNG(obj);
-
     if (object_resolve_path_type("", TYPE_SPAPR_RNG, NULL) != NULL) {
         error_report("spapr-rng can not be instantiated twice!");
         return;
     }
 
-    object_property_add_link(obj, "rng", TYPE_RNG_BACKEND,
-                             (Object **)&rngstate->backend,
-                             object_property_allow_set_link,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE, NULL);
     object_property_set_description(obj, "rng",
                                     "ID of the random number generator backend",
                                     NULL);
@@ -159,6 +157,8 @@ int spapr_rng_populate_dt(void *fdt)
 
 static Property spapr_rng_properties[] = {
     DEFINE_PROP_BOOL("use-kvm", sPAPRRngState, use_kvm, false),
+    DEFINE_PROP_LINK("rng", sPAPRRngState, backend, TYPE_RNG_BACKEND,
+                     RngBackend *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -169,6 +169,7 @@ static void spapr_rng_class_init(ObjectClass *oc, void *data)
     dc->realize = spapr_rng_realize;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     dc->props = spapr_rng_properties;
+    dc->hotpluggable = false;
 }
 
 static const TypeInfo spapr_rng_info = {

@@ -23,6 +23,8 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/char/serial.h"
 #include "hw/isa/isa.h"
 
@@ -37,10 +39,10 @@ typedef struct ISASerialState {
     SerialState state;
 } ISASerialState;
 
-static const int isa_serial_io[MAX_SERIAL_PORTS] = {
+static const int isa_serial_io[MAX_ISA_SERIAL_PORTS] = {
     0x3f8, 0x2f8, 0x3e8, 0x2e8
 };
-static const int isa_serial_irq[MAX_SERIAL_PORTS] = {
+static const int isa_serial_irq[MAX_ISA_SERIAL_PORTS] = {
     4, 3, 4, 3
 };
 
@@ -54,9 +56,9 @@ static void serial_isa_realizefn(DeviceState *dev, Error **errp)
     if (isa->index == -1) {
         isa->index = index;
     }
-    if (isa->index >= MAX_SERIAL_PORTS) {
+    if (isa->index >= MAX_ISA_SERIAL_PORTS) {
         error_setg(errp, "Max. supported number of ISA serial ports is %d.",
-                   MAX_SERIAL_PORTS);
+                   MAX_ISA_SERIAL_PORTS);
         return;
     }
     if (isa->iobase == -1) {
@@ -119,7 +121,7 @@ static void serial_register_types(void)
 
 type_init(serial_register_types)
 
-static void serial_isa_init(ISABus *bus, int index, CharDriverState *chr)
+static void serial_isa_init(ISABus *bus, int index, Chardev *chr)
 {
     DeviceState *dev;
     ISADevice *isadev;
@@ -131,15 +133,16 @@ static void serial_isa_init(ISABus *bus, int index, CharDriverState *chr)
     qdev_init_nofail(dev);
 }
 
-void serial_hds_isa_init(ISABus *bus, int n)
+void serial_hds_isa_init(ISABus *bus, int from, int to)
 {
     int i;
 
-    assert(n <= MAX_SERIAL_PORTS);
+    assert(from >= 0);
+    assert(to <= MAX_ISA_SERIAL_PORTS);
 
-    for (i = 0; i < n; ++i) {
-        if (serial_hds[i]) {
-            serial_isa_init(bus, i, serial_hds[i]);
+    for (i = from; i < to; ++i) {
+        if (serial_hd(i)) {
+            serial_isa_init(bus, i, serial_hd(i));
         }
     }
 }

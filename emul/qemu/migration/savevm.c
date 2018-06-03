@@ -26,31 +26,35 @@
  * THE SOFTWARE.
  */
 
-#include "config-host.h"
-#include "qemu-common.h"
+#include "qemu/osdep.h"
 #include "hw/boards.h"
-#include "hw/hw.h"
-#include "hw/qdev.h"
+#include "hw/xen/xen.h"
 #include "net/net.h"
-#include "monitor/monitor.h"
-#include "sysemu/sysemu.h"
-#include "qemu/timer.h"
-#include "audio/audio.h"
-#include "migration/migration.h"
-#include "migration/postcopy-ram.h"
+#include "migration.h"
+#include "migration/snapshot.h"
+#include "migration/misc.h"
+#include "migration/register.h"
+#include "migration/global_state.h"
+#include "ram.h"
+#include "qemu-file-channel.h"
+#include "qemu-file.h"
+#include "savevm.h"
+#include "postcopy-ram.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-migration.h"
+#include "qapi/qapi-commands-misc.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/error-report.h"
-#include "qemu/sockets.h"
-#include "qemu/queue.h"
 #include "sysemu/cpus.h"
 #include "exec/memory.h"
-#include "qmp-commands.h"
+#include "exec/target_page.h"
 #include "trace.h"
-#include "qemu/bitops.h"
 #include "qemu/iov.h"
 #include "block/snapshot.h"
-#include "block/qapi.h"
-
+#include "qemu/cutils.h"
+#include "io/channel-buffer.h"
+#include "io/channel-file.h"
+#include "sysemu/replay.h"
 
 #ifndef ETH_P_RARP
 #define ETH_P_RARP 0x8035
@@ -61,8 +65,26 @@
 
 const unsigned int postcopy_ram_discard_version = 0;
 
-static bool skip_section_footers;
+/* Subcommands for QEMU_VM_COMMAND */
+enum qemu_vm_cmd {
+    MIG_CMD_INVALID = 0,   /* Must be 0 */
+    MIG_CMD_OPEN_RETURN_PATH,  /* Tell the dest to open the Return path */
+    MIG_CMD_PING,              /* Request a PONG on the RP */
 
+    MIG_CMD_POSTCOPY_ADVISE,       /* Prior to any page transfers, just
+                                      warn we might want to do PC */
+    MIG_CMD_POSTCOPY_LISTEN,       /* Start listening for incoming
+                                      pages as it's running. */
+    MIG_CMD_POSTCOPY_RUN,          /* Start execution */
+
+    MIG_CMD_POSTCOPY_RAM_DISCARD,  /* A list of pages to discard that
+                                      were previously sent during
+                                      precopy but are dirty. */
+    MIG_CMD_PACKAGED,          /* Send a wrapped stream within this stream */
+    MIG_CMD_MAX
+};
+
+#define MAX_VM_CMD_PACKAGED_SIZE UINT32_MAX
 static struct mig_cmd_args {
     ssize_t     len; /* -1 = variable */
     const char *name;
@@ -70,7 +92,7 @@ static struct mig_cmd_args {
     [MIG_CMD_INVALID]          = { .len = -1, .name = "INVALID" },
     [MIG_CMD_OPEN_RETURN_PATH] = { .len =  0, .name = "OPEN_RETURN_PATH" },
     [MIG_CMD_PING]             = { .len = sizeof(uint32_t), .name = "PING" },
-    [MIG_CMD_POSTCOPY_ADVISE]  = { .len = 16, .name = "POSTCOPY_ADVISE" },
+    [MIG_CMD_POSTCOPY_ADVISE]  = { .len = -1, .name = "POSTCOPY_ADVISE" },
     [MIG_CMD_POSTCOPY_LISTEN]  = { .len =  0, .name = "POSTCOPY_LISTEN" },
     [MIG_CMD_POSTCOPY_RUN]     = { .len =  0, .name = "POSTCOPY_RUN" },
     [MIG_CMD_POSTCOPY_RAM_DISCARD] = {
@@ -78,6 +100,23 @@ static struct mig_cmd_args {
     [MIG_CMD_PACKAGED]         = { .len =  4, .name = "PACKAGED" },
     [MIG_CMD_MAX]              = { .len = -1, .name = "MAX" },
 };
+
+/* Note for MIG_CMD_POSTCOPY_ADVISE:
+ * The format of arguments is depending on postcopy mode:
+ * - postcopy RAM only
+ *   uint64_t host page size
+ *   uint64_t taget page size
+ *
+ * - postcopy RAM and postcopy dirty bitmaps
+ *   format is the same as for postcopy RAM only
+ *
+ * - postcopy dirty bitmaps only
+ *   Nothing. Command length field is 0.
+ *
+ * Be careful: adding a new postcopy entity with some other parameters should
+ * not break format self-description ability. Good way is to introduce some
+ * generic extendable format with an exception for two old entities.
+ */
 
 static int announce_self_create(uint8_t *buf,
                                 uint8_t *mac_addr)
@@ -158,13 +197,6 @@ static ssize_t block_writev_buffer(void *opaque, struct iovec *iov, int iovcnt,
     return qiov.size;
 }
 
-static ssize_t block_put_buffer(void *opaque, const uint8_t *buf,
-                                int64_t pos, size_t size)
-{
-    bdrv_save_vmstate(opaque, buf, pos, size);
-    return size;
-}
-
 static ssize_t block_get_buffer(void *opaque, uint8_t *buf, int64_t pos,
                                 size_t size)
 {
@@ -182,7 +214,6 @@ static const QEMUFileOps bdrv_read_ops = {
 };
 
 static const QEMUFileOps bdrv_write_ops = {
-    .put_buffer     = block_put_buffer,
     .writev_buffer  = block_writev_buffer,
     .close          = bdrv_fclose
 };
@@ -225,17 +256,20 @@ void timer_get(QEMUFile *f, QEMUTimer *ts)
  * Not in vmstate.c to not add qemu-timer.c as dependency to vmstate.c
  */
 
-static int get_timer(QEMUFile *f, void *pv, size_t size)
+static int get_timer(QEMUFile *f, void *pv, size_t size, VMStateField *field)
 {
     QEMUTimer *v = pv;
     timer_get(f, v);
     return 0;
 }
 
-static void put_timer(QEMUFile *f, void *pv, size_t size)
+static int put_timer(QEMUFile *f, void *pv, size_t size, VMStateField *field,
+                     QJSON *vmdesc)
 {
     QEMUTimer *v = pv;
     timer_put(f, v);
+
+    return 0;
 }
 
 const VMStateInfo vmstate_info_timer = {
@@ -256,7 +290,11 @@ typedef struct SaveStateEntry {
     int instance_id;
     int alias_id;
     int version_id;
+    /* version id read from the stream */
+    int load_version_id;
     int section_id;
+    /* section id read from the stream */
+    int load_section_id;
     SaveVMHandlers *ops;
     const VMStateDescription *vmsd;
     void *opaque;
@@ -267,30 +305,38 @@ typedef struct SaveStateEntry {
 typedef struct SaveState {
     QTAILQ_HEAD(, SaveStateEntry) handlers;
     int global_section_id;
-    bool skip_configuration;
     uint32_t len;
     const char *name;
+    uint32_t target_page_bits;
 } SaveState;
 
 static SaveState savevm_state = {
     .handlers = QTAILQ_HEAD_INITIALIZER(savevm_state.handlers),
     .global_section_id = 0,
-    .skip_configuration = false,
 };
 
-void savevm_skip_configuration(void)
-{
-    savevm_state.skip_configuration = true;
-}
-
-
-static void configuration_pre_save(void *opaque)
+static int configuration_pre_save(void *opaque)
 {
     SaveState *state = opaque;
     const char *current_name = MACHINE_GET_CLASS(current_machine)->name;
 
     state->len = strlen(current_name);
     state->name = current_name;
+    state->target_page_bits = qemu_target_page_bits();
+
+    return 0;
+}
+
+static int configuration_pre_load(void *opaque)
+{
+    SaveState *state = opaque;
+
+    /* If there is no target-page-bits subsection it means the source
+     * predates the variable-target-page-bits support and is using the
+     * minimum possible value for this CPU.
+     */
+    state->target_page_bits = qemu_target_page_bits_min();
+    return 0;
 }
 
 static int configuration_post_load(void *opaque, int version_id)
@@ -299,23 +345,59 @@ static int configuration_post_load(void *opaque, int version_id)
     const char *current_name = MACHINE_GET_CLASS(current_machine)->name;
 
     if (strncmp(state->name, current_name, state->len) != 0) {
-        error_report("Machine type received is '%s' and local is '%s'",
-                     state->name, current_name);
+        error_report("Machine type received is '%.*s' and local is '%s'",
+                     (int) state->len, state->name, current_name);
         return -EINVAL;
     }
+
+    if (state->target_page_bits != qemu_target_page_bits()) {
+        error_report("Received TARGET_PAGE_BITS is %d but local is %d",
+                     state->target_page_bits, qemu_target_page_bits());
+        return -EINVAL;
+    }
+
     return 0;
 }
+
+/* The target-page-bits subsection is present only if the
+ * target page size is not the same as the default (ie the
+ * minimum page size for a variable-page-size guest CPU).
+ * If it is present then it contains the actual target page
+ * bits for the machine, and migration will fail if the
+ * two ends don't agree about it.
+ */
+static bool vmstate_target_page_bits_needed(void *opaque)
+{
+    return qemu_target_page_bits()
+        > qemu_target_page_bits_min();
+}
+
+static const VMStateDescription vmstate_target_page_bits = {
+    .name = "configuration/target-page-bits",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vmstate_target_page_bits_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(target_page_bits, SaveState),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static const VMStateDescription vmstate_configuration = {
     .name = "configuration",
     .version_id = 1,
+    .pre_load = configuration_pre_load,
     .post_load = configuration_post_load,
     .pre_save = configuration_pre_save,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(len, SaveState),
-        VMSTATE_VBUFFER_ALLOC_UINT32(name, SaveState, 0, NULL, 0, len),
+        VMSTATE_VBUFFER_ALLOC_UINT32(name, SaveState, 0, NULL, len),
         VMSTATE_END_OF_LIST()
     },
+    .subsections = (const VMStateDescription*[]) {
+        &vmstate_target_page_bits,
+        NULL
+    }
 };
 
 static void dump_vmstate_vmsd(FILE *out_file,
@@ -488,6 +570,34 @@ static int calculate_compat_instance_id(const char *idstr)
     return instance_id;
 }
 
+static inline MigrationPriority save_state_priority(SaveStateEntry *se)
+{
+    if (se->vmsd) {
+        return se->vmsd->priority;
+    }
+    return MIG_PRI_DEFAULT;
+}
+
+static void savevm_state_handler_insert(SaveStateEntry *nse)
+{
+    MigrationPriority priority = save_state_priority(nse);
+    SaveStateEntry *se;
+
+    assert(priority <= MIG_PRI_MAX);
+
+    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+        if (save_state_priority(se) < priority) {
+            break;
+        }
+    }
+
+    if (se) {
+        QTAILQ_INSERT_BEFORE(se, nse, entry);
+    } else {
+        QTAILQ_INSERT_TAIL(&savevm_state.handlers, nse, entry);
+    }
+}
+
 /* TODO: Individual devices generally have very little idea about the rest
    of the system, so instance_id should be removed/replaced.
    Meanwhile pass -1 as instance_id if you do not already have a clearly
@@ -508,15 +618,21 @@ int register_savevm_live(DeviceState *dev,
     se->opaque = opaque;
     se->vmsd = NULL;
     /* if this is a live_savem then set is_ram */
-    if (ops->save_live_setup != NULL) {
+    if (ops->save_setup != NULL) {
         se->is_ram = 1;
     }
 
     if (dev) {
         char *id = qdev_get_dev_path(dev);
         if (id) {
-            pstrcpy(se->idstr, sizeof(se->idstr), id);
-            pstrcat(se->idstr, sizeof(se->idstr), "/");
+            if (snprintf(se->idstr, sizeof(se->idstr), "%s/", id) >=
+                sizeof(se->idstr)) {
+                error_report("Path too long for VMState (%s)", id);
+                g_free(id);
+                g_free(se);
+
+                return -1;
+            }
             g_free(id);
 
             se->compat = g_new0(CompatEntry, 1);
@@ -534,24 +650,8 @@ int register_savevm_live(DeviceState *dev,
         se->instance_id = instance_id;
     }
     assert(!se->compat || se->instance_id == 0);
-    /* add at the end of list */
-    QTAILQ_INSERT_TAIL(&savevm_state.handlers, se, entry);
+    savevm_state_handler_insert(se);
     return 0;
-}
-
-int register_savevm(DeviceState *dev,
-                    const char *idstr,
-                    int instance_id,
-                    int version_id,
-                    SaveStateHandler *save_state,
-                    LoadStateHandler *load_state,
-                    void *opaque)
-{
-    SaveVMHandlers *ops = g_new0(SaveVMHandlers, 1);
-    ops->save_state = save_state;
-    ops->load_state = load_state;
-    return register_savevm_live(dev, idstr, instance_id, version_id,
-                                ops, opaque);
 }
 
 void unregister_savevm(DeviceState *dev, const char *idstr, void *opaque)
@@ -573,7 +673,6 @@ void unregister_savevm(DeviceState *dev, const char *idstr, void *opaque)
         if (strcmp(se->idstr, id) == 0 && se->opaque == opaque) {
             QTAILQ_REMOVE(&savevm_state.handlers, se, entry);
             g_free(se->compat);
-            g_free(se->ops);
             g_free(se);
         }
     }
@@ -582,7 +681,8 @@ void unregister_savevm(DeviceState *dev, const char *idstr, void *opaque)
 int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
                                    const VMStateDescription *vmsd,
                                    void *opaque, int alias_id,
-                                   int required_for_version)
+                                   int required_for_version,
+                                   Error **errp)
 {
     SaveStateEntry *se;
 
@@ -599,8 +699,14 @@ int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
     if (dev) {
         char *id = qdev_get_dev_path(dev);
         if (id) {
-            pstrcpy(se->idstr, sizeof(se->idstr), id);
-            pstrcat(se->idstr, sizeof(se->idstr), "/");
+            if (snprintf(se->idstr, sizeof(se->idstr), "%s/", id) >=
+                sizeof(se->idstr)) {
+                error_setg(errp, "Path too long for VMState (%s)", id);
+                g_free(id);
+                g_free(se);
+
+                return -1;
+            }
             g_free(id);
 
             se->compat = g_new0(CompatEntry, 1);
@@ -618,8 +724,7 @@ int vmstate_register_with_alias_id(DeviceState *dev, int instance_id,
         se->instance_id = instance_id;
     }
     assert(!se->compat || se->instance_id == 0);
-    /* add at the end of list */
-    QTAILQ_INSERT_TAIL(&savevm_state.handlers, se, entry);
+    savevm_state_handler_insert(se);
     return 0;
 }
 
@@ -637,13 +742,13 @@ void vmstate_unregister(DeviceState *dev, const VMStateDescription *vmsd,
     }
 }
 
-static int vmstate_load(QEMUFile *f, SaveStateEntry *se, int version_id)
+static int vmstate_load(QEMUFile *f, SaveStateEntry *se)
 {
     trace_vmstate_load(se->idstr, se->vmsd ? se->vmsd->name : "(old)");
     if (!se->vmsd) {         /* Old style */
-        return se->ops->load_state(f, se->opaque, version_id);
+        return se->ops->load_state(f, se->opaque, se->load_version_id);
     }
-    return vmstate_load_state(f, se->vmsd, se->opaque, version_id);
+    return vmstate_load_state(f, se->vmsd, se->opaque, se->load_version_id);
 }
 
 static void vmstate_save_old_style(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
@@ -666,19 +771,14 @@ static void vmstate_save_old_style(QEMUFile *f, SaveStateEntry *se, QJSON *vmdes
     }
 }
 
-static void vmstate_save(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
+static int vmstate_save(QEMUFile *f, SaveStateEntry *se, QJSON *vmdesc)
 {
     trace_vmstate_save(se->idstr, se->vmsd ? se->vmsd->name : "(old)");
     if (!se->vmsd) {
         vmstate_save_old_style(f, se, vmdesc);
-        return;
+        return 0;
     }
-    vmstate_save_state(f, se->vmsd, se->opaque, vmdesc);
-}
-
-void savevm_skip_section_footers(void)
-{
-    skip_section_footers = true;
+    return vmstate_save_state(f, se->vmsd, se->opaque, vmdesc);
 }
 
 /*
@@ -708,7 +808,7 @@ static void save_section_header(QEMUFile *f, SaveStateEntry *se,
  */
 static void save_section_footer(QEMUFile *f, SaveStateEntry *se)
 {
-    if (!skip_section_footers) {
+    if (migrate_get_current()->send_section_footer) {
         qemu_put_byte(f, QEMU_VM_SECTION_FOOTER);
         qemu_put_be32(f, se->section_id);
     }
@@ -723,10 +823,10 @@ static void save_section_footer(QEMUFile *f, SaveStateEntry *se)
  * @len: Length of associated data
  * @data: Data associated with command.
  */
-void qemu_savevm_command_send(QEMUFile *f,
-                              enum qemu_vm_cmd command,
-                              uint16_t len,
-                              uint8_t *data)
+static void qemu_savevm_command_send(QEMUFile *f,
+                                     enum qemu_vm_cmd command,
+                                     uint16_t len,
+                                     uint8_t *data)
 {
     trace_savevm_command_send(command, len);
     qemu_put_byte(f, QEMU_VM_COMMAND);
@@ -760,10 +860,8 @@ void qemu_savevm_send_open_return_path(QEMUFile *f)
  *    0 on success
  *    -ve on error
  */
-int qemu_savevm_send_packaged(QEMUFile *f, const QEMUSizedBuffer *qsb)
+int qemu_savevm_send_packaged(QEMUFile *f, const uint8_t *buf, size_t len)
 {
-    size_t cur_iov;
-    size_t len = qsb_get_length(qsb);
     uint32_t tmp;
 
     if (len > MAX_VM_CMD_PACKAGED_SIZE) {
@@ -777,18 +875,7 @@ int qemu_savevm_send_packaged(QEMUFile *f, const QEMUSizedBuffer *qsb)
     trace_qemu_savevm_send_packaged();
     qemu_savevm_command_send(f, MIG_CMD_PACKAGED, 4, (uint8_t *)&tmp);
 
-    /* all the data follows (concatinating the iov's) */
-    for (cur_iov = 0; cur_iov < qsb->n_iov; cur_iov++) {
-        /* The iov entries are partially filled */
-        size_t towrite = MIN(qsb->iov[cur_iov].iov_len, len);
-        len -= towrite;
-
-        if (!towrite) {
-            break;
-        }
-
-        qemu_put_buffer(f, qsb->iov[cur_iov].iov_base, towrite);
-    }
+    qemu_put_buffer(f, buf, len);
 
     return 0;
 }
@@ -796,12 +883,17 @@ int qemu_savevm_send_packaged(QEMUFile *f, const QEMUSizedBuffer *qsb)
 /* Send prior to any postcopy transfer */
 void qemu_savevm_send_postcopy_advise(QEMUFile *f)
 {
-    uint64_t tmp[2];
-    tmp[0] = cpu_to_be64(getpagesize());
-    tmp[1] = cpu_to_be64(1ul << qemu_target_page_bits());
+    if (migrate_postcopy_ram()) {
+        uint64_t tmp[2];
+        tmp[0] = cpu_to_be64(ram_pagesize_summary());
+        tmp[1] = cpu_to_be64(qemu_target_page_size());
 
-    trace_qemu_savevm_send_postcopy_advise();
-    qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_ADVISE, 16, (uint8_t *)tmp);
+        trace_qemu_savevm_send_postcopy_advise();
+        qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_ADVISE,
+                                 16, (uint8_t *)tmp);
+    } else {
+        qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_ADVISE, 0, NULL);
+    }
 }
 
 /* Sent prior to starting the destination running in postcopy, discard pages
@@ -841,9 +933,9 @@ void qemu_savevm_send_postcopy_ram_discard(QEMUFile *f, const char *name,
     buf[tmplen++] = '\0';
 
     for (t = 0; t < len; t++) {
-        cpu_to_be64w((uint64_t *)(buf + tmplen), start_list[t]);
+        stq_be_p(buf + tmplen, start_list[t]);
         tmplen += 8;
-        cpu_to_be64w((uint64_t *)(buf + tmplen), length_list[t]);
+        stq_be_p(buf + tmplen, length_list[t]);
         tmplen += 8;
     }
     qemu_savevm_command_send(f, MIG_CMD_POSTCOPY_RAM_DISCARD, tmplen, buf);
@@ -884,29 +976,20 @@ void qemu_savevm_state_header(QEMUFile *f)
     qemu_put_be32(f, QEMU_VM_FILE_MAGIC);
     qemu_put_be32(f, QEMU_VM_FILE_VERSION);
 
-    if (!savevm_state.skip_configuration) {
+    if (migrate_get_current()->send_configuration) {
         qemu_put_byte(f, QEMU_VM_CONFIGURATION);
         vmstate_save_state(f, &vmstate_configuration, &savevm_state, 0);
     }
-
 }
 
-void qemu_savevm_state_begin(QEMUFile *f,
-                             const MigrationParams *params)
+void qemu_savevm_state_setup(QEMUFile *f)
 {
     SaveStateEntry *se;
     int ret;
 
-    trace_savevm_state_begin();
+    trace_savevm_state_setup();
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops || !se->ops->set_params) {
-            continue;
-        }
-        se->ops->set_params(params, se->opaque);
-    }
-
-    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (!se->ops || !se->ops->save_live_setup) {
+        if (!se->ops || !se->ops->save_setup) {
             continue;
         }
         if (se->ops && se->ops->is_active) {
@@ -916,7 +999,7 @@ void qemu_savevm_state_begin(QEMUFile *f,
         }
         save_section_header(f, se, QEMU_VM_SECTION_START);
 
-        ret = se->ops->save_live_setup(f, se->opaque);
+        ret = se->ops->save_setup(f, se->opaque);
         save_section_footer(f, se);
         if (ret < 0) {
             qemu_file_set_error(f, ret);
@@ -946,13 +1029,19 @@ int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy)
                 continue;
             }
         }
+        if (se->ops && se->ops->is_active_iterate) {
+            if (!se->ops->is_active_iterate(se->opaque)) {
+                continue;
+            }
+        }
         /*
          * In the postcopy phase, any device that doesn't know how to
          * do postcopy should have saved it's state in the _complete
          * call that's already run, it might get confused if we call
          * iterate afterwards.
          */
-        if (postcopy && !se->ops->save_live_complete_postcopy) {
+        if (postcopy &&
+            !(se->ops->has_postcopy && se->ops->has_postcopy(se->opaque))) {
             continue;
         }
         if (qemu_file_rate_limit(f)) {
@@ -983,7 +1072,7 @@ int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy)
 static bool should_send_vmdesc(void)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
-    bool in_postcopy = migration_in_postcopy(migrate_get_current());
+    bool in_postcopy = migration_in_postcopy();
     return !machine->suppress_vmdesc && !in_postcopy;
 }
 
@@ -1026,13 +1115,14 @@ void qemu_savevm_state_complete_postcopy(QEMUFile *f)
     qemu_fflush(f);
 }
 
-void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
+int qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only,
+                                       bool inactivate_disks)
 {
     QJSON *vmdesc;
     int vmdesc_len;
     SaveStateEntry *se;
     int ret;
-    bool in_postcopy = migration_in_postcopy(migrate_get_current());
+    bool in_postcopy = migration_in_postcopy();
 
     trace_savevm_state_complete_precopy();
 
@@ -1040,7 +1130,8 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
 
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
         if (!se->ops ||
-            (in_postcopy && se->ops->save_live_complete_postcopy) ||
+            (in_postcopy && se->ops->has_postcopy &&
+             se->ops->has_postcopy(se->opaque)) ||
             (in_postcopy && !iterable_only) ||
             !se->ops->save_live_complete_precopy) {
             continue;
@@ -1060,16 +1151,16 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
         save_section_footer(f, se);
         if (ret < 0) {
             qemu_file_set_error(f, ret);
-            return;
+            return -1;
         }
     }
 
     if (iterable_only) {
-        return;
+        return 0;
     }
 
     vmdesc = qjson_new();
-    json_prop_int(vmdesc, "page_size", TARGET_PAGE_SIZE);
+    json_prop_int(vmdesc, "page_size", qemu_target_page_size());
     json_start_array(vmdesc, "devices");
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
 
@@ -1088,14 +1179,28 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
         json_prop_int(vmdesc, "instance_id", se->instance_id);
 
         save_section_header(f, se, QEMU_VM_SECTION_FULL);
-
-        vmstate_save(f, se, vmdesc);
-
-        json_end_object(vmdesc);
+        ret = vmstate_save(f, se, vmdesc);
+        if (ret) {
+            qemu_file_set_error(f, ret);
+            return ret;
+        }
         trace_savevm_section_end(se->idstr, se->section_id, 0);
         save_section_footer(f, se);
+
+        json_end_object(vmdesc);
     }
 
+    if (inactivate_disks) {
+        /* Inactivate before sending QEMU_VM_EOF so that the
+         * bdrv_invalidate_cache_all() on the other end won't fail. */
+        ret = bdrv_inactivate_all();
+        if (ret) {
+            error_report("%s: bdrv_inactivate_all() failed (%d)",
+                         __func__, ret);
+            qemu_file_set_error(f, ret);
+            return ret;
+        }
+    }
     if (!in_postcopy) {
         /* Postcopy stream will still be going */
         qemu_put_byte(f, QEMU_VM_EOF);
@@ -1110,23 +1215,26 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
         qemu_put_be32(f, vmdesc_len);
         qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     }
-    object_unref(OBJECT(vmdesc));
+    qjson_destroy(vmdesc);
 
     qemu_fflush(f);
+    return 0;
 }
 
 /* Give an estimate of the amount left to be transferred,
  * the result is split into the amount for units that can and
  * for units that can't do postcopy.
  */
-void qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size,
-                               uint64_t *res_non_postcopiable,
-                               uint64_t *res_postcopiable)
+void qemu_savevm_state_pending(QEMUFile *f, uint64_t threshold_size,
+                               uint64_t *res_precopy_only,
+                               uint64_t *res_compatible,
+                               uint64_t *res_postcopy_only)
 {
     SaveStateEntry *se;
 
-    *res_non_postcopiable = 0;
-    *res_postcopiable = 0;
+    *res_precopy_only = 0;
+    *res_compatible = 0;
+    *res_postcopy_only = 0;
 
 
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
@@ -1138,8 +1246,9 @@ void qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size,
                 continue;
             }
         }
-        se->ops->save_live_pending(f, se->opaque, max_size,
-                                   res_non_postcopiable, res_postcopiable);
+        se->ops->save_live_pending(f, se->opaque, threshold_size,
+                                   res_precopy_only, res_compatible,
+                                   res_postcopy_only);
     }
 }
 
@@ -1149,8 +1258,8 @@ void qemu_savevm_state_cleanup(void)
 
     trace_savevm_state_cleanup();
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
-        if (se->ops && se->ops->cleanup) {
-            se->ops->cleanup(se->opaque);
+        if (se->ops && se->ops->save_cleanup) {
+            se->ops->save_cleanup(se->opaque);
         }
     }
 }
@@ -1158,20 +1267,27 @@ void qemu_savevm_state_cleanup(void)
 static int qemu_savevm_state(QEMUFile *f, Error **errp)
 {
     int ret;
-    MigrationParams params = {
-        .blk = 0,
-        .shared = 0
-    };
-    MigrationState *ms = migrate_init(&params);
-    ms->file = f;
+    MigrationState *ms = migrate_get_current();
+    MigrationStatus status;
 
-    if (qemu_savevm_state_blocked(errp)) {
-        return -EINVAL;
+    migrate_init(ms);
+
+    ms->to_dst_file = f;
+
+    if (migration_is_blocked(errp)) {
+        ret = -EINVAL;
+        goto done;
+    }
+
+    if (migrate_use_block()) {
+        error_setg(errp, "Block migration and snapshots are incompatible");
+        ret = -EINVAL;
+        goto done;
     }
 
     qemu_mutex_unlock_iothread();
     qemu_savevm_state_header(f);
-    qemu_savevm_state_begin(f, &params);
+    qemu_savevm_state_setup(f);
     qemu_mutex_lock_iothread();
 
     while (qemu_file_get_error(f) == 0) {
@@ -1182,13 +1298,26 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
 
     ret = qemu_file_get_error(f);
     if (ret == 0) {
-        qemu_savevm_state_complete_precopy(f, false);
+        qemu_savevm_state_complete_precopy(f, false, false);
         ret = qemu_file_get_error(f);
     }
     qemu_savevm_state_cleanup();
     if (ret != 0) {
         error_setg_errno(errp, -ret, "Error while writing VM state");
     }
+
+done:
+    if (ret != 0) {
+        status = MIGRATION_STATUS_FAILED;
+    } else {
+        status = MIGRATION_STATUS_COMPLETED;
+    }
+    migrate_set_state(&ms->state, MIGRATION_STATUS_SETUP, status);
+
+    /* f is outer parameter, it should not stay in global migration state after
+     * this function finished */
+    ms->to_dst_file = NULL;
+
     return ret;
 }
 
@@ -1202,6 +1331,8 @@ static int qemu_save_device_state(QEMUFile *f)
     cpu_synchronize_all_states();
 
     QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+        int ret;
+
         if (se->is_ram) {
             continue;
         }
@@ -1214,7 +1345,10 @@ static int qemu_save_device_state(QEMUFile *f)
 
         save_section_header(f, se, QEMU_VM_SECTION_FULL);
 
-        vmstate_save(f, se, NULL);
+        ret = vmstate_save(f, se, NULL);
+        if (ret) {
+            return ret;
+        }
 
         save_section_footer(f, se);
     }
@@ -1256,10 +1390,12 @@ static int qemu_loadvm_state_main(QEMUFile *f, MigrationIncomingState *mis);
  * *might* happen - it might be skipped if precopy transferred everything
  * quickly.
  */
-static int loadvm_postcopy_handle_advise(MigrationIncomingState *mis)
+static int loadvm_postcopy_handle_advise(MigrationIncomingState *mis,
+                                         uint16_t len)
 {
     PostcopyState ps = postcopy_state_set(POSTCOPY_INCOMING_ADVISE);
-    uint64_t remote_hps, remote_tps;
+    uint64_t remote_pagesize_summary, local_pagesize_summary, remote_tps;
+    Error *local_err = NULL;
 
     trace_loadvm_postcopy_handle_advise();
     if (ps != POSTCOPY_INCOMING_NONE) {
@@ -1267,32 +1403,66 @@ static int loadvm_postcopy_handle_advise(MigrationIncomingState *mis)
         return -1;
     }
 
-    if (!postcopy_ram_supported_by_host()) {
+    switch (len) {
+    case 0:
+        if (migrate_postcopy_ram()) {
+            error_report("RAM postcopy is enabled but have 0 byte advise");
+            return -EINVAL;
+        }
+        return 0;
+    case 8 + 8:
+        if (!migrate_postcopy_ram()) {
+            error_report("RAM postcopy is disabled but have 16 byte advise");
+            return -EINVAL;
+        }
+        break;
+    default:
+        error_report("CMD_POSTCOPY_ADVISE invalid length (%d)", len);
+        return -EINVAL;
+    }
+
+    if (!postcopy_ram_supported_by_host(mis)) {
+        postcopy_state_set(POSTCOPY_INCOMING_NONE);
         return -1;
     }
 
-    remote_hps = qemu_get_be64(mis->from_src_file);
-    if (remote_hps != getpagesize())  {
+    remote_pagesize_summary = qemu_get_be64(mis->from_src_file);
+    local_pagesize_summary = ram_pagesize_summary();
+
+    if (remote_pagesize_summary != local_pagesize_summary)  {
         /*
-         * Some combinations of mismatch are probably possible but it gets
-         * a bit more complicated.  In particular we need to place whole
-         * host pages on the dest at once, and we need to ensure that we
-         * handle dirtying to make sure we never end up sending part of
-         * a hostpage on it's own.
+         * This detects two potential causes of mismatch:
+         *   a) A mismatch in host page sizes
+         *      Some combinations of mismatch are probably possible but it gets
+         *      a bit more complicated.  In particular we need to place whole
+         *      host pages on the dest at once, and we need to ensure that we
+         *      handle dirtying to make sure we never end up sending part of
+         *      a hostpage on it's own.
+         *   b) The use of different huge page sizes on source/destination
+         *      a more fine grain test is performed during RAM block migration
+         *      but this test here causes a nice early clear failure, and
+         *      also fails when passed to an older qemu that doesn't
+         *      do huge pages.
          */
-        error_report("Postcopy needs matching host page sizes (s=%d d=%d)",
-                     (int)remote_hps, getpagesize());
+        error_report("Postcopy needs matching RAM page sizes (s=%" PRIx64
+                                                             " d=%" PRIx64 ")",
+                     remote_pagesize_summary, local_pagesize_summary);
         return -1;
     }
 
     remote_tps = qemu_get_be64(mis->from_src_file);
-    if (remote_tps != (1ul << qemu_target_page_bits())) {
+    if (remote_tps != qemu_target_page_size()) {
         /*
          * Again, some differences could be dealt with, but for now keep it
          * simple.
          */
-        error_report("Postcopy needs matching target page sizes (s=%d d=%d)",
-                     (int)remote_tps, 1 << qemu_target_page_bits());
+        error_report("Postcopy needs matching target page sizes (s=%d d=%zd)",
+                     (int)remote_tps, qemu_target_page_size());
+        return -1;
+    }
+
+    if (postcopy_notify(POSTCOPY_NOTIFY_INBOUND_ADVISE, &local_err)) {
+        error_report_err(local_err);
         return -1;
     }
 
@@ -1375,8 +1545,7 @@ static int loadvm_postcopy_ram_handle_discard(MigrationIncomingState *mis,
         block_length = qemu_get_be64(mis->from_src_file);
 
         len -= 16;
-        int ret = ram_discard_range(mis, ramid, start_addr,
-                                    block_length);
+        int ret = ram_discard_range(ramid, start_addr, block_length);
         if (ret) {
             return ret;
         }
@@ -1399,6 +1568,8 @@ static void *postcopy_ram_listen_thread(void *opaque)
     MigrationIncomingState *mis = migration_incoming_get_current();
     int load_res;
 
+    migrate_set_state(&mis->state, MIGRATION_STATUS_ACTIVE,
+                                   MIGRATION_STATUS_POSTCOPY_ACTIVE);
     qemu_sem_post(&mis->listen_thread_sem);
     trace_postcopy_ram_listen_thread_start();
 
@@ -1415,6 +1586,8 @@ static void *postcopy_ram_listen_thread(void *opaque)
     if (load_res < 0) {
         error_report("%s: loadvm failed: %d", __func__, load_res);
         qemu_file_set_error(f, load_res);
+        migrate_set_state(&mis->state, MIGRATION_STATUS_POSTCOPY_ACTIVE,
+                                       MIGRATION_STATUS_FAILED);
     } else {
         /*
          * This looks good, but it's possible that the device loading in the
@@ -1424,13 +1597,6 @@ static void *postcopy_ram_listen_thread(void *opaque)
         qemu_event_wait(&mis->main_thread_load_event);
     }
     postcopy_ram_incoming_cleanup(mis);
-    /*
-     * If everything has worked fine, then the main thread has waited
-     * for us to start, and we're the last use of the mis.
-     * (If something broke then qemu will have to exit anyway since it's
-     * got a bad migration state).
-     */
-    migration_incoming_state_destroy();
 
     if (load_res < 0) {
         /*
@@ -1442,6 +1608,17 @@ static void *postcopy_ram_listen_thread(void *opaque)
         exit(EXIT_FAILURE);
     }
 
+    migrate_set_state(&mis->state, MIGRATION_STATUS_POSTCOPY_ACTIVE,
+                                   MIGRATION_STATUS_COMPLETED);
+    /*
+     * If everything has worked fine, then the main thread has waited
+     * for us to start, and we're the last use of the mis.
+     * (If something broke then qemu will have to exit anyway since it's
+     * got a bad migration state).
+     */
+    migration_incoming_state_destroy();
+    qemu_loadvm_state_cleanup();
+
     return NULL;
 }
 
@@ -1450,6 +1627,8 @@ static int loadvm_postcopy_handle_listen(MigrationIncomingState *mis)
 {
     PostcopyState ps = postcopy_state_set(POSTCOPY_INCOMING_LISTENING);
     trace_loadvm_postcopy_handle_listen();
+    Error *local_err = NULL;
+
     if (ps != POSTCOPY_INCOMING_ADVISE && ps != POSTCOPY_INCOMING_DISCARD) {
         error_report("CMD_POSTCOPY_LISTEN in wrong postcopy state (%d)", ps);
         return -1;
@@ -1459,7 +1638,9 @@ static int loadvm_postcopy_handle_listen(MigrationIncomingState *mis)
          * A rare case, we entered listen without having to do any discards,
          * so do the setup that's normally done at the time of the 1st discard.
          */
-        postcopy_ram_prepare_discard(mis);
+        if (migrate_postcopy_ram()) {
+            postcopy_ram_prepare_discard(mis);
+        }
     }
 
     /*
@@ -1467,7 +1648,14 @@ static int loadvm_postcopy_handle_listen(MigrationIncomingState *mis)
      * However, at this point the CPU shouldn't be running, and the IO
      * shouldn't be doing anything yet so don't actually expect requests
      */
-    if (postcopy_ram_enable_notify(mis)) {
+    if (migrate_postcopy_ram()) {
+        if (postcopy_ram_enable_notify(mis)) {
+            return -1;
+        }
+    }
+
+    if (postcopy_notify(POSTCOPY_NOTIFY_INBOUND_LISTEN, &local_err)) {
+        error_report_err(local_err);
         return -1;
     }
 
@@ -1481,24 +1669,22 @@ static int loadvm_postcopy_handle_listen(MigrationIncomingState *mis)
     qemu_sem_init(&mis->listen_thread_sem, 0);
     qemu_thread_create(&mis->listen_thread, "postcopy/listen",
                        postcopy_ram_listen_thread, mis->from_src_file,
-                       QEMU_THREAD_JOINABLE);
+                       QEMU_THREAD_DETACHED);
     qemu_sem_wait(&mis->listen_thread_sem);
     qemu_sem_destroy(&mis->listen_thread_sem);
 
     return 0;
 }
 
-/* After all discards we can start running and asking for pages */
-static int loadvm_postcopy_handle_run(MigrationIncomingState *mis)
-{
-    PostcopyState ps = postcopy_state_set(POSTCOPY_INCOMING_RUNNING);
-    Error *local_err = NULL;
 
-    trace_loadvm_postcopy_handle_run();
-    if (ps != POSTCOPY_INCOMING_LISTENING) {
-        error_report("CMD_POSTCOPY_RUN in wrong postcopy state (%d)", ps);
-        return -1;
-    }
+typedef struct {
+    QEMUBH *bh;
+} HandleRunBhData;
+
+static void loadvm_postcopy_handle_run_bh(void *opaque)
+{
+    Error *local_err = NULL;
+    HandleRunBhData *data = opaque;
 
     /* TODO we should move all of this lot into postcopy_ram.c or a shared code
      * in migration.c
@@ -1507,17 +1693,21 @@ static int loadvm_postcopy_handle_run(MigrationIncomingState *mis)
 
     qemu_announce_self();
 
-    /* Make sure all file formats flush their mutable metadata */
+    /* Make sure all file formats flush their mutable metadata.
+     * If we get an error here, just don't restart the VM yet. */
     bdrv_invalidate_cache_all(&local_err);
     if (local_err) {
         error_report_err(local_err);
-        return -1;
+        local_err = NULL;
+        autostart = false;
     }
 
     trace_loadvm_postcopy_handle_run_cpu_sync();
     cpu_synchronize_all_post_init();
 
     trace_loadvm_postcopy_handle_run_vmstart();
+
+    dirty_bitmap_mig_before_vm_start();
 
     if (autostart) {
         /* Hold onto your hats, starting the CPU */
@@ -1526,6 +1716,26 @@ static int loadvm_postcopy_handle_run(MigrationIncomingState *mis)
         /* leave it paused and let management decide when to start the CPU */
         runstate_set(RUN_STATE_PAUSED);
     }
+
+    qemu_bh_delete(data->bh);
+    g_free(data);
+}
+
+/* After all discards we can start running and asking for pages */
+static int loadvm_postcopy_handle_run(MigrationIncomingState *mis)
+{
+    PostcopyState ps = postcopy_state_set(POSTCOPY_INCOMING_RUNNING);
+    HandleRunBhData *data;
+
+    trace_loadvm_postcopy_handle_run();
+    if (ps != POSTCOPY_INCOMING_LISTENING) {
+        error_report("CMD_POSTCOPY_RUN in wrong postcopy state (%d)", ps);
+        return -1;
+    }
+
+    data = g_new(HandleRunBhData, 1);
+    data->bh = qemu_bh_new(loadvm_postcopy_handle_run_bh, data);
+    qemu_bh_schedule(data->bh);
 
     /* We need to finish reading the stream from the package
      * and also stop reading anything more from the stream that loaded the
@@ -1548,39 +1758,37 @@ static int loadvm_postcopy_handle_run(MigrationIncomingState *mis)
 static int loadvm_handle_cmd_packaged(MigrationIncomingState *mis)
 {
     int ret;
-    uint8_t *buffer;
-    uint32_t length;
-    QEMUSizedBuffer *qsb;
+    size_t length;
+    QIOChannelBuffer *bioc;
 
     length = qemu_get_be32(mis->from_src_file);
     trace_loadvm_handle_cmd_packaged(length);
 
     if (length > MAX_VM_CMD_PACKAGED_SIZE) {
-        error_report("Unreasonably large packaged state: %u", length);
+        error_report("Unreasonably large packaged state: %zu", length);
         return -1;
     }
-    buffer = g_malloc0(length);
-    ret = qemu_get_buffer(mis->from_src_file, buffer, (int)length);
+
+    bioc = qio_channel_buffer_new(length);
+    qio_channel_set_name(QIO_CHANNEL(bioc), "migration-loadvm-buffer");
+    ret = qemu_get_buffer(mis->from_src_file,
+                          bioc->data,
+                          length);
     if (ret != length) {
-        g_free(buffer);
-        error_report("CMD_PACKAGED: Buffer receive fail ret=%d length=%d\n",
-                ret, length);
+        object_unref(OBJECT(bioc));
+        error_report("CMD_PACKAGED: Buffer receive fail ret=%d length=%zu",
+                     ret, length);
         return (ret < 0) ? ret : -EAGAIN;
     }
+    bioc->usage += length;
     trace_loadvm_handle_cmd_packaged_received(ret);
 
-    /* Setup a dummy QEMUFile that actually reads from the buffer */
-    qsb = qsb_create(buffer, length);
-    g_free(buffer); /* Because qsb_create copies */
-    if (!qsb) {
-        error_report("Unable to create qsb");
-    }
-    QEMUFile *packf = qemu_bufopen("r", qsb);
+    QEMUFile *packf = qemu_fopen_channel_input(QIO_CHANNEL(bioc));
 
     ret = qemu_loadvm_state_main(packf, mis);
     trace_loadvm_handle_cmd_packaged_main(ret);
     qemu_fclose(packf);
-    qsb_free(qsb);
+    object_unref(OBJECT(bioc));
 
     return ret;
 }
@@ -1600,6 +1808,11 @@ static int loadvm_process_command(QEMUFile *f)
 
     cmd = qemu_get_be16(f);
     len = qemu_get_be16(f);
+
+    /* Check validity before continue processing of cmds */
+    if (qemu_file_get_error(f)) {
+        return qemu_file_get_error(f);
+    }
 
     trace_loadvm_process_command(cmd, len);
     if (cmd >= MIG_CMD_MAX || cmd == MIG_CMD_INVALID) {
@@ -1643,7 +1856,7 @@ static int loadvm_process_command(QEMUFile *f)
         return loadvm_handle_cmd_packaged(mis);
 
     case MIG_CMD_POSTCOPY_ADVISE:
-        return loadvm_postcopy_handle_advise(mis);
+        return loadvm_postcopy_handle_advise(mis, len);
 
     case MIG_CMD_POSTCOPY_LISTEN:
         return loadvm_postcopy_handle_listen(mis);
@@ -1658,41 +1871,42 @@ static int loadvm_process_command(QEMUFile *f)
     return 0;
 }
 
-struct LoadStateEntry {
-    QLIST_ENTRY(LoadStateEntry) entry;
-    SaveStateEntry *se;
-    int section_id;
-    int version_id;
-};
-
 /*
  * Read a footer off the wire and check that it matches the expected section
  *
  * Returns: true if the footer was good
  *          false if there is a problem (and calls error_report to say why)
  */
-static bool check_section_footer(QEMUFile *f, LoadStateEntry *le)
+static bool check_section_footer(QEMUFile *f, SaveStateEntry *se)
 {
+    int ret;
     uint8_t read_mark;
     uint32_t read_section_id;
 
-    if (skip_section_footers) {
+    if (!migrate_get_current()->send_section_footer) {
         /* No footer to check */
         return true;
     }
 
     read_mark = qemu_get_byte(f);
 
+    ret = qemu_file_get_error(f);
+    if (ret) {
+        error_report("%s: Read section footer failed: %d",
+                     __func__, ret);
+        return false;
+    }
+
     if (read_mark != QEMU_VM_SECTION_FOOTER) {
-        error_report("Missing section footer for %s", le->se->idstr);
+        error_report("Missing section footer for %s", se->idstr);
         return false;
     }
 
     read_section_id = qemu_get_be32(f);
-    if (read_section_id != le->section_id) {
+    if (read_section_id != se->load_section_id) {
         error_report("Mismatched section id in footer for %s -"
                      " read 0x%x expected 0x%x",
-                     le->se->idstr, read_section_id, le->section_id);
+                     se->idstr, read_section_id, se->load_section_id);
         return false;
     }
 
@@ -1700,115 +1914,198 @@ static bool check_section_footer(QEMUFile *f, LoadStateEntry *le)
     return true;
 }
 
-void loadvm_free_handlers(MigrationIncomingState *mis)
+static int
+qemu_loadvm_section_start_full(QEMUFile *f, MigrationIncomingState *mis)
 {
-    LoadStateEntry *le, *new_le;
+    uint32_t instance_id, version_id, section_id;
+    SaveStateEntry *se;
+    char idstr[256];
+    int ret;
 
-    QLIST_FOREACH_SAFE(le, &mis->loadvm_handlers, entry, new_le) {
-        QLIST_REMOVE(le, entry);
-        g_free(le);
+    /* Read section start */
+    section_id = qemu_get_be32(f);
+    if (!qemu_get_counted_string(f, idstr)) {
+        error_report("Unable to read ID string for section %u",
+                     section_id);
+        return -EINVAL;
+    }
+    instance_id = qemu_get_be32(f);
+    version_id = qemu_get_be32(f);
+
+    ret = qemu_file_get_error(f);
+    if (ret) {
+        error_report("%s: Failed to read instance/version ID: %d",
+                     __func__, ret);
+        return ret;
+    }
+
+    trace_qemu_loadvm_state_section_startfull(section_id, idstr,
+            instance_id, version_id);
+    /* Find savevm section */
+    se = find_se(idstr, instance_id);
+    if (se == NULL) {
+        error_report("Unknown savevm section or instance '%s' %d",
+                     idstr, instance_id);
+        return -EINVAL;
+    }
+
+    /* Validate version */
+    if (version_id > se->version_id) {
+        error_report("savevm: unsupported version %d for '%s' v%d",
+                     version_id, idstr, se->version_id);
+        return -EINVAL;
+    }
+    se->load_version_id = version_id;
+    se->load_section_id = section_id;
+
+    /* Validate if it is a device's state */
+    if (xen_enabled() && se->is_ram) {
+        error_report("loadvm: %s RAM loading not allowed on Xen", idstr);
+        return -EINVAL;
+    }
+
+    ret = vmstate_load(f, se);
+    if (ret < 0) {
+        error_report("error while loading state for instance 0x%x of"
+                     " device '%s'", instance_id, idstr);
+        return ret;
+    }
+    if (!check_section_footer(f, se)) {
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+static int
+qemu_loadvm_section_part_end(QEMUFile *f, MigrationIncomingState *mis)
+{
+    uint32_t section_id;
+    SaveStateEntry *se;
+    int ret;
+
+    section_id = qemu_get_be32(f);
+
+    ret = qemu_file_get_error(f);
+    if (ret) {
+        error_report("%s: Failed to read section ID: %d",
+                     __func__, ret);
+        return ret;
+    }
+
+    trace_qemu_loadvm_state_section_partend(section_id);
+    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+        if (se->load_section_id == section_id) {
+            break;
+        }
+    }
+    if (se == NULL) {
+        error_report("Unknown savevm section %d", section_id);
+        return -EINVAL;
+    }
+
+    ret = vmstate_load(f, se);
+    if (ret < 0) {
+        error_report("error while loading state section id %d(%s)",
+                     section_id, se->idstr);
+        return ret;
+    }
+    if (!check_section_footer(f, se)) {
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+static int qemu_loadvm_state_setup(QEMUFile *f)
+{
+    SaveStateEntry *se;
+    int ret;
+
+    trace_loadvm_state_setup();
+    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+        if (!se->ops || !se->ops->load_setup) {
+            continue;
+        }
+        if (se->ops && se->ops->is_active) {
+            if (!se->ops->is_active(se->opaque)) {
+                continue;
+            }
+        }
+
+        ret = se->ops->load_setup(f, se->opaque);
+        if (ret < 0) {
+            qemu_file_set_error(f, ret);
+            error_report("Load state of device %s failed", se->idstr);
+            return ret;
+        }
+    }
+    return 0;
+}
+
+void qemu_loadvm_state_cleanup(void)
+{
+    SaveStateEntry *se;
+
+    trace_loadvm_state_cleanup();
+    QTAILQ_FOREACH(se, &savevm_state.handlers, entry) {
+        if (se->ops && se->ops->load_cleanup) {
+            se->ops->load_cleanup(se->opaque);
+        }
     }
 }
 
 static int qemu_loadvm_state_main(QEMUFile *f, MigrationIncomingState *mis)
 {
     uint8_t section_type;
-    int ret;
+    int ret = 0;
 
-    while ((section_type = qemu_get_byte(f)) != QEMU_VM_EOF) {
-        uint32_t instance_id, version_id, section_id;
-        SaveStateEntry *se;
-        LoadStateEntry *le;
-        char idstr[256];
+    while (true) {
+        section_type = qemu_get_byte(f);
+
+        if (qemu_file_get_error(f)) {
+            ret = qemu_file_get_error(f);
+            break;
+        }
 
         trace_qemu_loadvm_state_section(section_type);
         switch (section_type) {
         case QEMU_VM_SECTION_START:
         case QEMU_VM_SECTION_FULL:
-            /* Read section start */
-            section_id = qemu_get_be32(f);
-            if (!qemu_get_counted_string(f, idstr)) {
-                error_report("Unable to read ID string for section %u",
-                            section_id);
-                return -EINVAL;
-            }
-            instance_id = qemu_get_be32(f);
-            version_id = qemu_get_be32(f);
-
-            trace_qemu_loadvm_state_section_startfull(section_id, idstr,
-                                                      instance_id, version_id);
-            /* Find savevm section */
-            se = find_se(idstr, instance_id);
-            if (se == NULL) {
-                error_report("Unknown savevm section or instance '%s' %d",
-                             idstr, instance_id);
-                return -EINVAL;
-            }
-
-            /* Validate version */
-            if (version_id > se->version_id) {
-                error_report("savevm: unsupported version %d for '%s' v%d",
-                             version_id, idstr, se->version_id);
-                return -EINVAL;
-            }
-
-            /* Add entry */
-            le = g_malloc0(sizeof(*le));
-
-            le->se = se;
-            le->section_id = section_id;
-            le->version_id = version_id;
-            QLIST_INSERT_HEAD(&mis->loadvm_handlers, le, entry);
-
-            ret = vmstate_load(f, le->se, le->version_id);
+            ret = qemu_loadvm_section_start_full(f, mis);
             if (ret < 0) {
-                error_report("error while loading state for instance 0x%x of"
-                             " device '%s'", instance_id, idstr);
-                return ret;
-            }
-            if (!check_section_footer(f, le)) {
-                return -EINVAL;
+                goto out;
             }
             break;
         case QEMU_VM_SECTION_PART:
         case QEMU_VM_SECTION_END:
-            section_id = qemu_get_be32(f);
-
-            trace_qemu_loadvm_state_section_partend(section_id);
-            QLIST_FOREACH(le, &mis->loadvm_handlers, entry) {
-                if (le->section_id == section_id) {
-                    break;
-                }
-            }
-            if (le == NULL) {
-                error_report("Unknown savevm section %d", section_id);
-                return -EINVAL;
-            }
-
-            ret = vmstate_load(f, le->se, le->version_id);
+            ret = qemu_loadvm_section_part_end(f, mis);
             if (ret < 0) {
-                error_report("error while loading state section id %d(%s)",
-                             section_id, le->se->idstr);
-                return ret;
-            }
-            if (!check_section_footer(f, le)) {
-                return -EINVAL;
+                goto out;
             }
             break;
         case QEMU_VM_COMMAND:
             ret = loadvm_process_command(f);
             trace_qemu_loadvm_state_section_command(ret);
             if ((ret < 0) || (ret & LOADVM_QUIT)) {
-                return ret;
+                goto out;
             }
             break;
+        case QEMU_VM_EOF:
+            /* This is the end of migration */
+            goto out;
         default:
             error_report("Unknown savevm section type %d", section_type);
-            return -EINVAL;
+            ret = -EINVAL;
+            goto out;
         }
     }
 
-    return 0;
+out:
+    if (ret < 0) {
+        qemu_file_set_error(f, ret);
+    }
+    return ret;
 }
 
 int qemu_loadvm_state(QEMUFile *f)
@@ -1839,7 +2136,11 @@ int qemu_loadvm_state(QEMUFile *f)
         return -ENOTSUP;
     }
 
-    if (!savevm_state.skip_configuration) {
+    if (qemu_loadvm_state_setup(f) != 0) {
+        return -EINVAL;
+    }
+
+    if (migrate_get_current()->send_configuration) {
         if (qemu_get_byte(f) != QEMU_VM_CONFIGURATION) {
             error_report("Configuration section missing");
             return -EINVAL;
@@ -1850,6 +2151,8 @@ int qemu_loadvm_state(QEMUFile *f)
             return ret;
         }
     }
+
+    cpu_synchronize_all_pre_loadvm();
 
     ret = qemu_loadvm_state_main(f, mis);
     qemu_event_set(&mis->main_thread_load_event);
@@ -1900,44 +2203,50 @@ int qemu_loadvm_state(QEMUFile *f)
         }
     }
 
+    qemu_loadvm_state_cleanup();
     cpu_synchronize_all_post_init();
 
     return ret;
 }
 
-void hmp_savevm(Monitor *mon, const QDict *qdict)
+int save_snapshot(const char *name, Error **errp)
 {
     BlockDriverState *bs, *bs1;
     QEMUSnapshotInfo sn1, *sn = &sn1, old_sn1, *old_sn = &old_sn1;
-    int ret;
+    int ret = -1;
     QEMUFile *f;
     int saved_vm_running;
     uint64_t vm_state_size;
     qemu_timeval tv;
     struct tm tm;
-    const char *name = qdict_get_try_str(qdict, "name");
-    Error *local_err = NULL;
     AioContext *aio_context;
 
+    if (!replay_can_snapshot()) {
+        error_report("Record/replay does not allow making snapshot "
+                     "right now. Try once more later.");
+        return ret;
+    }
+
     if (!bdrv_all_can_snapshot(&bs)) {
-        monitor_printf(mon, "Device '%s' is writable but does not "
-                       "support snapshots.\n", bdrv_get_device_name(bs));
-        return;
+        error_setg(errp, "Device '%s' is writable but does not support "
+                   "snapshots", bdrv_get_device_name(bs));
+        return ret;
     }
 
     /* Delete old snapshots of the same name */
-    if (name && bdrv_all_delete_snapshot(name, &bs1, &local_err) < 0) {
-        monitor_printf(mon,
-                       "Error while deleting snapshot on device '%s': %s\n",
-                       bdrv_get_device_name(bs1), error_get_pretty(local_err));
-        error_free(local_err);
-        return;
+    if (name) {
+        ret = bdrv_all_delete_snapshot(name, &bs1, errp);
+        if (ret < 0) {
+            error_prepend(errp, "Error while deleting snapshot on device "
+                          "'%s': ", bdrv_get_device_name(bs1));
+            return ret;
+        }
     }
 
     bs = bdrv_all_find_vmstate_bs();
     if (bs == NULL) {
-        monitor_printf(mon, "No block device can accept snapshots\n");
-        return;
+        error_setg(errp, "No block device can accept snapshots");
+        return ret;
     }
     aio_context = bdrv_get_aio_context(bs);
 
@@ -1945,10 +2254,12 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
 
     ret = global_state_store();
     if (ret) {
-        monitor_printf(mon, "Error saving global state\n");
-        return;
+        error_setg(errp, "Error saving global state");
+        return ret;
     }
     vm_stop(RUN_STATE_SAVE_VM);
+
+    bdrv_drain_all_begin();
 
     aio_context_acquire(aio_context);
 
@@ -1977,50 +2288,88 @@ void hmp_savevm(Monitor *mon, const QDict *qdict)
     /* save the VM state */
     f = qemu_fopen_bdrv(bs, 1);
     if (!f) {
-        monitor_printf(mon, "Could not open VM state file\n");
+        error_setg(errp, "Could not open VM state file");
         goto the_end;
     }
-    ret = qemu_savevm_state(f, &local_err);
+    ret = qemu_savevm_state(f, errp);
     vm_state_size = qemu_ftell(f);
     qemu_fclose(f);
     if (ret < 0) {
-        monitor_printf(mon, "%s\n", error_get_pretty(local_err));
-        error_free(local_err);
         goto the_end;
     }
 
+    /* The bdrv_all_create_snapshot() call that follows acquires the AioContext
+     * for itself.  BDRV_POLL_WHILE() does not support nested locking because
+     * it only releases the lock once.  Therefore synchronous I/O will deadlock
+     * unless we release the AioContext before bdrv_all_create_snapshot().
+     */
+    aio_context_release(aio_context);
+    aio_context = NULL;
+
     ret = bdrv_all_create_snapshot(sn, bs, vm_state_size, &bs);
     if (ret < 0) {
-        monitor_printf(mon, "Error while creating snapshot on '%s'\n",
-                       bdrv_get_device_name(bs));
+        error_setg(errp, "Error while creating snapshot on '%s'",
+                   bdrv_get_device_name(bs));
+        goto the_end;
     }
 
+    ret = 0;
+
  the_end:
-    aio_context_release(aio_context);
+    if (aio_context) {
+        aio_context_release(aio_context);
+    }
+
+    bdrv_drain_all_end();
+
     if (saved_vm_running) {
         vm_start();
     }
+    return ret;
 }
 
-void qmp_xen_save_devices_state(const char *filename, Error **errp)
+void qmp_xen_save_devices_state(const char *filename, bool has_live, bool live,
+                                Error **errp)
 {
     QEMUFile *f;
+    QIOChannelFile *ioc;
     int saved_vm_running;
     int ret;
+
+    if (!has_live) {
+        /* live default to true so old version of Xen tool stack can have a
+         * successfull live migration */
+        live = true;
+    }
 
     saved_vm_running = runstate_is_running();
     vm_stop(RUN_STATE_SAVE_VM);
     global_state_store_running();
 
-    f = qemu_fopen(filename, "wb");
-    if (!f) {
-        error_setg_file_open(errp, errno, filename);
+    ioc = qio_channel_file_new_path(filename, O_WRONLY | O_CREAT, 0660, errp);
+    if (!ioc) {
         goto the_end;
     }
+    qio_channel_set_name(QIO_CHANNEL(ioc), "migration-xen-save-state");
+    f = qemu_fopen_channel_output(QIO_CHANNEL(ioc));
+    object_unref(OBJECT(ioc));
     ret = qemu_save_device_state(f);
-    qemu_fclose(f);
-    if (ret < 0) {
+    if (ret < 0 || qemu_fclose(f) < 0) {
         error_setg(errp, QERR_IO_ERROR);
+    } else {
+        /* libxl calls the QMP command "stop" before calling
+         * "xen-save-devices-state" and in case of migration failure, libxl
+         * would call "cont".
+         * So call bdrv_inactivate_all (release locks) here to let the other
+         * side of the migration take controle of the images.
+         */
+        if (live && !saved_vm_running) {
+            ret = bdrv_inactivate_all();
+            if (ret) {
+                error_setg(errp, "%s: bdrv_inactivate_all() failed (%d)",
+                           __func__, ret);
+            }
+        }
     }
 
  the_end:
@@ -2029,29 +2378,69 @@ void qmp_xen_save_devices_state(const char *filename, Error **errp)
     }
 }
 
-int load_vmstate(const char *name)
+void qmp_xen_load_devices_state(const char *filename, Error **errp)
+{
+    QEMUFile *f;
+    QIOChannelFile *ioc;
+    int ret;
+
+    /* Guest must be paused before loading the device state; the RAM state
+     * will already have been loaded by xc
+     */
+    if (runstate_is_running()) {
+        error_setg(errp, "Cannot update device state while vm is running");
+        return;
+    }
+    vm_stop(RUN_STATE_RESTORE_VM);
+
+    ioc = qio_channel_file_new_path(filename, O_RDONLY | O_BINARY, 0, errp);
+    if (!ioc) {
+        return;
+    }
+    qio_channel_set_name(QIO_CHANNEL(ioc), "migration-xen-load-state");
+    f = qemu_fopen_channel_input(QIO_CHANNEL(ioc));
+    object_unref(OBJECT(ioc));
+
+    ret = qemu_loadvm_state(f);
+    qemu_fclose(f);
+    if (ret < 0) {
+        error_setg(errp, QERR_IO_ERROR);
+    }
+    migration_incoming_state_destroy();
+}
+
+int load_snapshot(const char *name, Error **errp)
 {
     BlockDriverState *bs, *bs_vm_state;
     QEMUSnapshotInfo sn;
     QEMUFile *f;
     int ret;
     AioContext *aio_context;
+    MigrationIncomingState *mis = migration_incoming_get_current();
+
+    if (!replay_can_snapshot()) {
+        error_report("Record/replay does not allow loading snapshot "
+                     "right now. Try once more later.");
+        return -EINVAL;
+    }
 
     if (!bdrv_all_can_snapshot(&bs)) {
-        error_report("Device '%s' is writable but does not support snapshots.",
-                     bdrv_get_device_name(bs));
+        error_setg(errp,
+                   "Device '%s' is writable but does not support snapshots",
+                   bdrv_get_device_name(bs));
         return -ENOTSUP;
     }
     ret = bdrv_all_find_snapshot(name, &bs);
     if (ret < 0) {
-        error_report("Device '%s' does not have the requested snapshot '%s'",
-                     bdrv_get_device_name(bs), name);
+        error_setg(errp,
+                   "Device '%s' does not have the requested snapshot '%s'",
+                   bdrv_get_device_name(bs), name);
         return ret;
     }
 
     bs_vm_state = bdrv_all_find_vmstate_bs();
     if (!bs_vm_state) {
-        error_report("No block device supports snapshots");
+        error_setg(errp, "No block device supports snapshots");
         return -ENOTSUP;
     }
     aio_context = bdrv_get_aio_context(bs_vm_state);
@@ -2063,127 +2452,73 @@ int load_vmstate(const char *name)
     if (ret < 0) {
         return ret;
     } else if (sn.vm_state_size == 0) {
-        error_report("This is a disk-only snapshot. Revert to it offline "
-            "using qemu-img.");
+        error_setg(errp, "This is a disk-only snapshot. Revert to it "
+                   " offline using qemu-img");
         return -EINVAL;
     }
 
     /* Flush all IO requests so they don't interfere with the new state.  */
-    bdrv_drain_all();
+    bdrv_drain_all_begin();
 
-    ret = bdrv_all_goto_snapshot(name, &bs);
+    ret = bdrv_all_goto_snapshot(name, &bs, errp);
     if (ret < 0) {
-        error_report("Error %d while activating snapshot '%s' on '%s'",
-                     ret, name, bdrv_get_device_name(bs));
-        return ret;
+        error_prepend(errp, "Could not load snapshot '%s' on '%s': ",
+                      name, bdrv_get_device_name(bs));
+        goto err_drain;
     }
 
     /* restore the VM state */
     f = qemu_fopen_bdrv(bs_vm_state, 0);
     if (!f) {
-        error_report("Could not open VM state file");
-        return -EINVAL;
+        error_setg(errp, "Could not open VM state file");
+        ret = -EINVAL;
+        goto err_drain;
     }
 
-    qemu_system_reset(VMRESET_SILENT);
-    migration_incoming_state_new(f);
+    qemu_system_reset(SHUTDOWN_CAUSE_NONE);
+    mis->from_src_file = f;
 
     aio_context_acquire(aio_context);
     ret = qemu_loadvm_state(f);
-    qemu_fclose(f);
+    migration_incoming_state_destroy();
     aio_context_release(aio_context);
 
-    migration_incoming_state_destroy();
+    bdrv_drain_all_end();
+
     if (ret < 0) {
-        error_report("Error %d while loading VM state", ret);
+        error_setg(errp, "Error %d while loading VM state", ret);
         return ret;
     }
 
     return 0;
-}
 
-void hmp_delvm(Monitor *mon, const QDict *qdict)
-{
-    BlockDriverState *bs;
-    Error *err;
-    const char *name = qdict_get_str(qdict, "name");
-
-    if (bdrv_all_delete_snapshot(name, &bs, &err) < 0) {
-        monitor_printf(mon,
-                       "Error while deleting snapshot on device '%s': %s\n",
-                       bdrv_get_device_name(bs), error_get_pretty(err));
-        error_free(err);
-    }
-}
-
-void hmp_info_snapshots(Monitor *mon, const QDict *qdict)
-{
-    BlockDriverState *bs, *bs1;
-    QEMUSnapshotInfo *sn_tab, *sn;
-    int nb_sns, i;
-    int total;
-    int *available_snapshots;
-    AioContext *aio_context;
-
-    bs = bdrv_all_find_vmstate_bs();
-    if (!bs) {
-        monitor_printf(mon, "No available block device supports snapshots\n");
-        return;
-    }
-    aio_context = bdrv_get_aio_context(bs);
-
-    aio_context_acquire(aio_context);
-    nb_sns = bdrv_snapshot_list(bs, &sn_tab);
-    aio_context_release(aio_context);
-
-    if (nb_sns < 0) {
-        monitor_printf(mon, "bdrv_snapshot_list: error %d\n", nb_sns);
-        return;
-    }
-
-    if (nb_sns == 0) {
-        monitor_printf(mon, "There is no snapshot available.\n");
-        return;
-    }
-
-    available_snapshots = g_new0(int, nb_sns);
-    total = 0;
-    for (i = 0; i < nb_sns; i++) {
-        if (bdrv_all_find_snapshot(sn_tab[i].id_str, &bs1) == 0) {
-            available_snapshots[total] = i;
-            total++;
-        }
-    }
-
-    if (total > 0) {
-        bdrv_snapshot_dump((fprintf_function)monitor_printf, mon, NULL);
-        monitor_printf(mon, "\n");
-        for (i = 0; i < total; i++) {
-            sn = &sn_tab[available_snapshots[i]];
-            bdrv_snapshot_dump((fprintf_function)monitor_printf, mon, sn);
-            monitor_printf(mon, "\n");
-        }
-    } else {
-        monitor_printf(mon, "There is no suitable snapshot available\n");
-    }
-
-    g_free(sn_tab);
-    g_free(available_snapshots);
-
+err_drain:
+    bdrv_drain_all_end();
+    return ret;
 }
 
 void vmstate_register_ram(MemoryRegion *mr, DeviceState *dev)
 {
-    qemu_ram_set_idstr(memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK,
+    qemu_ram_set_idstr(mr->ram_block,
                        memory_region_name(mr), dev);
 }
 
 void vmstate_unregister_ram(MemoryRegion *mr, DeviceState *dev)
 {
-    qemu_ram_unset_idstr(memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK);
+    qemu_ram_unset_idstr(mr->ram_block);
 }
 
 void vmstate_register_ram_global(MemoryRegion *mr)
 {
     vmstate_register_ram(mr, NULL);
+}
+
+bool vmstate_check_only_migratable(const VMStateDescription *vmsd)
+{
+    /* check needed if --only-migratable is specified */
+    if (!migrate_get_current()->only_migratable) {
+        return true;
+    }
+
+    return !(vmsd && vmsd->unmigratable);
 }

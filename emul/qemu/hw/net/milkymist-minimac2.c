@@ -22,6 +22,10 @@
  *
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h" /* FIXME: why does this use TARGET_PAGE_ALIGN? */
 #include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "trace.h"
@@ -443,7 +447,7 @@ static void milkymist_minimac2_reset(DeviceState *d)
 }
 
 static NetClientInfo net_milkymist_minimac2_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = minimac2_rx,
 };
@@ -462,7 +466,7 @@ static int milkymist_minimac2_init(SysBusDevice *sbd)
     sysbus_init_mmio(sbd, &s->regs_region);
 
     /* register buffers memory */
-    memory_region_init_ram(&s->buffers, OBJECT(dev), "milkymist-minimac2.buffers",
+    memory_region_init_ram_nomigrate(&s->buffers, OBJECT(dev), "milkymist-minimac2.buffers",
                            buffers_size, &error_fatal);
     vmstate_register_ram_global(&s->buffers);
     s->rx0_buf = memory_region_get_ram_ptr(&s->buffers);

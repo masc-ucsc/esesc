@@ -23,10 +23,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci.h"
 #include "hw/nvram/eeprom93xx.h"
 #include "hw/scsi/esp.h"
 #include "trace.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 
 #define TYPE_AM53C974_DEVICE "am53c974"
@@ -365,9 +367,6 @@ static void esp_pci_scsi_realize(PCIDevice *dev, Error **errp)
     s->irq = pci_allocate_irq(dev);
 
     scsi_bus_new(&s->bus, sizeof(s->bus), d, &esp_pci_scsi_info, NULL);
-    if (!d->hotplugged) {
-        scsi_bus_legacy_handle_cmdline(&s->bus, errp);
-    }
 }
 
 static void esp_pci_scsi_uninit(PCIDevice *d)
@@ -399,6 +398,10 @@ static const TypeInfo esp_pci_info = {
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIESPState),
     .class_init = esp_pci_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 typedef struct {

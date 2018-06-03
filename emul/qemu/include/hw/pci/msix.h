@@ -9,9 +9,10 @@ MSIMessage msix_get_message(PCIDevice *dev, unsigned int vector);
 int msix_init(PCIDevice *dev, unsigned short nentries,
               MemoryRegion *table_bar, uint8_t table_bar_nr,
               unsigned table_offset, MemoryRegion *pba_bar,
-              uint8_t pba_bar_nr, unsigned pba_offset, uint8_t cap_pos);
+              uint8_t pba_bar_nr, unsigned pba_offset, uint8_t cap_pos,
+              Error **errp);
 int msix_init_exclusive_bar(PCIDevice *dev, unsigned short nentries,
-                            uint8_t bar_nr);
+                            uint8_t bar_nr, Error **errp);
 
 void msix_write_config(PCIDevice *dev, uint32_t address, uint32_t val, int len);
 
@@ -29,6 +30,7 @@ int msix_present(PCIDevice *dev);
 
 bool msix_is_masked(PCIDevice *dev, unsigned vector);
 void msix_set_pending(PCIDevice *dev, unsigned vector);
+void msix_clr_pending(PCIDevice *dev, int vector);
 
 int msix_vector_use(PCIDevice *dev, unsigned vector);
 void msix_vector_unuse(PCIDevice *dev, unsigned vector);

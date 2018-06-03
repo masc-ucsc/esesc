@@ -79,7 +79,7 @@ private:
 
   uint32_t serialize_level;
   uint32_t serialize;
-  uint32_t serialize_for;
+  int32_t  serialize_for;
   uint32_t forwardProg_threshold;
   DInst *  last_serialized;
   DInst *  last_serializedST;

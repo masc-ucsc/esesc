@@ -123,7 +123,7 @@ void init_tech_params(double technology, bool is_tag) {
   } else if(technology < 23 && technology > 21) {
     tech_lo = 22;
     tech_hi = 22;
-    if(ram_cell_tech_type == 2 || ram_cell_tech_type == 3 || peri_global_tech_type == 2 || peri_global_tech_type == 2) {
+    if(ram_cell_tech_type == 2 || ram_cell_tech_type == 3 || peri_global_tech_type == 2) {
       cout << "current version does not support LOP and eDRAM technologies at 22nm" << endl;
       exit(0);
     }

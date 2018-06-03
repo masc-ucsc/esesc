@@ -441,7 +441,7 @@ void            TaskHandler::boot()
           allmaps[fid].simu->drain();
           if(allmaps[fid].simu->isROBEmpty()) {
             pauseThread(fid);
-            I(!allmaps[fid].deactivating);
+            I(!allmaps[fid].deactivating || terminate_all);
           }
         } else {
           allmaps[fid].simu->advance_clock(fid);

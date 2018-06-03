@@ -20,6 +20,7 @@
  *
  * Only host-mode and non-DMA accesses are currently supported.
  */
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/timer.h"
 #include "hw/usb.h"
@@ -252,8 +253,8 @@
 /* #define MUSB_DEBUG */
 
 #ifdef MUSB_DEBUG
-#define TRACE(fmt,...) fprintf(stderr, "%s@%d: " fmt "\n", __FUNCTION__, \
-                               __LINE__, ##__VA_ARGS__)
+#define TRACE(fmt, ...) fprintf(stderr, "%s@%d: " fmt "\n", __func__, \
+                                __LINE__, ##__VA_ARGS__)
 #else
 #define TRACE(...)
 #endif
@@ -563,7 +564,7 @@ static void musb_schedule_cb(USBPort *port, USBPacket *packey)
         ep->intv_timer[dir] = timer_new_ns(QEMU_CLOCK_VIRTUAL, musb_cb_tick, ep);
 
     timer_mod(ep->intv_timer[dir], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                   muldiv64(timeout, get_ticks_per_sec(), 8000));
+                   muldiv64(timeout, NANOSECONDS_PER_SECOND, 8000));
 }
 
 static int musb_timeout(int ttype, int speed, int val)

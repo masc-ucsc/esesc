@@ -20,7 +20,7 @@ if [ ! -e ${ESESC_SRC}/CMakeLists.txt ]; then
 fi
 
 # possibly add back -t command later
-docker run  \
+docker run --rm \
   -v $ESESC_SRC:$DOCKER_ESESC_SRC \
   -e ESESC_SRC=${DOCKER_ESESC_SRC} \
   -e ESESC_BUILD_DIR=${DOCKER_BUILD_DIR} \

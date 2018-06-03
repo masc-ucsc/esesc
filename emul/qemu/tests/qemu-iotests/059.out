@@ -2,18 +2,15 @@ QA output created by 059
 
 === Testing invalid granularity ===
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864
-qemu-io: can't open device TEST_DIR/t.vmdk: Invalid granularity, image may be corrupt
-no file open, try 'help open'
+can't open device TEST_DIR/t.vmdk: Invalid granularity, image may be corrupt
 
 === Testing too big L2 table size ===
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864
-qemu-io: can't open device TEST_DIR/t.vmdk: L2 table size too big
-no file open, try 'help open'
+can't open device TEST_DIR/t.vmdk: L2 table size too big
 
 === Testing too big L1 table size ===
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864
-qemu-io: can't open device TEST_DIR/t.vmdk: L1 size too big
-no file open, try 'help open'
+can't open device TEST_DIR/t.vmdk: L1 size too big
 
 === Testing monolithicFlat creation and opening ===
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=2147483648 subformat=monolithicFlat
@@ -2038,9 +2035,7 @@ Format specific information:
             format: FLAT
 
 === Testing malformed VMFS extent description line ===
-qemu-img: Could not open 'TEST_DIR/t.IMGFMT': Invalid extent lines:
-RW 12582912 VMFS "dummy.IMGFMT" 1
-
+qemu-img: Could not open 'TEST_DIR/t.IMGFMT': Invalid extent line: RW 12582912 VMFS "dummy.IMGFMT" 1
 
 === Testing truncated sparse ===
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=107374182400 subformat=monolithicSparse
@@ -2055,7 +2050,7 @@ wrote 512/512 bytes at offset 10240
 
 === Testing monolithicFlat with internally generated JSON file name ===
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864 subformat=monolithicFlat
-qemu-io: can't open: Cannot use relative extent paths with VMDK descriptor file 'json:{"image": {"driver": "file", "filename": "TEST_DIR/t.IMGFMT"}, "driver": "blkdebug", "inject-error.0.event": "read_aio"}'
+can't open: Cannot use relative extent paths with VMDK descriptor file 'json:{"image": {"driver": "file", "filename": "TEST_DIR/t.IMGFMT"}, "driver": "blkdebug", "inject-error.0.event": "read_aio"}'
 
 === Testing version 3 ===
 image: TEST_DIR/iotest-version3.IMGFMT
@@ -2264,8 +2259,8 @@ read 512/512 bytes at offset 64931328
 512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 
 === Testing 4TB monolithicFlat creation and IO ===
-Formatting 'TEST_DIR/iotest-version3.IMGFMT', fmt=IMGFMT size=4398046511104 subformat=monolithicFlat
-image: TEST_DIR/iotest-version3.IMGFMT
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=4398046511104 subformat=monolithicFlat
+image: TEST_DIR/t.IMGFMT
 file format: IMGFMT
 virtual size: 4.0T (4398046511104 bytes)
 wrote 512/512 bytes at offset 966367641600
@@ -2337,6 +2332,31 @@ e1000003f0:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
 read 1024/1024 bytes at offset 966367641600
 1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 
+=== Testing qemu-img map on extents ===
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=33285996544 subformat=monolithicSparse
+wrote 1024/1024 bytes at offset 65024
+1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+wrote 1024/1024 bytes at offset 2147483136
+1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+wrote 1024/1024 bytes at offset 5368709120
+1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+Offset          Length          Mapped to       File
+0               0x20000         0x3f0000        TEST_DIR/t.vmdk
+0x7fff0000      0x20000         0x410000        TEST_DIR/t.vmdk
+0x140000000     0x10000         0x430000        TEST_DIR/t.vmdk
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=33285996544 subformat=twoGbMaxExtentSparse
+wrote 1024/1024 bytes at offset 65024
+1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+wrote 1024/1024 bytes at offset 2147483136
+1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+wrote 1024/1024 bytes at offset 5368709120
+1 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+Offset          Length          Mapped to       File
+0               0x20000         0x50000         TEST_DIR/t-s001.vmdk
+0x7fff0000      0x10000         0x70000         TEST_DIR/t-s001.vmdk
+0x80000000      0x10000         0x50000         TEST_DIR/t-s002.vmdk
+0x140000000     0x10000         0x50000         TEST_DIR/t-s003.vmdk
+
 === Testing afl image with a very large capacity ===
-qemu-img: Can't get size of device 'image': File too large
+qemu-img: Can't get image size 'TEST_DIR/afl9.IMGFMT': File too large
 *** done
