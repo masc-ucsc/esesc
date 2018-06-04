@@ -316,7 +316,7 @@ StallCause OoOProcessor::addInst(DInst *dinst)
     return ReplaysStall;
   }
 
-  if((ROB.size() + rROB.size()) >= MaxROBSize)
+  if((ROB.size() + rROB.size()) >= (MaxROBSize-1))
     return SmallROBStall;
 
   const Instruction *inst = dinst->getInst();

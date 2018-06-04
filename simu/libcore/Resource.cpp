@@ -647,6 +647,8 @@ bool FUStore::retire(DInst *dinst, bool flushing) {
   I(!dinst->isRetired());
   dinst->markRetired();
 
+  dinst->clearRATEntry(); // Stores could have dependences for LL and atomics. Clear at retire
+
   lsq->remove(dinst);
   lsq->incFreeEntries();
   // freeEntries++;
