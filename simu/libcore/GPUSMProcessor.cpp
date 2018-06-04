@@ -215,7 +215,7 @@ StallCause GPUSMProcessor::addInst(DInst *dinst) { /*{{{*/
     return SmallWinStall;
   }
 
-  if((ROB.size() + rROB.size()) >= MaxROBSize)
+  if((ROB.size() + rROB.size()) >= (MaxROBSize-1))
     return SmallROBStall;
 
     // FIXME: if nInstPECounter is >0 for this cycle, do a DivertStall

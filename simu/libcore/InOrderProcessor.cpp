@@ -264,7 +264,7 @@ StallCause InOrderProcessor::addInst(DInst *dinst) { /*{{{*/
 }
 #endif
 
-if((ROB.size() + rROB.size()) >= MaxROBSize)
+if((ROB.size() + rROB.size()) >= (MaxROBSize-1))
   return SmallROBStall;
 
 Cluster *cluster = dinst->getCluster();
