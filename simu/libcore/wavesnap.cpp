@@ -69,11 +69,11 @@ void wavesnap::record_pipe(pipeline_info *next) {
 void wavesnap::add_pipeline_info(pipeline_info* pipe_info, instruction_info* d) {
   uint64_t min_time = this->dinst_info[wait_buffer[0]].fetched_time;
 
-  pipe_info->wait_cycles.push_back(d->fetched_time - min_time); 
-  pipe_info->rename_cycles.push_back(d->renamed_time - d->fetched_time); 
-  pipe_info->issue_cycles.push_back(d->issued_time - d->renamed_time); 
-  pipe_info->execute_cycles.push_back(d->executed_time - d->issued_time); 
-  pipe_info->commit_cycles.push_back(d->committed_time - d->executed_time); 
+  pipe_info->wait_cycles.push_back(d->fetched_time - min_time);
+  pipe_info->rename_cycles.push_back(d->renamed_time - d->fetched_time);
+  pipe_info->issue_cycles.push_back(d->issued_time - d->renamed_time);
+  pipe_info->execute_cycles.push_back(d->executed_time - d->issued_time);
+  pipe_info->commit_cycles.push_back(d->committed_time - d->executed_time);
 }
 
 void wavesnap::add_instruction(DInst *dinst) {
@@ -360,7 +360,7 @@ void wavesnap::calculate_ipc() {
 
 /////////////////////////////////
 //FULL IPC UPDATE and CALCULATION
-void wavesnap::update_single_window(DInst* dinst, uint64_t committed) {  
+void wavesnap::update_single_window(DInst* dinst, uint64_t committed) {
   uint64_t fetched = dinst->getFetchedTime();
   uint64_t renamed = dinst->getRenamedTime();
   uint64_t issued = dinst->getIssuedTime();
@@ -438,7 +438,7 @@ void wavesnap::calculate_single_window_ipc() {
     s = kv.first;
     if (!first_iter && (s - f - 1) < INSTRUCTION_GAP) {
       execute_zeros += s - f - 1;
-    } 
+    }
 
     f = s;
     first_iter = false;
@@ -459,7 +459,7 @@ void wavesnap::calculate_single_window_ipc() {
     total_commit += kv.second;
   }
 
-  //report  
+  //report
   std::cout << "--------------------" << std::endl;
   std::cout << "fetch ipc:   " << 1.0 * total_fetch / (full_fetch_ipc.size() + fetch_zeros) << std::endl;
   std::cout << "rename ipc:  " << 1.0 * total_rename / (full_rename_ipc.size() + rename_zeros) << std::endl;
@@ -539,7 +539,7 @@ void wavesnap::window_frequency() {
   for(auto &sign_kv : window_sign_info) {
     pipeline_info pipe_info = sign_kv.second;
     uint64_t      count     = pipe_info.count;
-    counts.push_back(count); 
+    counts.push_back(count);
   }
 
   std::sort(counts.rbegin(), counts.rend());
