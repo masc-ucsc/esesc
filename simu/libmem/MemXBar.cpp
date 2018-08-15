@@ -69,7 +69,7 @@ MemXBar::MemXBar(MemorySystem *current, const char *section, const char *name)
     if(numLowerLevelBanks > 1)
       sprintf(tmp, "%s%s(%lu)", name, lower_name, i);
     else
-      sprintf(tmp, "%s%s", name, lower_name, i);
+      sprintf(tmp, "%s%s", name, lower_name);
     lower_level_banks[i] = current->declareMemoryObj_uniqueName(tmp, vPars[0]);
     addLowerLevel(lower_level_banks[i]);
 

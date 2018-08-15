@@ -2899,9 +2899,9 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
       // bool tracking2   = dinst->getPC() == 0x100072dc && dinst->getStatsFlag();
       bool tracking2 = false;
       if(tracking2) {
-        printf("btrack2 %x %d %s %x %d\n", dinst->getPC(), outcome2, dinst->isTaken() ? "T" : "NT", dinst->getLDPC(),
-               dinst->getDataSign());
-        printf("bmeta2 bias, pred %d %s\n", outcome2, dinst->isTaken() ? "T" : "NT");
+        //printf("btrack2 %x %d %s %x %d\n", dinst->getPC(), outcome2, dinst->isTaken() ? "T" : "NT", dinst->getLDPC(),
+               //dinst->getDataSign());
+        //printf("bmeta2 bias, pred %d %s\n", outcome2, dinst->isTaken() ? "T" : "NT");
       }
     }
     outcome3 = outcome2;

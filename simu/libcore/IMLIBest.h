@@ -79,7 +79,7 @@
 //#define MINHIST 7
 //#define MAXHIST 1000
 #define MINHIST 3
-#define MAXHIST 80
+#define MAXHIST 150
 #endif
 // probably not the best history length, but nice
 

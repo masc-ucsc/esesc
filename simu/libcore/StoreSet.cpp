@@ -161,7 +161,7 @@ bool StoreSet::insert(DInst *dinst)
   I(!lfs_dinst->isExecuted());
   I(!dinst->isExecuted());
   lfs_dinst->addSrc3(dinst);
-  MSG("addSST %8ld->%8lld %lld", lfs_dinst->getID(), dinst->getID(), globalClock);
+  MSG("addSST %8ld->%8lld %lld", (long long)lfs_dinst->getID(), (long long)dinst->getID(), (long long)globalClock);
 
   return true;
 }
