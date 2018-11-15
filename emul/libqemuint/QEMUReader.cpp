@@ -94,7 +94,6 @@ QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint
 void QEMUReader::start()
 /* Start QEMU Thread (wait until sampler is ready {{{1 */
 {
-
   if(started)
     return;
 

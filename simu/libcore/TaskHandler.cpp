@@ -46,6 +46,7 @@
 std::vector<TaskHandler::EmulSimuMapping> TaskHandler::allmaps;
 volatile bool                             TaskHandler::terminate_all;
 pthread_mutex_t                           TaskHandler::mutex;
+pthread_mutex_t                           TaskHandler::mutex_terminate;
 
 FlowID *TaskHandler::running;
 FlowID  TaskHandler::running_size;
@@ -349,6 +350,11 @@ void TaskHandler::terminate()
   // GStats::stopAll(1);
 
   running_size = 0;
+
+  // LOCK thread until TaskHandler::unplug is called (otherwise, there could be a race)
+  fflush(stdout);
+  fflush(stderr);
+  pthread_mutex_lock(&mutex_terminate);
 }
 /* }}} */
 
@@ -477,6 +483,8 @@ void TaskHandler::plugBegin()
 
   running      = NULL;
   running_size = 0;
+
+  pthread_mutex_lock(&mutex_terminate);
 }
 /* }}} */
 
@@ -565,6 +573,8 @@ void TaskHandler::unplug()
     delete emulas[i];
   }
 #endif
+
+  pthread_mutex_unlock(&mutex_terminate);
 }
 /* }}} */
 
