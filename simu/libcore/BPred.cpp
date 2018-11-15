@@ -518,7 +518,7 @@ PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
     imli->fetchBoundaryEnd();
 
   if(taken != ptaken) {
-    // MSG("0x%llx data:%x t:%d p%d",dinst->getPC(), dinst->getData(), taken,ptaken);
+    //MSG("0x%llx t:%d p%d",dinst->getPC(), taken,ptaken);
     if(doUpdate)
       btb.updateOnly(dinst);
     return MissPrediction;

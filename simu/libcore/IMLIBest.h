@@ -35,13 +35,15 @@
 #define MEDIUM_TAGE 1
 
 #ifdef MEDIUM_TAGE
-#define LOOPPREDICTOR //  use loop  predictor
+//#define LOOPPREDICTOR //  use loop  predictor
 //#define LOCALH			// use local histories
 //#define IMLI			// using IMLI component
 //#define IMLISIC            //use IMLI-SIC
 //#define IMLIOH		//use IMLI-OH
-#define LOGG 11  /* logsize of the  tagged TAGE tables*/
+#define LOGG 10  /* logsize of the  tagged TAGE tables*/
 #define TBITS 11 /* minimum tag width*/
+//#define USE_DOLC 1
+//#define USE_DOLC 1
 #else
 #define LOOPPREDICTOR //  use loop  predictor
 #define LOCALH        // use local histories
@@ -50,7 +52,7 @@
 #define IMLIOH        // use IMLI-OH
 #define LOGG 12       /* logsize of the  tagged TAGE tables*/
 #define TBITS 13      /* minimum tag width*/
-#define USE_DOLC 1
+//#define USE_DOLC 1
 #endif
 
 // To get the predictor storage budget on stderr  uncomment the next line
@@ -84,7 +86,7 @@
 // probably not the best history length, but nice
 
 #ifdef USE_DOLC
-DOLC dolc(MAXHIST, 3, 9, 27);
+DOLC dolc(MAXHIST, 3, 6, 18);
 #endif
 
 #ifndef STRICTSIZE
