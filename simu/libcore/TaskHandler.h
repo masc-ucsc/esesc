@@ -64,6 +64,7 @@ private:
   static runningType     running;
   static FlowID          running_size;
   static pthread_mutex_t mutex;
+  static pthread_mutex_t mutex_terminate;
 
   static std::vector<EmulInterface *> emulas; // associated emula
   static std::vector<GProcessor *>    cpus;   // All the CPUs in the system

@@ -7990,12 +7990,15 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
 #ifdef TARGET_GPROF
         _mcleanup();
 #endif
-#ifdef CONFIG_ESESC
-        QEMUReader_finish_thread(cpu->fid); 
-#endif
 
         gdb_exit(cpu_env, arg1);
+
+#ifdef CONFIG_ESESC
+        QEMUReader_finish(cpu->fid); 
+#endif
+
         _exit(arg1);
+
         ret = 0; /* avoid warning */
         break;
     case TARGET_NR_read:

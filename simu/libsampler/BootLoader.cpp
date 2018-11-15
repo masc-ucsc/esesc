@@ -397,9 +397,10 @@ void BootLoader::unplug() {
   ReportTherm::close();
 #endif
 
-  TaskHandler::unplug();
 #ifdef ESESC_POWERMODEL
   if(doPower)
     pwrmodel->unplug();
 #endif
+
+  TaskHandler::unplug();
 }

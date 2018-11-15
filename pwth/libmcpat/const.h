@@ -113,8 +113,12 @@ const double WmuxdrvNANDp = 0;
 
 #define BIGNUM 1e30
 #define INF 9999999
+#ifndef MAX
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+#ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
 
 /* Used to communicate with the horowitz model */
 #define RISE 1
