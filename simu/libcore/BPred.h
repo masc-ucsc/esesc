@@ -452,67 +452,6 @@ public:
   uint32_t getLoopIter(uint64_t key, uint64_t tag) const;
 };
 
-class BPDGP : public BPred {
-private:
-  BPBTB btb;
-
-  DOLC          dolc;
-  DOLC **       ldolc;
-  LoopPredictor lp;
-  uint32_t      lp_last_iter; // Based on LoopPredictor
-  uint32_t      loop_counter; // Based on backward jumps
-  AddrType      loop_end_pc;
-
-  SCTable ahead_local;
-  SCTable ahead_global;
-  SCTable ahead_meta;
-
-  const int32_t ntables;
-  const int32_t nlocal;
-  const int32_t glength;
-  int32_t       alength;
-  const int32_t nentry;
-  const int32_t addwidth;
-
-  int32_t * TableSizeBits;
-  uint32_t *TableSizeMask;
-
-  int32_t CorrSize;
-
-  int32_t  MaxVal;
-  int32_t  TableValBits;
-  int32_t  TableTagBits;
-  uint32_t TableTagMask;
-
-  int64_t *ahist; // All bit history
-  int32_t *histLength;
-
-  struct PredEntry {
-    int32_t  val;
-    uint32_t tag;
-  };
-
-  PredEntry **table;
-
-  PredEntry *reverse;
-
-  struct CorrEntry {
-    int32_t *val;
-  };
-
-  CorrEntry *corr;
-
-protected:
-  int32_t  geoidx(uint64_t Add, int64_t *histo, int32_t indexSize, int32_t m, int32_t funct, int tableid);
-  uint64_t goodHash(uint64_t key) const;
-
-public:
-  BPDGP(int32_t i, const char *section, const char *sname);
-  ~BPDGP();
-
-  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
-};
-
 #if 1
 class BPSOgehl : public BPred {
 private:

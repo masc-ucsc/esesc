@@ -34,16 +34,17 @@
 
 #define MEDIUM_TAGE 1
 
+//#define SIMPLER_DOLC_PATH
+
 #ifdef MEDIUM_TAGE
 //#define LOOPPREDICTOR //  use loop  predictor
 //#define LOCALH			// use local histories
 //#define IMLI			// using IMLI component
 //#define IMLISIC            //use IMLI-SIC
 //#define IMLIOH		//use IMLI-OH
-#define LOGG 10  /* logsize of the  tagged TAGE tables*/
-#define TBITS 11 /* minimum tag width*/
-//#define USE_DOLC 1
-//#define USE_DOLC 1
+#define LOGG 11  /* logsize of the  tagged TAGE tables*/
+#define TBITS 14 /* minimum tag width*/
+#define USE_DOLC 1
 #else
 #define LOOPPREDICTOR //  use loop  predictor
 #define LOCALH        // use local histories
@@ -70,23 +71,22 @@
 #define UWIDTH 1
 #define CWIDTH 3
 
-#define POWER
 // use geometric history length
 #ifdef USE_DOLC
 //#define MAXHIST 192 // (128+32)
 //#define MAXHIST 27 // (128+32)
-#define MAXHIST 128 // (128+32)
+#define MAXHIST (96)
 #define MINHIST 3
 #else
 //#define MINHIST 7
 //#define MAXHIST 1000
-#define MINHIST 3
-#define MAXHIST 150
+#define MINHIST 1
+#define MAXHIST 96
 #endif
 // probably not the best history length, but nice
 
 #ifdef USE_DOLC
-DOLC dolc(MAXHIST, 3, 6, 18);
+DOLC idolc(MAXHIST, 3, 6, 18);
 #endif
 
 #ifndef STRICTSIZE
@@ -776,7 +776,7 @@ public:
       , blogb(_blogb)
       , log2fetchwidth(_log2fetchwidth)
       , bwidth(_bwidth)
-      , nhist(_nhist)
+      , nhist(_nhist>=MAXHIST?MAXHIST:_nhist)
       , sc(_sc) {
 
     ch_i    = new folded_history[nhist + 1];
@@ -909,13 +909,14 @@ public:
       Fm[i] = 2;
 #endif
 
-#ifdef POWER
     m[1]     = MINHIST;
     m[nhist] = MAXHIST;
     for(int i = 2; i <= nhist; i++) {
-      m[i] = (int)(((double)MINHIST * pow((double)(MAXHIST) / (double)MINHIST, (double)(i - 1) / (double)((nhist - 1)))) + 0.5);
+      if (MAXHIST<=nhist)
+        m[i] = i;
+      else
+        m[i] = (int)(((double)MINHIST * pow((double)(MAXHIST) / (double)MINHIST, (double)(i - 1) / (double)((nhist - 1)))) + 0.5);
     }
-#endif
 
     for(int i = 1; i <= nhist; i++) {
       TB[i]   = TBITS + (i / 2);
@@ -1063,7 +1064,7 @@ public:
     int index;
 #ifdef USE_DOLC
     // Dual bank per bank (lower bit is PC based)
-    uint64_t sign1 = dolc.getSign(logg[bank], m[bank]);
+    uint64_t sign1 = idolc.getSign(logg[bank], m[bank]);
     index          = PC ^ (PC >> (bank + 1)) ^ (sign1);
 #else
     int M = (m[bank] > PHISTWIDTH) ? PHISTWIDTH : m[bank];
@@ -1332,7 +1333,11 @@ public:
   void fetchBoundaryBegin(AddrType PC) {
 
     lastBoundaryPC   = PC;
+#ifdef SIMPLER_DOLC_PATH
+    lastBoundarySign = pcSign(PC);
+#else
     lastBoundarySign = 0;
+#endif
     lastBoundaryCtrl = false;
 
     setTAGEIndex();
@@ -1341,7 +1346,7 @@ public:
   void fetchBoundaryEnd() {
 #ifdef USE_DOLC
     if(lastBoundaryCtrl)
-      dolc.update(lastBoundarySign);
+      idolc.update(lastBoundarySign);
 #endif
   }
 
@@ -1355,7 +1360,9 @@ public:
   //         TODO: update 2 entries with different data abd same boff
   int fetchBoundaryOffsetOthers(AddrType PC) {
     int boff         = (PC >> 3) & ((1 << (log2fetchwidth - 1)) - 1);
+#ifndef SIMPLER_DOLC_PATH
     lastBoundarySign = dohash(lastBoundarySign, pcSign(PC));
+#endif
 
     lastBoundaryCtrl = true;
 

@@ -87,7 +87,14 @@ void helper_esesc_ctrl(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_
     return;
   }
 
+#ifdef CONFIG_ESESC
   CPUState *cpu       = ENV_GET_CPU(env);
+
+  if (pc == target) {
+    printf("jump to itself (terminate) pc:%llx\n",pc);
+    QEMUReader_finish(cpu->fid);
+    return;
+  }
 
   int src1 = reg & 0xFF;
   reg      = reg >> 8;
@@ -95,7 +102,6 @@ void helper_esesc_ctrl(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_
   reg      = reg >> 8;
   int dest = reg & 0xFF;
 
-#ifdef CONFIG_ESESC
   AtomicAdd(&icount,QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest));
 #endif
 }
@@ -153,7 +159,11 @@ target_ulong helper_csrrw(CPURISCVState *env, target_ulong src,
 {
     target_ulong val = 0;
     if (riscv_csrrw(env, csr, &val, src, -1) < 0) {
+#ifdef CONFIG_ESESC
+        val = 0;
+#else
         riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+#endif
     }
     return val;
 }
@@ -163,7 +173,11 @@ target_ulong helper_csrrs(CPURISCVState *env, target_ulong src,
 {
     target_ulong val = 0;
     if (riscv_csrrw(env, csr, &val, -1, rs1_pass ? src : 0) < 0) {
+#ifdef CONFIG_ESESC
+        val = 0;
+#else
         riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+#endif
     }
     return val;
 }

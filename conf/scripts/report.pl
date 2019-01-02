@@ -1165,6 +1165,15 @@ sub showStatReport {
     my $nMiss = $cf->getResultField("P(${i})_BPred","nMiss");
     printf " %9.3f ", 100*$nMiss/($nBranches+1);
 
+    # imli
+    my $type     = "imli";
+    my $predHit  = $cf->getResultField("P(${i})_BPred2_${type}","nHit");
+    my $predMiss = $cf->getResultField("P(${i})_BPred2_${type}","nMiss");
+
+    my $predRatio = ($predMiss+$predHit) <= 0 ? 0 : ($predHit/($predMiss+$predHit));
+
+    printf " %6.2f%% ",100*$predRatio;
+
     # szFB
     my $nTaken    = $cf->getResultField("P(${i})_BPred","nTaken");
     printf " %9.2f ", $nInst/($nTaken+1);
