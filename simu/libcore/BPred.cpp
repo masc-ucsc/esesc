@@ -39,6 +39,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
+#include <assert.h>
+#include <iostream>
+#include <ios>
+#include <fstream>
+#include <boost/format.hpp>
 
 #include "BPred.h"
 #include "IMLIBest.h"
@@ -1946,6 +1951,250 @@ int32_t BPDGP::geoidx(uint64_t Add, int64_t *histo, int32_t sizeBits, int32_t m,
   return ((int)Res);
 }
 
+/****************************************
+* OhSnap Branch Predictor 
+* By Daniel Jimenez
+* http://hpca23.cse.tamu.edu/taco/pdfs/iccd2011_dist.pdf
+*  
+* DOI:
+* 10.1109/ICCD.2011.6081385
+*
+* Implemented by David Kooi Fall 2018
+* Final Report and Results:
+* 
+* http://davidkooi.pythonanywhere.com/static/pdf/ohsnap_perceptron_dkooi.pdf
+*
+**
+****************************************/
+
+OhSnap::OhSnap(int32_t i, const char *section, const char *sname)
+    : BPred(i, section, sname, "ohsnap")
+    , btb(i, section, sname)
+    , glength(SescConf->getInt(section, "glength"))
+    , numPerceptrons(SescConf->getInt(section, "numPerceptrons")) 
+{
+   
+    ghr.resize(glength); 
+
+    /*****************************************/
+    /************** Tables ******************/
+    /*****************************************/
+    tc_table    = new int8_t[numPerceptrons]();             // Each theta has a threshold counter
+                                                            // used for
+                                                            // training
+
+    theta_table = new float[numPerceptrons]();              // Each perceptron has a training
+                                                            // theta that is
+                                                            // tuned during
+                                                            // runtime
+    for(int i = 0; i< numPerceptrons; i++){ theta_table[i] = 0;}//1.93*glength + 14; } 
+
+    float static_theta = 1.93*glength + 14;
+    ptable = new uint8_t[ (glength+1) * numPerceptrons ](); // Each perceptron has: 
+                                                            // glength correlating weights + 
+                                                            // 1 bias weight
+
+    // Second predictor for low neural outputs
+    ogehl_pred = new BPOgehl(i, "BPredIssueX_alt", "ohsnap_ogehl"); 
+
+
+    saturation  = 64; // Weight saturation
+    lower_neural_thresh = 1000; // Hybrid threshold
+
+
+    // Used for statistics
+    max_weight  = (glength+1)*saturation;      // Max possible weight value 
+    num_correct = new uint64_t [max_weight*2]; // Weights are shifted so we can index neg values 
+    num_tried   = new uint64_t [max_weight*2];  
+    k   = 1; // Number of runs
+    k_c = 0; // Number correct
+
+}
+
+OhSnap::~OhSnap(){
+    delete ptable;
+}
+
+uint64_t OhSnap::goodHash(uint64_t key) const {
+
+  key += (key << 12);
+  key ^= (key >> 22);
+  key += (key << 4);
+  key ^= (key >> 9);
+  key += (key << 10);
+  key ^= (key >> 2);
+  key += (key << 7);
+  key ^= (key >> 12);
+
+  return key;
+}
+
+
+PredType OhSnap::predict(DInst *dinst, bool doUpdate, bool doStats){
+
+    bool     taken  = dinst->isTaken();
+    int8_t   taken_n  = taken ? 1 : -1;  // Taken, numerical
+    int8_t   ptaken_n = 0 ;              // Prediction, numerical 
+    uint16_t row = 0;                    // Which perceptron to choose
+ 
+
+    if(dinst->getInst()->isJump()){
+        return btb.predict(dinst, doUpdate, doStats);
+    }
+
+
+    // Get hash of PC 
+    row = dinst->getPC() % numPerceptrons; 
+    // Make sure perceptron index in range
+    if(row == numPerceptrons){ row--; }
+    I(row < numPerceptrons);
+
+    // Add all weights
+    int32_t sum = ptable[row + 0]; // Get bias  
+    for(int i = 0; i < glength; i++){
+
+        assert(row + (i+1) <= (glength+1) * numPerceptrons); // Assert array overflow 
+
+        // Scaling coefficient
+        float A = 0.1111;
+        float B = 0.037;
+        float C = 1;///(A+B*i);
+
+        if(ghr[i]){
+            sum += (int32_t)(C*ptable[row + (i+1)]);
+        }else{
+            sum -= (int32_t)(C*ptable[row + (i+1)]);
+        }
+        
+    } 
+    ptaken_n = sum > 0 ? 1 : -1; 
+
+
+    // Used for statistics
+    uint32_t abs_sum = sum + max_weight; // "Psudo" abs sum: Make all values positive 
+    if(abs_sum > max_weight*2){ abs_sum = max_weight; }
+    uint32_t re_abs_sum = sum > 0 ? sum: -sum; // Real abs sum
+    
+
+    // Update perceptron table and ghr
+    if(doUpdate){
+
+        // Update branch/path histories
+        ghr <<= 1;
+        ghr[0] = taken ? 1 : 0; 
+ 
+        if((ptaken_n != taken_n)){ // Incorrect prediction 
+
+            int8_t error = taken_n - ptaken_n;
+
+            // Adjust training theta 
+            tc_table[row]++;
+            if(tc_table[row] == 128){ // Saturate as 7bit counter and reset 
+                theta_table[row]++;
+                tc_table[row]= 0; 
+            } 
+
+            train_weights(error, taken, row);
+
+            
+        }else{ // Correct prediction
+
+            // Adjust training theta 
+            tc_table[row]--;
+            if(tc_table[row] == -128){ // Saturate as 7bit counter and reset 
+                theta_table[row]--;
+                tc_table[row]= 0; 
+            } 
+
+            if(re_abs_sum < static_theta){
+            //if( re_abs_sum < theta_table[row]){ // If weight is below theta we still need to train
+                                                // even if it is correct.
+                                                // I.e, we have a low
+                                                // confidence correct
+                                                // prediction
+
+                train_weights(1, taken, row);
+
+            }
+        }
+        
+    } 
+
+
+    PredType ogehl_prediction = ogehl_pred->predict(dinst, doUpdate, doStats); 
+    PredType prediction; 
+    if(re_abs_sum < lower_neural_thresh){ // Hybrid prediction
+        prediction = ogehl_prediction; 
+    }else if(ptaken_n == taken_n){        // Correct prediction
+        prediction = CorrectPrediction;
+    }else{                                // Miss prediction
+        prediction = MissPrediction;
+    }
+
+   
+    k++;                           // # of branches predicted
+    num_tried[abs_sum] += 1;       // # of tries a weight has taken
+    if(prediction == CorrectPrediction){ 
+        k_c++;                     // # of correct branches predicted
+        num_correct[abs_sum] += 1; // # of correct predictions for a weight 
+
+
+        // Write output_prob to file
+        /*
+        if((k % 10000) == 0){ 
+           
+            std::ofstream file; 
+            file.open("/home/david/Desktop/vortex_prob_output.txt");
+      
+            for(int64_t i = 0; i < max_weight*2; i++){ 
+                float prob = (float)num_correct[i]/num_tried[i];
+                file << boost::format("%1% %2%\n") % i % prob; 
+            }
+           
+            file.close();
+        }
+        */
+
+        // Steps to % correct
+        //std::ofstream file;
+        //file.open("/home/david/Desktop/gcc_step_correct.txt", std::ios_base::app);
+        //file << boost::format("%1% %2%\n") % k % ((float)k_c/k); 
+    }
+    
+    return prediction; 
+    
+}
+
+void OhSnap::train_weights(int8_t error, bool taken, uint16_t row){
+
+    // Update bias
+    if(taken){
+        ptable[row + 0] += 1;                
+    }else{
+        ptable[row + 0] -= 1;                
+    }
+
+    // Update correlating weights
+    for(int i=0; i < glength; i++){          
+        if(ghr[i]){
+            ptable[row + (i+1)] += error;
+        }else{
+            ptable[row + (i+1)] -= error;
+        }
+        
+        // Saturate the weights
+        if( ptable[row + (i+1)] > saturation){
+            ptable[row + (i+1)] = saturation;
+        }
+    }
+
+}
+
+
+
+
+
+
 /*****************************************
  * BPSOgehl  ; SCOORE Adaptation of the OGELH predictor
  *
@@ -2659,6 +2908,8 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
     pred = new BPTData(id, sec, sname);
   } else if(strcasecmp(type, "sogehl") == 0) {
     pred = new BPSOgehl(id, sec, sname);
+  } else if(strcasecmp(type, "ohsnap") == 0){
+    pred = new OhSnap(id, sec, sname); 
   } else {
     MSG("BPredictor::BPredictor Invalid branch predictor type [%s] in section [%s]", type, sec);
     SescConf->notCorrect();
