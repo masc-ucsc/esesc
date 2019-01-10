@@ -504,14 +504,79 @@ private:
 
 protected:
   int32_t  geoidx(uint64_t Add, int64_t *histo, int32_t indexSize, int32_t m, int32_t funct, int tableid);
-  uint64_t goodHash(uint64_t key) const;
+  uint64_t goodhash(uint64_t key) const;
 
 public:
   BPDGP(int32_t i, const char *section, const char *sname);
   ~BPDGP();
 
   PredType predict(DInst *dinst, bool doUpdate, bool doStats);
+  uint64_t goodHash(uint64_t key) const;
 };
+
+
+
+/****************************************
+* OhSnap Branch Predictor 
+* By Daniel Jimenez
+* http://hpca23.cse.tamu.edu/taco/pdfs/iccd2011_dist.pdf
+*  
+* DOI:
+* 10.1109/ICCD.2011.6081385
+*
+* Implemented by David Kooi Fall 2018
+* Final Report and Results:
+* 
+* http://davidkooi.pythonanywhere.com/static/pdf/ohsnap_perceptron_dkooi.pdf
+*
+**
+****************************************/
+
+class OhSnap : public BPred{
+private:
+    BPBTB btb;
+
+    uint64_t        glength;
+    LongHistoryType ghr;
+    BPred*          ogehl_pred;
+    uint16_t lower_neural_thresh;  // Threshold to switch to ogehl
+
+
+    uint8_t  saturation;           // Saturation value for weights
+    uint16_t numPerceptrons;       // Number perceptrons
+
+    uint8_t* ptable;               // Perceptron table
+    float*  theta_table;          // Training theta table
+    int8_t* tc_table;             // Threshold counter table
+    float static_theta;
+
+
+    // For calculating variance of row selection
+    uint32_t  k;   // # of runs
+    uint32_t  k_c; // # correct runs
+    uint32_t mk;   // Running mean
+    uint32_t sk;
+
+    // For calculating %correct predictions vs perceptron output 
+    uint64_t* num_correct; 
+    uint64_t* num_tried;
+    uint64_t max_weight;
+
+    void train_weights(int8_t error, bool taken, uint16_t row);
+ 
+
+public:
+  OhSnap(int32_t i, const char *section, const char *sname);
+  ~OhSnap();
+
+
+  uint64_t goodHash(uint64_t key) const;
+  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
+
+
+
+};
+
 
 #if 1
 class BPSOgehl : public BPred {
