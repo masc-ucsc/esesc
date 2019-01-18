@@ -51,9 +51,9 @@
 /* }}} */
 
 //#define ESESC_CODEPROFILE
-//#define ESESC_BRANCHPROFILE
+#define ESESC_BRANCHPROFILE
 // FIXME: to avoid deadlock, prealloc n to the n oldest instructions
-#define LATE_ALLOC_REGISTER
+//#define LATE_ALLOC_REGISTER
 
 OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
     /* constructor {{{1 */

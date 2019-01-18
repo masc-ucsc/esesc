@@ -145,8 +145,7 @@ PredType BPRas::predict(DInst *dinst, bool doUpdate, bool doStats) {
     //idolc.setPhase(phase);
 #endif
 
-    if(stack[index] == dinst->getAddr() || (stack[index] + 4) == dinst->getAddr()) {
-
+    if(stack[index] == dinst->getAddr() || (stack[index] + 4) == dinst->getAddr() || (stack[index] + 2) == dinst->getAddr()) {
       // MSG("RET  %llx -> %llx  (stack=%llx) good",dinst->getPC(),dinst->getAddr(), stack[index]);
       return CorrectPrediction;
     }
@@ -158,7 +157,7 @@ PredType BPRas::predict(DInst *dinst, bool doUpdate, bool doStats) {
     // MSG("CALL %llx -> %llx  (stack=%llx)",dinst->getPC(),dinst->getAddr(), stack[index]);
 
     if(doUpdate) {
-      stack[index] = dinst->getPC() + 4;
+      stack[index] = dinst->getPC();
       index++;
 
       if(index >= RasSize)
@@ -511,19 +510,13 @@ PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if(!FetchPredict)
     imli->fetchBoundaryBegin(dinst->getPC());
 
-  DataSign ds = DS_NoData;
-  if(dataHistory)
-    ds = dinst->getDataSign();
-
   bool     bias;
   AddrType pc = dinst->getPC();
-  if(ds != DS_NoData)
-    pc = pc ^ (dinst->getLDPC() >> 2);
-  bool ptaken = imli->getPrediction(pc, ds, bias);
+  bool ptaken = imli->getPrediction(pc, bias); // pass taken for statistics
   dinst->setBiasBranch(bias);
 
   if(doUpdate) {
-    imli->updatePredictor(pc, ds, taken, ptaken, dinst->getAddr());
+    imli->updatePredictor(pc, taken, ptaken, dinst->getAddr());
   }
 
   if(!FetchPredict)
