@@ -1325,7 +1325,7 @@ uint32_t LoopPredictor::getLoopIter(uint64_t key, uint64_t tag) const {
 }
 
 
- * BPSOgehl  ; SCOORE Adaptation of the OGELH predictor
+/* BPSOgehl  ; SCOORE Adaptation of the OGELH predictor
  *
  * Based on "The O-GEHL Branch Predictor" by Andre Seznec
  *
