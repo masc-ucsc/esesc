@@ -42,8 +42,8 @@
 //#define IMLI			// using IMLI component
 //#define IMLISIC            //use IMLI-SIC
 //#define IMLIOH		//use IMLI-OH
-#define LOGG 9  /* logsize of the  tagged TAGE tables*/
-#define TBITS 11 /* minimum tag width*/
+#define LOGG 10  /* logsize of the  tagged TAGE tables*/
+#define TBITS 13 /* minimum tag width*/
 #define USE_DOLC 1
 #else
 #define LOOPPREDICTOR //  use loop  predictor
