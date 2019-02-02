@@ -20,7 +20,7 @@ ESESC is a fast multiprocessor simulator with detailed power, thermal, and perfo
 The main ESESC characteristics are the following:
 
 * It is very fast (over 20MIPS with sampling)
-* Uses QEMU and supports user mode MIPS64r6 ISA
+* Uses QEMU and supports user mode RISCV and MIPS64r6 ISA
 * Models OoO and InOrder cores in detail (ROB, Instruction Window, etc)
 * Supports configurable memory hierarchy, and on-chip memory controller
 * Supports multicore, homogeneous and heterogeneous configurations
@@ -29,8 +29,8 @@ The main ESESC characteristics are the following:
 
 ESESC is a significant evolution/improvement over [SESC](http://sesc.sourceforge.net/):
 
-* ESESC has MIPS64r6 ISA, sesc had MIPS ISA.
-* ESESC can run unmodified Linux MIPS binaries, sesc required a custom toolchain.
+* ESESC has RISCV and MIPS64r6 ISA, sesc had MIPS ISA.
+* ESESC can run unmodified Linux RISCV and MIPS binaries, sesc required a custom toolchain.
 * ESESC uses QEMU for emulation, sesc had a custom emulator.
 * ESESC is integrated with McPat, sesc had an older Wattch model.
 * ESESC has a brand new memory hierarchy, sesc had a more complex coherence.
