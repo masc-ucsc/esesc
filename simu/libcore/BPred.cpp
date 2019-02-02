@@ -2035,8 +2035,6 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
     pred = new BPTData(id, sec, sname);
   } else if(strcasecmp(type, "sogehl") == 0) {
     pred = new BPSOgehl(id, sec, sname);
-  } else if(strcasecmp(type, "ohsnap") == 0){
-    pred = new OhSnap(id, sec, sname); 
   } else {
     MSG("BPredictor::BPredictor Invalid branch predictor type [%s] in section [%s]", type, sec);
     SescConf->notCorrect();
