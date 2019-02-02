@@ -34,6 +34,8 @@
 
 #define MEDIUM_TAGE 1
 
+#define SIMPLER_DOLC_PATH
+
 #ifdef MEDIUM_TAGE
 //#define LOOPPREDICTOR //  use loop  predictor
 //#define LOCALH			// use local histories
@@ -41,9 +43,8 @@
 //#define IMLISIC            //use IMLI-SIC
 //#define IMLIOH		//use IMLI-OH
 #define LOGG 10  /* logsize of the  tagged TAGE tables*/
-#define TBITS 11 /* minimum tag width*/
-//#define USE_DOLC 1
-//#define USE_DOLC 1
+#define TBITS 13 /* minimum tag width*/
+#define USE_DOLC 1
 #else
 #define LOOPPREDICTOR //  use loop  predictor
 #define LOCALH        // use local histories
@@ -70,23 +71,22 @@
 #define UWIDTH 1
 #define CWIDTH 3
 
-#define POWER
 // use geometric history length
 #ifdef USE_DOLC
 //#define MAXHIST 192 // (128+32)
 //#define MAXHIST 27 // (128+32)
-#define MAXHIST 128 // (128+32)
-#define MINHIST 3
+#define MAXHIST 71
+#define MINHIST 5
 #else
 //#define MINHIST 7
 //#define MAXHIST 1000
-#define MINHIST 3
-#define MAXHIST 150
+#define MINHIST 1
+#define MAXHIST 71
 #endif
 // probably not the best history length, but nice
 
 #ifdef USE_DOLC
-DOLC dolc(MAXHIST, 3, 6, 18);
+DOLC idolc(MAXHIST, 1, 6, 18);
 #endif
 
 #ifndef STRICTSIZE
@@ -370,7 +370,6 @@ private:
   int8_t *  ctr;
   int8_t *  u;
   uint16_t *boff; // Signature per branch in the entry
-  DataSign *bds;  // data Signature
 
 public:
   uint32_t tag;
@@ -390,12 +389,10 @@ public:
     ctr  = new int8_t[n + 1]; // +1, last means unused
     u    = new int8_t[n + 1];
     boff = new uint16_t[n + 1];
-    bds  = new DataSign[n + 1];
     for(int i = 0; i <= n; i++) {
       ctr[i]  = 0;
       u[i]    = 0;
       boff[i] = 0xFFFF;
-      bds[i]  = DS_NoData;
     }
     tag = 0;
   }
@@ -403,7 +400,7 @@ public:
   void dump() {
     fprintf(stderr, "nsub=%d tag=%x hit=%d thit=%d u=%d loff=%d", nsub, tag, hit, thit, u[0], last_boff);
     for(int i = 0; i < nsub; i++)
-      fprintf(stderr, ": off=%d ds=0x%x ctr=%d", boff[i], bds[i], ctr[i]);
+      fprintf(stderr, ": off=%d ctr=%d", boff[i], ctr[i]);
   }
 
   bool isHit() const {
@@ -413,7 +410,7 @@ public:
     return thit;
   }
 
-  void select(AddrType t, int b, DataSign ds) {
+  void select(AddrType t, int b) {
     b = b >> 1; // Drop lower bit
 
     last_boff = b;
@@ -428,7 +425,7 @@ public:
 
     pos = nsub;
     for(int i = 0; i < nsub; i++) {
-      if(boff[i] == b && (bds[i] == ds || bds[i] == DS_NoData)) {
+      if(boff[i] == b) {
         pos = i;
         hit = true;
         break;
@@ -441,25 +438,23 @@ public:
     }
   }
 
-  void reset(int tableid, uint32_t t, DataSign ds, bool taken) {
+  void reset(int tableid, uint32_t t, bool taken) {
     tag = t;
 
     for(int i = 1; i < nsub; i++) {
       boff[i] = 0xFFFF;
-      bds[i]  = DS_NoData;
       ctr[i]  = taken ? 0 : -1;
       u[i]    = 0;
     }
     pos     = last_boff;
     boff[0] = pos;
-    bds[0]  = ds;
     ctr[0]  = taken ? 0 : -1;
 
     hit  = true;
     thit = true;
   }
 
-  void ctr_force_steal(bool taken, DataSign ds) {
+  void ctr_force_steal(bool taken) {
     if(!thit)
       return;
 
@@ -489,7 +484,6 @@ public:
     }
 
     boff[p] = last_boff;
-    bds[p]  = ds;
     ctr[p]  = taken ? 0 : -1;
 
     hit = thit;
@@ -540,7 +534,7 @@ public:
     return true;
   }
 
-  void ctr_update(int tableid, bool taken, DataSign ds) {
+  void ctr_update(int tableid, bool taken) {
     if(!thit)
       return;
     if(!hit) {
@@ -563,7 +557,6 @@ public:
       hit = true;
     }
 
-    bds[pos] = ds;
 #if CWIDTH > 4
     if(taken && ctr[pos] < -1)
       ctr[pos] = ctr[pos] / 2;
@@ -735,7 +728,6 @@ public:
 
   uint8_t         ghist[HISTBUFFERLENGTH];
   int             ptghist;
-  uint64_t        data_history;
   folded_history *ch_i;    // [NHIST + 1];	//utility for computing TAGE indices
   folded_history *ch_t[2]; // [NHIST + 1];	//utility for computing TAGE tags
 
@@ -776,7 +768,7 @@ public:
       , blogb(_blogb)
       , log2fetchwidth(_log2fetchwidth)
       , bwidth(_bwidth)
-      , nhist(_nhist)
+      , nhist(_nhist>=MAXHIST?MAXHIST:_nhist)
       , sc(_sc) {
 
     ch_i    = new folded_history[nhist + 1];
@@ -909,13 +901,14 @@ public:
       Fm[i] = 2;
 #endif
 
-#ifdef POWER
     m[1]     = MINHIST;
     m[nhist] = MAXHIST;
     for(int i = 2; i <= nhist; i++) {
-      m[i] = (int)(((double)MINHIST * pow((double)(MAXHIST) / (double)MINHIST, (double)(i - 1) / (double)((nhist - 1)))) + 0.5);
+      if (MAXHIST<=nhist)
+        m[i] = i;
+      else
+        m[i] = (int)(((double)MINHIST * pow((double)(MAXHIST) / (double)MINHIST, (double)(i - 1) / (double)((nhist - 1)))) + 0.5);
     }
-#endif
 
     for(int i = 1; i <= nhist; i++) {
       TB[i]   = TBITS + (i / 2);
@@ -1063,7 +1056,7 @@ public:
     int index;
 #ifdef USE_DOLC
     // Dual bank per bank (lower bit is PC based)
-    uint64_t sign1 = dolc.getSign(logg[bank], m[bank]);
+    uint64_t sign1 = idolc.getSign(logg[bank], m[bank]);
     index          = PC ^ (PC >> (bank + 1)) ^ (sign1);
 #else
     int M = (m[bank] > PHISTWIDTH) ? PHISTWIDTH : m[bank];
@@ -1224,14 +1217,14 @@ public:
 
     GI[0] = lastBoundaryPC >> 2; // Remove 2 lower useless bits
     for(int i = 1; i <= nhist; i++) {
-      GI[i]   = gindex(pcSign(lastBoundaryPC), i, phist, ch_i, false);
+      GI[i]   = gindex(pcSign(lastBoundaryPC,i), i, phist, ch_i, false);
       GTAG[i] = ((GI[i - 1] << (logg[i] / 2)) ^ GI[i - 1]) & ((1 << TB[i]) - 1);
     }
   }
 
-  uint64_t pcSign(uint64_t pc) const {
-    uint64_t cid = pc >> 2;
-    cid          = (cid >> 7) ^ (cid);
+  uint64_t pcSign(uint64_t pc, int deg=0) const {
+    uint64_t cid = pc >> 1;
+    cid          = (cid >> (7+deg)) ^ (cid);
     return cid;
   }
 
@@ -1240,14 +1233,14 @@ public:
     HitBank = 0;
     AltBank = 0;
     for(int i = 1; i <= nhist; i++) {
-      if(gtable[i][GI[i] ^ data_history].isHit()) {
-        LongestMatchPred = (gtable[i][GI[i] ^ data_history].ctr_isTaken());
+      if(gtable[i][GI[i]].isHit()) {
+        LongestMatchPred = (gtable[i][GI[i]].ctr_isTaken());
         HitBank          = i;
       }
     }
 
     for(int i = HitBank - 1; i > 0; i--) {
-      if(gtable[i][GI[i] ^ data_history].isHit()) {
+      if(gtable[i][GI[i]].isHit()) {
         AltBank = i;
         break;
       }
@@ -1276,7 +1269,7 @@ public:
     if(HitBank > 0) {
 
       if(AltBank > 0)
-        alttaken = (gtable[AltBank][GI[AltBank] ^ data_history].ctr_isTaken());
+        alttaken = (gtable[AltBank][GI[AltBank]].ctr_isTaken());
       else
         alttaken = bimodal.predict();
 
@@ -1285,15 +1278,15 @@ public:
       int  index          = INDUSEALT ^ LongestMatchPred;
       bool Huse_alt_on_na = (use_alt_on_na[index][HitBank > (nhist / 3)] >= 0);
 
-      if(!Huse_alt_on_na || !gtable[HitBank][GI[HitBank] ^ data_history].ctr_weak()) {
+      if(!Huse_alt_on_na || !gtable[HitBank][GI[HitBank]].ctr_weak()) {
         tage_pred = LongestMatchPred;
-        HighConf  = gtable[HitBank][GI[HitBank] ^ data_history].ctr_highconf();
-        WeakConf  = gtable[HitBank][GI[HitBank] ^ data_history].ctr_weak();
+        HighConf  = gtable[HitBank][GI[HitBank]].ctr_highconf();
+        WeakConf  = gtable[HitBank][GI[HitBank]].ctr_weak();
       } else {
         tage_pred = alttaken;
         if(AltBank) {
-          HighConf = gtable[AltBank][GI[AltBank] ^ data_history].ctr_highconf();
-          WeakConf = gtable[AltBank][GI[AltBank] ^ data_history].ctr_weak();
+          HighConf = gtable[AltBank][GI[AltBank]].ctr_highconf();
+          WeakConf = gtable[AltBank][GI[AltBank]].ctr_weak();
         } else {
           HighConf = bimodal.highconf();
           WeakConf = !HighConf;
@@ -1332,7 +1325,11 @@ public:
   void fetchBoundaryBegin(AddrType PC) {
 
     lastBoundaryPC   = PC;
+#ifdef SIMPLER_DOLC_PATH
+    lastBoundarySign = pcSign(PC);
+#else
     lastBoundarySign = 0;
+#endif
     lastBoundaryCtrl = false;
 
     setTAGEIndex();
@@ -1341,7 +1338,7 @@ public:
   void fetchBoundaryEnd() {
 #ifdef USE_DOLC
     if(lastBoundaryCtrl)
-      dolc.update(lastBoundarySign);
+      idolc.update(lastBoundarySign);
 #endif
   }
 
@@ -1354,41 +1351,31 @@ public:
   // TODO: WHy fetch predict is not zero?
   //         TODO: update 2 entries with different data abd same boff
   int fetchBoundaryOffsetOthers(AddrType PC) {
-    int boff         = (PC >> 3) & ((1 << (log2fetchwidth - 1)) - 1);
+    int boff         = (PC >> 1) & ((1 << (log2fetchwidth - 1)) - 1);
+#ifndef SIMPLER_DOLC_PATH
     lastBoundarySign = dohash(lastBoundarySign, pcSign(PC));
+#endif
 
     lastBoundaryCtrl = true;
 
     return boff;
   }
 
-  void fetchBoundaryOffsetBranch(AddrType PC, DataSign ds) {
+  void fetchBoundaryOffsetBranch(AddrType PC) {
 
     int boff = fetchBoundaryOffsetOthers(PC);
 
     // bimodal.select(GI[0],boff);
-    if(ds != DS_NoData)
-      bimodal.select(PC ^ (ds << 4));
-    else
-      bimodal.select(PC);
+    bimodal.select(PC);
 
     for(int i = 1; i <= nhist; i++) {
-      gtable[i][GI[i] ^ data_history].select(GTAG[i], boff, DS_NoData); // ds);
+      gtable[i][GI[i]].select(GTAG[i], boff);
     }
   }
 
-  bool getPrediction(AddrType PC, DataSign ds, bool &bias) {
+  bool getPrediction(AddrType PC, bool &bias) {
 
-    // data_history = ((data_history<<6) ^ (uint64_t)ds) & ((1<<LOGG)-1);
-    // data_history = ((data_history<<2) ^ (uint64_t)ds) & ((1<<LOGG)-1);
-    data_history = ((uint64_t)ds) & ((1 << LOGG) - 1);
-    // data_history = 0;
-    // if (ds < DS_N2)
-    //  lastBoundaryPC = lastBoundaryPC ^ (((uint64_t)ds) & ((1<<LOGG)-1)<<4);
-
-    fetchBoundaryOffsetBranch(PC, ds);
-    ds = DS_NoData; // To avoid poluting tables (alt model)
-
+    fetchBoundaryOffsetBranch(PC);
     setTAGEPred();
 
     pred_taken = tage_pred;
@@ -1584,8 +1571,9 @@ public:
 
   // PREDICTOR UPDATE
 
-  void updatePredictor(AddrType PC, DataSign ds, bool resolveDir, bool predDir, AddrType branchTarget) {
-    ds = DS_NoData;
+  void updatePredictor(AddrType PC, bool resolveDir, bool predDir, AddrType branchTarget) {
+
+    //MSG("pc:%x t:%d p:%d ghr:%lx",PC, resolveDir, predDir, GI[nhist]);
 
 #if 0
     if (HitBank) {
@@ -1684,7 +1672,7 @@ public:
       if(HitBank > 0) {
         // Manage the selection between longest matching and alternate matching
         // for "pseudo"-newly allocated longest matching entry
-        bool PseudoNewAlloc = gtable[HitBank][GI[HitBank] ^ data_history].ctr_weak();
+        bool PseudoNewAlloc = gtable[HitBank][GI[HitBank]].ctr_weak();
         // an entry is considered as newly allocated if its prediction counter is weak
         if(PseudoNewAlloc) {
           if(LongestMatchPred == resolveDir)
@@ -1717,17 +1705,17 @@ public:
 
         int weakBank = HitBank + A;
 #ifdef SUBENTRIES
-        bool skip[nhist] = {
+        bool skip[nhist+1] = {
             false,
         };
 
         // First try tag (but not offset hit)
         for(int i = weakBank; i <= nhist; i += 1) {
 
-          if(gtable[i][GI[i] ^ data_history].isTagHit()) {
+          if(gtable[i][GI[i]].isTagHit()) {
             weakBank = i;
 
-            if(!gtable[i][GI[i] ^ data_history].ctr_steal(resolveDir))
+            if(!gtable[i][GI[i]].ctr_steal(resolveDir))
               continue;
 
             skip[i] = true;
@@ -1749,20 +1737,20 @@ public:
             if(skip[i])
               continue;
 
-            if(gtable[i][GI[i] ^ data_history].u_get() == 0) {
+            if(gtable[i][GI[i]].u_get() == 0) {
               weakBank = i;
 
 #ifdef SUBENTRIES
               // FIXME: If tag hit, no need to nuke. Just remove any of them (weaker counter better). force_steal
-              if(gtable[i][GI[i] ^ data_history].isTagHit()) {
-                gtable[i][GI[i] ^ data_history].ctr_force_steal(resolveDir, ds);
+              if(gtable[i][GI[i]].isTagHit()) {
+                gtable[i][GI[i]].ctr_force_steal(resolveDir);
                 // gtable[i][GI[i]].dump(); printf(" alloc2 pc=%x\n",PC);
               } else {
-                gtable[i][GI[i] ^ data_history].reset(i, GTAG[i], ds, resolveDir);
+                gtable[i][GI[i]].reset(i, GTAG[i], resolveDir);
                 // gtable[i][GI[i]].dump(); printf(" alloc3 pc=%x\n",PC);
               }
 #else
-              gtable[i][GI[i] ^ data_history].reset(i, GTAG[i], ds, resolveDir);
+              gtable[i][GI[i]].reset(i, GTAG[i], resolveDir);
 #endif
 
               NA++;
@@ -1790,7 +1778,7 @@ public:
             for(int i = HitBank + 1; i <= nhist; i += 1) {
               int idx1 = GI[i];
 
-              gtable[i][idx1 ^ data_history].u_dec();
+              gtable[i][idx1].u_dec();
               TICK--;
               // It two banks are available
               // int idx2 = idx1 ^ 0x1; // Toggle bank selection bit
@@ -1815,26 +1803,26 @@ public:
 #if 1
       // TODO: recheck that this is better
       if(HitBank) {
-        if(gtable[HitBank][GI[HitBank] ^ data_history].isHit()) {
+        if(gtable[HitBank][GI[HitBank]].isHit()) {
           if(LongestMatchPred != resolveDir) {
-            gtable[HitBank][GI[HitBank] ^ data_history].u_dec();
+            gtable[HitBank][GI[HitBank]].u_dec();
           }
         }
       }
 #endif
 
       if(HitBank > 0) {
-        gtable[HitBank][GI[HitBank] ^ data_history].ctr_update(HitBank, resolveDir, ds);
-        if(gtable[HitBank][GI[HitBank] ^ data_history].u_get() == 0 && AltBank > 0) {
-          gtable[AltBank][GI[AltBank] ^ data_history].ctr_update(0, resolveDir, ds);
+        gtable[HitBank][GI[HitBank]].ctr_update(HitBank, resolveDir);
+        if(gtable[HitBank][GI[HitBank]].u_get() == 0 && AltBank > 0) {
+          gtable[AltBank][GI[AltBank]].ctr_update(0, resolveDir);
         } else {
           bimodal.update(resolveDir);
         }
         if(LongestMatchPred != alttaken) {     // HitBank and AltBank dissagree
           if(LongestMatchPred == resolveDir) { // LongestMatchPred == resolveDir && !noAlloc
-            gtable[HitBank][GI[HitBank] ^ data_history].u_inc();
+            gtable[HitBank][GI[HitBank]].u_inc();
           } else {
-            gtable[HitBank][GI[HitBank] ^ data_history].u_dec();
+            gtable[HitBank][GI[HitBank]].u_dec();
           }
         }
       } else {

@@ -2,6 +2,8 @@
 #ifndef DOLC_H
 #define DOLC_H
 
+//#define DOLC_RLE
+
 class DOLC {
 private:
   uint64_t depth;
@@ -9,6 +11,10 @@ private:
   uint64_t lastBits;
   uint64_t currBits;
 
+  uint64_t  phase;
+  uint16_t  rl1;
+  uint16_t  rl2;
+  uint16_t  rl3;
   uint64_t *hist;
   uint64_t *histMask;
   uint64_t *histBits;
@@ -21,14 +27,31 @@ private:
     histBits = new uint64_t[depth];
     histMask = new uint64_t[depth];
 
+    phase    = 0;
+    rl1      = 0;
+    rl2      = 0;
+    rl3      = 0;
+
     uint64_t obits = olderBits;
     for(uint64_t i = 0; i < depth; i++) {
       hist[i] = 0;
+#if 1
+      if(i == 2) {
+        obits = 4;
+      }else if(i == 3) {
+        obits = 2;
+      }else if(i == 6) {
+        obits = 1;
+      }
+      if(obits < 1)
+        obits = 1;
+#else
       if((i == 128) || (i == 256) || (i == 64) || (i == 32) || (i == 3316)) {
         obits--;
       }
-      if(obits < 2)
-        obits = 2;
+      if(obits < 1)
+        obits = 1;
+#endif
 
       histBits[i] = obits;
       histMask[i] = ((uint64_t)1 << obits) - 1;
@@ -60,6 +83,7 @@ public:
     }
   }
 
+#if 0
   DOLC(const DOLC &other) {
     if(depth != other.depth || olderBits != other.olderBits || lastBits != other.lastBits || currBits != other.currBits) {
       delete hist;
@@ -80,6 +104,7 @@ public:
   }
 
   void mix(uint64_t addr) {
+    MSG("mix %lx",addr);
 
     uint32_t drop  = hist[0] >> 10;
     uint32_t sign1 = hist[0] ^ drop ^ (drop << (5));
@@ -88,14 +113,59 @@ public:
     hist[0] = sign2;
   }
 
+  void reset(uint64_t sign) {
+    for(uint64_t i = 0; i < depth; i++) {
+      hist[i] = sign & histMask[i];
+    }
+  }
+#endif
+
   void update(uint64_t addr) {
 
-    int duplicate = depth - 1; // Start full depth, if no duplicate
-    for(int i = duplicate; i > 0; i--) {
+#ifdef DOLC_RLE
+    if (hist[0] == addr) { // Same patter, RLE compress
+      //MSG("rl1 %lx %d",addr,rl1);
+      rl1++;
+      return;
+    }
+    hist[0] ^= rl1;
+    rl1 = 0;
+
+    if ((addr==hist[1] || addr==hist[2])
+        && (hist[0]==hist[1] || hist[0]==hist[2])) {
+      //MSG("rl2 %lx %d",addr,rl2);
+      rl2++;
+
+      hist[0] = addr;
+      return;
+    }
+    hist[0] ^= rl2;
+    rl2 = 0;
+    if ((addr==hist[2] || addr==hist[3] || addr==hist[4])
+        && (hist[0]==hist[2] || hist[0]==hist[3] || hist[0]==hist[4])
+        && (hist[1]==hist[2] || hist[1]==hist[3] || hist[1]==hist[4])) {
+      //MSG("rl3 %lx %d",addr,rl3);
+      rl3++;
+
+      hist[2] = hist[1];
+      hist[1] = hist[0];
+      hist[0] = addr;
+      return;
+    }
+    hist[0] ^= rl2;
+    rl3 = 0;
+    //MSG("xxx %lx",addr);
+#endif
+
+    for(int i = depth-1; i > 0; i--) {
       hist[i] = hist[i - 1];
     }
 
     hist[0] = addr;
+  }
+
+  void setPhase(uint64_t addr) {
+    phase = addr;
   }
 
   uint64_t getSign(uint16_t bits, uint16_t m) const {
@@ -118,6 +188,8 @@ public:
 
       nbits += oBits;
     }
+
+    sign = sign ^ phase;
 
     if(bits > nbits) {
       int nfolds = bits / nbits;
@@ -146,12 +218,6 @@ public:
 #endif
 
     return sign & ((1 << (bits)) - 1);
-  }
-
-  void reset(uint64_t sign) {
-    for(uint64_t i = 0; i < depth; i++) {
-      hist[i] = sign & histMask[i];
-    }
   }
 };
 

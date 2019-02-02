@@ -1,35 +1,23 @@
-PROJECT(esesc) 
+PROJECT(esesc)
 INCLUDE("${esesc_SOURCE_DIR}/CMake.common")
 SET(CMAKE_MODULE_PATH "${esesc_SOURCE_DIR}/conf/cmake-modules")
 cmake_minimum_required(VERSION 2.7)
-
-#IF(ENABLE_PEQ)
-#  MESSAGE("  -DENABLE_PEQ=1                Enable Equation based power model support")
-#ELSE(ENABLE_PEQ)
-#  MESSAGE("  -DENABLE_PEQ=0                Disable Equation based power model Fusupport (default)")
-#ENDIF(ENABLE_PEQ)
 
 IF(ESESC_SYSTEM)
   MESSAGE("  -DESESC_SYSTEM=1              Enable esesc/qemu full system simulation")
 ELSE(ESESC_SYSTEM)
   MESSAGE("  -DESESC_SYSTEM=0              Enable esesc/qemu user mode simulation")
 ENDIF(ESESC_SYSTEM)
-  
+
+IF(ESESC_MIPSR6)
+  MESSAGE("  -DESESC_MIPSR6=1              MIPSR6 QEMU")
+ELSE(ESESC_MIPSR6)
+  MESSAGE("  -DESESC_MIPSR6=0              RISCV QEMU")
+ENDIF(ESESC_MIPSR6)
+
 IF(ESESC_TRACE_DATA)
   MESSAGE("  -DESESC_TRACE_DATA=1          Get qemu addr and data for dinst use")
 ENDIF(ESESC_TRACE_DATA)
-
-IF(ENABLE_LIVE)
-  MESSAGE("  -DESESC_LIVE=1                Enable esesc live sampling support")
-ELSE(ENABLE_LIVE)
-  MESSAGE("  -DESESC_LIVE=0                Disable esesc live compilation (default)")
-ENDIF(ENABLE_LIVE)
-
-IF(ENABLE_LIVECRIU)
-  MESSAGE("  -DESESC_LIVECRIU=1                Enable CRIU checkpoints with live sampling support")
-ELSE(ENABLE_LIVECRIU)
-  MESSAGE("  -DESESC_LIVECRIU=0                Disable CRIU checkpoints with live compilation (default)")
-ENDIF(ENABLE_LIVECRIU)
 
 
 #############
@@ -94,19 +82,23 @@ ELSE(CMAKE_BUILD_TYPE MATCHES "Debug")
   SET(QEMU_EXTRA --cc=${CMAKE_C_COMPILER})
 ENDIF(CMAKE_BUILD_TYPE MATCHES "Debug")
 
-IF(ESESC_SYSTEM)
-  SET(QEMU_TARGET --target-list=riscv64-softmmu)
-ELSE(ESESC_SYSTEM)
-  IF(ESESC_N32)
-    SET(QEMU_TARGET --target-list=riscv32-linux-user)
-  ELSE(ESESC_N32)
+IF(ESESC_MIPSR6)
+  IF(ESESC_SYSTEM)
+    SET(QEMU_TARGET --target-list=mips64el-softmmu)
+  ELSE(ESESC_SYSTEM)
+    SET(QEMU_TARGET --target-list=mips64el-linux-user)
+  ENDIF(ESESC_SYSTEM)
+ELSE(ESESC_MIPSR6)
+  IF(ESESC_SYSTEM)
+    SET(QEMU_TARGET --target-list=riscv64-softmmu)
+  ELSE(ESESC_SYSTEM)
     SET(QEMU_TARGET --target-list=riscv64-linux-user)
-  ENDIF(ESESC_N32)
-ENDIF(ESESC_SYSTEM)
+  ENDIF(ESESC_SYSTEM)
+ENDIF(ESESC_MIPSR6)
 
 ExternalProject_Add(qemu
-  SOURCE_DIR ${esesc_SOURCE_DIR}/emul/qemu
-  CONFIGURE_COMMAND ${esesc_SOURCE_DIR}/emul/qemu/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET}
+  SOURCE_DIR ${qemu_SOURCE}
+  CONFIGURE_COMMAND ${qemu_SOURCE}/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET}
   --disable-virtfs --disable-numa --disable-nettle --disable-gcrypt --disable-bzip2 --disable-libssh2 --disable-curl
   --disable-linux-aio --disable-sdl --disable-docs --enable-esesc --python=python2.7 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-smartcard --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu

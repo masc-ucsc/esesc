@@ -1,40 +1,15 @@
 # Environment 
-ESESC runs on Linux.  It has been tested on x86-64 and ARM platforms. The x86-64 system is the default, but ESESC also compiles and runs on ARM. ESESC itself executes native ARM binaries using QEMU as an emulator.
+ESESC runs on Linux.  It has been tested on x86-64 and ARM platforms. The x86-64 system is the default, but ESESC also compiles and runs on ARM.
+
+Previous version of ESESC had ARMv7, currently it only has MIPSR6 and RISCV. The default flow is RISCV.
+
 
 # Requirements 
-ESESC is currently tested with Arch Linux and with Ubunut 12.04 LTS.  The following commands list the packages and configuration settings required for each tested OS.  Other Linux version should work as well, but the list of packages will need to be adapted.
+ESESC is currently tested with Arch Linux and with Ubunut with CI. We use this docker images for testing: https://github.com/masc-ucsc/docker-images
 
-## Arch Linux: (64bit)
 
-    pacman -S boost
-    pacman -S bison flex
-    pacman -S gcc
-    pacman -S python2
-    pacman -S texinfo
-    pacman -S cmake
-    pacman -S make
-    pacman -S pkgconfig
+Check the dockerfiles to see the required packages.
 
-## Ubuntu 12.04 LTS (64bit)
-    sudo apt-get install build-essential
-    sudo apt-get install g++
-    sudo apt-get install cmake
-    sudo apt-get install libboost-dev
-    sudo apt-get install bison flex
-    sudo apt-get install python
-    sudo apt-get install libglib2.0-dev
-    sudo apt-get install libpixman-1-dev
-    sudo apt-get install libncurses5-dev
-    sudo apt-get install zlib1g-dev
-
-With Ubuntu 12.04 it might also be necessary to set the `mmap_min_addr` setting.
-This can be done by editing `/etc/sysctl.conf` and adding the line:
-
-    vm.mmap_min_addr = 4096
-
-To apply this change to the current session run the following command as root:
-
-    echo 4096 > /proc/sys/vm/mmap_min_addr
 
 # Steps to compile and build eSESC
 
@@ -56,6 +31,9 @@ These steps assume that the ESESC repo is checked out in the `~/projs/esesc` dir
 
 # Track Load data
     cmake -DESESC_TRACE_DATA=1 ~/projs/esesc
+
+# MIPSR6
+    cmake -DESESC_MIPSR6=1 ~/projs/esesc
 
 # Release and System
     mkdir ~/build_system
