@@ -39,6 +39,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
+#include <assert.h>
+#include <iostream>
+#include <ios>
+#include <fstream>
+#include <boost/format.hpp>
 
 #include "BPred.h"
 #include "IMLIBest.h"
@@ -1319,7 +1324,7 @@ uint32_t LoopPredictor::getLoopIter(uint64_t key, uint64_t tag) const {
   return ent->iterCounter;
 }
 
-/*****************************************
+
  * BPSOgehl  ; SCOORE Adaptation of the OGELH predictor
  *
  * Based on "The O-GEHL Branch Predictor" by Andre Seznec
@@ -2030,6 +2035,8 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
     pred = new BPTData(id, sec, sname);
   } else if(strcasecmp(type, "sogehl") == 0) {
     pred = new BPSOgehl(id, sec, sname);
+  } else if(strcasecmp(type, "ohsnap") == 0){
+    pred = new OhSnap(id, sec, sname); 
   } else {
     MSG("BPredictor::BPredictor Invalid branch predictor type [%s] in section [%s]", type, sec);
     SescConf->notCorrect();

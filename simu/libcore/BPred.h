@@ -452,6 +452,7 @@ public:
   uint32_t getLoopIter(uint64_t key, uint64_t tag) const;
 };
 
+
 #if 1
 class BPSOgehl : public BPred {
 private:
