@@ -58,9 +58,7 @@ void helper_esesc_dump() {
     CPUState *other_cs = first_cpu;
 
     CPU_FOREACH(other_cs) {
-#ifdef CONFIG_ESESC
         printf("cpuid=%d halted=%d icount=%lld tcount=%lld\n",other_cs->fid, other_cs->halted,icount, tcount);
-#endif
     }
 }
 
@@ -76,9 +74,7 @@ void helper_esesc_load(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_
   reg      = reg >> 8;
   reg      = reg >> 8;
   int dest = reg & 0xFF;
-#ifdef CONFIG_ESESC
   AtomicAdd(&icount,QEMUReader_queue_load(pc, target, data, cpu->fid, src1, dest));
-#endif
 }
 
 void helper_esesc_ctrl(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_t op, uint64_t reg) {
@@ -87,7 +83,6 @@ void helper_esesc_ctrl(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_
     return;
   }
 
-#ifdef CONFIG_ESESC
   CPUState *cpu       = ENV_GET_CPU(env);
 
   if (pc == target) {
@@ -103,7 +98,29 @@ void helper_esesc_ctrl(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_
   int dest = reg & 0xFF;
 
   AtomicAdd(&icount,QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest));
-#endif
+}
+
+void helper_esesc_ctrl_data(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_t data1, uint64_t data2, uint64_t reg) {
+  if (icount>0) {
+    AtomicSub(&icount,1);
+    return;
+  }
+
+  CPUState *cpu       = ENV_GET_CPU(env);
+
+  if (pc == target) {
+    printf("jump to itself (terminate) pc:%llx\n",pc);
+    QEMUReader_finish(cpu->fid);
+    return;
+  }
+
+  int src1 = reg & 0xFF;
+  reg      = reg >> 8;
+  int src2 = reg & 0xFF;
+  reg      = reg >> 8;
+  int dest = reg & 0xFF;
+
+  AtomicAdd(&icount,QEMUReader_queue_ctrl_data(pc, target, data1, data2, cpu->fid, iBALU_LBRANCH, src1, src2, dest));
 }
 
 void helper_esesc_alu(CPURISCVState *env, uint64_t pc, uint64_t op, uint64_t reg) {
@@ -120,21 +137,15 @@ void helper_esesc_alu(CPURISCVState *env, uint64_t pc, uint64_t op, uint64_t reg
   reg      = reg >> 8;
   int dest = reg & 0xFF;
 
-#ifdef CONFIG_ESESC
   AtomicAdd(&icount,QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest));
-#endif
 }
-#endif
 
-#ifdef CONFIG_ESESC
 void helper_esesc0(CPURISCVState *env)
 {
     CPUState *cs = CPU(riscv_env_get_cpu(env));
 
     icount = 0;
-#ifdef CONFIG_ESESC
     QEMUReader_start_roi(cs->fid);
-#endif
 }
 #endif
 

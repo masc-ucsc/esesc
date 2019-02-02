@@ -90,6 +90,16 @@ static const int tcg_memop_lookup[8] = {
   tcg_temp_free_i64(hpc); \
   } while(0)
 
+#define ESESC_TRACE_LBRANCH(pc,target,data1,data2,src1,src2,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 htarget = tcg_const_i64(target); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((src2)&0xFF)<<8) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_ctrl_data(cpu_env, hpc, htarget, data1, data2, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(htarget); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
 #define ESESC_TRACE_LCTRL2(pc,htarget,op,src1,src2,dest) do { \
   TCGv_i64 hpc     = tcg_const_i64(pc); \
   TCGv_i64 hop     = tcg_const_i64(op); \
@@ -141,6 +151,7 @@ static const int tcg_memop_lookup[8] = {
 #else
 #define ESESC_TRACE_ALU(pc,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_LCTRL(pc,target,op,src1,src2,dest) do { }while(0)
+#define ESESC_TRACE_LBRANCH(pc,target,data1,data2,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_LCTRL2(pc,target,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_RCTRL(pc,target,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_MEM(pc,addr,op,src1,src2,dest) do { }while(0)
@@ -755,13 +766,38 @@ static void gen_branch(DisasContext *ctx, uint32_t opc, int rs1, int rs2,
         gen_exception_illegal(ctx);
         return;
     }
+
     tcg_temp_free(source1);
     tcg_temp_free(source2);
-    ESESC_TRACE_LCTRL(ctx->base.pc_next,0,iBALU_LBRANCH, rs1, rs2, LREG_InvalidOutput); // Not Taken path
+
+    if (rs1 && rs2) {
+      ESESC_TRACE_LBRANCH(ctx->base.pc_next,0,cpu_gpr[rs1], cpu_gpr[rs2], rs1, rs2, LREG_InvalidOutput); // Not Taken path
+    }else{
+      TCGv_i64 hzero = tcg_const_i64(0);
+      if (rs1==0 && rs2==0)
+        ESESC_TRACE_LBRANCH(ctx->base.pc_next,0, hzero,  hzero, rs1, rs2, LREG_InvalidOutput); // Not Taken path
+      else if (rs2==0)
+        ESESC_TRACE_LBRANCH(ctx->base.pc_next,0, cpu_gpr[rs1],  hzero, rs1, rs2, LREG_InvalidOutput); // Not Taken path
+      else
+        ESESC_TRACE_LBRANCH(ctx->base.pc_next,0, hzero, cpu_gpr[rs2], rs1, rs2, LREG_InvalidOutput); // Not Taken path
+      tcg_temp_free_i64(hzero);
+    }
 
     gen_goto_tb(ctx, 1, ctx->pc_succ_insn);
     gen_set_label(l); /* branch taken */
-    ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->base.pc_next + bimm,iBALU_LBRANCH, rs1, rs2, LREG_InvalidOutput); // Taken path
+
+    if (rs1 && rs2) {
+      ESESC_TRACE_LBRANCH(ctx->base.pc_next,ctx->base.pc_next + bimm,cpu_gpr[rs1], cpu_gpr[rs2], rs1, rs2, LREG_InvalidOutput); // Taken path
+    }else{
+      TCGv_i64 hzero = tcg_const_i64(0);
+      if (rs1==0 && rs2==0)
+        ESESC_TRACE_LBRANCH(ctx->base.pc_next,ctx->base.pc_next + bimm, hzero,  hzero, rs1, rs2, LREG_InvalidOutput); // Taken path
+      else if (rs2==0)
+        ESESC_TRACE_LBRANCH(ctx->base.pc_next,ctx->base.pc_next + bimm, cpu_gpr[rs1],  hzero, rs1, rs2, LREG_InvalidOutput); // Taken path
+      else
+        ESESC_TRACE_LBRANCH(ctx->base.pc_next,ctx->base.pc_next + bimm, hzero, cpu_gpr[rs2], rs1, rs2, LREG_InvalidOutput); // Taken path
+      tcg_temp_free_i64(hzero);
+    }
 
     if (!has_ext(ctx, RVC) && ((ctx->base.pc_next + bimm) & 0x3)) {
         /* misaligned */
@@ -855,8 +891,6 @@ static void gen_fp_load(DisasContext *ctx, uint32_t opc, int rd,
     gen_get_gpr(t0, rs1);
     tcg_gen_addi_tl(t0, t0, imm);
 
-    ESESC_TRACE_LOAD(ctx->base.pc_next,t0, t0, rs1, LREG_FP0+rd);
-
     switch (opc) {
     case OPC_RISC_FLW:
         if (!has_ext(ctx, RVF)) {
@@ -877,6 +911,8 @@ static void gen_fp_load(DisasContext *ctx, uint32_t opc, int rd,
         gen_exception_illegal(ctx);
         break;
     }
+    ESESC_TRACE_LOAD(ctx->base.pc_next,t0, cpu_fpr[rd], rs1, LREG_FP0+rd);
+
     tcg_temp_free(t0);
 
     mark_fs_dirty(ctx);
