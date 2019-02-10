@@ -193,7 +193,13 @@ private:
   DataType data;
   DataSign data_sign;
   int      chained;
+  //BR stats
+  AddrType brpc;
+  uint64_t br_op_type;
+  DataType br_data1;
+  DataType br_data2;
 #endif
+  bool br_ld_chain_predictable;
   Cluster *    cluster;
   Resource *   resource;
   DInst **     RAT1Entry;
@@ -264,6 +270,12 @@ public:
     return keepStats;
   }
 
+  bool is_br_ld_chain_predictable(){
+    return br_ld_chain_predictable;
+  }
+
+
+
   static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
     DInst *i = dInstPool.out();
 
@@ -278,6 +290,11 @@ public:
     i->ldpc      = 0;
     i->data_sign = DS_NoData;
     i->chained   = 0;
+    //BR stats
+    i->brpc = 0;
+    i->br_op_type = -1;
+    i->br_data1   = 0;
+    i->br_data2   = 0;
 #endif
     i->fetched   = 0;
     i->keepStats = keepStats;
@@ -288,13 +305,33 @@ public:
     return i;
   }
 #ifdef ESESC_TRACE_DATA
+  void setDataBr(uint64_t _data1, uint64_t _data2) {
+    br_data1 = _data1;
+    br_data2 = _data2;
+  }
+
+  DataType getBrData1() const {
+    return br_data1;
+  }
+
+  DataType getBrData2() const {
+    return br_data2;
+  }
+
+  AddrType getBrPC() const {
+    return brpc;
+  }
+
   static DataSign calcDataSign(int64_t data);
+  
   DataType        getData() const {
     return data;
   }
+
   DataSign getDataSign() const {
     return (DataSign)(int(data_sign) & 0x1FF);
   } // FIXME:}
+
   // DataSign getDataSign() const { return data_sign; }
   void setDataSign(int64_t _data, AddrType ldpc);
   void addDataSign(int ds, int64_t _data, AddrType ldpc);

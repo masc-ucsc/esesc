@@ -69,8 +69,8 @@ public:
   }
 
   void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2,
-                        bool inEmuTiming) {
-    reader->queueInstruction(pc, addr, data, fid, op, src1, src2, dest, dest2, inEmuTiming);
+                        bool inEmuTiming, DataType data2) {
+    reader->queueInstruction(pc, addr, data, fid, op, src1, src2, dest, dest2, inEmuTiming, data2);
   }
 
   void syscall(uint32_t num, Time_t time, FlowID fid) {

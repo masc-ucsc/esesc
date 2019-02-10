@@ -199,7 +199,7 @@ public:
   virtual bool isActive(FlowID fid) = 0;
 
   virtual uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest,
-                         int dest2)                            = 0;
+                         int dest2, uint64_t data2 = 0)                            = 0;
   virtual void     getGPUCycles(FlowID fid, float ratio = 1.0) = 0;
   void             syscall(uint32_t num, uint64_t usecs, FlowID fid);
 

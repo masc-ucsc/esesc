@@ -40,6 +40,7 @@ bool *globalFlowStatus = 0;
 extern "C" void QEMUReader_goto_sleep(void *env);
 extern "C" void QEMUReader_wakeup_from_sleep(void *env);
 extern "C" int  qemuesesc_main(int argc, char **argv, char **envp);
+extern "C" uint64_t esesc_mem_read(uint64_t addr);
 
 extern "C" void *qemuesesc_main_bootstrap(void *threadargs) {
 
@@ -87,6 +88,7 @@ extern "C" uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t d
   // I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
 
 #ifdef DEBUG_QEMU_TRACE
+  //uint64_t raw = esesc_mem_read(pc);
   MSG("pc=%llx addr=%llx data=%llx op=%d cpu=%d src:%d dst:%d",pc,addr,data,iLALU_LD,fid,src1,dest);
 
   I(pc == (last_addr+2) || pc == (last_addr+4) || last_addr==0);
@@ -118,14 +120,15 @@ extern "C" uint64_t QEMUReader_queue_ctrl_data(uint64_t pc, uint64_t addr, uint6
 
   // I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
 #ifdef DEBUG_QEMU_TRACE
-  MSG("pc=%llx addr=%llx data1=%llx data2=%llx op=%d cpu=%d",pc,addr,data1,data2,op,fid);
+  uint64_t raw = esesc_mem_read(pc);
+  MSG("pc=%llx addr=%llx data1=%llx data2=%llx op=%d cpu=%d raw=%llx",pc,addr,data1,data2,op,fid, raw);
 
   I(pc == (last_addr+2) || pc == (last_addr+4) || last_addr==0);
   last_addr = pc;
   if (addr && op >= iBALU_LBRANCH && op <= iBALU_RET)
    last_addr = addr - 4; // fake -4 so that next check works
 #endif
-  uint64_t res = qsamplerlist[fid]->queue(pc, addr, 0, fid, op, src1, src2, dest, LREG_InvalidOutput);
+  uint64_t res = qsamplerlist[fid]->queue(pc, addr, data1, fid, op, src1, src2, dest, LREG_InvalidOutput, data2);
   return res;
 }
 

@@ -63,7 +63,7 @@ public:
 
   // Only method called by remote thread
   void queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest, int dest2,
-                        bool keepStats);
+                        bool keepStats, DataType data2 = 0);
   void syscall(uint32_t num, Time_t time, FlowID fid);
 
   void start();

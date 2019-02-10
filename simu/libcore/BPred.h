@@ -479,6 +479,30 @@ public:
   PredType predict(DInst *dinst, bool doUpdate, bool doStats);
 };
 
+/*LOAD BRANCH PREDICTOR (LDBP)*/
+class BPLdbp : public BPred {
+  private:
+    BPBTB btb;
+    SCTable ldbp_table;
+
+    struct ldbp_table{
+      ldbp_table(){
+        tag = 0;
+        ctr = 0;
+      }
+
+      AddrType tag;
+      int8_t ctr;
+    };
+
+  public:
+    BPLdbp(int32_t i, const char *section, const char *sname);
+    ~BPLdbp(){}
+
+    PredType predict(DInst *dinst, bool doUpdate, bool doStats);
+
+};
+
 class BPredictor {
 private:
   const int32_t id;

@@ -50,6 +50,8 @@
 #include "Report.h"
 #include "SescConf.h"
 
+extern "C" uint64_t esesc_mem_read(uint64_t addr);
+
 //#define CLOSE_TARGET_OPTIMIZATION 1
 
 /*****************************************
@@ -384,6 +386,11 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return btb.predict(dinst, doUpdate, doStats);
 
   bool taken = dinst->isTaken();
+  
+  uint64_t pc = dinst->getPC();
+  //uint64_t raw_op = esesc_mem_read(pc);
+  //checking if br data is working fine
+  //MSG("pc=%llx raw_op=%llx data1=%llx data2=%llx taken=%d",pc, raw_op, dinst->getBrData1(), dinst->getBrData2(), taken);
 
   bool ptaken;
   if(doUpdate)
@@ -404,6 +411,61 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
   return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
+
+/*****************************************
+ * BPTLdbp
+ */
+
+BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname)
+    : BPred(i, section, sname, "ldbp")
+    , btb(i, section, sname)
+    , ldbp_table(section, SescConf->getInt(section, "size"), SescConf->getInt(section, "bits")) {
+  // Constraints
+  SescConf->isInt(section, "size");
+  SescConf->isPower2(section, "size");
+  SescConf->isGT(section, "size", 1);
+
+  SescConf->isBetween(section, "bits", 1, 7);
+
+  // Done
+}
+
+PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
+  if(dinst->getInst()->isJump())
+    return btb.predict(dinst, doUpdate, doStats);
+
+  bool     taken  = dinst->isTaken();
+  AddrType br_pc = dinst->getPC();
+  bool     ptaken;
+  uint64_t raw_op = esesc_mem_read(br_pc);
+  MSG("pc=%llx raw=%llx",br_pc, raw_op);
+  // printf("LDBP pc:%llx ldpc:%llx ds:%d\n", dinst->getPC(), dinst->getLDPC(), dinst->getDataSign());
+  // AddrType t_tag = dinst->getLDPC() ^ (old_pc<<7) ^ (old_pc>>3) ^ (dinst->getDataSign()<<10) ^ (dinst->getDataSign()<<2);
+  // AddrType t_tag = dinst->getPC() ^ dinst->getLDPC() ^ dinst->getDataSign();
+  AddrType t_tag = dinst->getLDPC() ^ (br_pc << 7) ^ (dinst->getDataSign() << 10);
+
+  //FIXME - add br opcode conditions for ldbp to perform prediction
+  if(dinst->is_br_ld_chain_predictable()){
+    if(doUpdate)
+      ptaken = ldbp_table.predict(t_tag, taken);
+    else
+      ptaken = ldbp_table.predict(t_tag);
+  }
+
+  if(!ldbp_table.isLowest(t_tag) && !ldbp_table.isHighest(t_tag))
+    return NoPrediction; // Only if Highly confident
+
+  if(taken != ptaken) {
+    if(doUpdate)
+      btb.updateOnly(dinst);
+    // tDataTable.update(t_tag, taken); //update needed here?
+    return MissPrediction;
+  }
+
+  return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
+}
+
+
 
 /*****************************************
  * BPTData
@@ -1357,6 +1419,10 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
     pred = new BPIMLI(id, sec, sname);
   } else if(strcasecmp(type, "tdata") == 0) {
     pred = new BPTData(id, sec, sname);
+  } else if(strcasecmp(type, "ldbp") == 0) {
+    pred = new BPLdbp(id, sec, sname);
+  } else if(strcasecmp(type, "sogehl") == 0) {
+    pred = new BPSOgehl(id, sec, sname);
   } else {
     MSG("BPredictor::BPredictor Invalid branch predictor type [%s] in section [%s]", type, sec);
     SescConf->notCorrect();

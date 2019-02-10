@@ -80,7 +80,7 @@ public:
   SamplerPeriodic(const char *name, const char *section, EmulInterface *emu, FlowID fid);
   virtual ~SamplerPeriodic();
 
-  uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest, int dest2);
+  uint64_t queue(uint64_t pc, uint64_t addr, uint64_t data, uint32_t fid, char op, int src1, int src2, int dest, int dest2, uint64_t data2 = 0);
   void     setStatsFlag(DInst *dinst);
 };
 

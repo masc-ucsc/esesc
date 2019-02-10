@@ -419,7 +419,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         if(dinst->getInst()->isBranch()) {
           ldpc2brpc[ldpc] = dinst->getPC(); // Not used now. Once prediction is updated
 
-          I(dinst->getDataSign() == DS_NoData);
+          //I(dinst->getDataSign() == DS_NoData); /?FIXME - uncomment later
 
 #ifdef SBPT_JUSTLAST
           data  = lastPredictable_data;

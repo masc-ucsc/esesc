@@ -73,7 +73,7 @@ SamplerSMARTS::~SamplerSMARTS()
 /* }}} */
 
 uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, uint64_t data, FlowID fid, char op, int src1, int src2, int dest,
-                              int dest2)
+                              int dest2, uint64_t data2)
 /* main qemu/gpu/tracer/... entry point {{{1 */
 {
   I(fid < emul->getNumEmuls());
@@ -99,7 +99,7 @@ uint64_t SamplerSMARTS::queue(uint64_t pc, uint64_t addr, uint64_t data, FlowID 
     }
 
     if(mode == EmuDetail || mode == EmuTiming) {
-      emul->queueInstruction(pc, addr, data, fid, op, src1, src2, dest, dest2, getStatsFlag());
+      emul->queueInstruction(pc, addr, data, fid, op, src1, src2, dest, dest2, getStatsFlag(), data2);
       return 0;
     }
 

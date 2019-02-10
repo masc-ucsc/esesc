@@ -143,7 +143,7 @@ QEMUReader::~QEMUReader() {
 /* }}} */
 
 void QEMUReader::queueInstruction(AddrType pc, AddrType addr, DataType data, FlowID fid, int op, int src1, int src2, int dest,
-                                  int dest2, bool keepStats)
+                                  int dest2, bool keepStats, DataType data2)
 /* queue instruction (called by QEMU) {{{1 */
 {
   uint64_t conta = 0;
@@ -191,6 +191,9 @@ void QEMUReader::queueInstruction(AddrType pc, AddrType addr, DataType data, Flo
              static_cast<RegType>(dest), static_cast<RegType>(dest2), keepStats);
 #ifdef ESESC_TRACE_DATA
   rinst->setData(data);
+  if(op == 3) { //add data for Br(op=3) to dinst
+    rinst->setDataBr(data, data2);
+  }
 #endif
 
   tsfifo[fid].push();
@@ -284,6 +287,10 @@ bool QEMUReader::populate(FlowID fid) {
     *dinsth = DInst::create(rinst->getInst(), rinst->getPC(), rinst->getAddr(), fid, rinst->getStatsFlag());
 #ifdef ESESC_TRACE_DATA
     (*dinsth)->setData(rinst->getData());
+    //setData for BR instructions
+    if(rinst->getInst()->getOpcode() == iBALU_LBRANCH || rinst->getInst()->getOpcode() == iBALU_RBRANCH) {
+      (*dinsth)->setDataBr(rinst->getBrData1(), rinst->getBrData2());
+    }
 #endif
 
     ruffer[fid].add();

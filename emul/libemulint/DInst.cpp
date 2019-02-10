@@ -179,6 +179,7 @@ void DInst::setDataSign(int64_t _data, AddrType _ldpc) {
   ldpc = _ldpc;
 
   data_sign = calcDataSign(_data);
+  //br_ld_chain_predictable = true; //FIXME - LDBP does prediction only if this flag is set
 }
 void DInst::addDataSign(int ds, int64_t _data, AddrType _ldpc) {
   ldpc = (ldpc << 4) ^ _ldpc;
