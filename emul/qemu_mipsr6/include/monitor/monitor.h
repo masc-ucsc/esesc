@@ -2,31 +2,27 @@
 #define MONITOR_H
 
 #include "qemu-common.h"
-#include "qapi/qmp/qdict.h"
 #include "block/block.h"
+#include "qapi/qapi-types-misc.h"
 #include "qemu/readline.h"
 
-extern Monitor *cur_mon;
+extern __thread Monitor *cur_mon;
 
 /* flags for monitor_init */
-#define MONITOR_IS_DEFAULT    0x01
+/* 0x01 unused */
 #define MONITOR_USE_READLINE  0x02
 #define MONITOR_USE_CONTROL   0x04
 #define MONITOR_USE_PRETTY    0x08
+#define MONITOR_USE_OOB       0x10
 
 bool monitor_cur_is_qmp(void);
 
-void monitor_init(CharDriverState *chr, int flags);
+void monitor_init_globals(void);
+void monitor_init(Chardev *chr, int flags);
+void monitor_cleanup(void);
 
 int monitor_suspend(Monitor *mon);
 void monitor_resume(Monitor *mon);
-
-int monitor_read_bdrv_key_start(Monitor *mon, BlockDriverState *bs,
-                                BlockCompletionFunc *completion_cb,
-                                void *opaque);
-int monitor_read_block_device_key(Monitor *mon, const char *device,
-                                  BlockCompletionFunc *completion_cb,
-                                  void *opaque);
 
 int monitor_get_fd(Monitor *mon, const char *fdname, Error **errp);
 int monitor_fd_param(Monitor *mon, const char *fdname, Error **errp);
@@ -43,9 +39,6 @@ void monitor_read_command(Monitor *mon, int show_prompt);
 int monitor_read_password(Monitor *mon, ReadLineFunc *readline_func,
                           void *opaque);
 
-void object_add(const char *type, const char *id, const QDict *qdict,
-                Visitor *v, Error **errp);
-
 AddfdInfo *monitor_fdset_add_fd(int fd, bool has_fdset_id, int64_t fdset_id,
                                 bool has_opaque, const char *opaque,
                                 Error **errp);
@@ -54,4 +47,7 @@ int monitor_fdset_dup_fd_add(int64_t fdset_id, int dup_fd);
 void monitor_fdset_dup_fd_remove(int dup_fd);
 int monitor_fdset_dup_fd_find(int dup_fd);
 
-#endif /* !MONITOR_H */
+void monitor_vfprintf(FILE *stream,
+                      const char *fmt, va_list ap) GCC_FMT_ATTR(2, 0);
+
+#endif /* MONITOR_H */

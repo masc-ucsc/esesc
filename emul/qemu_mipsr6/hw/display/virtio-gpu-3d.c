@@ -11,6 +11,7 @@
  * See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/iov.h"
 #include "trace.h"
@@ -19,7 +20,7 @@
 
 #ifdef CONFIG_VIRGL
 
-#include "virglrenderer.h"
+#include <virglrenderer.h>
 
 static struct virgl_renderer_callbacks virtio_gpu_3d_cbs;
 
@@ -75,10 +76,18 @@ static void virgl_cmd_resource_unref(VirtIOGPU *g,
                                      struct virtio_gpu_ctrl_command *cmd)
 {
     struct virtio_gpu_resource_unref unref;
+    struct iovec *res_iovs = NULL;
+    int num_iovs = 0;
 
     VIRTIO_GPU_FILL_CMD(unref);
     trace_virtio_gpu_cmd_res_unref(unref.resource_id);
 
+    virgl_renderer_resource_detach_iov(unref.resource_id,
+                                       &res_iovs,
+                                       &num_iovs);
+    if (res_iovs != NULL && num_iovs != 0) {
+        virtio_gpu_cleanup_mapping_iov(g, res_iovs, num_iovs);
+    }
     virgl_renderer_resource_unref(unref.resource_id);
 }
 
@@ -126,7 +135,7 @@ static void virgl_cmd_resource_flush(VirtIOGPU *g,
     trace_virtio_gpu_cmd_res_flush(rf.resource_id,
                                    rf.r.width, rf.r.height, rf.r.x, rf.r.y);
 
-    for (i = 0; i < VIRTIO_GPU_MAX_SCANOUT; i++) {
+    for (i = 0; i < g->conf.max_outputs; i++) {
         if (g->scanout[i].resource_id != rf.resource_id) {
             continue;
         }
@@ -145,7 +154,7 @@ static void virgl_cmd_set_scanout(VirtIOGPU *g,
     trace_virtio_gpu_cmd_set_scanout(ss.scanout_id, ss.resource_id,
                                      ss.r.width, ss.r.height, ss.r.x, ss.r.y);
 
-    if (ss.scanout_id >= VIRTIO_GPU_MAX_SCANOUT) {
+    if (ss.scanout_id >= g->conf.max_outputs) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: illegal scanout id specified %d",
                       __func__, ss.scanout_id);
         cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID;
@@ -167,15 +176,15 @@ static void virgl_cmd_set_scanout(VirtIOGPU *g,
         qemu_console_resize(g->scanout[ss.scanout_id].con,
                             ss.r.width, ss.r.height);
         virgl_renderer_force_ctx_0();
-        dpy_gl_scanout(g->scanout[ss.scanout_id].con, info.tex_id,
-                       info.flags & 1 /* FIXME: Y_0_TOP */,
-                       ss.r.x, ss.r.y, ss.r.width, ss.r.height);
+        dpy_gl_scanout_texture(g->scanout[ss.scanout_id].con, info.tex_id,
+                               info.flags & 1 /* FIXME: Y_0_TOP */,
+                               info.width, info.height,
+                               ss.r.x, ss.r.y, ss.r.width, ss.r.height);
     } else {
         if (ss.scanout_id != 0) {
             dpy_gfx_replace_surface(g->scanout[ss.scanout_id].con, NULL);
         }
-        dpy_gl_scanout(g->scanout[ss.scanout_id].con, 0, false,
-                       0, 0, 0, 0);
+        dpy_gl_scanout_disable(g->scanout[ss.scanout_id].con);
     }
     g->scanout[ss.scanout_id].resource_id = ss.resource_id;
 }
@@ -197,7 +206,7 @@ static void virgl_cmd_submit_3d(VirtIOGPU *g,
         qemu_log_mask(LOG_GUEST_ERROR, "%s: size mismatch (%zd/%d)",
                       __func__, s, cs.size);
         cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
-        return;
+        goto out;
     }
 
     if (virtio_gpu_stats_enabled(g->conf)) {
@@ -207,6 +216,7 @@ static void virgl_cmd_submit_3d(VirtIOGPU *g,
 
     virgl_renderer_submit_cmd(buf, cs.hdr.ctx_id, cs.size / 4);
 
+out:
     g_free(buf);
 }
 
@@ -281,14 +291,17 @@ static void virgl_resource_attach_backing(VirtIOGPU *g,
     VIRTIO_GPU_FILL_CMD(att_rb);
     trace_virtio_gpu_cmd_res_back_attach(att_rb.resource_id);
 
-    ret = virtio_gpu_create_mapping_iov(&att_rb, cmd, &res_iovs);
+    ret = virtio_gpu_create_mapping_iov(g, &att_rb, cmd, NULL, &res_iovs);
     if (ret != 0) {
         cmd->error = VIRTIO_GPU_RESP_ERR_UNSPEC;
         return;
     }
 
-    virgl_renderer_resource_attach_iov(att_rb.resource_id,
-                                       res_iovs, att_rb.nr_entries);
+    ret = virgl_renderer_resource_attach_iov(att_rb.resource_id,
+                                             res_iovs, att_rb.nr_entries);
+
+    if (ret != 0)
+        virtio_gpu_cleanup_mapping_iov(g, res_iovs, att_rb.nr_entries);
 }
 
 static void virgl_resource_detach_backing(VirtIOGPU *g,
@@ -307,7 +320,7 @@ static void virgl_resource_detach_backing(VirtIOGPU *g,
     if (res_iovs == NULL || num_iovs == 0) {
         return;
     }
-    virtio_gpu_cleanup_mapping_iov(res_iovs, num_iovs);
+    virtio_gpu_cleanup_mapping_iov(g, res_iovs, num_iovs);
 }
 
 
@@ -343,8 +356,14 @@ static void virgl_cmd_get_capset_info(VirtIOGPU *g,
 
     VIRTIO_GPU_FILL_CMD(info);
 
+    memset(&resp, 0, sizeof(resp));
     if (info.capset_index == 0) {
         resp.capset_id = VIRTIO_GPU_CAPSET_VIRGL;
+        virgl_renderer_get_cap_set(resp.capset_id,
+                                   &resp.capset_max_version,
+                                   &resp.capset_max_size);
+    } else if (info.capset_index == 1) {
+        resp.capset_id = VIRTIO_GPU_CAPSET_VIRGL2;
         virgl_renderer_get_cap_set(resp.capset_id,
                                    &resp.capset_max_version,
                                    &resp.capset_max_size);
@@ -366,8 +385,12 @@ static void virgl_cmd_get_capset(VirtIOGPU *g,
 
     virgl_renderer_get_cap_set(gc.capset_id, &max_ver,
                                &max_size);
-    resp = g_malloc(sizeof(*resp) + max_size);
+    if (!max_size) {
+        cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
+        return;
+    }
 
+    resp = g_malloc0(sizeof(*resp) + max_size);
     resp->hdr.type = VIRTIO_GPU_RESP_OK_CAPSET;
     virgl_renderer_fill_caps(gc.capset_id,
                              gc.capset_version,
@@ -380,6 +403,11 @@ void virtio_gpu_virgl_process_cmd(VirtIOGPU *g,
                                       struct virtio_gpu_ctrl_command *cmd)
 {
     VIRTIO_GPU_FILL_CMD(cmd->cmd_hdr);
+
+    cmd->waiting = g->renderer_blocked;
+    if (cmd->waiting) {
+        return;
+    }
 
     virgl_renderer_force_ctx_0();
     switch (cmd->cmd_hdr.type) {
@@ -552,7 +580,8 @@ static void virtio_gpu_fence_poll(void *opaque)
     VirtIOGPU *g = opaque;
 
     virgl_renderer_poll();
-    if (g->inflight) {
+    virtio_gpu_process_cmdq(g);
+    if (!QTAILQ_EMPTY(&g->cmdq) || !QTAILQ_EMPTY(&g->fenceq)) {
         timer_mod(g->fence_poll, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 10);
     }
 }
@@ -571,7 +600,23 @@ void virtio_gpu_virgl_reset(VirtIOGPU *g)
         if (i != 0) {
             dpy_gfx_replace_surface(g->scanout[i].con, NULL);
         }
-        dpy_gl_scanout(g->scanout[i].con, 0, false, 0, 0, 0, 0);
+        dpy_gl_scanout_disable(g->scanout[i].con);
+    }
+}
+
+void virtio_gpu_gl_block(void *opaque, bool block)
+{
+    VirtIOGPU *g = opaque;
+
+    if (block) {
+        g->renderer_blocked++;
+    } else {
+        g->renderer_blocked--;
+    }
+    assert(g->renderer_blocked >= 0);
+
+    if (g->renderer_blocked == 0) {
+        virtio_gpu_process_cmdq(g);
     }
 }
 
@@ -593,6 +638,16 @@ int virtio_gpu_virgl_init(VirtIOGPU *g)
         timer_mod(g->print_stats, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
     }
     return 0;
+}
+
+int virtio_gpu_virgl_get_num_capsets(VirtIOGPU *g)
+{
+    uint32_t capset2_max_ver, capset2_max_size;
+    virgl_renderer_get_cap_set(VIRTIO_GPU_CAPSET_VIRGL2,
+                              &capset2_max_ver,
+                              &capset2_max_size);
+
+    return capset2_max_ver ? 2 : 1;
 }
 
 #endif /* CONFIG_VIRGL */

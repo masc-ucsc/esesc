@@ -9,8 +9,8 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
-#include <glib.h>
-#include "qga/guest-agent-core.h"
+#include "qemu/osdep.h"
+#include "guest-agent-core.h"
 
 struct GACommandState {
     GSList *groups;
@@ -70,4 +70,10 @@ GACommandState *ga_command_state_new(void)
     GACommandState *cs = g_new0(GACommandState, 1);
     cs->groups = NULL;
     return cs;
+}
+
+void ga_command_state_free(GACommandState *cs)
+{
+    g_slist_free_full(cs->groups, g_free);
+    g_free(cs);
 }

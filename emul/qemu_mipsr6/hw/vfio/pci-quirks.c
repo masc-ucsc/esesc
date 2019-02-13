@@ -10,9 +10,17 @@
  * the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
+#include "qemu/units.h"
+#include "qemu/error-report.h"
+#include "qemu/main-loop.h"
+#include "qemu/range.h"
+#include "qapi/error.h"
+#include "qapi/visitor.h"
+#include <sys/ioctl.h>
+#include "hw/nvram/fw_cfg.h"
 #include "pci.h"
 #include "trace.h"
-#include "qemu/range.h"
 
 /* Use uin32_t for vendor & device so PCI_ANY_ID expands and cannot match hw */
 static bool vfio_pci_is(VFIOPCIDevice *vdev, uint32_t vendor, uint32_t device)
@@ -197,6 +205,7 @@ typedef struct VFIOConfigMirrorQuirk {
     uint32_t offset;
     uint8_t bar;
     MemoryRegion *mem;
+    uint8_t data[];
 } VFIOConfigMirrorQuirk;
 
 static uint64_t vfio_generic_quirk_mirror_read(void *opaque,
@@ -270,6 +279,136 @@ static const MemoryRegionOps vfio_ati_3c3_quirk = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static VFIOQuirk *vfio_quirk_alloc(int nr_mem)
+{
+    VFIOQuirk *quirk = g_new0(VFIOQuirk, 1);
+    QLIST_INIT(&quirk->ioeventfds);
+    quirk->mem = g_new0(MemoryRegion, nr_mem);
+    quirk->nr_mem = nr_mem;
+
+    return quirk;
+}
+
+static void vfio_ioeventfd_exit(VFIOPCIDevice *vdev, VFIOIOEventFD *ioeventfd)
+{
+    QLIST_REMOVE(ioeventfd, next);
+    memory_region_del_eventfd(ioeventfd->mr, ioeventfd->addr, ioeventfd->size,
+                              true, ioeventfd->data, &ioeventfd->e);
+
+    if (ioeventfd->vfio) {
+        struct vfio_device_ioeventfd vfio_ioeventfd;
+
+        vfio_ioeventfd.argsz = sizeof(vfio_ioeventfd);
+        vfio_ioeventfd.flags = ioeventfd->size;
+        vfio_ioeventfd.data = ioeventfd->data;
+        vfio_ioeventfd.offset = ioeventfd->region->fd_offset +
+                                ioeventfd->region_addr;
+        vfio_ioeventfd.fd = -1;
+
+        if (ioctl(vdev->vbasedev.fd, VFIO_DEVICE_IOEVENTFD, &vfio_ioeventfd)) {
+            error_report("Failed to remove vfio ioeventfd for %s+0x%"
+                         HWADDR_PRIx"[%d]:0x%"PRIx64" (%m)",
+                         memory_region_name(ioeventfd->mr), ioeventfd->addr,
+                         ioeventfd->size, ioeventfd->data);
+        }
+    } else {
+        qemu_set_fd_handler(event_notifier_get_fd(&ioeventfd->e),
+                            NULL, NULL, NULL);
+    }
+
+    event_notifier_cleanup(&ioeventfd->e);
+    trace_vfio_ioeventfd_exit(memory_region_name(ioeventfd->mr),
+                              (uint64_t)ioeventfd->addr, ioeventfd->size,
+                              ioeventfd->data);
+    g_free(ioeventfd);
+}
+
+static void vfio_drop_dynamic_eventfds(VFIOPCIDevice *vdev, VFIOQuirk *quirk)
+{
+    VFIOIOEventFD *ioeventfd, *tmp;
+
+    QLIST_FOREACH_SAFE(ioeventfd, &quirk->ioeventfds, next, tmp) {
+        if (ioeventfd->dynamic) {
+            vfio_ioeventfd_exit(vdev, ioeventfd);
+        }
+    }
+}
+
+static void vfio_ioeventfd_handler(void *opaque)
+{
+    VFIOIOEventFD *ioeventfd = opaque;
+
+    if (event_notifier_test_and_clear(&ioeventfd->e)) {
+        vfio_region_write(ioeventfd->region, ioeventfd->region_addr,
+                          ioeventfd->data, ioeventfd->size);
+        trace_vfio_ioeventfd_handler(memory_region_name(ioeventfd->mr),
+                                     (uint64_t)ioeventfd->addr, ioeventfd->size,
+                                     ioeventfd->data);
+    }
+}
+
+static VFIOIOEventFD *vfio_ioeventfd_init(VFIOPCIDevice *vdev,
+                                          MemoryRegion *mr, hwaddr addr,
+                                          unsigned size, uint64_t data,
+                                          VFIORegion *region,
+                                          hwaddr region_addr, bool dynamic)
+{
+    VFIOIOEventFD *ioeventfd;
+
+    if (vdev->no_kvm_ioeventfd) {
+        return NULL;
+    }
+
+    ioeventfd = g_malloc0(sizeof(*ioeventfd));
+
+    if (event_notifier_init(&ioeventfd->e, 0)) {
+        g_free(ioeventfd);
+        return NULL;
+    }
+
+    /*
+     * MemoryRegion and relative offset, plus additional ioeventfd setup
+     * parameters for configuring and later tearing down KVM ioeventfd.
+     */
+    ioeventfd->mr = mr;
+    ioeventfd->addr = addr;
+    ioeventfd->size = size;
+    ioeventfd->data = data;
+    ioeventfd->dynamic = dynamic;
+    /*
+     * VFIORegion and relative offset for implementing the userspace
+     * handler.  data & size fields shared for both uses.
+     */
+    ioeventfd->region = region;
+    ioeventfd->region_addr = region_addr;
+
+    if (!vdev->no_vfio_ioeventfd) {
+        struct vfio_device_ioeventfd vfio_ioeventfd;
+
+        vfio_ioeventfd.argsz = sizeof(vfio_ioeventfd);
+        vfio_ioeventfd.flags = ioeventfd->size;
+        vfio_ioeventfd.data = ioeventfd->data;
+        vfio_ioeventfd.offset = ioeventfd->region->fd_offset +
+                                ioeventfd->region_addr;
+        vfio_ioeventfd.fd = event_notifier_get_fd(&ioeventfd->e);
+
+        ioeventfd->vfio = !ioctl(vdev->vbasedev.fd,
+                                 VFIO_DEVICE_IOEVENTFD, &vfio_ioeventfd);
+    }
+
+    if (!ioeventfd->vfio) {
+        qemu_set_fd_handler(event_notifier_get_fd(&ioeventfd->e),
+                            vfio_ioeventfd_handler, NULL, ioeventfd);
+    }
+
+    memory_region_add_eventfd(ioeventfd->mr, ioeventfd->addr, ioeventfd->size,
+                              true, ioeventfd->data, &ioeventfd->e);
+    trace_vfio_ioeventfd_init(memory_region_name(mr), (uint64_t)addr,
+                              size, data, ioeventfd->vfio);
+
+    return ioeventfd;
+}
+
 static void vfio_vga_probe_ati_3c3_quirk(VFIOPCIDevice *vdev)
 {
     VFIOQuirk *quirk;
@@ -283,16 +422,14 @@ static void vfio_vga_probe_ati_3c3_quirk(VFIOPCIDevice *vdev)
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
-    quirk->mem = g_new0(MemoryRegion, 1);
-    quirk->nr_mem = 1;
+    quirk = vfio_quirk_alloc(1);
 
     memory_region_init_io(quirk->mem, OBJECT(vdev), &vfio_ati_3c3_quirk, vdev,
                           "vfio-ati-3c3-quirk", 1);
-    memory_region_add_subregion(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].mem,
+    memory_region_add_subregion(&vdev->vga->region[QEMU_PCI_VGA_IO_HI].mem,
                                 3 /* offset 3 bytes from 0x3c0 */, quirk->mem);
 
-    QLIST_INSERT_HEAD(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].quirks,
+    QLIST_INSERT_HEAD(&vdev->vga->region[QEMU_PCI_VGA_IO_HI].quirks,
                       quirk, next);
 
     trace_vfio_quirk_ati_3c3_probe(vdev->vbasedev.name);
@@ -314,13 +451,11 @@ static void vfio_probe_ati_bar4_quirk(VFIOPCIDevice *vdev, int nr)
 
     /* This windows doesn't seem to be used except by legacy VGA code */
     if (!vfio_pci_is(vdev, PCI_VENDOR_ID_ATI, PCI_ANY_ID) ||
-        !vdev->has_vga || nr != 4) {
+        !vdev->vga || nr != 4) {
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
-    quirk->mem = g_new0(MemoryRegion, 2);
-    quirk->nr_mem = 2;
+    quirk = vfio_quirk_alloc(2);
     window = quirk->data = g_malloc0(sizeof(*window) +
                                      sizeof(VFIOConfigWindowMatch));
     window->vdev = vdev;
@@ -328,7 +463,7 @@ static void vfio_probe_ati_bar4_quirk(VFIOPCIDevice *vdev, int nr)
     window->data_offset = 4;
     window->nr_matches = 1;
     window->matches[0].match = 0x4000;
-    window->matches[0].mask = PCIE_CONFIG_SPACE_SIZE - 1;
+    window->matches[0].mask = vdev->config_size - 1;
     window->bar = nr;
     window->addr_mem = &quirk->mem[0];
     window->data_mem = &quirk->mem[1];
@@ -336,14 +471,14 @@ static void vfio_probe_ati_bar4_quirk(VFIOPCIDevice *vdev, int nr)
     memory_region_init_io(window->addr_mem, OBJECT(vdev),
                           &vfio_generic_window_address_quirk, window,
                           "vfio-ati-bar4-window-address-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         window->address_offset,
                                         window->addr_mem, 1);
 
     memory_region_init_io(window->data_mem, OBJECT(vdev),
                           &vfio_generic_window_data_quirk, window,
                           "vfio-ati-bar4-window-data-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         window->data_offset,
                                         window->data_mem, 1);
 
@@ -362,14 +497,13 @@ static void vfio_probe_ati_bar2_quirk(VFIOPCIDevice *vdev, int nr)
 
     /* Only enable on newer devices where BAR2 is 64bit */
     if (!vfio_pci_is(vdev, PCI_VENDOR_ID_ATI, PCI_ANY_ID) ||
-        !vdev->has_vga || nr != 2 || !vdev->bars[2].mem64) {
+        !vdev->vga || nr != 2 || !vdev->bars[2].mem64) {
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
+    quirk = vfio_quirk_alloc(1);
     mirror = quirk->data = g_malloc0(sizeof(*mirror));
-    mirror->mem = quirk->mem = g_new0(MemoryRegion, 1);
-    quirk->nr_mem = 1;
+    mirror->mem = quirk->mem;
     mirror->vdev = vdev;
     mirror->offset = 0x4000;
     mirror->bar = nr;
@@ -377,7 +511,7 @@ static void vfio_probe_ati_bar2_quirk(VFIOPCIDevice *vdev, int nr)
     memory_region_init_io(mirror->mem, OBJECT(vdev),
                           &vfio_generic_mirror_quirk, mirror,
                           "vfio-ati-bar2-4000-quirk", PCI_CONFIG_SPACE_SIZE);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         mirror->offset, mirror->mem, 1);
 
     QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
@@ -427,7 +561,7 @@ static uint64_t vfio_nvidia_3d4_quirk_read(void *opaque,
 
     quirk->state = NONE;
 
-    return vfio_vga_read(&vdev->vga.region[QEMU_PCI_VGA_IO_HI],
+    return vfio_vga_read(&vdev->vga->region[QEMU_PCI_VGA_IO_HI],
                          addr + 0x14, size);
 }
 
@@ -464,7 +598,7 @@ static void vfio_nvidia_3d4_quirk_write(void *opaque, hwaddr addr,
         break;
     }
 
-    vfio_vga_write(&vdev->vga.region[QEMU_PCI_VGA_IO_HI],
+    vfio_vga_write(&vdev->vga->region[QEMU_PCI_VGA_IO_HI],
                    addr + 0x14, data, size);
 }
 
@@ -480,7 +614,7 @@ static uint64_t vfio_nvidia_3d0_quirk_read(void *opaque,
     VFIONvidia3d0Quirk *quirk = opaque;
     VFIOPCIDevice *vdev = quirk->vdev;
     VFIONvidia3d0State old_state = quirk->state;
-    uint64_t data = vfio_vga_read(&vdev->vga.region[QEMU_PCI_VGA_IO_HI],
+    uint64_t data = vfio_vga_read(&vdev->vga->region[QEMU_PCI_VGA_IO_HI],
                                   addr + 0x10, size);
 
     quirk->state = NONE;
@@ -522,7 +656,7 @@ static void vfio_nvidia_3d0_quirk_write(void *opaque, hwaddr addr,
         }
     }
 
-    vfio_vga_write(&vdev->vga.region[QEMU_PCI_VGA_IO_HI],
+    vfio_vga_write(&vdev->vga->region[QEMU_PCI_VGA_IO_HI],
                    addr + 0x10, data, size);
 }
 
@@ -537,28 +671,27 @@ static void vfio_vga_probe_nvidia_3d0_quirk(VFIOPCIDevice *vdev)
     VFIOQuirk *quirk;
     VFIONvidia3d0Quirk *data;
 
-    if (!vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID) ||
+    if (vdev->no_geforce_quirks ||
+        !vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID) ||
         !vdev->bars[1].region.size) {
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
+    quirk = vfio_quirk_alloc(2);
     quirk->data = data = g_malloc0(sizeof(*data));
-    quirk->mem = g_new0(MemoryRegion, 2);
-    quirk->nr_mem = 2;
     data->vdev = vdev;
 
     memory_region_init_io(&quirk->mem[0], OBJECT(vdev), &vfio_nvidia_3d4_quirk,
                           data, "vfio-nvidia-3d4-quirk", 2);
-    memory_region_add_subregion(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].mem,
+    memory_region_add_subregion(&vdev->vga->region[QEMU_PCI_VGA_IO_HI].mem,
                                 0x14 /* 0x3c0 + 0x14 */, &quirk->mem[0]);
 
     memory_region_init_io(&quirk->mem[1], OBJECT(vdev), &vfio_nvidia_3d0_quirk,
                           data, "vfio-nvidia-3d0-quirk", 2);
-    memory_region_add_subregion(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].mem,
+    memory_region_add_subregion(&vdev->vga->region[QEMU_PCI_VGA_IO_HI].mem,
                                 0x10 /* 0x3c0 + 0x10 */, &quirk->mem[1]);
 
-    QLIST_INSERT_HEAD(&vdev->vga.region[QEMU_PCI_VGA_IO_HI].quirks,
+    QLIST_INSERT_HEAD(&vdev->vga->region[QEMU_PCI_VGA_IO_HI].quirks,
                       quirk, next);
 
     trace_vfio_quirk_nvidia_3d0_probe(vdev->vbasedev.name);
@@ -655,14 +788,13 @@ static void vfio_probe_nvidia_bar5_quirk(VFIOPCIDevice *vdev, int nr)
     VFIONvidiaBAR5Quirk *bar5;
     VFIOConfigWindowQuirk *window;
 
-    if (!vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID) ||
-        !vdev->has_vga || nr != 5) {
+    if (vdev->no_geforce_quirks ||
+        !vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID) ||
+        !vdev->vga || nr != 5 || !vdev->bars[5].ioport) {
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
-    quirk->mem = g_new0(MemoryRegion, 4);
-    quirk->nr_mem = 4;
+    quirk = vfio_quirk_alloc(4);
     bar5 = quirk->data = g_malloc0(sizeof(*bar5) +
                                    (sizeof(VFIOConfigWindowMatch) * 2));
     window = &bar5->window;
@@ -674,7 +806,7 @@ static void vfio_probe_nvidia_bar5_quirk(VFIOPCIDevice *vdev, int nr)
     window->matches[0].match = 0x1800;
     window->matches[0].mask = PCI_CONFIG_SPACE_SIZE - 1;
     window->matches[1].match = 0x88000;
-    window->matches[1].mask = PCIE_CONFIG_SPACE_SIZE - 1;
+    window->matches[1].mask = vdev->config_size - 1;
     window->bar = nr;
     window->addr_mem = bar5->addr_mem = &quirk->mem[0];
     window->data_mem = bar5->data_mem = &quirk->mem[1];
@@ -682,7 +814,7 @@ static void vfio_probe_nvidia_bar5_quirk(VFIOPCIDevice *vdev, int nr)
     memory_region_init_io(window->addr_mem, OBJECT(vdev),
                           &vfio_generic_window_address_quirk, window,
                           "vfio-nvidia-bar5-window-address-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         window->address_offset,
                                         window->addr_mem, 1);
     memory_region_set_enabled(window->addr_mem, false);
@@ -690,7 +822,7 @@ static void vfio_probe_nvidia_bar5_quirk(VFIOPCIDevice *vdev, int nr)
     memory_region_init_io(window->data_mem, OBJECT(vdev),
                           &vfio_generic_window_data_quirk, window,
                           "vfio-nvidia-bar5-window-data-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         window->data_offset,
                                         window->data_mem, 1);
     memory_region_set_enabled(window->data_mem, false);
@@ -698,19 +830,31 @@ static void vfio_probe_nvidia_bar5_quirk(VFIOPCIDevice *vdev, int nr)
     memory_region_init_io(&quirk->mem[2], OBJECT(vdev),
                           &vfio_nvidia_bar5_quirk_master, bar5,
                           "vfio-nvidia-bar5-master-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         0, &quirk->mem[2], 1);
 
     memory_region_init_io(&quirk->mem[3], OBJECT(vdev),
                           &vfio_nvidia_bar5_quirk_enable, bar5,
                           "vfio-nvidia-bar5-enable-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         4, &quirk->mem[3], 1);
 
     QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
 
     trace_vfio_quirk_nvidia_bar5_probe(vdev->vbasedev.name);
 }
+
+typedef struct LastDataSet {
+    VFIOQuirk *quirk;
+    hwaddr addr;
+    uint64_t data;
+    unsigned size;
+    int hits;
+    int added;
+} LastDataSet;
+
+#define MAX_DYN_IOEVENTFD 10
+#define HITS_FOR_IOEVENTFD 10
 
 /*
  * Finally, BAR0 itself.  We want to redirect any accesses to either
@@ -722,6 +866,7 @@ static void vfio_nvidia_quirk_mirror_write(void *opaque, hwaddr addr,
     VFIOConfigMirrorQuirk *mirror = opaque;
     VFIOPCIDevice *vdev = mirror->vdev;
     PCIDevice *pdev = &vdev->pdev;
+    LastDataSet *last = (LastDataSet *)&mirror->data;
 
     vfio_generic_quirk_mirror_write(opaque, addr, data, size);
 
@@ -736,6 +881,49 @@ static void vfio_nvidia_quirk_mirror_write(void *opaque, hwaddr addr,
                           addr + mirror->offset, data, size);
         trace_vfio_quirk_nvidia_bar0_msi_ack(vdev->vbasedev.name);
     }
+
+    /*
+     * Automatically add an ioeventfd to handle any repeated write with the
+     * same data and size above the standard PCI config space header.  This is
+     * primarily expected to accelerate the MSI-ACK behavior, such as noted
+     * above.  Current hardware/drivers should trigger an ioeventfd at config
+     * offset 0x704 (region offset 0x88704), with data 0x0, size 4.
+     *
+     * The criteria of 10 successive hits is arbitrary but reliably adds the
+     * MSI-ACK region.  Note that as some writes are bypassed via the ioeventfd,
+     * the remaining ones have a greater chance of being seen successively.
+     * To avoid the pathological case of burning up all of QEMU's open file
+     * handles, arbitrarily limit this algorithm from adding no more than 10
+     * ioeventfds, print an error if we would have added an 11th, and then
+     * stop counting.
+     */
+    if (!vdev->no_kvm_ioeventfd &&
+        addr >= PCI_STD_HEADER_SIZEOF && last->added <= MAX_DYN_IOEVENTFD) {
+        if (addr != last->addr || data != last->data || size != last->size) {
+            last->addr = addr;
+            last->data = data;
+            last->size = size;
+            last->hits = 1;
+        } else if (++last->hits >= HITS_FOR_IOEVENTFD) {
+            if (last->added < MAX_DYN_IOEVENTFD) {
+                VFIOIOEventFD *ioeventfd;
+                ioeventfd = vfio_ioeventfd_init(vdev, mirror->mem, addr, size,
+                                        data, &vdev->bars[mirror->bar].region,
+                                        mirror->offset + addr, true);
+                if (ioeventfd) {
+                    VFIOQuirk *quirk = last->quirk;
+
+                    QLIST_INSERT_HEAD(&quirk->ioeventfds, ioeventfd, next);
+                    last->added++;
+                }
+            } else {
+                last->added++;
+                warn_report("NVIDIA ioeventfd queue full for %s, unable to "
+                            "accelerate 0x%"HWADDR_PRIx", data 0x%"PRIx64", "
+                            "size %u", vdev->vbasedev.name, addr, data, size);
+            }
+        }
+    }
 }
 
 static const MemoryRegionOps vfio_nvidia_mirror_quirk = {
@@ -744,48 +932,64 @@ static const MemoryRegionOps vfio_nvidia_mirror_quirk = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static void vfio_nvidia_bar0_quirk_reset(VFIOPCIDevice *vdev, VFIOQuirk *quirk)
+{
+    VFIOConfigMirrorQuirk *mirror = quirk->data;
+    LastDataSet *last = (LastDataSet *)&mirror->data;
+
+    last->addr = last->data = last->size = last->hits = last->added = 0;
+
+    vfio_drop_dynamic_eventfds(vdev, quirk);
+}
+
 static void vfio_probe_nvidia_bar0_quirk(VFIOPCIDevice *vdev, int nr)
 {
     VFIOQuirk *quirk;
     VFIOConfigMirrorQuirk *mirror;
+    LastDataSet *last;
 
-    if (!vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID) ||
+    if (vdev->no_geforce_quirks ||
+        !vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID) ||
         !vfio_is_vga(vdev) || nr != 0) {
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
-    mirror = quirk->data = g_malloc0(sizeof(*mirror));
-    mirror->mem = quirk->mem = g_new0(MemoryRegion, 1);
-    quirk->nr_mem = 1;
+    quirk = vfio_quirk_alloc(1);
+    quirk->reset = vfio_nvidia_bar0_quirk_reset;
+    mirror = quirk->data = g_malloc0(sizeof(*mirror) + sizeof(LastDataSet));
+    mirror->mem = quirk->mem;
     mirror->vdev = vdev;
     mirror->offset = 0x88000;
     mirror->bar = nr;
+    last = (LastDataSet *)&mirror->data;
+    last->quirk = quirk;
 
     memory_region_init_io(mirror->mem, OBJECT(vdev),
                           &vfio_nvidia_mirror_quirk, mirror,
                           "vfio-nvidia-bar0-88000-mirror-quirk",
-                          PCIE_CONFIG_SPACE_SIZE);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+                          vdev->config_size);
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         mirror->offset, mirror->mem, 1);
 
     QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
 
     /* The 0x1800 offset mirror only seems to get used by legacy VGA */
-    if (vdev->has_vga) {
-        quirk = g_malloc0(sizeof(*quirk));
-        mirror = quirk->data = g_malloc0(sizeof(*mirror));
-        mirror->mem = quirk->mem = g_new0(MemoryRegion, 1);
-        quirk->nr_mem = 1;
+    if (vdev->vga) {
+        quirk = vfio_quirk_alloc(1);
+        quirk->reset = vfio_nvidia_bar0_quirk_reset;
+        mirror = quirk->data = g_malloc0(sizeof(*mirror) + sizeof(LastDataSet));
+        mirror->mem = quirk->mem;
         mirror->vdev = vdev;
         mirror->offset = 0x1800;
         mirror->bar = nr;
+        last = (LastDataSet *)&mirror->data;
+        last->quirk = quirk;
 
         memory_region_init_io(mirror->mem, OBJECT(vdev),
                               &vfio_nvidia_mirror_quirk, mirror,
                               "vfio-nvidia-bar0-1800-mirror-quirk",
                               PCI_CONFIG_SPACE_SIZE);
-        memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+        memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                             mirror->offset, mirror->mem, 1);
 
         QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
@@ -894,7 +1098,7 @@ static uint64_t vfio_rtl8168_quirk_data_read(void *opaque,
 {
     VFIOrtl8168Quirk *rtl = opaque;
     VFIOPCIDevice *vdev = rtl->vdev;
-    uint64_t data = vfio_region_read(&vdev->bars[2].region, addr + 0x74, size);
+    uint64_t data = vfio_region_read(&vdev->bars[2].region, addr + 0x70, size);
 
     if (rtl->enabled && (vdev->pdev.cap_present & QEMU_PCI_CAP_MSIX)) {
         hwaddr offset = rtl->addr & 0xfff;
@@ -937,27 +1141,670 @@ static void vfio_probe_rtl8168_bar2_quirk(VFIOPCIDevice *vdev, int nr)
         return;
     }
 
-    quirk = g_malloc0(sizeof(*quirk));
-    quirk->mem = g_new0(MemoryRegion, 2);
-    quirk->nr_mem = 2;
+    quirk = vfio_quirk_alloc(2);
     quirk->data = rtl = g_malloc0(sizeof(*rtl));
     rtl->vdev = vdev;
 
     memory_region_init_io(&quirk->mem[0], OBJECT(vdev),
                           &vfio_rtl_address_quirk, rtl,
                           "vfio-rtl8168-window-address-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         0x74, &quirk->mem[0], 1);
 
     memory_region_init_io(&quirk->mem[1], OBJECT(vdev),
                           &vfio_rtl_data_quirk, rtl,
                           "vfio-rtl8168-window-data-quirk", 4);
-    memory_region_add_subregion_overlap(&vdev->bars[nr].region.mem,
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
                                         0x70, &quirk->mem[1], 1);
 
     QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
 
     trace_vfio_quirk_rtl8168_probe(vdev->vbasedev.name);
+}
+
+/*
+ * Intel IGD support
+ *
+ * Obviously IGD is not a discrete device, this is evidenced not only by it
+ * being integrated into the CPU, but by the various chipset and BIOS
+ * dependencies that it brings along with it.  Intel is trying to move away
+ * from this and Broadwell and newer devices can run in what Intel calls
+ * "Universal Pass-Through" mode, or UPT.  Theoretically in UPT mode, nothing
+ * more is required beyond assigning the IGD device to a VM.  There are
+ * however support limitations to this mode.  It only supports IGD as a
+ * secondary graphics device in the VM and it doesn't officially support any
+ * physical outputs.
+ *
+ * The code here attempts to enable what we'll call legacy mode assignment,
+ * IGD retains most of the capabilities we expect for it to have on bare
+ * metal.  To enable this mode, the IGD device must be assigned to the VM
+ * at PCI address 00:02.0, it must have a ROM, it very likely needs VGA
+ * support, we must have VM BIOS support for reserving and populating some
+ * of the required tables, and we need to tweak the chipset with revisions
+ * and IDs and an LPC/ISA bridge device.  The intention is to make all of
+ * this happen automatically by installing the device at the correct VM PCI
+ * bus address.  If any of the conditions are not met, we cross our fingers
+ * and hope the user knows better.
+ *
+ * NB - It is possible to enable physical outputs in UPT mode by supplying
+ * an OpRegion table.  We don't do this by default because the guest driver
+ * behaves differently if an OpRegion is provided and no monitor is attached
+ * vs no OpRegion and a monitor being attached or not.  Effectively, if a
+ * headless setup is desired, the OpRegion gets in the way of that.
+ */
+
+/*
+ * This presumes the device is already known to be an Intel VGA device, so we
+ * take liberties in which device ID bits match which generation.  This should
+ * not be taken as an indication that all the devices are supported, or even
+ * supportable, some of them don't even support VT-d.
+ * See linux:include/drm/i915_pciids.h for IDs.
+ */
+static int igd_gen(VFIOPCIDevice *vdev)
+{
+    if ((vdev->device_id & 0xfff) == 0xa84) {
+        return 8; /* Broxton */
+    }
+
+    switch (vdev->device_id & 0xff00) {
+    /* Old, untested, unavailable, unknown */
+    case 0x0000:
+    case 0x2500:
+    case 0x2700:
+    case 0x2900:
+    case 0x2a00:
+    case 0x2e00:
+    case 0x3500:
+    case 0xa000:
+        return -1;
+    /* SandyBridge, IvyBridge, ValleyView, Haswell */
+    case 0x0100:
+    case 0x0400:
+    case 0x0a00:
+    case 0x0c00:
+    case 0x0d00:
+    case 0x0f00:
+        return 6;
+    /* BroadWell, CherryView, SkyLake, KabyLake */
+    case 0x1600:
+    case 0x1900:
+    case 0x2200:
+    case 0x5900:
+        return 8;
+    }
+
+    return 8; /* Assume newer is compatible */
+}
+
+typedef struct VFIOIGDQuirk {
+    struct VFIOPCIDevice *vdev;
+    uint32_t index;
+    uint32_t bdsm;
+} VFIOIGDQuirk;
+
+#define IGD_GMCH 0x50 /* Graphics Control Register */
+#define IGD_BDSM 0x5c /* Base Data of Stolen Memory */
+#define IGD_ASLS 0xfc /* ASL Storage Register */
+
+/*
+ * The OpRegion includes the Video BIOS Table, which seems important for
+ * telling the driver what sort of outputs it has.  Without this, the device
+ * may work in the guest, but we may not get output.  This also requires BIOS
+ * support to reserve and populate a section of guest memory sufficient for
+ * the table and to write the base address of that memory to the ASLS register
+ * of the IGD device.
+ */
+int vfio_pci_igd_opregion_init(VFIOPCIDevice *vdev,
+                               struct vfio_region_info *info, Error **errp)
+{
+    int ret;
+
+    vdev->igd_opregion = g_malloc0(info->size);
+    ret = pread(vdev->vbasedev.fd, vdev->igd_opregion,
+                info->size, info->offset);
+    if (ret != info->size) {
+        error_setg(errp, "failed to read IGD OpRegion");
+        g_free(vdev->igd_opregion);
+        vdev->igd_opregion = NULL;
+        return -EINVAL;
+    }
+
+    /*
+     * Provide fw_cfg with a copy of the OpRegion which the VM firmware is to
+     * allocate 32bit reserved memory for, copy these contents into, and write
+     * the reserved memory base address to the device ASLS register at 0xFC.
+     * Alignment of this reserved region seems flexible, but using a 4k page
+     * alignment seems to work well.  This interface assumes a single IGD
+     * device, which may be at VM address 00:02.0 in legacy mode or another
+     * address in UPT mode.
+     *
+     * NB, there may be future use cases discovered where the VM should have
+     * direct interaction with the host OpRegion, in which case the write to
+     * the ASLS register would trigger MemoryRegion setup to enable that.
+     */
+    fw_cfg_add_file(fw_cfg_find(), "etc/igd-opregion",
+                    vdev->igd_opregion, info->size);
+
+    trace_vfio_pci_igd_opregion_enabled(vdev->vbasedev.name);
+
+    pci_set_long(vdev->pdev.config + IGD_ASLS, 0);
+    pci_set_long(vdev->pdev.wmask + IGD_ASLS, ~0);
+    pci_set_long(vdev->emulated_config_bits + IGD_ASLS, ~0);
+
+    return 0;
+}
+
+/*
+ * The rather short list of registers that we copy from the host devices.
+ * The LPC/ISA bridge values are definitely needed to support the vBIOS, the
+ * host bridge values may or may not be needed depending on the guest OS.
+ * Since we're only munging revision and subsystem values on the host bridge,
+ * we don't require our own device.  The LPC/ISA bridge needs to be our very
+ * own though.
+ */
+typedef struct {
+    uint8_t offset;
+    uint8_t len;
+} IGDHostInfo;
+
+static const IGDHostInfo igd_host_bridge_infos[] = {
+    {PCI_REVISION_ID,         2},
+    {PCI_SUBSYSTEM_VENDOR_ID, 2},
+    {PCI_SUBSYSTEM_ID,        2},
+};
+
+static const IGDHostInfo igd_lpc_bridge_infos[] = {
+    {PCI_VENDOR_ID,           2},
+    {PCI_DEVICE_ID,           2},
+    {PCI_REVISION_ID,         2},
+    {PCI_SUBSYSTEM_VENDOR_ID, 2},
+    {PCI_SUBSYSTEM_ID,        2},
+};
+
+static int vfio_pci_igd_copy(VFIOPCIDevice *vdev, PCIDevice *pdev,
+                             struct vfio_region_info *info,
+                             const IGDHostInfo *list, int len)
+{
+    int i, ret;
+
+    for (i = 0; i < len; i++) {
+        ret = pread(vdev->vbasedev.fd, pdev->config + list[i].offset,
+                    list[i].len, info->offset + list[i].offset);
+        if (ret != list[i].len) {
+            error_report("IGD copy failed: %m");
+            return -errno;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Stuff a few values into the host bridge.
+ */
+static int vfio_pci_igd_host_init(VFIOPCIDevice *vdev,
+                                  struct vfio_region_info *info)
+{
+    PCIBus *bus;
+    PCIDevice *host_bridge;
+    int ret;
+
+    bus = pci_device_root_bus(&vdev->pdev);
+    host_bridge = pci_find_device(bus, 0, PCI_DEVFN(0, 0));
+
+    if (!host_bridge) {
+        error_report("Can't find host bridge");
+        return -ENODEV;
+    }
+
+    ret = vfio_pci_igd_copy(vdev, host_bridge, info, igd_host_bridge_infos,
+                            ARRAY_SIZE(igd_host_bridge_infos));
+    if (!ret) {
+        trace_vfio_pci_igd_host_bridge_enabled(vdev->vbasedev.name);
+    }
+
+    return ret;
+}
+
+/*
+ * IGD LPC/ISA bridge support code.  The vBIOS needs this, but we can't write
+ * arbitrary values into just any bridge, so we must create our own.  We try
+ * to handle if the user has created it for us, which they might want to do
+ * to enable multifunction so we don't occupy the whole PCI slot.
+ */
+static void vfio_pci_igd_lpc_bridge_realize(PCIDevice *pdev, Error **errp)
+{
+    if (pdev->devfn != PCI_DEVFN(0x1f, 0)) {
+        error_setg(errp, "VFIO dummy ISA/LPC bridge must have address 1f.0");
+    }
+}
+
+static void vfio_pci_igd_lpc_bridge_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
+    dc->desc = "VFIO dummy ISA/LPC bridge for IGD assignment";
+    dc->hotpluggable = false;
+    k->realize = vfio_pci_igd_lpc_bridge_realize;
+    k->class_id = PCI_CLASS_BRIDGE_ISA;
+}
+
+static TypeInfo vfio_pci_igd_lpc_bridge_info = {
+    .name = "vfio-pci-igd-lpc-bridge",
+    .parent = TYPE_PCI_DEVICE,
+    .class_init = vfio_pci_igd_lpc_bridge_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
+};
+
+static void vfio_pci_igd_register_types(void)
+{
+    type_register_static(&vfio_pci_igd_lpc_bridge_info);
+}
+
+type_init(vfio_pci_igd_register_types)
+
+static int vfio_pci_igd_lpc_init(VFIOPCIDevice *vdev,
+                                 struct vfio_region_info *info)
+{
+    PCIDevice *lpc_bridge;
+    int ret;
+
+    lpc_bridge = pci_find_device(pci_device_root_bus(&vdev->pdev),
+                                 0, PCI_DEVFN(0x1f, 0));
+    if (!lpc_bridge) {
+        lpc_bridge = pci_create_simple(pci_device_root_bus(&vdev->pdev),
+                                 PCI_DEVFN(0x1f, 0), "vfio-pci-igd-lpc-bridge");
+    }
+
+    ret = vfio_pci_igd_copy(vdev, lpc_bridge, info, igd_lpc_bridge_infos,
+                            ARRAY_SIZE(igd_lpc_bridge_infos));
+    if (!ret) {
+        trace_vfio_pci_igd_lpc_bridge_enabled(vdev->vbasedev.name);
+    }
+
+    return ret;
+}
+
+/*
+ * IGD Gen8 and newer support up to 8MB for the GTT and use a 64bit PTE
+ * entry, older IGDs use 2MB and 32bit.  Each PTE maps a 4k page.  Therefore
+ * we either have 2M/4k * 4 = 2k or 8M/4k * 8 = 16k as the maximum iobar index
+ * for programming the GTT.
+ *
+ * See linux:include/drm/i915_drm.h for shift and mask values.
+ */
+static int vfio_igd_gtt_max(VFIOPCIDevice *vdev)
+{
+    uint32_t gmch = vfio_pci_read_config(&vdev->pdev, IGD_GMCH, sizeof(gmch));
+    int ggms, gen = igd_gen(vdev);
+
+    gmch = vfio_pci_read_config(&vdev->pdev, IGD_GMCH, sizeof(gmch));
+    ggms = (gmch >> (gen < 8 ? 8 : 6)) & 0x3;
+    if (gen > 6) {
+        ggms = 1 << ggms;
+    }
+
+    ggms *= MiB;
+
+    return (ggms / (4 * KiB)) * (gen < 8 ? 4 : 8);
+}
+
+/*
+ * The IGD ROM will make use of stolen memory (GGMS) for support of VESA modes.
+ * Somehow the host stolen memory range is used for this, but how the ROM gets
+ * it is a mystery, perhaps it's hardcoded into the ROM.  Thankfully though, it
+ * reprograms the GTT through the IOBAR where we can trap it and transpose the
+ * programming to the VM allocated buffer.  That buffer gets reserved by the VM
+ * firmware via the fw_cfg entry added below.  Here we're just monitoring the
+ * IOBAR address and data registers to detect a write sequence targeting the
+ * GTTADR.  This code is developed by observed behavior and doesn't have a
+ * direct spec reference, unfortunately.
+ */
+static uint64_t vfio_igd_quirk_data_read(void *opaque,
+                                         hwaddr addr, unsigned size)
+{
+    VFIOIGDQuirk *igd = opaque;
+    VFIOPCIDevice *vdev = igd->vdev;
+
+    igd->index = ~0;
+
+    return vfio_region_read(&vdev->bars[4].region, addr + 4, size);
+}
+
+static void vfio_igd_quirk_data_write(void *opaque, hwaddr addr,
+                                      uint64_t data, unsigned size)
+{
+    VFIOIGDQuirk *igd = opaque;
+    VFIOPCIDevice *vdev = igd->vdev;
+    uint64_t val = data;
+    int gen = igd_gen(vdev);
+
+    /*
+     * Programming the GGMS starts at index 0x1 and uses every 4th index (ie.
+     * 0x1, 0x5, 0x9, 0xd,...).  For pre-Gen8 each 4-byte write is a whole PTE
+     * entry, with 0th bit enable set.  For Gen8 and up, PTEs are 64bit, so
+     * entries 0x5 & 0xd are the high dword, in our case zero.  Each PTE points
+     * to a 4k page, which we translate to a page from the VM allocated region,
+     * pointed to by the BDSM register.  If this is not set, we fail.
+     *
+     * We trap writes to the full configured GTT size, but we typically only
+     * see the vBIOS writing up to (nearly) the 1MB barrier.  In fact it often
+     * seems to miss the last entry for an even 1MB GTT.  Doing a gratuitous
+     * write of that last entry does work, but is hopefully unnecessary since
+     * we clear the previous GTT on initialization.
+     */
+    if ((igd->index % 4 == 1) && igd->index < vfio_igd_gtt_max(vdev)) {
+        if (gen < 8 || (igd->index % 8 == 1)) {
+            uint32_t base;
+
+            base = pci_get_long(vdev->pdev.config + IGD_BDSM);
+            if (!base) {
+                hw_error("vfio-igd: Guest attempted to program IGD GTT before "
+                         "BIOS reserved stolen memory.  Unsupported BIOS?");
+            }
+
+            val = data - igd->bdsm + base;
+        } else {
+            val = 0; /* upper 32bits of pte, we only enable below 4G PTEs */
+        }
+
+        trace_vfio_pci_igd_bar4_write(vdev->vbasedev.name,
+                                      igd->index, data, val);
+    }
+
+    vfio_region_write(&vdev->bars[4].region, addr + 4, val, size);
+
+    igd->index = ~0;
+}
+
+static const MemoryRegionOps vfio_igd_data_quirk = {
+    .read = vfio_igd_quirk_data_read,
+    .write = vfio_igd_quirk_data_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static uint64_t vfio_igd_quirk_index_read(void *opaque,
+                                          hwaddr addr, unsigned size)
+{
+    VFIOIGDQuirk *igd = opaque;
+    VFIOPCIDevice *vdev = igd->vdev;
+
+    igd->index = ~0;
+
+    return vfio_region_read(&vdev->bars[4].region, addr, size);
+}
+
+static void vfio_igd_quirk_index_write(void *opaque, hwaddr addr,
+                                       uint64_t data, unsigned size)
+{
+    VFIOIGDQuirk *igd = opaque;
+    VFIOPCIDevice *vdev = igd->vdev;
+
+    igd->index = data;
+
+    vfio_region_write(&vdev->bars[4].region, addr, data, size);
+}
+
+static const MemoryRegionOps vfio_igd_index_quirk = {
+    .read = vfio_igd_quirk_index_read,
+    .write = vfio_igd_quirk_index_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr)
+{
+    struct vfio_region_info *rom = NULL, *opregion = NULL,
+                            *host = NULL, *lpc = NULL;
+    VFIOQuirk *quirk;
+    VFIOIGDQuirk *igd;
+    PCIDevice *lpc_bridge;
+    int i, ret, ggms_mb, gms_mb = 0, gen;
+    uint64_t *bdsm_size;
+    uint32_t gmch;
+    uint16_t cmd_orig, cmd;
+    Error *err = NULL;
+
+    /*
+     * This must be an Intel VGA device at address 00:02.0 for us to even
+     * consider enabling legacy mode.  The vBIOS has dependencies on the
+     * PCI bus address.
+     */
+    if (!vfio_pci_is(vdev, PCI_VENDOR_ID_INTEL, PCI_ANY_ID) ||
+        !vfio_is_vga(vdev) || nr != 4 ||
+        &vdev->pdev != pci_find_device(pci_device_root_bus(&vdev->pdev),
+                                       0, PCI_DEVFN(0x2, 0))) {
+        return;
+    }
+
+    /*
+     * We need to create an LPC/ISA bridge at PCI bus address 00:1f.0 that we
+     * can stuff host values into, so if there's already one there and it's not
+     * one we can hack on, legacy mode is no-go.  Sorry Q35.
+     */
+    lpc_bridge = pci_find_device(pci_device_root_bus(&vdev->pdev),
+                                 0, PCI_DEVFN(0x1f, 0));
+    if (lpc_bridge && !object_dynamic_cast(OBJECT(lpc_bridge),
+                                           "vfio-pci-igd-lpc-bridge")) {
+        error_report("IGD device %s cannot support legacy mode due to existing "
+                     "devices at address 1f.0", vdev->vbasedev.name);
+        return;
+    }
+
+    /*
+     * IGD is not a standard, they like to change their specs often.  We
+     * only attempt to support back to SandBridge and we hope that newer
+     * devices maintain compatibility with generation 8.
+     */
+    gen = igd_gen(vdev);
+    if (gen != 6 && gen != 8) {
+        error_report("IGD device %s is unsupported in legacy mode, "
+                     "try SandyBridge or newer", vdev->vbasedev.name);
+        return;
+    }
+
+    /*
+     * Most of what we're doing here is to enable the ROM to run, so if
+     * there's no ROM, there's no point in setting up this quirk.
+     * NB. We only seem to get BIOS ROMs, so a UEFI VM would need CSM support.
+     */
+    ret = vfio_get_region_info(&vdev->vbasedev,
+                               VFIO_PCI_ROM_REGION_INDEX, &rom);
+    if ((ret || !rom->size) && !vdev->pdev.romfile) {
+        error_report("IGD device %s has no ROM, legacy mode disabled",
+                     vdev->vbasedev.name);
+        goto out;
+    }
+
+    /*
+     * Ignore the hotplug corner case, mark the ROM failed, we can't
+     * create the devices we need for legacy mode in the hotplug scenario.
+     */
+    if (vdev->pdev.qdev.hotplugged) {
+        error_report("IGD device %s hotplugged, ROM disabled, "
+                     "legacy mode disabled", vdev->vbasedev.name);
+        vdev->rom_read_failed = true;
+        goto out;
+    }
+
+    /*
+     * Check whether we have all the vfio device specific regions to
+     * support legacy mode (added in Linux v4.6).  If not, bail.
+     */
+    ret = vfio_get_dev_region_info(&vdev->vbasedev,
+                        VFIO_REGION_TYPE_PCI_VENDOR_TYPE | PCI_VENDOR_ID_INTEL,
+                        VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION, &opregion);
+    if (ret) {
+        error_report("IGD device %s does not support OpRegion access,"
+                     "legacy mode disabled", vdev->vbasedev.name);
+        goto out;
+    }
+
+    ret = vfio_get_dev_region_info(&vdev->vbasedev,
+                        VFIO_REGION_TYPE_PCI_VENDOR_TYPE | PCI_VENDOR_ID_INTEL,
+                        VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG, &host);
+    if (ret) {
+        error_report("IGD device %s does not support host bridge access,"
+                     "legacy mode disabled", vdev->vbasedev.name);
+        goto out;
+    }
+
+    ret = vfio_get_dev_region_info(&vdev->vbasedev,
+                        VFIO_REGION_TYPE_PCI_VENDOR_TYPE | PCI_VENDOR_ID_INTEL,
+                        VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG, &lpc);
+    if (ret) {
+        error_report("IGD device %s does not support LPC bridge access,"
+                     "legacy mode disabled", vdev->vbasedev.name);
+        goto out;
+    }
+
+    gmch = vfio_pci_read_config(&vdev->pdev, IGD_GMCH, 4);
+
+    /*
+     * If IGD VGA Disable is clear (expected) and VGA is not already enabled,
+     * try to enable it.  Probably shouldn't be using legacy mode without VGA,
+     * but also no point in us enabling VGA if disabled in hardware.
+     */
+    if (!(gmch & 0x2) && !vdev->vga && vfio_populate_vga(vdev, &err)) {
+        error_reportf_err(err, VFIO_MSG_PREFIX, vdev->vbasedev.name);
+        error_report("IGD device %s failed to enable VGA access, "
+                     "legacy mode disabled", vdev->vbasedev.name);
+        goto out;
+    }
+
+    /* Create our LPC/ISA bridge */
+    ret = vfio_pci_igd_lpc_init(vdev, lpc);
+    if (ret) {
+        error_report("IGD device %s failed to create LPC bridge, "
+                     "legacy mode disabled", vdev->vbasedev.name);
+        goto out;
+    }
+
+    /* Stuff some host values into the VM PCI host bridge */
+    ret = vfio_pci_igd_host_init(vdev, host);
+    if (ret) {
+        error_report("IGD device %s failed to modify host bridge, "
+                     "legacy mode disabled", vdev->vbasedev.name);
+        goto out;
+    }
+
+    /* Setup OpRegion access */
+    ret = vfio_pci_igd_opregion_init(vdev, opregion, &err);
+    if (ret) {
+        error_append_hint(&err, "IGD legacy mode disabled\n");
+        error_reportf_err(err, VFIO_MSG_PREFIX, vdev->vbasedev.name);
+        goto out;
+    }
+
+    /* Setup our quirk to munge GTT addresses to the VM allocated buffer */
+    quirk = vfio_quirk_alloc(2);
+    igd = quirk->data = g_malloc0(sizeof(*igd));
+    igd->vdev = vdev;
+    igd->index = ~0;
+    igd->bdsm = vfio_pci_read_config(&vdev->pdev, IGD_BDSM, 4);
+    igd->bdsm &= ~((1 * MiB) - 1); /* 1MB aligned */
+
+    memory_region_init_io(&quirk->mem[0], OBJECT(vdev), &vfio_igd_index_quirk,
+                          igd, "vfio-igd-index-quirk", 4);
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
+                                        0, &quirk->mem[0], 1);
+
+    memory_region_init_io(&quirk->mem[1], OBJECT(vdev), &vfio_igd_data_quirk,
+                          igd, "vfio-igd-data-quirk", 4);
+    memory_region_add_subregion_overlap(vdev->bars[nr].region.mem,
+                                        4, &quirk->mem[1], 1);
+
+    QLIST_INSERT_HEAD(&vdev->bars[nr].quirks, quirk, next);
+
+    /* Determine the size of stolen memory needed for GTT */
+    ggms_mb = (gmch >> (gen < 8 ? 8 : 6)) & 0x3;
+    if (gen > 6) {
+        ggms_mb = 1 << ggms_mb;
+    }
+
+    /*
+     * Assume we have no GMS memory, but allow it to be overrided by device
+     * option (experimental).  The spec doesn't actually allow zero GMS when
+     * when IVD (IGD VGA Disable) is clear, but the claim is that it's unused,
+     * so let's not waste VM memory for it.
+     */
+    gmch &= ~((gen < 8 ? 0x1f : 0xff) << (gen < 8 ? 3 : 8));
+
+    if (vdev->igd_gms) {
+        if (vdev->igd_gms <= 0x10) {
+            gms_mb = vdev->igd_gms * 32;
+            gmch |= vdev->igd_gms << (gen < 8 ? 3 : 8);
+        } else {
+            error_report("Unsupported IGD GMS value 0x%x", vdev->igd_gms);
+            vdev->igd_gms = 0;
+        }
+    }
+
+    /*
+     * Request reserved memory for stolen memory via fw_cfg.  VM firmware
+     * must allocate a 1MB aligned reserved memory region below 4GB with
+     * the requested size (in bytes) for use by the Intel PCI class VGA
+     * device at VM address 00:02.0.  The base address of this reserved
+     * memory region must be written to the device BDSM regsiter at PCI
+     * config offset 0x5C.
+     */
+    bdsm_size = g_malloc(sizeof(*bdsm_size));
+    *bdsm_size = cpu_to_le64((ggms_mb + gms_mb) * MiB);
+    fw_cfg_add_file(fw_cfg_find(), "etc/igd-bdsm-size",
+                    bdsm_size, sizeof(*bdsm_size));
+
+    /* GMCH is read-only, emulated */
+    pci_set_long(vdev->pdev.config + IGD_GMCH, gmch);
+    pci_set_long(vdev->pdev.wmask + IGD_GMCH, 0);
+    pci_set_long(vdev->emulated_config_bits + IGD_GMCH, ~0);
+
+    /* BDSM is read-write, emulated.  The BIOS needs to be able to write it */
+    pci_set_long(vdev->pdev.config + IGD_BDSM, 0);
+    pci_set_long(vdev->pdev.wmask + IGD_BDSM, ~0);
+    pci_set_long(vdev->emulated_config_bits + IGD_BDSM, ~0);
+
+    /*
+     * This IOBAR gives us access to GTTADR, which allows us to write to
+     * the GTT itself.  So let's go ahead and write zero to all the GTT
+     * entries to avoid spurious DMA faults.  Be sure I/O access is enabled
+     * before talking to the device.
+     */
+    if (pread(vdev->vbasedev.fd, &cmd_orig, sizeof(cmd_orig),
+              vdev->config_offset + PCI_COMMAND) != sizeof(cmd_orig)) {
+        error_report("IGD device %s - failed to read PCI command register",
+                     vdev->vbasedev.name);
+    }
+
+    cmd = cmd_orig | PCI_COMMAND_IO;
+
+    if (pwrite(vdev->vbasedev.fd, &cmd, sizeof(cmd),
+               vdev->config_offset + PCI_COMMAND) != sizeof(cmd)) {
+        error_report("IGD device %s - failed to write PCI command register",
+                     vdev->vbasedev.name);
+    }
+
+    for (i = 1; i < vfio_igd_gtt_max(vdev); i += 4) {
+        vfio_region_write(&vdev->bars[4].region, 0, i, 4);
+        vfio_region_write(&vdev->bars[4].region, 4, 0, 4);
+    }
+
+    if (pwrite(vdev->vbasedev.fd, &cmd_orig, sizeof(cmd_orig),
+               vdev->config_offset + PCI_COMMAND) != sizeof(cmd_orig)) {
+        error_report("IGD device %s - failed to restore PCI command register",
+                     vdev->vbasedev.name);
+    }
+
+    trace_vfio_pci_igd_bdsm_enabled(vdev->vbasedev.name, ggms_mb + gms_mb);
+
+out:
+    g_free(rom);
+    g_free(opregion);
+    g_free(host);
+    g_free(lpc);
 }
 
 /*
@@ -969,28 +1816,28 @@ void vfio_vga_quirk_setup(VFIOPCIDevice *vdev)
     vfio_vga_probe_nvidia_3d0_quirk(vdev);
 }
 
-void vfio_vga_quirk_teardown(VFIOPCIDevice *vdev)
+void vfio_vga_quirk_exit(VFIOPCIDevice *vdev)
 {
     VFIOQuirk *quirk;
     int i, j;
 
-    for (i = 0; i < ARRAY_SIZE(vdev->vga.region); i++) {
-        QLIST_FOREACH(quirk, &vdev->vga.region[i].quirks, next) {
+    for (i = 0; i < ARRAY_SIZE(vdev->vga->region); i++) {
+        QLIST_FOREACH(quirk, &vdev->vga->region[i].quirks, next) {
             for (j = 0; j < quirk->nr_mem; j++) {
-                memory_region_del_subregion(&vdev->vga.region[i].mem,
+                memory_region_del_subregion(&vdev->vga->region[i].mem,
                                             &quirk->mem[j]);
             }
         }
     }
 }
 
-void vfio_vga_quirk_free(VFIOPCIDevice *vdev)
+void vfio_vga_quirk_finalize(VFIOPCIDevice *vdev)
 {
     int i, j;
 
-    for (i = 0; i < ARRAY_SIZE(vdev->vga.region); i++) {
-        while (!QLIST_EMPTY(&vdev->vga.region[i].quirks)) {
-            VFIOQuirk *quirk = QLIST_FIRST(&vdev->vga.region[i].quirks);
+    for (i = 0; i < ARRAY_SIZE(vdev->vga->region); i++) {
+        while (!QLIST_EMPTY(&vdev->vga->region[i].quirks)) {
+            VFIOQuirk *quirk = QLIST_FIRST(&vdev->vga->region[i].quirks);
             QLIST_REMOVE(quirk, next);
             for (j = 0; j < quirk->nr_mem; j++) {
                 object_unparent(OBJECT(&quirk->mem[j]));
@@ -1009,22 +1856,27 @@ void vfio_bar_quirk_setup(VFIOPCIDevice *vdev, int nr)
     vfio_probe_nvidia_bar5_quirk(vdev, nr);
     vfio_probe_nvidia_bar0_quirk(vdev, nr);
     vfio_probe_rtl8168_bar2_quirk(vdev, nr);
+    vfio_probe_igd_bar4_quirk(vdev, nr);
 }
 
-void vfio_bar_quirk_teardown(VFIOPCIDevice *vdev, int nr)
+void vfio_bar_quirk_exit(VFIOPCIDevice *vdev, int nr)
 {
     VFIOBAR *bar = &vdev->bars[nr];
     VFIOQuirk *quirk;
     int i;
 
     QLIST_FOREACH(quirk, &bar->quirks, next) {
+        while (!QLIST_EMPTY(&quirk->ioeventfds)) {
+            vfio_ioeventfd_exit(vdev, QLIST_FIRST(&quirk->ioeventfds));
+        }
+
         for (i = 0; i < quirk->nr_mem; i++) {
-            memory_region_del_subregion(&bar->region.mem, &quirk->mem[i]);
+            memory_region_del_subregion(bar->region.mem, &quirk->mem[i]);
         }
     }
 }
 
-void vfio_bar_quirk_free(VFIOPCIDevice *vdev, int nr)
+void vfio_bar_quirk_finalize(VFIOPCIDevice *vdev, int nr)
 {
     VFIOBAR *bar = &vdev->bars[nr];
     int i;
@@ -1044,6 +1896,21 @@ void vfio_bar_quirk_free(VFIOPCIDevice *vdev, int nr)
 /*
  * Reset quirks
  */
+void vfio_quirk_reset(VFIOPCIDevice *vdev)
+{
+    int i;
+
+    for (i = 0; i < PCI_ROM_SLOT; i++) {
+        VFIOQuirk *quirk;
+        VFIOBAR *bar = &vdev->bars[i];
+
+        QLIST_FOREACH(quirk, &bar->quirks, next) {
+            if (quirk->reset) {
+                quirk->reset(vdev, quirk);
+            }
+        }
+    }
+}
 
 /*
  * AMD Radeon PCI config reset, based on Linux:
@@ -1201,4 +2068,117 @@ void vfio_setup_resetfn_quirk(VFIOPCIDevice *vdev)
         }
         break;
     }
+}
+
+/*
+ * The NVIDIA GPUDirect P2P Vendor capability allows the user to specify
+ * devices as a member of a clique.  Devices within the same clique ID
+ * are capable of direct P2P.  It's the user's responsibility that this
+ * is correct.  The spec says that this may reside at any unused config
+ * offset, but reserves and recommends hypervisors place this at C8h.
+ * The spec also states that the hypervisor should place this capability
+ * at the end of the capability list, thus next is defined as 0h.
+ *
+ * +----------------+----------------+----------------+----------------+
+ * | sig 7:0 ('P')  |  vndr len (8h) |    next (0h)   |   cap id (9h)  |
+ * +----------------+----------------+----------------+----------------+
+ * | rsvd 15:7(0h),id 6:3,ver 2:0(0h)|          sig 23:8 ('P2')        |
+ * +---------------------------------+---------------------------------+
+ *
+ * https://lists.gnu.org/archive/html/qemu-devel/2017-08/pdfUda5iEpgOS.pdf
+ */
+static void get_nv_gpudirect_clique_id(Object *obj, Visitor *v,
+                                       const char *name, void *opaque,
+                                       Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint8_t *ptr = qdev_get_prop_ptr(dev, prop);
+
+    visit_type_uint8(v, name, ptr, errp);
+}
+
+static void set_nv_gpudirect_clique_id(Object *obj, Visitor *v,
+                                       const char *name, void *opaque,
+                                       Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint8_t value, *ptr = qdev_get_prop_ptr(dev, prop);
+    Error *local_err = NULL;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    visit_type_uint8(v, name, &value, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    if (value & ~0xF) {
+        error_setg(errp, "Property %s: valid range 0-15", name);
+        return;
+    }
+
+    *ptr = value;
+}
+
+const PropertyInfo qdev_prop_nv_gpudirect_clique = {
+    .name = "uint4",
+    .description = "NVIDIA GPUDirect Clique ID (0 - 15)",
+    .get = get_nv_gpudirect_clique_id,
+    .set = set_nv_gpudirect_clique_id,
+};
+
+static int vfio_add_nv_gpudirect_cap(VFIOPCIDevice *vdev, Error **errp)
+{
+    PCIDevice *pdev = &vdev->pdev;
+    int ret, pos = 0xC8;
+
+    if (vdev->nv_gpudirect_clique == 0xFF) {
+        return 0;
+    }
+
+    if (!vfio_pci_is(vdev, PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID)) {
+        error_setg(errp, "NVIDIA GPUDirect Clique ID: invalid device vendor");
+        return -EINVAL;
+    }
+
+    if (pci_get_byte(pdev->config + PCI_CLASS_DEVICE + 1) !=
+        PCI_BASE_CLASS_DISPLAY) {
+        error_setg(errp, "NVIDIA GPUDirect Clique ID: unsupported PCI class");
+        return -EINVAL;
+    }
+
+    ret = pci_add_capability(pdev, PCI_CAP_ID_VNDR, pos, 8, errp);
+    if (ret < 0) {
+        error_prepend(errp, "Failed to add NVIDIA GPUDirect cap: ");
+        return ret;
+    }
+
+    memset(vdev->emulated_config_bits + pos, 0xFF, 8);
+    pos += PCI_CAP_FLAGS;
+    pci_set_byte(pdev->config + pos++, 8);
+    pci_set_byte(pdev->config + pos++, 'P');
+    pci_set_byte(pdev->config + pos++, '2');
+    pci_set_byte(pdev->config + pos++, 'P');
+    pci_set_byte(pdev->config + pos++, vdev->nv_gpudirect_clique << 3);
+    pci_set_byte(pdev->config + pos, 0);
+
+    return 0;
+}
+
+int vfio_add_virt_caps(VFIOPCIDevice *vdev, Error **errp)
+{
+    int ret;
+
+    ret = vfio_add_nv_gpudirect_cap(vdev, errp);
+    if (ret) {
+        return ret;
+    }
+
+    return 0;
 }

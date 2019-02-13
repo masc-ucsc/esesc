@@ -23,6 +23,13 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+
+#if !defined(SOFTMMU_CODE_ACCESS)
+#include "trace-root.h"
+#endif
+
+#include "trace/mem.h"
+
 #if DATA_SIZE == 8
 #define SUFFIX q
 #define USUFFIX q
@@ -74,22 +81,28 @@ glue(glue(glue(cpu_ld, USUFFIX), MEMSUFFIX), _ra)(CPUArchState *env,
                                                   target_ulong ptr,
                                                   uintptr_t retaddr)
 {
-    int page_index;
+    CPUTLBEntry *entry;
     RES_TYPE res;
     target_ulong addr;
     int mmu_idx;
     TCGMemOpIdx oi;
 
+#if !defined(SOFTMMU_CODE_ACCESS)
+    trace_guest_mem_before_exec(
+        ENV_GET_CPU(env), ptr,
+        trace_mem_build_info(SHIFT, false, MO_TE, false));
+#endif
+
     addr = ptr;
-    page_index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
     mmu_idx = CPU_MMU_INDEX;
-    if (unlikely(env->tlb_table[mmu_idx][page_index].ADDR_READ !=
+    entry = tlb_entry(env, mmu_idx, addr);
+    if (unlikely(entry->ADDR_READ !=
                  (addr & (TARGET_PAGE_MASK | (DATA_SIZE - 1))))) {
         oi = make_memop_idx(SHIFT, mmu_idx);
         res = glue(glue(helper_ret_ld, URETSUFFIX), MMUSUFFIX)(env, addr,
                                                             oi, retaddr);
     } else {
-        uintptr_t hostaddr = addr + env->tlb_table[mmu_idx][page_index].addend;
+        uintptr_t hostaddr = addr + entry->addend;
         res = glue(glue(ld, USUFFIX), _p)((uint8_t *)hostaddr);
     }
     return res;
@@ -107,21 +120,28 @@ glue(glue(glue(cpu_lds, SUFFIX), MEMSUFFIX), _ra)(CPUArchState *env,
                                                   target_ulong ptr,
                                                   uintptr_t retaddr)
 {
-    int res, page_index;
+    CPUTLBEntry *entry;
+    int res;
     target_ulong addr;
     int mmu_idx;
     TCGMemOpIdx oi;
 
+#if !defined(SOFTMMU_CODE_ACCESS)
+    trace_guest_mem_before_exec(
+        ENV_GET_CPU(env), ptr,
+        trace_mem_build_info(SHIFT, true, MO_TE, false));
+#endif
+
     addr = ptr;
-    page_index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
     mmu_idx = CPU_MMU_INDEX;
-    if (unlikely(env->tlb_table[mmu_idx][page_index].ADDR_READ !=
+    entry = tlb_entry(env, mmu_idx, addr);
+    if (unlikely(entry->ADDR_READ !=
                  (addr & (TARGET_PAGE_MASK | (DATA_SIZE - 1))))) {
         oi = make_memop_idx(SHIFT, mmu_idx);
         res = (DATA_STYPE)glue(glue(helper_ret_ld, SRETSUFFIX),
                                MMUSUFFIX)(env, addr, oi, retaddr);
     } else {
-        uintptr_t hostaddr = addr + env->tlb_table[mmu_idx][page_index].addend;
+        uintptr_t hostaddr = addr + entry->addend;
         res = glue(glue(lds, SUFFIX), _p)((uint8_t *)hostaddr);
     }
     return res;
@@ -143,21 +163,27 @@ glue(glue(glue(cpu_st, SUFFIX), MEMSUFFIX), _ra)(CPUArchState *env,
                                                  target_ulong ptr,
                                                  RES_TYPE v, uintptr_t retaddr)
 {
-    int page_index;
+    CPUTLBEntry *entry;
     target_ulong addr;
     int mmu_idx;
     TCGMemOpIdx oi;
 
+#if !defined(SOFTMMU_CODE_ACCESS)
+    trace_guest_mem_before_exec(
+        ENV_GET_CPU(env), ptr,
+        trace_mem_build_info(SHIFT, false, MO_TE, true));
+#endif
+
     addr = ptr;
-    page_index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
     mmu_idx = CPU_MMU_INDEX;
-    if (unlikely(env->tlb_table[mmu_idx][page_index].addr_write !=
+    entry = tlb_entry(env, mmu_idx, addr);
+    if (unlikely(tlb_addr_write(entry) !=
                  (addr & (TARGET_PAGE_MASK | (DATA_SIZE - 1))))) {
         oi = make_memop_idx(SHIFT, mmu_idx);
         glue(glue(helper_ret_st, SUFFIX), MMUSUFFIX)(env, addr, v, oi,
                                                      retaddr);
     } else {
-        uintptr_t hostaddr = addr + env->tlb_table[mmu_idx][page_index].addend;
+        uintptr_t hostaddr = addr + entry->addend;
         glue(glue(st, SUFFIX), _p)((uint8_t *)hostaddr, v);
     }
 }

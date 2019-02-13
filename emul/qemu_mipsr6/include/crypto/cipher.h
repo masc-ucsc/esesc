@@ -18,29 +18,15 @@
  *
  */
 
-#ifndef QCRYPTO_CIPHER_H__
-#define QCRYPTO_CIPHER_H__
+#ifndef QCRYPTO_CIPHER_H
+#define QCRYPTO_CIPHER_H
 
-#include "qemu-common.h"
-#include "qapi/error.h"
+#include "qapi/qapi-types-crypto.h"
 
 typedef struct QCryptoCipher QCryptoCipher;
 
-typedef enum {
-    QCRYPTO_CIPHER_ALG_AES_128,
-    QCRYPTO_CIPHER_ALG_AES_192,
-    QCRYPTO_CIPHER_ALG_AES_256,
-    QCRYPTO_CIPHER_ALG_DES_RFB, /* A stupid variant on DES for VNC */
-
-    QCRYPTO_CIPHER_ALG_LAST
-} QCryptoCipherAlgorithm;
-
-typedef enum {
-    QCRYPTO_CIPHER_MODE_ECB,
-    QCRYPTO_CIPHER_MODE_CBC,
-
-    QCRYPTO_CIPHER_MODE_LAST
-} QCryptoCipherMode;
+/* See also "QCryptoCipherAlgorithm" and "QCryptoCipherMode"
+ * enums defined in qapi/crypto.json */
 
 /**
  * QCryptoCipher:
@@ -94,18 +80,58 @@ struct QCryptoCipher {
     QCryptoCipherAlgorithm alg;
     QCryptoCipherMode mode;
     void *opaque;
+    void *driver;
 };
 
 /**
  * qcrypto_cipher_supports:
  * @alg: the cipher algorithm
+ * @mode: the cipher mode
  *
- * Determine if @alg cipher algorithm is supported by the
+ * Determine if @alg cipher algorithm in @mode is supported by the
  * current configured build
  *
  * Returns: true if the algorithm is supported, false otherwise
  */
-bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg);
+bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg,
+                             QCryptoCipherMode mode);
+
+/**
+ * qcrypto_cipher_get_block_len:
+ * @alg: the cipher algorithm
+ *
+ * Get the required data block size in bytes. When
+ * encrypting data, it must be a multiple of the
+ * block size.
+ *
+ * Returns: the block size in bytes
+ */
+size_t qcrypto_cipher_get_block_len(QCryptoCipherAlgorithm alg);
+
+
+/**
+ * qcrypto_cipher_get_key_len:
+ * @alg: the cipher algorithm
+ *
+ * Get the required key size in bytes.
+ *
+ * Returns: the key size in bytes
+ */
+size_t qcrypto_cipher_get_key_len(QCryptoCipherAlgorithm alg);
+
+
+/**
+ * qcrypto_cipher_get_iv_len:
+ * @alg: the cipher algorithm
+ * @mode: the cipher mode
+ *
+ * Get the required initialization vector size
+ * in bytes, if one is required.
+ *
+ * Returns: the IV size in bytes, or 0 if no IV is permitted
+ */
+size_t qcrypto_cipher_get_iv_len(QCryptoCipherAlgorithm alg,
+                                 QCryptoCipherMode mode);
 
 
 /**
@@ -114,7 +140,7 @@ bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg);
  * @mode: the cipher usage mode
  * @key: the private key bytes
  * @nkey: the length of @key
- * @errp: pointer to an uninitialized error object
+ * @errp: pointer to a NULL-initialized error object
  *
  * Creates a new cipher object for encrypting/decrypting
  * data with the algorithm @alg in the usage mode @mode.
@@ -150,7 +176,7 @@ void qcrypto_cipher_free(QCryptoCipher *cipher);
  * @in: buffer holding the plain text input data
  * @out: buffer to fill with the cipher text output data
  * @len: the length of @in and @out buffers
- * @errp: pointer to an uninitialized error object
+ * @errp: pointer to a NULL-initialized error object
  *
  * Encrypts the plain text stored in @in, filling
  * @out with the resulting ciphered text. Both the
@@ -172,7 +198,7 @@ int qcrypto_cipher_encrypt(QCryptoCipher *cipher,
  * @in: buffer holding the cipher text input data
  * @out: buffer to fill with the plain text output data
  * @len: the length of @in and @out buffers
- * @errp: pointer to an uninitialized error object
+ * @errp: pointer to a NULL-initialized error object
  *
  * Decrypts the cipher text stored in @in, filling
  * @out with the resulting plain text. Both the
@@ -190,16 +216,16 @@ int qcrypto_cipher_decrypt(QCryptoCipher *cipher,
 /**
  * qcrypto_cipher_setiv:
  * @cipher: the cipher object
- * @iv: the initialization vector bytes
+ * @iv: the initialization vector or counter (CTR mode) bytes
  * @niv: the length of @iv
- * @errpr: pointer to an uninitialized error object
+ * @errpr: pointer to a NULL-initialized error object
  *
  * If the @cipher object is setup to use a mode that requires
- * initialization vectors, this sets the initialization vector
+ * initialization vectors or counter, this sets the @niv
  * bytes. The @iv data should have the same length as the
  * cipher key used when originally constructing the cipher
  * object. It is an error to set an initialization vector
- * if the cipher mode does not require one.
+ * or counter if the cipher mode does not require one.
  *
  * Returns: 0 on success, -1 on error
  */
@@ -207,4 +233,4 @@ int qcrypto_cipher_setiv(QCryptoCipher *cipher,
                          const uint8_t *iv, size_t niv,
                          Error **errp);
 
-#endif /* QCRYPTO_CIPHER_H__ */
+#endif /* QCRYPTO_CIPHER_H */

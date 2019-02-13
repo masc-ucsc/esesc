@@ -23,6 +23,10 @@
  *
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/boards.h"
 #include "exec/address-spaces.h"
 #include "qemu/error-report.h"
@@ -64,8 +68,7 @@ static void digic4_board_init(DigicBoard *board)
     s->digic = DIGIC(object_new(TYPE_DIGIC));
     object_property_set_bool(OBJECT(s->digic), true, "realized", &err);
     if (err != NULL) {
-        error_report("Couldn't realize DIGIC SoC: %s",
-                     error_get_pretty(err));
+        error_reportf_err(err, "Couldn't realize DIGIC SoC: ");
         exit(1);
     }
 
@@ -152,6 +155,7 @@ static void canon_a1100_machine_init(MachineClass *mc)
 {
     mc->desc = "Canon PowerShot A1100 IS";
     mc->init = &canon_a1100_init;
+    mc->ignore_memory_transaction_failures = true;
 }
 
 DEFINE_MACHINE("canon-a1100", canon_a1100_machine_init)

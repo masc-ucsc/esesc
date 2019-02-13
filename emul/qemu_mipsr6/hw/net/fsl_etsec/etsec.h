@@ -21,8 +21,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#ifndef _ETSEC_H_
-#define _ETSEC_H_
+
+#ifndef ETSEC_H
+#define ETSEC_H
 
 #include "hw/qdev.h"
 #include "hw/sysbus.h"
@@ -162,6 +163,8 @@ DeviceState *etsec_create(hwaddr        base,
                           qemu_irq      rx_irq,
                           qemu_irq      err_irq);
 
+void etsec_update_irq(eTSEC *etsec);
+
 void etsec_walk_tx_ring(eTSEC *etsec, int ring_nbr);
 void etsec_walk_rx_ring(eTSEC *etsec, int ring_nbr);
 ssize_t etsec_rx_ring_write(eTSEC *etsec, const uint8_t *buf, size_t size);
@@ -173,4 +176,4 @@ void etsec_write_miim(eTSEC          *etsec,
 
 void etsec_miim_link_status(eTSEC *etsec, NetClientState *nc);
 
-#endif /* ! _ETSEC_H_ */
+#endif /* ETSEC_H */

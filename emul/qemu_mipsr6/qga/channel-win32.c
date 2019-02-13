@@ -1,12 +1,8 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <glib.h>
+#include "qemu/osdep.h"
 #include <windows.h>
-#include <errno.h>
 #include <io.h>
-#include "qga/guest-agent-core.h"
-#include "qga/channel.h"
+#include "guest-agent-core.h"
+#include "channel.h"
 
 typedef struct GAChannelReadState {
     guint thread_id;
@@ -80,7 +76,7 @@ static gboolean ga_channel_prepare(GSource *source, gint *timeout_ms)
     }
 
 out:
-    /* dont block forever, iterate the main loop every once and a while */
+    /* don't block forever, iterate the main loop every once in a while */
     *timeout_ms = 500;
     /* if there's data in the read buffer, or another event is pending,
      * skip polling and issue user cb.
@@ -306,7 +302,8 @@ static gboolean ga_channel_open(GAChannel *c, GAChannelMethod method,
                            OPEN_EXISTING,
                            FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
     if (c->handle == INVALID_HANDLE_VALUE) {
-        g_critical("error opening path %s", newpath);
+        g_critical("error opening path %s: %s", newpath,
+                   g_win32_error_message(GetLastError()));
         return false;
     }
 
@@ -320,7 +317,7 @@ static gboolean ga_channel_open(GAChannel *c, GAChannelMethod method,
 }
 
 GAChannel *ga_channel_new(GAChannelMethod method, const gchar *path,
-                          GAChannelCallback cb, gpointer opaque)
+                          int listen_fd, GAChannelCallback cb, gpointer opaque)
 {
     GAChannel *c = g_new0(GAChannel, 1);
     SECURITY_ATTRIBUTES sec_attrs;

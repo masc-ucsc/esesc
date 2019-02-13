@@ -27,9 +27,9 @@
  * AMD Publication# 19436  Rev:E  Amendment/0  Issue Date: June 2000
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci.h"
 #include "net/net.h"
-#include "hw/loader.h"
 #include "qemu/timer.h"
 #include "sysemu/dma.h"
 #include "sysemu/sysemu.h"
@@ -139,94 +139,6 @@ static const MemoryRegionOps pcnet_io_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
-static void pcnet_mmio_writeb(void *opaque, hwaddr addr, uint32_t val)
-{
-    PCNetState *d = opaque;
-
-    trace_pcnet_mmio_writeb(opaque, addr, val);
-    if (!(addr & 0x10))
-        pcnet_aprom_writeb(d, addr & 0x0f, val);
-}
-
-static uint32_t pcnet_mmio_readb(void *opaque, hwaddr addr)
-{
-    PCNetState *d = opaque;
-    uint32_t val = -1;
-
-    if (!(addr & 0x10))
-        val = pcnet_aprom_readb(d, addr & 0x0f);
-    trace_pcnet_mmio_readb(opaque, addr, val);
-    return val;
-}
-
-static void pcnet_mmio_writew(void *opaque, hwaddr addr, uint32_t val)
-{
-    PCNetState *d = opaque;
-
-    trace_pcnet_mmio_writew(opaque, addr, val);
-    if (addr & 0x10)
-        pcnet_ioport_writew(d, addr & 0x0f, val);
-    else {
-        addr &= 0x0f;
-        pcnet_aprom_writeb(d, addr, val & 0xff);
-        pcnet_aprom_writeb(d, addr+1, (val & 0xff00) >> 8);
-    }
-}
-
-static uint32_t pcnet_mmio_readw(void *opaque, hwaddr addr)
-{
-    PCNetState *d = opaque;
-    uint32_t val = -1;
-
-    if (addr & 0x10)
-        val = pcnet_ioport_readw(d, addr & 0x0f);
-    else {
-        addr &= 0x0f;
-        val = pcnet_aprom_readb(d, addr+1);
-        val <<= 8;
-        val |= pcnet_aprom_readb(d, addr);
-    }
-    trace_pcnet_mmio_readw(opaque, addr, val);
-    return val;
-}
-
-static void pcnet_mmio_writel(void *opaque, hwaddr addr, uint32_t val)
-{
-    PCNetState *d = opaque;
-
-    trace_pcnet_mmio_writel(opaque, addr, val);
-    if (addr & 0x10)
-        pcnet_ioport_writel(d, addr & 0x0f, val);
-    else {
-        addr &= 0x0f;
-        pcnet_aprom_writeb(d, addr, val & 0xff);
-        pcnet_aprom_writeb(d, addr+1, (val & 0xff00) >> 8);
-        pcnet_aprom_writeb(d, addr+2, (val & 0xff0000) >> 16);
-        pcnet_aprom_writeb(d, addr+3, (val & 0xff000000) >> 24);
-    }
-}
-
-static uint32_t pcnet_mmio_readl(void *opaque, hwaddr addr)
-{
-    PCNetState *d = opaque;
-    uint32_t val;
-
-    if (addr & 0x10)
-        val = pcnet_ioport_readl(d, addr & 0x0f);
-    else {
-        addr &= 0x0f;
-        val = pcnet_aprom_readb(d, addr+3);
-        val <<= 8;
-        val |= pcnet_aprom_readb(d, addr+2);
-        val <<= 8;
-        val |= pcnet_aprom_readb(d, addr+1);
-        val <<= 8;
-        val |= pcnet_aprom_readb(d, addr);
-    }
-    trace_pcnet_mmio_readl(opaque, addr, val);
-    return val;
-}
-
 static const VMStateDescription vmstate_pci_pcnet = {
     .name = "pcnet",
     .version_id = 3,
@@ -241,10 +153,12 @@ static const VMStateDescription vmstate_pci_pcnet = {
 /* PCI interface */
 
 static const MemoryRegionOps pcnet_mmio_ops = {
-    .old_mmio = {
-        .read = { pcnet_mmio_readb, pcnet_mmio_readw, pcnet_mmio_readl },
-        .write = { pcnet_mmio_writeb, pcnet_mmio_writew, pcnet_mmio_writel },
-    },
+    .read = pcnet_ioport_read,
+    .write = pcnet_ioport_write,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
+    .impl.min_access_size = 1,
+    .impl.max_access_size = 4,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
@@ -271,7 +185,7 @@ static void pci_pcnet_uninit(PCIDevice *dev)
 }
 
 static NetClientInfo net_pci_pcnet_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = pcnet_receive,
     .link_status_changed = pcnet_set_link_status,
@@ -364,6 +278,10 @@ static const TypeInfo pcnet_info = {
     .instance_size = sizeof(PCIPCNetState),
     .class_init    = pcnet_class_init,
     .instance_init = pcnet_instance_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void pci_pcnet_register_types(void)

@@ -19,7 +19,7 @@
  * By Richard W.M. Jones (rjones@redhat.com).
  */
 
-#include <inttypes.h>
+#include "qemu/osdep.h"
 
 #include "qemu-common.h"
 #include "qemu/timer.h"
@@ -361,19 +361,43 @@ static void i6300esb_mem_writel(void *vp, hwaddr addr, uint32_t val)
     }
 }
 
+static uint64_t i6300esb_mem_readfn(void *opaque, hwaddr addr, unsigned size)
+{
+    switch (size) {
+    case 1:
+        return i6300esb_mem_readb(opaque, addr);
+    case 2:
+        return i6300esb_mem_readw(opaque, addr);
+    case 4:
+        return i6300esb_mem_readl(opaque, addr);
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static void i6300esb_mem_writefn(void *opaque, hwaddr addr,
+                                 uint64_t value, unsigned size)
+{
+    switch (size) {
+    case 1:
+        i6300esb_mem_writeb(opaque, addr, value);
+        break;
+    case 2:
+        i6300esb_mem_writew(opaque, addr, value);
+        break;
+    case 4:
+        i6300esb_mem_writel(opaque, addr, value);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+}
+
 static const MemoryRegionOps i6300esb_ops = {
-    .old_mmio = {
-        .read = {
-            i6300esb_mem_readb,
-            i6300esb_mem_readw,
-            i6300esb_mem_readl,
-        },
-        .write = {
-            i6300esb_mem_writeb,
-            i6300esb_mem_writew,
-            i6300esb_mem_writel,
-        },
-    },
+    .read = i6300esb_mem_readfn,
+    .write = i6300esb_mem_writefn,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
@@ -428,6 +452,14 @@ static void i6300esb_realize(PCIDevice *dev, Error **errp)
     /* qemu_register_coalesced_mmio (addr, 0x10); ? */
 }
 
+static void i6300esb_exit(PCIDevice *dev)
+{
+    I6300State *d = WATCHDOG_I6300ESB_DEVICE(dev);
+
+    timer_del(d->timer);
+    timer_free(d->timer);
+}
+
 static WatchdogTimerModel model = {
     .wdt_name = "i6300esb",
     .wdt_description = "Intel 6300ESB",
@@ -441,6 +473,7 @@ static void i6300esb_class_init(ObjectClass *klass, void *data)
     k->config_read = i6300esb_config_read;
     k->config_write = i6300esb_config_write;
     k->realize = i6300esb_realize;
+    k->exit = i6300esb_exit;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_ESB_9;
     k->class_id = PCI_CLASS_SYSTEM_OTHER;
@@ -454,6 +487,10 @@ static const TypeInfo i6300esb_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(I6300State),
     .class_init    = i6300esb_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void i6300esb_register_types(void)

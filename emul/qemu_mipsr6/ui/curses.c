@@ -21,17 +21,23 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <curses.h>
+#include "qemu/osdep.h"
 
 #ifndef _WIN32
 #include <sys/ioctl.h>
 #include <termios.h>
 #endif
 
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "sysemu/sysemu.h"
+
+/* KEY_EVENT is defined in wincon.h and in curses.h. Avoid redefinition. */
+#undef KEY_EVENT
+#include <curses.h>
+#undef KEY_EVENT
 
 #define FONT_HEIGHT 16
 #define FONT_WIDTH 8
@@ -42,16 +48,26 @@ static WINDOW *screenpad = NULL;
 static int width, height, gwidth, gheight, invalidate;
 static int px, py, sminx, sminy, smaxx, smaxy;
 
-chtype vga_to_curses[256];
+static chtype vga_to_curses[256];
 
 static void curses_update(DisplayChangeListener *dcl,
                           int x, int y, int w, int h)
 {
-    chtype *line;
+    console_ch_t *line;
+    chtype curses_line[width];
 
-    line = ((chtype *) screen) + y * width;
-    for (h += y; y < h; y ++, line += width)
-        mvwaddchnstr(screenpad, y, 0, line, width);
+    line = screen + y * width;
+    for (h += y; y < h; y ++, line += width) {
+        for (x = 0; x < width; x++) {
+            chtype ch = line[x] & 0xff;
+            chtype at = line[x] & ~0xff;
+            if (vga_to_curses[ch]) {
+                ch = vga_to_curses[ch];
+            }
+            curses_line[x] = ch | at;
+        }
+        mvwaddchnstr(screenpad, y, 0, curses_line, width);
+    }
 
     pnoutrefresh(screenpad, py, px, sminy, sminx, smaxy - 1, smaxx - 1);
     refresh();
@@ -180,7 +196,7 @@ static kbd_layout_t *kbd_layout = NULL;
 
 static void curses_refresh(DisplayChangeListener *dcl)
 {
-    int chr, nextchr, keysym, keycode, keycode_alt;
+    int chr, keysym, keycode, keycode_alt;
 
     curses_winch_check();
 
@@ -194,15 +210,9 @@ static void curses_refresh(DisplayChangeListener *dcl)
 
     graphic_hw_text_update(NULL, screen);
 
-    nextchr = ERR;
     while (1) {
         /* while there are any pending key strokes to process */
-        if (nextchr == ERR)
-            chr = getch();
-        else {
-            chr = nextchr;
-            nextchr = ERR;
-        }
+        chr = getch();
 
         if (chr == ERR)
             break;
@@ -223,13 +233,12 @@ static void curses_refresh(DisplayChangeListener *dcl)
 
         /* alt key */
         if (keycode == 1) {
-            nextchr = getch();
+            int nextchr = getch();
 
             if (nextchr != ERR) {
                 chr = nextchr;
                 keycode_alt = ALT;
-                keycode = curses2keycode[nextchr];
-                nextchr = ERR;
+                keycode = curses2keycode[chr];
 
                 if (keycode != -1) {
                     keycode |= ALT;
@@ -263,7 +272,8 @@ static void curses_refresh(DisplayChangeListener *dcl)
                     keysym = chr;
             }
 
-            keycode = keysym2scancode(kbd_layout, keysym & KEYSYM_MASK);
+            keycode = keysym2scancode(kbd_layout, keysym & KEYSYM_MASK,
+                                      false, false, false);
             if (keycode == 0)
                 continue;
 
@@ -316,7 +326,10 @@ static void curses_refresh(DisplayChangeListener *dcl)
                 qemu_input_event_send_key_delay(0);
             }
         } else {
-            keysym = curses2qemu[chr];
+            keysym = -1;
+            if (chr < CURSES_KEYS) {
+                keysym = curses2qemu[chr];
+            }
             if (keysym == -1)
                 keysym = chr;
 
@@ -333,8 +346,14 @@ static void curses_atexit(void)
 static void curses_setup(void)
 {
     int i, colour_default[8] = {
-        COLOR_BLACK, COLOR_BLUE, COLOR_GREEN, COLOR_CYAN,
-        COLOR_RED, COLOR_MAGENTA, COLOR_YELLOW, COLOR_WHITE,
+        [QEMU_COLOR_BLACK]   = COLOR_BLACK,
+        [QEMU_COLOR_BLUE]    = COLOR_BLUE,
+        [QEMU_COLOR_GREEN]   = COLOR_GREEN,
+        [QEMU_COLOR_CYAN]    = COLOR_CYAN,
+        [QEMU_COLOR_RED]     = COLOR_RED,
+        [QEMU_COLOR_MAGENTA] = COLOR_MAGENTA,
+        [QEMU_COLOR_YELLOW]  = COLOR_YELLOW,
+        [QEMU_COLOR_WHITE]   = COLOR_WHITE,
     };
 
     /* input as raw as possible, let everything be interpreted
@@ -343,10 +362,11 @@ static void curses_setup(void)
     nodelay(stdscr, TRUE); nonl(); keypad(stdscr, TRUE);
     start_color(); raw(); scrollok(stdscr, FALSE);
 
+    /* Make color pair to match color format (3bits bg:3bits fg) */
     for (i = 0; i < 64; i++) {
         init_pair(i, colour_default[i & 7], colour_default[i >> 3]);
     }
-    /* Set default color for more than 64. (monitor uses 0x74xx for example) */
+    /* Set default color for more than 64 for safety. */
     for (i = 64; i < COLOR_PAIRS; i++) {
         init_pair(i, COLOR_WHITE, COLOR_BLACK);
     }
@@ -365,10 +385,10 @@ static void curses_setup(void)
     /* ACS_* is not constant. So, we can't initialize statically. */
     vga_to_curses['\0'] = ' ';
     vga_to_curses[0x04] = ACS_DIAMOND;
-    vga_to_curses[0x0a] = ACS_RARROW;
-    vga_to_curses[0x0b] = ACS_LARROW;
     vga_to_curses[0x18] = ACS_UARROW;
     vga_to_curses[0x19] = ACS_DARROW;
+    vga_to_curses[0x1a] = ACS_RARROW;
+    vga_to_curses[0x1b] = ACS_LARROW;
     vga_to_curses[0x9c] = ACS_STERLING;
     vga_to_curses[0xb0] = ACS_BOARD;
     vga_to_curses[0xb1] = ACS_CKBOARD;
@@ -402,9 +422,8 @@ static void curses_keyboard_setup(void)
         keyboard_layout = "en-us";
 #endif
     if(keyboard_layout) {
-        kbd_layout = init_keyboard_layout(name2keysym, keyboard_layout);
-        if (!kbd_layout)
-            exit(1);
+        kbd_layout = init_keyboard_layout(name2keysym, keyboard_layout,
+                                          &error_fatal);
     }
 }
 
@@ -416,7 +435,7 @@ static const DisplayChangeListenerOps dcl_ops = {
     .dpy_text_cursor = curses_cursor_position,
 };
 
-void curses_display_init(DisplayState *ds, int full_screen)
+static void curses_display_init(DisplayState *ds, DisplayOptions *opts)
 {
 #ifndef _WIN32
     if (!isatty(1)) {
@@ -437,3 +456,15 @@ void curses_display_init(DisplayState *ds, int full_screen)
 
     invalidate = 1;
 }
+
+static QemuDisplay qemu_display_curses = {
+    .type       = DISPLAY_TYPE_CURSES,
+    .init       = curses_display_init,
+};
+
+static void register_curses(void)
+{
+    qemu_display_register(&qemu_display_curses);
+}
+
+type_init(register_curses);

@@ -10,11 +10,10 @@
  * See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "libqos/malloc.h"
 #include "qemu-common.h"
-#include <stdio.h>
-#include <inttypes.h>
-#include <glib.h>
+#include "qemu/host-utils.h"
 
 typedef QTAILQ_HEAD(MemList, MemBlock) MemList;
 
@@ -130,7 +129,7 @@ static MemBlock *mlist_new(uint64_t addr, uint64_t size)
     if (!size) {
         return NULL;
     }
-    block = g_malloc0(sizeof(MemBlock));
+    block = g_new0(MemBlock, 1);
 
     block->addr = addr;
     block->size = size;
@@ -270,6 +269,10 @@ uint64_t guest_alloc(QGuestAllocator *allocator, size_t size)
     uint64_t rsize = size;
     uint64_t naddr;
 
+    if (!size) {
+        return 0;
+    }
+
     rsize += (allocator->page_size - 1);
     rsize &= -allocator->page_size;
     g_assert_cmpint((allocator->start + rsize), <=, allocator->end);
@@ -302,8 +305,8 @@ QGuestAllocator *alloc_init(uint64_t start, uint64_t end)
     s->start = start;
     s->end = end;
 
-    s->used = g_malloc(sizeof(MemList));
-    s->free = g_malloc(sizeof(MemList));
+    s->used = g_new(MemList, 1);
+    s->free = g_new(MemList, 1);
     QTAILQ_INIT(s->used);
     QTAILQ_INIT(s->free);
 

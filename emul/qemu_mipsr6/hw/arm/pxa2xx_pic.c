@@ -8,6 +8,9 @@
  * This code is licensed under the GPL.
  */
 
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "hw/arm/pxa.h"
 #include "hw/sysbus.h"
@@ -162,7 +165,7 @@ static uint64_t pxa2xx_pic_mem_read(void *opaque, hwaddr offset,
     case ICHP:	/* Highest Priority register */
         return pxa2xx_pic_highest(s);
     default:
-        printf("%s: Bad register offset " REG_FMT "\n", __FUNCTION__, offset);
+        printf("%s: Bad register offset " REG_FMT "\n", __func__, offset);
         return 0;
     }
 }
@@ -195,7 +198,7 @@ static void pxa2xx_pic_mem_write(void *opaque, hwaddr offset,
         s->priority[32 + ((offset - IPR32) >> 2)] = value & 0x8000003f;
         break;
     default:
-        printf("%s: Bad register offset " REG_FMT "\n", __FUNCTION__, offset);
+        printf("%s: Bad register offset " REG_FMT "\n", __func__, offset);
         return;
     }
     pxa2xx_pic_update(opaque);
@@ -307,17 +310,10 @@ static VMStateDescription vmstate_pxa2xx_pic_regs = {
     },
 };
 
-static int pxa2xx_pic_initfn(SysBusDevice *dev)
-{
-    return 0;
-}
-
 static void pxa2xx_pic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = pxa2xx_pic_initfn;
     dc->desc = "PXA2xx PIC";
     dc->vmsd = &vmstate_pxa2xx_pic_regs;
 }

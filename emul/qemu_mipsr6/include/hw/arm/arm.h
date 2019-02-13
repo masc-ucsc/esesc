@@ -8,26 +8,32 @@
  *
  */
 
-#ifndef ARM_MISC_H
-#define ARM_MISC_H 1
+#ifndef HW_ARM_H
+#define HW_ARM_H
 
 #include "exec/memory.h"
+#include "target/arm/cpu-qom.h"
 #include "hw/irq.h"
 #include "qemu/notify.h"
-#include "cpu.h"
 
-/* armv7m.c */
-DeviceState *armv7m_init(MemoryRegion *system_memory, int mem_size, int num_irq,
-                      const char *kernel_filename, const char *cpu_model);
+typedef enum {
+    ARM_ENDIANNESS_UNKNOWN = 0,
+    ARM_ENDIANNESS_LE,
+    ARM_ENDIANNESS_BE8,
+    ARM_ENDIANNESS_BE32,
+} arm_endianness;
 
-/*
- * struct used as a parameter of the arm_load_kernel machine init
- * done notifier
+/**
+ * armv7m_load_kernel:
+ * @cpu: CPU
+ * @kernel_filename: file to load
+ * @mem_size: mem_size: maximum image size to load
+ *
+ * Load the guest image for an ARMv7M system. This must be called by
+ * any ARMv7M board. (This is necessary to ensure that the CPU resets
+ * correctly on system reset, as well as for kernel loading.)
  */
-typedef struct {
-    Notifier notifier; /* actual notifier */
-    ARMCPU *cpu; /* handle to the first cpu object */
-} ArmLoadKernelNotifier;
+void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename, int mem_size);
 
 /* arm_boot.c */
 struct arm_boot_info {
@@ -37,6 +43,13 @@ struct arm_boot_info {
     const char *initrd_filename;
     const char *dtb_filename;
     hwaddr loader_start;
+    hwaddr dtb_start;
+    hwaddr dtb_limit;
+    /* If set to True, arm_load_kernel() will not load DTB.
+     * It allows board to load DTB manually later.
+     * (default: False)
+     */
+    bool skip_dtb_autoload;
     /* multicore boards that use the default secondary core boot functions
      * need to put the address of the secondary boot code, the boot reg,
      * and the GIC address in the next 3 values, respectively. boards that
@@ -75,8 +88,6 @@ struct arm_boot_info {
      * the user it should implement this hook.
      */
     void (*modify_dtb)(const struct arm_boot_info *info, void *fdt);
-    /* machine init done notifier executing arm_load_dtb */
-    ArmLoadKernelNotifier load_kernel_notifier;
     /* Used internally by arm_boot.c */
     int is_linux;
     hwaddr initrd_start;
@@ -103,6 +114,8 @@ struct arm_boot_info {
      * changing to non-secure state if implementing a non-secure boot
      */
     bool secure_board_setup;
+
+    arm_endianness endianness;
 };
 
 /**
@@ -122,8 +135,40 @@ struct arm_boot_info {
  */
 void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info);
 
+AddressSpace *arm_boot_address_space(ARMCPU *cpu,
+                                     const struct arm_boot_info *info);
+
+/**
+ * arm_load_dtb() - load a device tree binary image into memory
+ * @addr:       the address to load the image at
+ * @binfo:      struct describing the boot environment
+ * @addr_limit: upper limit of the available memory area at @addr
+ * @as:         address space to load image to
+ *
+ * Load a device tree supplied by the machine or by the user  with the
+ * '-dtb' command line option, and put it at offset @addr in target
+ * memory.
+ *
+ * If @addr_limit contains a meaningful value (i.e., it is strictly greater
+ * than @addr), the device tree is only loaded if its size does not exceed
+ * the limit.
+ *
+ * Returns: the size of the device tree image on success,
+ *          0 if the image size exceeds the limit,
+ *          -1 on errors.
+ *
+ * Note: Must not be called unless have_dtb(binfo) is true.
+ */
+int arm_load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
+                 hwaddr addr_limit, AddressSpace *as);
+
+/* Write a secure board setup routine with a dummy handler for SMCs */
+void arm_write_secure_board_setup_dummy_smc(ARMCPU *cpu,
+                                            const struct arm_boot_info *info,
+                                            hwaddr mvbar_addr);
+
 /* Multiplication factor to convert from system clock ticks to qemu timer
    ticks.  */
 extern int system_clock_scale;
 
-#endif /* !ARM_MISC_H */
+#endif /* HW_ARM_H */

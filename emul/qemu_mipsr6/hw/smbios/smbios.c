@@ -15,13 +15,20 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
+#include "qemu/units.h"
+#include "qapi/error.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
+#include "qemu/option.h"
 #include "sysemu/sysemu.h"
+#include "qemu/uuid.h"
 #include "sysemu/cpus.h"
 #include "hw/smbios/smbios.h"
 #include "hw/loader.h"
 #include "exec/cpu-common.h"
+#include "smbios_build.h"
+#include "hw/smbios/ipmi.h"
 
 /* legacy structures and constants for <= 2.0 machines */
 struct smbios_header {
@@ -51,10 +58,10 @@ static bool smbios_uuid_encoded = true;
 /* end: legacy structures & constants for <= 2.0 machines */
 
 
-static uint8_t *smbios_tables;
-static size_t smbios_tables_len;
-static unsigned smbios_table_max;
-static unsigned smbios_table_cnt;
+uint8_t *smbios_tables;
+size_t smbios_tables_len;
+unsigned smbios_table_max;
+unsigned smbios_table_cnt;
 static SmbiosEntryPointType smbios_ep_type = SMBIOS_ENTRY_POINT_21;
 
 static SmbiosEntryPoint ep;
@@ -75,7 +82,7 @@ static struct {
 
 static struct {
     const char *manufacturer, *product, *version, *serial, *sku, *family;
-    /* uuid is in qemu_uuid[] */
+    /* uuid is in qemu_uuid */
 } type1;
 
 static struct {
@@ -89,6 +96,11 @@ static struct {
 static struct {
     const char *sock_pfx, *manufacturer, *version, *serial, *asset, *part;
 } type4;
+
+static struct {
+    size_t nvalues;
+    const char **values;
+} type11;
 
 static struct {
     const char *loc_pfx, *bank, *manufacturer, *serial, *asset, *part;
@@ -277,6 +289,14 @@ static const QemuOptDesc qemu_smbios_type4_opts[] = {
     { /* end of list */ }
 };
 
+static const QemuOptDesc qemu_smbios_type11_opts[] = {
+    {
+        .name = "value",
+        .type = QEMU_OPT_STRING,
+        .help = "OEM string data",
+    },
+};
+
 static const QemuOptDesc qemu_smbios_type17_opts[] = {
     {
         .name = "type",
@@ -319,7 +339,7 @@ static void smbios_register_config(void)
     qemu_add_opts(&qemu_smbios_opts);
 }
 
-machine_init(smbios_register_config);
+opts_init(smbios_register_config);
 
 static void smbios_validate_table(void)
 {
@@ -404,7 +424,7 @@ static void smbios_build_type_1_fields(void)
          * BIOS.
          */
         smbios_add_field(1, offsetof(struct smbios_type_1, uuid),
-                         qemu_uuid, 16);
+                         &qemu_uuid, 16);
     }
 }
 
@@ -427,7 +447,7 @@ uint8_t *smbios_get_table_legacy(size_t *length)
 /* end: legacy setup functions for <= 2.0 machines */
 
 
-static bool smbios_skip_table(uint8_t type, bool required_table)
+bool smbios_skip_table(uint8_t type, bool required_table)
 {
     if (test_bit(type, have_binfile_bitmap)) {
         return true; /* user provided their own binary blob(s) */
@@ -440,65 +460,6 @@ static bool smbios_skip_table(uint8_t type, bool required_table)
     }
     return true;
 }
-
-#define SMBIOS_BUILD_TABLE_PRE(tbl_type, tbl_handle, tbl_required)        \
-    struct smbios_type_##tbl_type *t;                                     \
-    size_t t_off; /* table offset into smbios_tables */                   \
-    int str_index = 0;                                                    \
-    do {                                                                  \
-        /* should we skip building this table ? */                        \
-        if (smbios_skip_table(tbl_type, tbl_required)) {                  \
-            return;                                                       \
-        }                                                                 \
-                                                                          \
-        /* use offset of table t within smbios_tables */                  \
-        /* (pointer must be updated after each realloc) */                \
-        t_off = smbios_tables_len;                                        \
-        smbios_tables_len += sizeof(*t);                                  \
-        smbios_tables = g_realloc(smbios_tables, smbios_tables_len);      \
-        t = (struct smbios_type_##tbl_type *)(smbios_tables + t_off);     \
-                                                                          \
-        t->header.type = tbl_type;                                        \
-        t->header.length = sizeof(*t);                                    \
-        t->header.handle = cpu_to_le16(tbl_handle);                       \
-    } while (0)
-
-#define SMBIOS_TABLE_SET_STR(tbl_type, field, value)                      \
-    do {                                                                  \
-        int len = (value != NULL) ? strlen(value) + 1 : 0;                \
-        if (len > 1) {                                                    \
-            smbios_tables = g_realloc(smbios_tables,                      \
-                                      smbios_tables_len + len);           \
-            memcpy(smbios_tables + smbios_tables_len, value, len);        \
-            smbios_tables_len += len;                                     \
-            /* update pointer post-realloc */                             \
-            t = (struct smbios_type_##tbl_type *)(smbios_tables + t_off); \
-            t->field = ++str_index;                                       \
-        } else {                                                          \
-            t->field = 0;                                                 \
-        }                                                                 \
-    } while (0)
-
-#define SMBIOS_BUILD_TABLE_POST                                           \
-    do {                                                                  \
-        size_t term_cnt, t_size;                                          \
-                                                                          \
-        /* add '\0' terminator (add two if no strings defined) */         \
-        term_cnt = (str_index == 0) ? 2 : 1;                              \
-        smbios_tables = g_realloc(smbios_tables,                          \
-                                  smbios_tables_len + term_cnt);          \
-        memset(smbios_tables + smbios_tables_len, 0, term_cnt);           \
-        smbios_tables_len += term_cnt;                                    \
-                                                                          \
-        /* update smbios max. element size */                             \
-        t_size = smbios_tables_len - t_off;                               \
-        if (t_size > smbios_table_max) {                                  \
-            smbios_table_max = t_size;                                    \
-        }                                                                 \
-                                                                          \
-        /* update smbios element count */                                 \
-        smbios_table_cnt++;                                               \
-    } while (0)
 
 static void smbios_build_type_0_table(void)
 {
@@ -538,9 +499,9 @@ static void smbios_build_type_0_table(void)
 /* Encode UUID from the big endian encoding described on RFC4122 to the wire
  * format specified by SMBIOS version 2.6.
  */
-static void smbios_encode_uuid(struct smbios_uuid *uuid, const uint8_t *buf)
+static void smbios_encode_uuid(struct smbios_uuid *uuid, QemuUUID *in)
 {
-    memcpy(uuid, buf, 16);
+    memcpy(uuid, in, 16);
     if (smbios_uuid_encoded) {
         uuid->time_low = bswap32(uuid->time_low);
         uuid->time_mid = bswap16(uuid->time_mid);
@@ -557,7 +518,7 @@ static void smbios_build_type_1_table(void)
     SMBIOS_TABLE_SET_STR(1, version_str, type1.version);
     SMBIOS_TABLE_SET_STR(1, serial_number_str, type1.serial);
     if (qemu_uuid_set) {
-        smbios_encode_uuid(&t->uuid, qemu_uuid);
+        smbios_encode_uuid(&t->uuid, &qemu_uuid);
     } else {
         memset(&t->uuid, 0, 16);
     }
@@ -644,9 +605,26 @@ static void smbios_build_type_4_table(unsigned instance)
     smbios_type4_count++;
 }
 
-#define ONE_KB ((ram_addr_t)1 << 10)
-#define ONE_MB ((ram_addr_t)1 << 20)
-#define ONE_GB ((ram_addr_t)1 << 30)
+static void smbios_build_type_11_table(void)
+{
+    char count_str[128];
+    size_t i;
+
+    if (type11.nvalues == 0) {
+        return;
+    }
+
+    SMBIOS_BUILD_TABLE_PRE(11, 0xe00, true); /* required */
+
+    snprintf(count_str, sizeof(count_str), "%zu", type11.nvalues);
+    t->count = type11.nvalues;
+
+    for (i = 0; i < type11.nvalues; i++) {
+        SMBIOS_TABLE_SET_STR_LIST(11, type11.values[i]);
+    }
+
+    SMBIOS_BUILD_TABLE_POST;
+}
 
 #define MAX_T16_STD_SZ 0x80000000 /* 2T in Kilobytes */
 
@@ -659,7 +637,7 @@ static void smbios_build_type_16_table(unsigned dimm_cnt)
     t->location = 0x01; /* Other */
     t->use = 0x03; /* System memory */
     t->error_correction = 0x06; /* Multi-bit ECC (for Microsoft, per SeaBIOS) */
-    size_kb = QEMU_ALIGN_UP(ram_size, ONE_KB) / ONE_KB;
+    size_kb = QEMU_ALIGN_UP(ram_size, KiB) / KiB;
     if (size_kb < MAX_T16_STD_SZ) {
         t->maximum_capacity = cpu_to_le32(size_kb);
         t->extended_maximum_capacity = cpu_to_le64(0);
@@ -687,7 +665,7 @@ static void smbios_build_type_17_table(unsigned instance, uint64_t size)
     t->memory_error_information_handle = cpu_to_le16(0xFFFE); /* Not provided */
     t->total_width = cpu_to_le16(0xFFFF); /* Unknown */
     t->data_width = cpu_to_le16(0xFFFF); /* Unknown */
-    size_mb = QEMU_ALIGN_UP(size, ONE_MB) / ONE_MB;
+    size_mb = QEMU_ALIGN_UP(size, MiB) / MiB;
     if (size_mb < MAX_T17_STD_SZ) {
         t->size = cpu_to_le16(size_mb);
         t->extended_size = cpu_to_le32(0);
@@ -726,8 +704,8 @@ static void smbios_build_type_19_table(unsigned instance,
 
     end = start + size - 1;
     assert(end > start);
-    start_kb = start / ONE_KB;
-    end_kb = end / ONE_KB;
+    start_kb = start / KiB;
+    end_kb = end / KiB;
     if (start_kb < UINT32_MAX && end_kb < UINT32_MAX) {
         t->starting_address = cpu_to_le32(start_kb);
         t->ending_address = cpu_to_le32(end_kb);
@@ -886,7 +864,9 @@ void smbios_get_tables(const struct smbios_phys_mem_area *mem_array,
             smbios_build_type_4_table(i);
         }
 
-#define MAX_DIMM_SZ (16ll * ONE_GB)
+        smbios_build_type_11_table();
+
+#define MAX_DIMM_SZ (16 * GiB)
 #define GET_DIMM_SZ ((i < dimm_cnt - 1) ? MAX_DIMM_SZ \
                                         : ((ram_size - 1) % MAX_DIMM_SZ) + 1)
 
@@ -904,6 +884,7 @@ void smbios_get_tables(const struct smbios_phys_mem_area *mem_array,
         }
 
         smbios_build_type_32_table();
+        smbios_build_type_38_table();
         smbios_build_type_127_table();
 
         smbios_validate_table();
@@ -935,9 +916,41 @@ static void save_opt(const char **dest, QemuOpts *opts, const char *name)
     }
 }
 
-void smbios_entry_add(QemuOpts *opts)
+
+struct opt_list {
+    const char *name;
+    size_t *ndest;
+    const char ***dest;
+};
+
+static int save_opt_one(void *opaque,
+                        const char *name, const char *value,
+                        Error **errp)
 {
-    Error *local_err = NULL;
+    struct opt_list *opt = opaque;
+
+    if (!g_str_equal(name, opt->name)) {
+        return 0;
+    }
+
+    *opt->dest = g_renew(const char *, *opt->dest, (*opt->ndest) + 1);
+    (*opt->dest)[*opt->ndest] = value;
+    (*opt->ndest)++;
+    return 0;
+}
+
+static void save_opt_list(size_t *ndest, const char ***dest,
+                          QemuOpts *opts, const char *name)
+{
+    struct opt_list opt = {
+        name, ndest, dest,
+    };
+    qemu_opt_foreach(opts, save_opt_one, &opt, NULL);
+}
+
+void smbios_entry_add(QemuOpts *opts, Error **errp)
+{
+    Error *err = NULL;
     const char *val;
 
     assert(!smbios_immutable);
@@ -948,16 +961,16 @@ void smbios_entry_add(QemuOpts *opts)
         int size;
         struct smbios_table *table; /* legacy mode only */
 
-        qemu_opts_validate(opts, qemu_smbios_file_opts, &local_err);
-        if (local_err) {
-            error_report_err(local_err);
-            exit(1);
+        qemu_opts_validate(opts, qemu_smbios_file_opts, &err);
+        if (err) {
+            error_propagate(errp, err);
+            return;
         }
 
         size = get_image_size(val);
         if (size == -1 || size < sizeof(struct smbios_structure_header)) {
-            error_report("Cannot read SMBIOS file %s", val);
-            exit(1);
+            error_setg(errp, "Cannot read SMBIOS file %s", val);
+            return;
         }
 
         /*
@@ -970,14 +983,15 @@ void smbios_entry_add(QemuOpts *opts)
                                                     smbios_tables_len);
 
         if (load_image(val, (uint8_t *)header) != size) {
-            error_report("Failed to load SMBIOS file %s", val);
-            exit(1);
+            error_setg(errp, "Failed to load SMBIOS file %s", val);
+            return;
         }
 
         if (test_bit(header->type, have_fields_bitmap)) {
-            error_report("can't load type %d struct, fields already specified!",
-                         header->type);
-            exit(1);
+            error_setg(errp,
+                       "can't load type %d struct, fields already specified!",
+                       header->type);
+            return;
         }
         set_bit(header->type, have_binfile_bitmap);
 
@@ -1022,22 +1036,22 @@ void smbios_entry_add(QemuOpts *opts)
         unsigned long type = strtoul(val, NULL, 0);
 
         if (type > SMBIOS_MAX_TYPE) {
-            error_report("out of range!");
-            exit(1);
+            error_setg(errp, "out of range!");
+            return;
         }
 
         if (test_bit(type, have_binfile_bitmap)) {
-            error_report("can't add fields, binary file already loaded!");
-            exit(1);
+            error_setg(errp, "can't add fields, binary file already loaded!");
+            return;
         }
         set_bit(type, have_fields_bitmap);
 
         switch (type) {
         case 0:
-            qemu_opts_validate(opts, qemu_smbios_type0_opts, &local_err);
-            if (local_err) {
-                error_report_err(local_err);
-                exit(1);
+            qemu_opts_validate(opts, qemu_smbios_type0_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
             }
             save_opt(&type0.vendor, opts, "vendor");
             save_opt(&type0.version, opts, "version");
@@ -1047,17 +1061,17 @@ void smbios_entry_add(QemuOpts *opts)
             val = qemu_opt_get(opts, "release");
             if (val) {
                 if (sscanf(val, "%hhu.%hhu", &type0.major, &type0.minor) != 2) {
-                    error_report("Invalid release");
-                    exit(1);
+                    error_setg(errp, "Invalid release");
+                    return;
                 }
                 type0.have_major_minor = true;
             }
             return;
         case 1:
-            qemu_opts_validate(opts, qemu_smbios_type1_opts, &local_err);
-            if (local_err) {
-                error_report_err(local_err);
-                exit(1);
+            qemu_opts_validate(opts, qemu_smbios_type1_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
             }
             save_opt(&type1.manufacturer, opts, "manufacturer");
             save_opt(&type1.product, opts, "product");
@@ -1068,18 +1082,18 @@ void smbios_entry_add(QemuOpts *opts)
 
             val = qemu_opt_get(opts, "uuid");
             if (val) {
-                if (qemu_uuid_parse(val, qemu_uuid) != 0) {
-                    error_report("Invalid UUID");
-                    exit(1);
+                if (qemu_uuid_parse(val, &qemu_uuid) != 0) {
+                    error_setg(errp, "Invalid UUID");
+                    return;
                 }
                 qemu_uuid_set = true;
             }
             return;
         case 2:
-            qemu_opts_validate(opts, qemu_smbios_type2_opts, &local_err);
-            if (local_err) {
-                error_report_err(local_err);
-                exit(1);
+            qemu_opts_validate(opts, qemu_smbios_type2_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
             }
             save_opt(&type2.manufacturer, opts, "manufacturer");
             save_opt(&type2.product, opts, "product");
@@ -1089,10 +1103,10 @@ void smbios_entry_add(QemuOpts *opts)
             save_opt(&type2.location, opts, "location");
             return;
         case 3:
-            qemu_opts_validate(opts, qemu_smbios_type3_opts, &local_err);
-            if (local_err) {
-                error_report_err(local_err);
-                exit(1);
+            qemu_opts_validate(opts, qemu_smbios_type3_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
             }
             save_opt(&type3.manufacturer, opts, "manufacturer");
             save_opt(&type3.version, opts, "version");
@@ -1101,10 +1115,10 @@ void smbios_entry_add(QemuOpts *opts)
             save_opt(&type3.sku, opts, "sku");
             return;
         case 4:
-            qemu_opts_validate(opts, qemu_smbios_type4_opts, &local_err);
-            if (local_err) {
-                error_report_err(local_err);
-                exit(1);
+            qemu_opts_validate(opts, qemu_smbios_type4_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
             }
             save_opt(&type4.sock_pfx, opts, "sock_pfx");
             save_opt(&type4.manufacturer, opts, "manufacturer");
@@ -1113,11 +1127,19 @@ void smbios_entry_add(QemuOpts *opts)
             save_opt(&type4.asset, opts, "asset");
             save_opt(&type4.part, opts, "part");
             return;
+        case 11:
+            qemu_opts_validate(opts, qemu_smbios_type11_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
+            }
+            save_opt_list(&type11.nvalues, &type11.values, opts, "value");
+            return;
         case 17:
-            qemu_opts_validate(opts, qemu_smbios_type17_opts, &local_err);
-            if (local_err) {
-                error_report_err(local_err);
-                exit(1);
+            qemu_opts_validate(opts, qemu_smbios_type17_opts, &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
             }
             save_opt(&type17.loc_pfx, opts, "loc_pfx");
             save_opt(&type17.bank, opts, "bank");
@@ -1128,12 +1150,12 @@ void smbios_entry_add(QemuOpts *opts)
             type17.speed = qemu_opt_get_number(opts, "speed", 0);
             return;
         default:
-            error_report("Don't know how to build fields for SMBIOS type %ld",
-                         type);
-            exit(1);
+            error_setg(errp,
+                       "Don't know how to build fields for SMBIOS type %ld",
+                       type);
+            return;
         }
     }
 
-    error_report("Must specify type= or file=");
-    exit(1);
+    error_setg(errp, "Must specify type= or file=");
 }

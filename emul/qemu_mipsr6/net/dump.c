@@ -22,7 +22,9 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "clients.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qemu/iov.h"
@@ -84,7 +86,7 @@ static ssize_t dump_receive_iov(DumpState *s, const struct iovec *iov, int cnt)
     cnt = iov_copy(&dumpiov[1], cnt, iov, cnt, 0, caplen);
 
     if (writev(s->fd, dumpiov, cnt + 1) != sizeof(hdr) + caplen) {
-        qemu_log("-net dump write error - stop dump\n");
+        error_report("network dump write error - stopping dump");
         close(s->fd);
         s->fd = -1;
     }
@@ -107,7 +109,7 @@ static int net_dump_state_init(DumpState *s, const char *filename,
 
     fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY | O_BINARY, 0644);
     if (fd < 0) {
-        error_setg_errno(errp, errno, "-net dump: can't open %s", filename);
+        error_setg_errno(errp, errno, "net dump: can't open %s", filename);
         return -1;
     }
 
@@ -120,7 +122,7 @@ static int net_dump_state_init(DumpState *s, const char *filename,
     hdr.linktype = 1;
 
     if (write(fd, &hdr, sizeof(hdr)) < sizeof(hdr)) {
-        error_setg_errno(errp, errno, "-net dump write error");
+        error_setg_errno(errp, errno, "net dump write error");
         close(fd);
         return -1;
     }
@@ -133,101 +135,6 @@ static int net_dump_state_init(DumpState *s, const char *filename,
 
     return 0;
 }
-
-/* Dumping via VLAN netclient */
-
-struct DumpNetClient {
-    NetClientState nc;
-    DumpState ds;
-};
-typedef struct DumpNetClient DumpNetClient;
-
-static ssize_t dumpclient_receive(NetClientState *nc, const uint8_t *buf,
-                                  size_t size)
-{
-    DumpNetClient *dc = DO_UPCAST(DumpNetClient, nc, nc);
-    struct iovec iov = {
-        .iov_base = (void *)buf,
-        .iov_len = size
-    };
-
-    return dump_receive_iov(&dc->ds, &iov, 1);
-}
-
-static ssize_t dumpclient_receive_iov(NetClientState *nc,
-                                      const struct iovec *iov, int cnt)
-{
-    DumpNetClient *dc = DO_UPCAST(DumpNetClient, nc, nc);
-
-    return dump_receive_iov(&dc->ds, iov, cnt);
-}
-
-static void dumpclient_cleanup(NetClientState *nc)
-{
-    DumpNetClient *dc = DO_UPCAST(DumpNetClient, nc, nc);
-
-    dump_cleanup(&dc->ds);
-}
-
-static NetClientInfo net_dump_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_DUMP,
-    .size = sizeof(DumpNetClient),
-    .receive = dumpclient_receive,
-    .receive_iov = dumpclient_receive_iov,
-    .cleanup = dumpclient_cleanup,
-};
-
-int net_init_dump(const NetClientOptions *opts, const char *name,
-                  NetClientState *peer, Error **errp)
-{
-    int len, rc;
-    const char *file;
-    char def_file[128];
-    const NetdevDumpOptions *dump;
-    NetClientState *nc;
-    DumpNetClient *dnc;
-
-    assert(opts->type == NET_CLIENT_OPTIONS_KIND_DUMP);
-    dump = opts->u.dump;
-
-    assert(peer);
-
-    if (dump->has_file) {
-        file = dump->file;
-    } else {
-        int id;
-        int ret;
-
-        ret = net_hub_id_for_client(peer, &id);
-        assert(ret == 0); /* peer must be on a hub */
-
-        snprintf(def_file, sizeof(def_file), "qemu-vlan%d.pcap", id);
-        file = def_file;
-    }
-
-    if (dump->has_len) {
-        if (dump->len > INT_MAX) {
-            error_setg(errp, "invalid length: %"PRIu64, dump->len);
-            return -1;
-        }
-        len = dump->len;
-    } else {
-        len = 65536;
-    }
-
-    nc = qemu_new_net_client(&net_dump_info, peer, "dump", name);
-    snprintf(nc->info_str, sizeof(nc->info_str),
-             "dump to %s (len=%d)", file, len);
-
-    dnc = DO_UPCAST(DumpNetClient, nc, nc);
-    rc = net_dump_state_init(&dnc->ds, file, len, errp);
-    if (rc) {
-        qemu_del_net_client(nc);
-    }
-    return rc;
-}
-
-/* Dumping via filter */
 
 #define TYPE_FILTER_DUMP "filter-dump"
 
@@ -271,23 +178,23 @@ static void filter_dump_setup(NetFilterState *nf, Error **errp)
     net_dump_state_init(&nfds->ds, nfds->filename, nfds->maxlen, errp);
 }
 
-static void filter_dump_get_maxlen(Object *obj, Visitor *v, void *opaque,
-                                   const char *name, Error **errp)
+static void filter_dump_get_maxlen(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
 {
     NetFilterDumpState *nfds = FILTER_DUMP(obj);
     uint32_t value = nfds->maxlen;
 
-    visit_type_uint32(v, &value, name, errp);
+    visit_type_uint32(v, name, &value, errp);
 }
 
-static void filter_dump_set_maxlen(Object *obj, Visitor *v, void *opaque,
-                                   const char *name, Error **errp)
+static void filter_dump_set_maxlen(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
 {
     NetFilterDumpState *nfds = FILTER_DUMP(obj);
     Error *local_err = NULL;
     uint32_t value;
 
-    visit_type_uint32(v, &value, name, &local_err);
+    visit_type_uint32(v, name, &value, &local_err);
     if (local_err) {
         goto out;
     }
@@ -323,10 +230,17 @@ static void filter_dump_instance_init(Object *obj)
 
     nfds->maxlen = 65536;
 
-    object_property_add(obj, "maxlen", "int", filter_dump_get_maxlen,
+    object_property_add(obj, "maxlen", "uint32", filter_dump_get_maxlen,
                         filter_dump_set_maxlen, NULL, NULL, NULL);
     object_property_add_str(obj, "file", file_dump_get_filename,
                             file_dump_set_filename, NULL);
+}
+
+static void filter_dump_instance_finalize(Object *obj)
+{
+    NetFilterDumpState *nfds = FILTER_DUMP(obj);
+
+    g_free(nfds->filename);
 }
 
 static void filter_dump_class_init(ObjectClass *oc, void *data)
@@ -343,6 +257,7 @@ static const TypeInfo filter_dump_info = {
     .parent = TYPE_NETFILTER,
     .class_init = filter_dump_class_init,
     .instance_init = filter_dump_instance_init,
+    .instance_finalize = filter_dump_instance_finalize,
     .instance_size = sizeof(NetFilterDumpState),
 };
 

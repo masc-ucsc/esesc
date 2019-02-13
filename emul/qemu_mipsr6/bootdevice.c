@@ -22,10 +22,14 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
-#include "hw/hw.h"
+#include "sysemu/reset.h"
+#include "hw/qdev-core.h"
+#include "hw/boards.h"
 
 typedef struct FWBootEntry FWBootEntry;
 
@@ -205,11 +209,13 @@ DeviceState *get_boot_device(uint32_t position)
  * memory pointed by "size" is assigned total length of the array in bytes
  *
  */
-char *get_boot_devices_list(size_t *size, bool ignore_suffixes)
+char *get_boot_devices_list(size_t *size)
 {
     FWBootEntry *i;
     size_t total = 0;
     char *list = NULL;
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+    bool ignore_suffixes = mc->ignore_boot_device_suffixes;
 
     QTAILQ_FOREACH(i, &fw_boot_order, link) {
         char *devpath = NULL,  *suffix = NULL;
@@ -270,21 +276,21 @@ typedef struct {
     DeviceState *dev;
 } BootIndexProperty;
 
-static void device_get_bootindex(Object *obj, Visitor *v, void *opaque,
-                                 const char *name, Error **errp)
+static void device_get_bootindex(Object *obj, Visitor *v, const char *name,
+                                 void *opaque, Error **errp)
 {
     BootIndexProperty *prop = opaque;
-    visit_type_int32(v, prop->bootindex, name, errp);
+    visit_type_int32(v, name, prop->bootindex, errp);
 }
 
-static void device_set_bootindex(Object *obj, Visitor *v, void *opaque,
-                                 const char *name, Error **errp)
+static void device_set_bootindex(Object *obj, Visitor *v, const char *name,
+                                 void *opaque, Error **errp)
 {
     BootIndexProperty *prop = opaque;
     int32_t boot_index;
     Error *local_err = NULL;
 
-    visit_type_int32(v, &boot_index, name, &local_err);
+    visit_type_int32(v, name, &boot_index, &local_err);
     if (local_err) {
         goto out;
     }
@@ -299,9 +305,7 @@ static void device_set_bootindex(Object *obj, Visitor *v, void *opaque,
     add_boot_device_path(*prop->bootindex, prop->dev, prop->suffix);
 
 out:
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
+    error_propagate(errp, local_err);
 }
 
 static void property_release_bootindex(Object *obj, const char *name,

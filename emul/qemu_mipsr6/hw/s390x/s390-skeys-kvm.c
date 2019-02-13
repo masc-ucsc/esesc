@@ -9,6 +9,7 @@
  * directory.
  */
 
+#include "qemu/osdep.h"
 #include "hw/s390x/storage-keys.h"
 #include "sysemu/kvm.h"
 #include "qemu/error-report.h"
@@ -21,7 +22,7 @@ static int kvm_s390_skeys_enabled(S390SKeysState *ss)
 
     r = skeyclass->get_skeys(ss, 0, 1, &single_key);
     if (r != 0 && r != KVM_S390_GET_SKEYS_NONE) {
-        error_report("S390_GET_KEYS error %d\n", r);
+        error_report("S390_GET_KEYS error %d", r);
     }
     return (r == 0);
 }
@@ -53,10 +54,14 @@ static int kvm_s390_skeys_set(S390SKeysState *ss, uint64_t start_gfn,
 static void kvm_s390_skeys_class_init(ObjectClass *oc, void *data)
 {
     S390SKeysClass *skeyclass = S390_SKEYS_CLASS(oc);
+    DeviceClass *dc = DEVICE_CLASS(oc);
 
     skeyclass->skeys_enabled = kvm_s390_skeys_enabled;
     skeyclass->get_skeys = kvm_s390_skeys_get;
     skeyclass->set_skeys = kvm_s390_skeys_set;
+
+    /* Reason: Internal device (only one skeys device for the whole memory) */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo kvm_s390_skeys_info = {

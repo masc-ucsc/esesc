@@ -281,6 +281,14 @@
 #define __NR_bpf (__X32_SYSCALL_BIT + 321)
 #define __NR_userfaultfd (__X32_SYSCALL_BIT + 323)
 #define __NR_membarrier (__X32_SYSCALL_BIT + 324)
+#define __NR_mlock2 (__X32_SYSCALL_BIT + 325)
+#define __NR_copy_file_range (__X32_SYSCALL_BIT + 326)
+#define __NR_pkey_mprotect (__X32_SYSCALL_BIT + 329)
+#define __NR_pkey_alloc (__X32_SYSCALL_BIT + 330)
+#define __NR_pkey_free (__X32_SYSCALL_BIT + 331)
+#define __NR_statx (__X32_SYSCALL_BIT + 332)
+#define __NR_io_pgetevents (__X32_SYSCALL_BIT + 333)
+#define __NR_rseq (__X32_SYSCALL_BIT + 334)
 #define __NR_rt_sigaction (__X32_SYSCALL_BIT + 512)
 #define __NR_rt_sigreturn (__X32_SYSCALL_BIT + 513)
 #define __NR_ioctl (__X32_SYSCALL_BIT + 514)
@@ -315,5 +323,7 @@
 #define __NR_io_setup (__X32_SYSCALL_BIT + 543)
 #define __NR_io_submit (__X32_SYSCALL_BIT + 544)
 #define __NR_execveat (__X32_SYSCALL_BIT + 545)
+#define __NR_preadv2 (__X32_SYSCALL_BIT + 546)
+#define __NR_pwritev2 (__X32_SYSCALL_BIT + 547)
 
 #endif /* _ASM_X86_UNISTD_X32_H */

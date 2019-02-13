@@ -12,9 +12,11 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "hw/timer/imx_epit.h"
 #include "hw/misc/imx_ccm.h"
 #include "qemu/main-loop.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_EPIT
 #define DEBUG_IMX_EPIT 0
@@ -28,7 +30,7 @@
         } \
     } while (0)
 
-static char const *imx_epit_reg_name(uint32_t reg)
+static const char *imx_epit_reg_name(uint32_t reg)
 {
     switch (reg) {
     case 0:
@@ -51,10 +53,10 @@ static char const *imx_epit_reg_name(uint32_t reg)
  * These are typical.
  */
 static const IMXClk imx_epit_clocks[] =  {
-    0,        /* 00 disabled */
-    IPG,      /* 01 ipg_clk, ~532MHz */
-    IPG,      /* 10 ipg_clk_highfreq */
-    CLK_32k,  /* 11 ipg_clk_32k -- ~32kHz */
+    CLK_NONE,      /* 00 disabled */
+    CLK_IPG,       /* 01 ipg_clk, ~532MHz */
+    CLK_IPG_HIGH,  /* 10 ipg_clk_highfreq */
+    CLK_32k,       /* 11 ipg_clk_32k -- ~32kHz */
 };
 
 /*
@@ -73,20 +75,18 @@ static void imx_epit_set_freq(IMXEPITState *s)
 {
     uint32_t clksrc;
     uint32_t prescaler;
-    uint32_t freq;
 
     clksrc = extract32(s->cr, CR_CLKSRC_SHIFT, 2);
     prescaler = 1 + extract32(s->cr, CR_PRESCALE_SHIFT, 12);
 
-    freq = imx_clock_frequency(s->ccm, imx_epit_clocks[clksrc]) / prescaler;
+    s->freq = imx_ccm_get_clock_frequency(s->ccm,
+                                imx_epit_clocks[clksrc]) / prescaler;
 
-    s->freq = freq;
+    DPRINTF("Setting ptimer frequency to %u\n", s->freq);
 
-    DPRINTF("Setting ptimer frequency to %u\n", freq);
-
-    if (freq) {
-        ptimer_set_freq(s->timer_reload, freq);
-        ptimer_set_freq(s->timer_cmp, freq);
+    if (s->freq) {
+        ptimer_set_freq(s->timer_reload, s->freq);
+        ptimer_set_freq(s->timer_cmp, s->freq);
     }
 }
 
@@ -314,10 +314,10 @@ static void imx_epit_realize(DeviceState *dev, Error **errp)
                           0x00001000);
     sysbus_init_mmio(sbd, &s->iomem);
 
-    s->timer_reload = ptimer_init(NULL);
+    s->timer_reload = ptimer_init(NULL, PTIMER_POLICY_DEFAULT);
 
     bh = qemu_bh_new(imx_epit_cmp, s);
-    s->timer_cmp = ptimer_init(bh);
+    s->timer_cmp = ptimer_init(bh, PTIMER_POLICY_DEFAULT);
 }
 
 static void imx_epit_class_init(ObjectClass *klass, void *data)

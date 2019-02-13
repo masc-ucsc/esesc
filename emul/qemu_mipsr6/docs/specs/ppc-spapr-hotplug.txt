@@ -233,12 +233,27 @@ tools by host-level management such as an HMC. This level of management is not
 applicable to PowerKVM, hence the reason for extending the notification
 framework to support hotplug events.
 
-Note that these events are not yet formally part of the PAPR+ specification,
-but support for this format has already been implemented in DR-related
-guest tools such as powerpc-utils/librtas, as well as kernel patches that have
-been submitted to handle in-kernel processing of memory/cpu-related hotplug
-events[1], and is planned for formal inclusion is PAPR+ specification. The
-hotplug-specific payload is QEMU implemented as follows (with all values
+The format for these EPOW-signalled events is described below under
+"hotplug/unplug event structure". Note that these events are not
+formally part of the PAPR+ specification, and have been superseded by a
+newer format, also described below under "hotplug/unplug event structure",
+and so are now deemed a "legacy" format. The formats are similar, but the
+"modern" format contains additional fields/flags, which are denoted for the
+purposes of this documentation with "#ifdef GUEST_SUPPORTS_MODERN" guards.
+
+QEMU should assume support only for "legacy" fields/flags unless the guest
+advertises support for the "modern" format via ibm,client-architecture-support
+hcall by setting byte 5, bit 6 of it's ibm,architecture-vec-5 option vector
+structure (as described by LoPAPR v11, B.6.2.3). As with "legacy" format events,
+"modern" format events are surfaced to the guest via check-exception RTAS calls,
+but use a dedicated event source to signal the guest. This event source is
+advertised to the guest by the addition of a "hot-plug-events" node under
+"/event-sources" node of the guest's device tree using the standard format
+described in LoPAPR v11, B.6.12.1.
+
+== hotplug/unplug event structure ==
+
+The hotplug-specific payload in QEMU is implemented as follows (with all values
 encoded in big-endian format):
 
 struct rtas_event_log_v6_hp {
@@ -263,14 +278,23 @@ struct rtas_event_log_v6_hp {
 #define RTAS_LOG_V6_HP_ACTION_ADD       1
 #define RTAS_LOG_V6_HP_ACTION_REMOVE    2
     uint8_t hotplug_action;             /* action (add/remove) */
-#define RTAS_LOG_V6_HP_ID_DRC_NAME      1
-#define RTAS_LOG_V6_HP_ID_DRC_INDEX     2
-#define RTAS_LOG_V6_HP_ID_DRC_COUNT     3
+#define RTAS_LOG_V6_HP_ID_DRC_NAME          1
+#define RTAS_LOG_V6_HP_ID_DRC_INDEX         2
+#define RTAS_LOG_V6_HP_ID_DRC_COUNT         3
+#ifdef GUEST_SUPPORTS_MODERN
+#define RTAS_LOG_V6_HP_ID_DRC_COUNT_INDEXED 4
+#endif
     uint8_t hotplug_identifier;         /* type of the resource identifier,
                                          * which serves as the discriminator
                                          * for the 'drc' union field below
                                          */
+#ifdef GUEST_SUPPORTS_MODERN
+    uint8_t capabilities;               /* capability flags, currently unused
+                                         * by QEMU
+                                         */
+#else
     uint8_t reserved;
+#endif
     union {
         uint32_t index;                 /* DRC index of resource to take action
                                          * on
@@ -278,6 +302,19 @@ struct rtas_event_log_v6_hp {
         uint32_t count;                 /* number of DR resources to take
                                          * action on (guest chooses which)
                                          */
+#ifdef GUEST_SUPPORTS_MODERN
+        struct {
+            uint32_t count;             /* number of DR resources to take
+                                         * action on
+                                         */
+            uint32_t index;             /* DRC index of first resource to take
+                                         * action on. guest will take action
+                                         * on DRC index <index> through
+                                         * DRC index <index + count - 1> in
+                                         * sequential order
+                                         */
+        } count_indexed;
+#endif
         char name[1];                   /* string representing the name of the
                                          * DRC to take action on
                                          */
@@ -349,5 +386,24 @@ Each LMB list entry consists of the following elements:
   LMB.
 - A 32bit flags word. The bit at bit position 0x00000008 defines whether
   the LMB is assigned to the the partition as of boot time.
+
+ibm,dynamic-memory-v2
+
+This property describes the dynamically reconfigurable memory. This is
+an alternate and newer way to describe dyanamically reconfigurable memory.
+It is a property encoded array that has an integer N (the number of
+LMB set entries) followed by N LMB set entries. There is an LMB set entry
+for each sequential group of LMBs that share common attributes.
+
+Each LMB set entry consists of the following elements:
+
+- Number of sequential LMBs in the entry represented by a 32bit integer.
+- Logical address of the first LMB in the set encoded as a 64bit integer.
+- DRC index of the first LMB in the set.
+- Associativity list index that is used as an index into
+  ibm,associativity-lookup-arrays property described earlier. This
+  is used to retrieve the right associativity list to be used for all
+  the LMBs in this set.
+- A 32bit flags word that applies to all the LMBs in the set.
 
 [1] http://thread.gmane.org/gmane.linux.ports.ppc.embedded/75350/focus=106867

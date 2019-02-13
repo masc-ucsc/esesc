@@ -4,12 +4,16 @@
 #include "net/net.h"
 #include "hw/virtio/vhost-backend.h"
 
+#define VHOST_NET_INIT_FAILED \
+    "vhost-net requested but could not be initialized"
+
 struct vhost_net;
 typedef struct vhost_net VHostNetState;
 
 typedef struct VhostNetOptions {
     VhostBackendType backend_type;
     NetClientState *net_backend;
+    uint32_t busyloop_timeout;
     void *opaque;
 } VhostNetOptions;
 
@@ -31,4 +35,9 @@ int vhost_net_notify_migration_done(VHostNetState *net, char* mac_addr);
 VHostNetState *get_vhost_net(NetClientState *nc);
 
 int vhost_set_vring_enable(NetClientState * nc, int enable);
+
+uint64_t vhost_net_get_acked_features(VHostNetState *net);
+
+int vhost_net_set_mtu(struct vhost_net *net, uint16_t mtu);
+
 #endif

@@ -21,7 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "hw/hw.h"
+#include "qemu/osdep.h"
+#include "qemu/host-utils.h"
 #include "qemu/timer.h"
 #include "audio.h"
 
@@ -50,7 +51,7 @@ static int wav_run_out (HWVoiceOut *hw, int live)
     int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     int64_t ticks = now - wav->old_ticks;
     int64_t bytes =
-        muldiv64 (ticks, hw->info.bytes_per_second, get_ticks_per_sec ());
+        muldiv64(ticks, hw->info.bytes_per_second, NANOSECONDS_PER_SECOND);
 
     if (bytes > INT_MAX) {
         samples = INT_MAX >> hw->info.shift;
@@ -138,7 +139,7 @@ static int wav_init_out(HWVoiceOut *hw, struct audsettings *as,
     audio_pcm_init_info (&hw->info, &wav_as);
 
     hw->samples = 1024;
-    wav->pcm_buf = audio_calloc (AUDIO_FUNC, hw->samples, 1 << hw->info.shift);
+    wav->pcm_buf = audio_calloc(__func__, hw->samples, 1 << hw->info.shift);
     if (!wav->pcm_buf) {
         dolog ("Could not allocate buffer (%d bytes)\n",
                hw->samples << hw->info.shift);
@@ -277,7 +278,7 @@ static struct audio_pcm_ops wav_pcm_ops = {
     .ctl_out  = wav_ctl_out,
 };
 
-struct audio_driver wav_audio_driver = {
+static struct audio_driver wav_audio_driver = {
     .name           = "wav",
     .descr          = "WAV renderer http://wikipedia.org/wiki/WAV",
     .options        = wav_options,
@@ -290,3 +291,9 @@ struct audio_driver wav_audio_driver = {
     .voice_size_out = sizeof (WAVVoiceOut),
     .voice_size_in  = 0
 };
+
+static void register_audio_wav(void)
+{
+    audio_driver_register(&wav_audio_driver);
+}
+type_init(register_audio_wav);

@@ -22,8 +22,10 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "tap_int.h"
-#include "qemu-common.h"
+#include "qemu/cutils.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
 
@@ -31,6 +33,10 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <net/if_tap.h>
+#endif
+
+#if defined(__OpenBSD__)
+#include <sys/param.h>
 #endif
 
 #ifndef __FreeBSD__
@@ -53,7 +59,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
         if (*ifname) {
             snprintf(dname, sizeof dname, "/dev/%s", ifname);
         } else {
-#if defined(__OpenBSD__)
+#if defined(__OpenBSD__) && OpenBSD < 201605
             snprintf(dname, sizeof dname, "/dev/tun%d", i);
 #else
             snprintf(dname, sizeof dname, "/dev/tap%d", i);

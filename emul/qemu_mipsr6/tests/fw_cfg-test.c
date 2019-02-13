@@ -10,12 +10,10 @@
  * See the COPYING file in the top-level directory.
  */
 
-#include <string.h>
-#include <glib.h>
+#include "qemu/osdep.h"
 
 #include "libqtest.h"
-#define NO_QEMU_PROTOS
-#include "hw/nvram/fw_cfg.h"
+#include "standard-headers/linux/qemu_fw_cfg.h"
 #include "libqos/fw_cfg.h"
 
 static uint64_t ram_size = 128 << 20;
@@ -81,8 +79,8 @@ static void test_fw_cfg_numa(void)
 
     g_assert_cmpint(qfw_cfg_get_u64(fw_cfg, FW_CFG_NUMA), ==, nb_nodes);
 
-    cpu_mask = g_malloc0(sizeof(uint64_t) * max_cpus);
-    node_mask = g_malloc0(sizeof(uint64_t) * nb_nodes);
+    cpu_mask = g_new0(uint64_t, max_cpus);
+    node_mask = g_new0(uint64_t, nb_nodes);
 
     qfw_cfg_read_data(fw_cfg, cpu_mask, sizeof(uint64_t) * max_cpus);
     qfw_cfg_read_data(fw_cfg, node_mask, sizeof(uint64_t) * nb_nodes);
@@ -104,12 +102,13 @@ static void test_fw_cfg_boot_menu(void)
 int main(int argc, char **argv)
 {
     QTestState *s;
-    char *cmdline;
     int ret;
 
     g_test_init(&argc, &argv, NULL);
 
-    fw_cfg = pc_fw_cfg_init();
+    s = qtest_init("-uuid 4600cb32-38ec-4b2f-8acb-81c6ea54f2d8");
+
+    fw_cfg = pc_fw_cfg_init(s);
 
     qtest_add_func("fw_cfg/signature", test_fw_cfg_signature);
     qtest_add_func("fw_cfg/id", test_fw_cfg_id);
@@ -127,15 +126,9 @@ int main(int argc, char **argv)
     qtest_add_func("fw_cfg/numa", test_fw_cfg_numa);
     qtest_add_func("fw_cfg/boot_menu", test_fw_cfg_boot_menu);
 
-    cmdline = g_strdup_printf("-uuid 4600cb32-38ec-4b2f-8acb-81c6ea54f2d8 ");
-    s = qtest_start(cmdline);
-    g_free(cmdline);
-
     ret = g_test_run();
 
-    if (s) {
-        qtest_quit(s);
-    }
+    qtest_quit(s);
 
     return ret;
 }

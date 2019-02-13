@@ -7,17 +7,14 @@
  *
  */
 
-#ifndef _MIPS_GCR_H
-#define _MIPS_GCR_H
+#ifndef MIPS_CMGCR_H
+#define MIPS_CMGCR_H
 
 #define TYPE_MIPS_GCR "mips-gcr"
 #define MIPS_GCR(obj) OBJECT_CHECK(MIPSGCRState, (obj), TYPE_MIPS_GCR)
 
 #define GCR_BASE_ADDR           0x1fbf8000ULL
 #define GCR_ADDRSPACE_SZ        0x8000
-
-/* Block Size */
-#define GCR_BLOCK_SZ 0x2000
 
 /* Offsets to register blocks */
 #define MIPS_GCB_OFS        0x0000 /* Global Control Block */
@@ -38,11 +35,14 @@
 /* Core Local and Core Other Block Register Map */
 #define GCR_CL_CONFIG_OFS   0x0010
 #define GCR_CL_OTHER_OFS    0x0018
-#define GCR_CL_RESETBASE_OFS    0x0020
+#define GCR_CL_RESETBASE_OFS 0x0020
 
 /* GCR_L2_CONFIG register fields */
 #define GCR_L2_CONFIG_BYPASS_SHF    20
 #define GCR_L2_CONFIG_BYPASS_MSK    ((0x1ULL) << GCR_L2_CONFIG_BYPASS_SHF)
+
+/* GCR_BASE register fields */
+#define GCR_BASE_GCRBASE_MSK     0xffffffff8000ULL
 
 /* GCR_GIC_BASE register fields */
 #define GCR_GIC_BASE_GICEN_MSK   1
@@ -56,12 +56,10 @@
 
 /* GCR_CL_OTHER_OFS register fields */
 #define GCR_CL_OTHER_VPOTHER_MSK 0x7
-/* TODO: CORE_OTHER, CLUSTER_OTHER */
 #define GCR_CL_OTHER_MSK GCR_CL_OTHER_VPOTHER_MSK
 
 /* GCR_CL_RESETBASE_OFS register fields */
 #define GCR_CL_RESET_BASE_RESETBASE_MSK 0xFFFFF000U
-/* TODO: SELECT_BEV, RESET_BASE_MODE */
 #define GCR_CL_RESET_BASE_MSK GCR_CL_RESET_BASE_RESETBASE_MSK
 
 typedef struct MIPSGCRVPState MIPSGCRVPState;
@@ -88,4 +86,4 @@ struct MIPSGCRState {
     MIPSGCRVPState *vps;
 };
 
-#endif /* _MIPS_GCR_H */
+#endif /* MIPS_CMGCR_H */
