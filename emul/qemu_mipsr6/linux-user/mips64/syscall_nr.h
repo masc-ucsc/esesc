@@ -336,7 +336,10 @@
 #define TARGET_NR_statx                 (TARGET_NR_Linux + 330)
 #define TARGET_NR_rseq                  (TARGET_NR_Linux + 331)
 #define TARGET_NR_io_pgetevents         (TARGET_NR_Linux + 332)
-
+#ifdef CONFIG_ESESC
+#define TARGET_NR_start_roi             (TARGET_NR_Linux + 400)
+#define TARGET_NR_end_roi               (TARGET_NR_Linux + 401)
+#endif // CONFIG_ESESC
 #else
 /*
  * Linux 64-bit syscalls are in the range from 5000 to 5999.
@@ -671,4 +674,8 @@
 #define TARGET_NR_statx                 (TARGET_NR_Linux + 326)
 #define TARGET_NR_rseq                  (TARGET_NR_Linux + 327)
 #define TARGET_NR_io_pgetevents         (TARGET_NR_Linux + 328)
+#ifdef CONFIG_ESESC
+#define TARGET_NR_start_roi             (TARGET_NR_Linux + 400)
+#define TARGET_NR_end_roi               (TARGET_NR_Linux + 401)
+#endif // CONFIG_ESESC
 #endif

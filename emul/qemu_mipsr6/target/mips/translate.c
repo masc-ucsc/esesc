@@ -2421,6 +2421,73 @@ static TCGv_i32 fpu_fcr0, fpu_fcr31;
 static TCGv_i64 fpu_f64[32];
 static TCGv_i64 msa_wr_d[64];
 
+#ifdef CONFIG_ESESC
+#include "../libemulint/InstOpcode.h"
+
+#define ESESC_TRACE_LCTRL(pc,target,op,src1,src2,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 htarget = tcg_const_i64(target); \
+  TCGv_i64 hop     = tcg_const_i64(op); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((src2)&0xFF)<<8) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_ctrl(cpu_env, hpc, htarget, hop, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hop); \
+  tcg_temp_free_i64(htarget); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
+#define ESESC_TRACE_RCTRL(pc,target,op,src1,src2,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 hop     = tcg_const_i64(op); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((src2)&0xFF)<<8) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_ctrl(cpu_env, hpc, target, hop, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hop); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
+#define ESESC_TRACE_MEM(pc,addr,op,src1,src2,dest) do { \
+  TCGv_i64 haddr = addr; \
+  if (addr == 0) { \
+    haddr = tcg_const_i64(pc); \
+  } \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 hop     = tcg_const_i64(op); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((src2)&0xFF)<<8) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_ctrl(cpu_env, hpc, haddr, hop, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hop); \
+  tcg_temp_free_i64(hpc); \
+  if (addr == 0) \
+    tcg_temp_free_i64(haddr); \
+  } while(0)
+
+#define ESESC_TRACE_LOAD(pc,addr,data,src1,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_load(cpu_env, hpc, addr, data, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
+#define ESESC_TRACE_ALU(pc,op,src1,src2,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 hop     = tcg_const_i64(op); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((src2)&0xFF)<<8) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_alu(cpu_env, hpc, hop, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hop); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
+#else
+#define ESESC_TRACE_ALU(pc,op,src1,src2,dest) do { }while(0)
+#define ESESC_TRACE_LCTRL(pc,target,op,src1,src2,dest) do { }while(0)
+#define ESESC_TRACE_RCTRL(pc,target,op,src1,src2,dest) do { }while(0)
+#define ESESC_TRACE_MEM(pc,addr,op,src1,src2,dest) do { }while(0)
+#define ESESC_TRACE_LOAD(pc,addr,data, src1,dest) do { }while(0)
+#endif
+
 /* MXU registers */
 static TCGv mxu_gpr[NUMBER_OF_MXU_REGISTERS - 1];
 static TCGv mxu_CR;
@@ -2499,6 +2566,7 @@ typedef struct DisasContext {
     bool vp;
     bool cmgcr;
     bool mrp;
+    bool pw;
     bool nan2008;
     bool abs2008;
 } DisasContext;
@@ -2729,18 +2797,35 @@ static inline void generate_exception_end(DisasContext *ctx, int excp)
 /* Floating point register moves. */
 static void gen_load_fpr32(DisasContext *ctx, TCGv_i32 t, int reg)
 {
+#ifdef CONFIG_USER_ONLY
+    if (ctx->hflags & MIPS_HFLAG_FRE && (reg & 1)) {
+        tcg_gen_extrh_i64_i32(t, fpu_f64[reg & ~1]);
+        return;
+    }
+#else
     if (ctx->hflags & MIPS_HFLAG_FRE) {
         generate_exception(ctx, EXCP_RI);
     }
+#endif
     tcg_gen_extrl_i64_i32(t, fpu_f64[reg]);
 }
 
 static void gen_store_fpr32(DisasContext *ctx, TCGv_i32 t, int reg)
 {
     TCGv_i64 t64;
+#ifdef CONFIG_USER_ONLY
+    if ((ctx->hflags & MIPS_HFLAG_FRE) && (reg & 1)) {
+        t64 = tcg_temp_new_i64();
+        tcg_gen_extu_i32_i64(t64, t);
+        tcg_gen_deposit_i64(fpu_f64[reg & ~1], fpu_f64[reg & ~1], t64, 32, 32);
+        tcg_temp_free_i64(t64);
+        return;
+    }
+#else
     if (ctx->hflags & MIPS_HFLAG_FRE) {
         generate_exception(ctx, EXCP_RI);
     }
+#endif
     t64 = tcg_temp_new_i64();
     tcg_gen_extu_i32_i64(t64, t);
     tcg_gen_deposit_i64(fpu_f64[reg], fpu_f64[reg], t64, 0, 32);
@@ -3366,6 +3451,10 @@ static void gen_ld(DisasContext *ctx, uint32_t opc,
     t0 = tcg_temp_new();
     gen_base_offset_addr(ctx, t0, base, offset);
 
+#ifdef CONFIG_ESESC
+    TCGv taddr = tcg_temp_new();
+    tcg_gen_mov_tl(taddr,t0);
+#endif
     switch (opc) {
 #if defined(TARGET_MIPS64)
     case OPC_LWU:
@@ -3543,6 +3632,10 @@ static void gen_ld(DisasContext *ctx, uint32_t opc,
         gen_store_gpr(t0, rt);
         break;
     }
+#ifdef CONFIG_ESESC
+    ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, cpu_gpr[rt], base, rt);
+    tcg_temp_free(taddr);
+#endif
     tcg_temp_free(t0);
 }
 
@@ -3581,6 +3674,7 @@ static void gen_st (DisasContext *ctx, uint32_t opc, int rt,
 
     gen_base_offset_addr(ctx, t0, base, offset);
     gen_load_gpr(t1, rt);
+    ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_ST, base, rt, LREG_InvalidOutput);
     switch (opc) {
 #if defined(TARGET_MIPS64)
     case OPC_SD:
@@ -3648,6 +3742,7 @@ static void gen_st_cond (DisasContext *ctx, uint32_t opc, int rt,
 #endif
     gen_base_offset_addr(ctx, t0, base, offset);
     gen_load_gpr(t1, rt);
+    ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_SC, rt, base, LREG_InvalidOutput);
     switch (opc) {
 #if defined(TARGET_MIPS64)
     case OPC_SCD:
@@ -3776,6 +3871,10 @@ static void gen_cop1_ldst(DisasContext *ctx, uint32_t op, int rt,
             /* Fallthrough */
         default:
             gen_base_offset_addr(ctx, t0, rs, imm);
+            if (op == OPC_LWC1 || op == OPC_LDC1)
+                ESESC_TRACE_MEM(ctx->base.pc_next,t0,iLALU_LD, rs, 0, LREG_FP0+rt);
+            else
+                ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_ST, rs, LREG_FP0+rt, LREG_InvalidOutput);
             gen_flt_ldst(ctx, op, rt, t0);
         }
     } else {
@@ -3795,6 +3894,7 @@ static void gen_arith_imm(DisasContext *ctx, uint32_t opc,
            For addi, we must generate the overflow exception when needed. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rt);
     switch (opc) {
     case OPC_ADDI:
         {
@@ -3875,6 +3975,7 @@ static void gen_logic_imm(DisasContext *ctx, uint32_t opc,
         return;
     }
     uimm = (uint16_t)imm;
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rt);
     switch (opc) {
     case OPC_ANDI:
         if (likely(rs != 0))
@@ -3920,6 +4021,7 @@ static void gen_slt_imm(DisasContext *ctx, uint32_t opc,
         /* If no destination, treat it as a NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0 , rt);
     t0 = tcg_temp_new();
     gen_load_gpr(t0, rs);
     switch (opc) {
@@ -3945,6 +4047,7 @@ static void gen_shift_imm(DisasContext *ctx, uint32_t opc,
         return;
     }
 
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rt);
     t0 = tcg_temp_new();
     gen_load_gpr(t0, rs);
     switch (opc) {
@@ -4019,6 +4122,7 @@ static void gen_arith(DisasContext *ctx, uint32_t opc,
            For add & sub, we must generate the overflow exception when needed. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
 
     switch (opc) {
     case OPC_ADD:
@@ -4185,6 +4289,7 @@ static void gen_cond_move(DisasContext *ctx, uint32_t opc,
         /* If no destination, treat it as a NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
 
     t0 = tcg_temp_new();
     gen_load_gpr(t0, rt);
@@ -4218,6 +4323,7 @@ static void gen_logic(DisasContext *ctx, uint32_t opc,
         /* If no destination, treat it as a NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
 
     switch (opc) {
     case OPC_AND:
@@ -4273,6 +4379,7 @@ static void gen_slt(DisasContext *ctx, uint32_t opc,
         /* If no destination, treat it as a NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
 
     t0 = tcg_temp_new();
     t1 = tcg_temp_new();
@@ -4301,6 +4408,7 @@ static void gen_shift(DisasContext *ctx, uint32_t opc,
            For add & sub, we must generate the overflow exception when needed. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
 
     t0 = tcg_temp_new();
     t1 = tcg_temp_new();
@@ -4457,6 +4565,7 @@ static void gen_HILO(DisasContext *ctx, uint32_t opc, int acc, int reg)
         }
         break;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, 0, 0, LREG_InvalidOutput);
 }
 
 static inline void gen_r6_ld(target_long addr, int reg, int memidx,
@@ -4529,6 +4638,7 @@ static inline void gen_pcrel(DisasContext *ctx, int opc, target_ulong pc,
         }
         break;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rs);
 }
 
 static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
@@ -4549,6 +4659,7 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
     switch (opc) {
     case R6_OPC_DIV:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_temp_new();
             TCGv t3 = tcg_temp_new();
             tcg_gen_ext32s_tl(t0, t0);
@@ -4565,9 +4676,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_MOD:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_temp_new();
             TCGv t3 = tcg_temp_new();
             tcg_gen_ext32s_tl(t0, t0);
@@ -4584,9 +4697,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_DIVU:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_const_tl(0);
             TCGv t3 = tcg_const_tl(1);
             tcg_gen_ext32u_tl(t0, t0);
@@ -4597,9 +4712,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_MODU:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_const_tl(0);
             TCGv t3 = tcg_const_tl(1);
             tcg_gen_ext32u_tl(t0, t0);
@@ -4610,9 +4727,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_MUL:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
             TCGv_i32 t2 = tcg_temp_new_i32();
             TCGv_i32 t3 = tcg_temp_new_i32();
             tcg_gen_trunc_tl_i32(t2, t0);
@@ -4622,9 +4741,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free_i32(t2);
             tcg_temp_free_i32(t3);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
     case R6_OPC_MUH:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
             TCGv_i32 t2 = tcg_temp_new_i32();
             TCGv_i32 t3 = tcg_temp_new_i32();
             tcg_gen_trunc_tl_i32(t2, t0);
@@ -4634,9 +4755,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free_i32(t2);
             tcg_temp_free_i32(t3);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
     case R6_OPC_MULU:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
             TCGv_i32 t2 = tcg_temp_new_i32();
             TCGv_i32 t3 = tcg_temp_new_i32();
             tcg_gen_trunc_tl_i32(t2, t0);
@@ -4646,9 +4769,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free_i32(t2);
             tcg_temp_free_i32(t3);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
     case R6_OPC_MUHU:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
             TCGv_i32 t2 = tcg_temp_new_i32();
             TCGv_i32 t3 = tcg_temp_new_i32();
             tcg_gen_trunc_tl_i32(t2, t0);
@@ -4658,10 +4783,12 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free_i32(t2);
             tcg_temp_free_i32(t3);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
 #if defined(TARGET_MIPS64)
     case R6_OPC_DDIV:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_temp_new();
             TCGv t3 = tcg_temp_new();
             tcg_gen_setcondi_tl(TCG_COND_EQ, t2, t0, -1LL << 63);
@@ -4675,9 +4802,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_DMOD:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_temp_new();
             TCGv t3 = tcg_temp_new();
             tcg_gen_setcondi_tl(TCG_COND_EQ, t2, t0, -1LL << 63);
@@ -4691,9 +4820,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_DDIVU:
         {
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
             TCGv t2 = tcg_const_tl(0);
             TCGv t3 = tcg_const_tl(1);
             tcg_gen_movcond_tl(TCG_COND_EQ, t1, t1, t2, t3, t1);
@@ -4701,6 +4832,7 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_DMODU:
         {
@@ -4711,9 +4843,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, rd);
         break;
     case R6_OPC_DMUL:
         tcg_gen_mul_i64(cpu_gpr[rd], t0, t1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
     case R6_OPC_DMUH:
         {
@@ -4721,9 +4855,11 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_gen_muls2_i64(t2, cpu_gpr[rd], t0, t1);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
     case R6_OPC_DMULU:
         tcg_gen_mul_i64(cpu_gpr[rd], t0, t1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
     case R6_OPC_DMUHU:
         {
@@ -4731,6 +4867,7 @@ static void gen_r6_muldiv(DisasContext *ctx, int opc, int rd, int rs, int rt)
             tcg_gen_mulu2_i64(t2, cpu_gpr[rd], t0, t1);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, rd);
         break;
 #endif
     default:
@@ -4836,6 +4973,7 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, acc);
         break;
     case OPC_DIVU:
         {
@@ -4851,6 +4989,7 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, acc);
         break;
     case OPC_MULT:
         {
@@ -4864,6 +5003,7 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             tcg_temp_free_i32(t2);
             tcg_temp_free_i32(t3);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, acc);
         break;
     case OPC_MULTU:
         {
@@ -4877,6 +5017,7 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             tcg_temp_free_i32(t2);
             tcg_temp_free_i32(t3);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, acc);
         break;
 #if defined(TARGET_MIPS64)
     case OPC_DDIV:
@@ -4895,6 +5036,7 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, acc);
         break;
     case OPC_DDIVU:
         {
@@ -4906,12 +5048,15 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             tcg_temp_free(t3);
             tcg_temp_free(t2);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_DIV, rs, rt, acc);
         break;
     case OPC_DMULT:
         tcg_gen_muls2_i64(cpu_LO[acc], cpu_HI[acc], t0, t1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, acc);
         break;
     case OPC_DMULTU:
         tcg_gen_mulu2_i64(cpu_LO[acc], cpu_HI[acc], t0, t1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, acc);
         break;
 #endif
     case OPC_MADD:
@@ -4928,6 +5073,8 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             gen_move_low32(cpu_LO[acc], t2);
             gen_move_high32(cpu_HI[acc], t2);
             tcg_temp_free_i64(t2);
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, LREG_TMP1); // FIXME:MADD
+            ESESC_TRACE_ALU(ctx->base.pc_next, iAALU , acc, LREG_TMP1, acc);
         }
         break;
     case OPC_MADDU:
@@ -4946,6 +5093,8 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             gen_move_low32(cpu_LO[acc], t2);
             gen_move_high32(cpu_HI[acc], t2);
             tcg_temp_free_i64(t2);
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, LREG_TMP1); // FIXME:MADD
+            ESESC_TRACE_ALU(ctx->base.pc_next, iAALU , acc, LREG_TMP1, acc);
         }
         break;
     case OPC_MSUB:
@@ -4962,6 +5111,8 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             gen_move_low32(cpu_LO[acc], t2);
             gen_move_high32(cpu_HI[acc], t2);
             tcg_temp_free_i64(t2);
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, LREG_TMP1); // FIXME:MADD
+            ESESC_TRACE_ALU(ctx->base.pc_next, iAALU , acc, LREG_TMP1, acc);
         }
         break;
     case OPC_MSUBU:
@@ -4980,6 +5131,8 @@ static void gen_muldiv(DisasContext *ctx, uint32_t opc,
             gen_move_low32(cpu_LO[acc], t2);
             gen_move_high32(cpu_HI[acc], t2);
             tcg_temp_free_i64(t2);
+            ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, rs, rt, LREG_TMP1); // FIXME:MADD
+            ESESC_TRACE_ALU(ctx->base.pc_next, iAALU , acc, LREG_TMP1, acc);
         }
         break;
     default:
@@ -5143,6 +5296,7 @@ static void gen_cl (DisasContext *ctx, uint32_t opc,
         /* Treat as NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rd);
     t0 = cpu_gpr[rd];
     gen_load_gpr(t0, rs);
 
@@ -5187,6 +5341,7 @@ static void gen_loongson_integer(DisasContext *ctx, uint32_t opc,
         /* Treat as NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
 
     switch (opc) {
     case OPC_MULT_G_2E:
@@ -5382,6 +5537,7 @@ static void gen_loongson_multimedia(DisasContext *ctx, int rd, int rs, int rt)
     uint32_t opc, shift_max;
     TCGv_i64 t0, t1;
 
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
     opc = MASK_LMI(ctx->opcode);
     switch (opc) {
     case OPC_ADD_CP2:
@@ -5720,6 +5876,7 @@ static void gen_trap (DisasContext *ctx, uint32_t opc,
         generate_exception(ctx, EXCP_TRAP);
         gen_set_label(l1);
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rt);
     tcg_temp_free(t0);
     tcg_temp_free(t1);
 }
@@ -5753,6 +5910,12 @@ static inline void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
     }
 }
 
+#ifdef CONFIG_ESESC
+int esesc_link = 0;
+int esesc_ret  = 0;
+int esesc_drop = 0;
+#endif
+
 /* Branches (before delay slot) */
 static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
                                 int insn_bytes,
@@ -5774,6 +5937,14 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
         goto out;
     }
 
+#ifdef CONFIG_ESESC
+    bool ctrl_reg = false;
+    esesc_ret = 0;
+    if (rt == 31 || rs == 31) {
+      esesc_ret = 1; // Set to false again if control flow instruction has an offset
+    }
+#endif
+
     /* Load needed operands */
     switch (opc) {
     case OPC_BEQ:
@@ -5787,6 +5958,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             bcond_compute = 1;
         }
         btgt = ctx->base.pc_next + insn_bytes + offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BGEZ:
     case OPC_BGEZAL:
@@ -5806,6 +5980,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             bcond_compute = 1;
         }
         btgt = ctx->base.pc_next + insn_bytes + offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BPOSGE32:
 #if defined(TARGET_MIPS64)
@@ -5816,6 +5993,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
 #endif
         bcond_compute = 1;
         btgt = ctx->base.pc_next + insn_bytes + offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_J:
     case OPC_JAL:
@@ -5823,9 +6003,15 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
         /* Jump to immediate */
         btgt = ((ctx->base.pc_next + insn_bytes) & (int32_t)0xF0000000) |
             (uint32_t)offset;
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
-    case OPC_JR:
     case OPC_JALR:
+#ifdef CONFIG_ESESC
+        blink = 31;
+#endif
+    case OPC_JR:
         /* Jump to register */
         if (offset != 0 && offset != 16) {
             /* Hint = 0 is JR/JALR, hint 16 is JR.HB/JALR.HB, the
@@ -5834,6 +6020,9 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             generate_exception_end(ctx, EXCP_RI);
             goto out;
         }
+#ifdef CONFIG_ESESC
+        ctrl_reg = true;
+#endif
         gen_load_gpr(btarget, rs);
         break;
     default:
@@ -5976,6 +6165,44 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             goto out;
         }
     }
+
+#ifdef CONFIG_ESESC
+    if (blink) {
+      if (ctrl_reg)
+        ESESC_TRACE_RCTRL(ctx->base.pc_next,btarget,iBALU_RCALL, rs, rt<0?0:rt, blink);
+      else
+        ESESC_TRACE_LCTRL(ctx->base.pc_next,btgt,iBALU_LCALL, rs, rt<0?0:rt, blink);
+    }else if (ctrl_reg && esesc_ret) {
+      ESESC_TRACE_RCTRL(ctx->base.pc_next,btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+    }else if (esesc_ret) {
+      ESESC_TRACE_LCTRL(ctx->base.pc_next,btgt,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+    }else if (bcond_compute == 0) {
+      if (ctrl_reg)
+        ESESC_TRACE_RCTRL(ctx->base.pc_next,btarget,iBALU_RJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
+      else
+        ESESC_TRACE_LCTRL(ctx->base.pc_next,btgt,iBALU_LJUMP, rs, rt<0?0:rt, LREG_InvalidOutput);
+    }else{
+      TCGLabel *l1 = gen_new_label();
+      TCGLabel *l2 = gen_new_label();
+      tcg_gen_brcondi_tl(TCG_COND_NE, bcond, 0, l1);
+
+      if (ctrl_reg)
+        ESESC_TRACE_RCTRL(ctx->base.pc_next,0,iBALU_RBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+      else
+        ESESC_TRACE_LCTRL(ctx->base.pc_next,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+
+      tcg_gen_br(l2);
+      gen_set_label(l1);
+
+      if (ctrl_reg)
+        ESESC_TRACE_RCTRL(ctx->base.pc_next,btarget,iBALU_RBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+      else
+        ESESC_TRACE_LCTRL(ctx->base.pc_next,btgt,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+
+      gen_set_label(l2);
+    }
+    esesc_ret = 0;
+#endif
 
     ctx->btarget = btgt;
 
@@ -6132,6 +6359,7 @@ static void gen_bitops (DisasContext *ctx, uint32_t opc, int rt,
     TCGv t0 = tcg_temp_new();
     TCGv t1 = tcg_temp_new();
 
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rt);
     gen_load_gpr(t1, rs);
     switch (opc) {
     case OPC_EXT:
@@ -6205,6 +6433,7 @@ static void gen_bshfl (DisasContext *ctx, uint32_t op2, int rt, int rd)
         /* If no destination, treat it as a NOP. */
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rt, 0, rd);
 
     t0 = tcg_temp_new();
     gen_load_gpr(t0, rt);
@@ -6303,8 +6532,10 @@ static void gen_align_bits(DisasContext *ctx, int wordsz, int rd, int rs,
     TCGv t0;
     if (rd == 0) {
         /* Treat as NOP. */
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, 0, rd);
         return;
     }
+    ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
     t0 = tcg_temp_new();
     if (bits == 0 || bits == wordsz) {
         if (bits == 0) {
@@ -10263,6 +10494,7 @@ static void gen_compute_branch1_r6(DisasContext *ctx, uint32_t op,
 
     btarget = addr_add(ctx, ctx->base.pc_next + 4, offset);
 
+    ESESC_TRACE_LCTRL(ctx->base.pc_next,(ctx->base.pc_next+4+offset),iBALU_LBRANCH, LREG_FP0+ft, 0, LREG_InvalidOutput);
     switch (op) {
     case OPC_BC1EQZ:
         tcg_gen_xori_i64(t0, t0, 1);
@@ -10522,6 +10754,7 @@ static void gen_cp1 (DisasContext *ctx, uint32_t opc, int rt, int fs)
             tcg_temp_free_i32(fp0);
         }
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, LREG_FP0+fs, 0 , rt);
         break;
     case OPC_MTC1:
         gen_load_gpr(t0, rt);
@@ -10532,10 +10765,12 @@ static void gen_cp1 (DisasContext *ctx, uint32_t opc, int rt, int fs)
             gen_store_fpr32(ctx, fp0, fs);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rt, 0, LREG_FP0+fs);
         break;
     case OPC_CFC1:
         gen_helper_1e0i(cfc1, t0, fs);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, LREG_FP0+fs, 0 , rt);
         break;
     case OPC_CTC1:
         gen_load_gpr(t0, rt);
@@ -10548,15 +10783,18 @@ static void gen_cp1 (DisasContext *ctx, uint32_t opc, int rt, int fs)
         }
         /* Stop translation as we may have changed hflags */
         ctx->base.is_jmp = DISAS_STOP;
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rt, 0, LREG_FP0+fs);
         break;
 #if defined(TARGET_MIPS64)
     case OPC_DMFC1:
         gen_load_fpr64(ctx, t0, fs);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, LREG_FP0+fs, 0 , rt);
         break;
     case OPC_DMTC1:
         gen_load_gpr(t0, rt);
         gen_store_fpr64(ctx, t0, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rt, 0, LREG_FP0+fs);
         break;
 #endif
     case OPC_MFHC1:
@@ -10567,6 +10805,7 @@ static void gen_cp1 (DisasContext *ctx, uint32_t opc, int rt, int fs)
             tcg_gen_ext_i32_tl(t0, fp0);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, LREG_FP0+fs, 0 , rt);
         gen_store_gpr(t0, rt);
         break;
     case OPC_MTHC1:
@@ -10578,6 +10817,7 @@ static void gen_cp1 (DisasContext *ctx, uint32_t opc, int rt, int fs)
             gen_store_fpr32h(ctx, fp0, fs);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rt, 0, LREG_FP0+fs);
         break;
     default:
         MIPS_INVAL("cp1 move");
@@ -10778,6 +11018,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SUB_S:
         {
@@ -10791,6 +11032,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MUL_S:
         {
@@ -10804,6 +11046,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_DIV_S:
         {
@@ -10817,6 +11060,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SQRT_S:
         {
@@ -10827,6 +11071,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_ABS_S:
         {
@@ -10841,6 +11086,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOV_S:
         {
@@ -10850,6 +11096,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_NEG_S:
         {
@@ -10864,6 +11111,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_ROUND_L_S:
         check_cp1_64bitmode(ctx);
@@ -10881,6 +11129,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_TRUNC_L_S:
         check_cp1_64bitmode(ctx);
@@ -10898,6 +11147,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CEIL_L_S:
         check_cp1_64bitmode(ctx);
@@ -10915,6 +11165,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_FLOOR_L_S:
         check_cp1_64bitmode(ctx);
@@ -10932,6 +11183,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_ROUND_W_S:
         {
@@ -10946,6 +11198,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_TRUNC_W_S:
         {
@@ -10960,6 +11213,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CEIL_W_S:
         {
@@ -10974,6 +11228,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_FLOOR_W_S:
         {
@@ -10988,22 +11243,27 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_SEL_S:
         check_insn(ctx, ISA_MIPS32R6);
         gen_sel_s(ctx, op1, fd, ft, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SELEQZ_S:
         check_insn(ctx, ISA_MIPS32R6);
         gen_sel_s(ctx, op1, fd, ft, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SELNEZ_S:
         check_insn(ctx, ISA_MIPS32R6);
         gen_sel_s(ctx, op1, fd, ft, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MOVCF_S:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
         gen_movcf_s(ctx, fs, fd, (ft >> 2) & 0x7, ft & 0x1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MOVZ_S:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
@@ -11020,6 +11280,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
             gen_set_label(l1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOVN_S:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
@@ -11036,6 +11297,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 gen_set_label(l1);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_RECIP_S:
         {
@@ -11046,6 +11308,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_RSQRT_S:
         {
@@ -11056,6 +11319,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MADDF_S:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11072,6 +11336,8 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp1);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_TMP1); // FIXME:MADD
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU , LREG_FP0+fd, LREG_TMP1, LREG_FP0+fd);
         break;
     case OPC_MSUBF_S:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11088,6 +11354,8 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp1);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_TMP1); // FIXME:MADD
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU , LREG_FP0+fd, LREG_TMP1, LREG_FP0+fd);
         break;
     case OPC_RINT_S:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11098,6 +11366,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CLASS_S:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11108,6 +11377,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MIN_S: /* OPC_RECIP2_S */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11137,6 +11407,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i32(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MINA_S: /* OPC_RECIP1_S */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11163,6 +11434,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i32(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MAX_S: /* OPC_RSQRT1_S */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11187,6 +11459,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i32(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MAXA_S: /* OPC_RSQRT2_S */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11214,6 +11487,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i32(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_CVT_D_S:
         check_cp1_registers(ctx, fd);
@@ -11227,6 +11501,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_W_S:
         {
@@ -11241,6 +11516,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_L_S:
         check_cp1_64bitmode(ctx);
@@ -11258,6 +11534,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_PS_S:
         check_ps(ctx);
@@ -11274,6 +11551,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CMP_F_S:
     case OPC_CMP_UN_S:
@@ -11297,6 +11575,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         } else {
             gen_cmp_s(ctx, func-48, ft, fs, cc);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_InvalidOutput);
         break;
     case OPC_ADD_D:
         check_cp1_registers(ctx, fs | ft | fd);
@@ -11311,6 +11590,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SUB_D:
         check_cp1_registers(ctx, fs | ft | fd);
@@ -11325,6 +11605,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MUL_D:
         check_cp1_registers(ctx, fs | ft | fd);
@@ -11339,6 +11620,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_DIV_D:
         check_cp1_registers(ctx, fs | ft | fd);
@@ -11353,6 +11635,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SQRT_D:
         check_cp1_registers(ctx, fs | fd);
@@ -11364,6 +11647,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_ABS_D:
         check_cp1_registers(ctx, fs | fd);
@@ -11379,6 +11663,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOV_D:
         check_cp1_registers(ctx, fs | fd);
@@ -11389,6 +11674,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_NEG_D:
         check_cp1_registers(ctx, fs | fd);
@@ -11404,6 +11690,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_ROUND_L_D:
         check_cp1_64bitmode(ctx);
@@ -11419,6 +11706,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_TRUNC_L_D:
         check_cp1_64bitmode(ctx);
@@ -11434,6 +11722,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CEIL_L_D:
         check_cp1_64bitmode(ctx);
@@ -11449,6 +11738,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_FLOOR_L_D:
         check_cp1_64bitmode(ctx);
@@ -11464,6 +11754,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_ROUND_W_D:
         check_cp1_registers(ctx, fs);
@@ -11481,6 +11772,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_TRUNC_W_D:
         check_cp1_registers(ctx, fs);
@@ -11498,6 +11790,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CEIL_W_D:
         check_cp1_registers(ctx, fs);
@@ -11515,6 +11808,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_FLOOR_W_D:
         check_cp1_registers(ctx, fs);
@@ -11532,22 +11826,27 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_SEL_D:
         check_insn(ctx, ISA_MIPS32R6);
         gen_sel_d(ctx, op1, fd, ft, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SELEQZ_D:
         check_insn(ctx, ISA_MIPS32R6);
         gen_sel_d(ctx, op1, fd, ft, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SELNEZ_D:
         check_insn(ctx, ISA_MIPS32R6);
         gen_sel_d(ctx, op1, fd, ft, fs);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MOVCF_D:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
         gen_movcf_d(ctx, fs, fd, (ft >> 2) & 0x7, ft & 0x1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOVZ_D:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
@@ -11564,6 +11863,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i64(fp0);
             gen_set_label(l1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOVN_D:
         check_insn_opc_removed(ctx, ISA_MIPS32R6);
@@ -11580,6 +11880,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 gen_set_label(l1);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_RECIP_D:
         check_cp1_registers(ctx, fs | fd);
@@ -11591,6 +11892,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_RSQRT_D:
         check_cp1_registers(ctx, fs | fd);
@@ -11602,6 +11904,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MADDF_D:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11618,6 +11921,8 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i64(fp1);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_TMP1); // FIXME:MADD
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU , LREG_FP0+fd, LREG_TMP1, LREG_FP0+fd);
         break;
     case OPC_MSUBF_D:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11634,6 +11939,8 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i64(fp1);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_TMP1); // FIXME:MADD
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU , LREG_FP0+fd, LREG_TMP1, LREG_FP0+fd);
         break;
     case OPC_RINT_D:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11644,6 +11951,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CLASS_D:
         check_insn(ctx, ISA_MIPS32R6);
@@ -11654,6 +11962,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MIN_D: /* OPC_RECIP2_D */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11681,6 +11990,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i64(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MINA_D: /* OPC_RECIP1_D */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11705,6 +12015,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i64(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MAX_D: /*  OPC_RSQRT1_D */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11729,6 +12040,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i64(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MAXA_D: /* OPC_RSQRT2_D */
         if (ctx->insn_flags & ISA_MIPS32R6) {
@@ -11756,6 +12068,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 tcg_temp_free_i64(fp0);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_CMP_F_D:
     case OPC_CMP_UN_D:
@@ -11779,6 +12092,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         } else {
             gen_cmp_d(ctx, func-48, ft, fs, cc);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_InvalidOutput);
         break;
     case OPC_CVT_S_D:
         check_cp1_registers(ctx, fs);
@@ -11792,6 +12106,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_W_D:
         check_cp1_registers(ctx, fs);
@@ -11809,6 +12124,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_L_D:
         check_cp1_64bitmode(ctx);
@@ -11824,6 +12140,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_S_W:
         {
@@ -11834,6 +12151,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_D_W:
         check_cp1_registers(ctx, fd);
@@ -11847,6 +12165,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp64, fd);
             tcg_temp_free_i64(fp64);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_S_L:
         check_cp1_64bitmode(ctx);
@@ -11860,6 +12179,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp32, fd);
             tcg_temp_free_i32(fp32);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_D_L:
         check_cp1_64bitmode(ctx);
@@ -11871,6 +12191,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_PS_PW:
         check_ps(ctx);
@@ -11882,6 +12203,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_ADD_PS:
         check_ps(ctx);
@@ -11896,6 +12218,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_SUB_PS:
         check_ps(ctx);
@@ -11910,6 +12233,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MUL_PS:
         check_ps(ctx);
@@ -11924,6 +12248,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_ABS_PS:
         check_ps(ctx);
@@ -11935,6 +12260,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOV_PS:
         check_ps(ctx);
@@ -11945,6 +12271,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_NEG_PS:
         check_ps(ctx);
@@ -11956,10 +12283,12 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOVCF_PS:
         check_ps(ctx);
         gen_movcf_ps(ctx, fs, fd, (ft >> 2) & 0x7, ft & 0x1);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOVZ_PS:
         check_ps(ctx);
@@ -11975,6 +12304,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i64(fp0);
             gen_set_label(l1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_MOVN_PS:
         check_ps(ctx);
@@ -11991,6 +12321,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
                 gen_set_label(l1);
             }
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_ADDR_PS:
         check_ps(ctx);
@@ -12005,6 +12336,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_MULR_PS:
         check_ps(ctx);
@@ -12019,6 +12351,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_RECIP2_PS:
         check_ps(ctx);
@@ -12033,6 +12366,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_RECIP1_PS:
         check_ps(ctx);
@@ -12045,6 +12379,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i64(fp0);
         }
         break;
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
     case OPC_RSQRT1_PS:
         check_ps(ctx);
         {
@@ -12056,6 +12391,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i64(fp0);
         }
         break;
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
     case OPC_RSQRT2_PS:
         check_ps(ctx);
         {
@@ -12069,6 +12405,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPDIV, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_CVT_S_PU:
         check_cp1_64bitmode(ctx);
@@ -12080,6 +12417,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_PW_PS:
         check_ps(ctx);
@@ -12091,6 +12429,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr64(ctx, fp0, fd);
             tcg_temp_free_i64(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_CVT_S_PL:
         check_cp1_64bitmode(ctx);
@@ -12102,6 +12441,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             gen_store_fpr32(ctx, fp0, fd);
             tcg_temp_free_i32(fp0);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, 0, LREG_FP0+fd);
         break;
     case OPC_PLL_PS:
         check_ps(ctx);
@@ -12116,6 +12456,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
             tcg_temp_free_i32(fp1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_PLU_PS:
         check_ps(ctx);
@@ -12130,6 +12471,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
             tcg_temp_free_i32(fp1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_PUL_PS:
         check_ps(ctx);
@@ -12144,6 +12486,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
             tcg_temp_free_i32(fp1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_PUU_PS:
         check_ps(ctx);
@@ -12158,6 +12501,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
             tcg_temp_free_i32(fp0);
             tcg_temp_free_i32(fp1);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_FP0+fd);
         break;
     case OPC_CMP_F_PS:
     case OPC_CMP_UN_PS:
@@ -12180,6 +12524,7 @@ static void gen_farith (DisasContext *ctx, enum fopcode op1,
         } else {
             gen_cmp_ps(ctx, func-48, ft, fs, cc);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+fs, LREG_FP0+ft, LREG_InvalidOutput);
         break;
     default:
         MIPS_INVAL("farith");
@@ -12540,10 +12885,12 @@ static void gen_rdhwr(DisasContext *ctx, int rt, int rd, int sel)
     case 0:
         gen_helper_rdhwr_cpunum(t0, cpu_env);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
     case 1:
         gen_helper_rdhwr_synci_step(t0, cpu_env);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
     case 2:
         if (tb_cflags(ctx->base.tb) & CF_USE_ICOUNT) {
@@ -12559,10 +12906,12 @@ static void gen_rdhwr(DisasContext *ctx, int rt, int rd, int sel)
            we break completely out of translated code.  */
         gen_save_pc(ctx->base.pc_next + 4);
         ctx->base.is_jmp = DISAS_EXIT;
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
     case 3:
         gen_helper_rdhwr_ccres(t0, cpu_env);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
     case 4:
         check_insn(ctx, ISA_MIPS32R6);
@@ -12574,17 +12923,20 @@ static void gen_rdhwr(DisasContext *ctx, int rt, int rd, int sel)
         }
         gen_helper_rdhwr_performance(t0, cpu_env);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
     case 5:
         check_insn(ctx, ISA_MIPS32R6);
         gen_helper_rdhwr_xnp(t0, cpu_env);
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
     case 29:
 #if defined(CONFIG_USER_ONLY)
         tcg_gen_ld_tl(t0, cpu_env,
                       offsetof(CPUMIPSState, active_tc.CP0_UserLocal));
         gen_store_gpr(t0, rt);
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
 #else
         if ((ctx->hflags & MIPS_HFLAG_CP0) ||
@@ -12595,6 +12947,7 @@ static void gen_rdhwr(DisasContext *ctx, int rt, int rd, int sel)
         } else {
             generate_exception_end(ctx, EXCP_RI);
         }
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rd, 0, rt);
         break;
 #endif
     default:            /* Invalid */
@@ -12627,6 +12980,16 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
         /* FIXME: Need to clear can_do_io.  */
         switch (proc_hflags & MIPS_HFLAG_BMASK_BASE) {
         case MIPS_HFLAG_FBNSLOT:
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
             gen_goto_tb(ctx, 0, ctx->base.pc_next + insn_bytes);
             break;
         case MIPS_HFLAG_B:
@@ -12634,10 +12997,30 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
             if (proc_hflags & MIPS_HFLAG_BX) {
                 tcg_gen_xori_i32(hflags, hflags, MIPS_HFLAG_M16);
             }
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
             gen_goto_tb(ctx, 0, ctx->btarget);
             break;
         case MIPS_HFLAG_BL:
             /* blikely taken case */
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
             gen_goto_tb(ctx, 0, ctx->btarget);
             break;
         case MIPS_HFLAG_BC:
@@ -12646,13 +13029,43 @@ static void gen_branch(DisasContext *ctx, int insn_bytes)
                 TCGLabel *l1 = gen_new_label();
 
                 tcg_gen_brcondi_tl(TCG_COND_NE, bcond, 0, l1);
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
                 gen_goto_tb(ctx, 1, ctx->base.pc_next + insn_bytes);
                 gen_set_label(l1);
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
                 gen_goto_tb(ctx, 0, ctx->btarget);
             }
             break;
         case MIPS_HFLAG_BR:
             /* unconditional branch to register */
+#ifdef CONFIG_ESESC
+            if (esesc_drop==0) {
+              if (esesc_link)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LCALL, 0, 0, 31);
+              else if (esesc_ret)
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, 0, 0, LREG_InvalidOutput);
+              else
+                ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, 0, 0, LREG_InvalidOutput);
+            }
+#endif
             if (ctx->insn_flags & (ASE_MIPS16 | ASE_MICROMIPS)) {
                 TCGv t0 = tcg_temp_new();
                 TCGv_i32 t1 = tcg_temp_new_i32();
@@ -12710,9 +13123,15 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->base.pc_next + 4, offset);
         if (rs <= rt && rs == 0) {
+#ifdef CONFIG_ESESC
+          esesc_link = 1;
+#endif
             /* OPC_BEQZALC, OPC_BNEZALC */
             tcg_gen_movi_tl(cpu_gpr[31], ctx->base.pc_next + 4 + m16_lowbit);
         }
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BLEZC: /* OPC_BGEZC, OPC_BGEC */
     case OPC_BGTZC: /* OPC_BLTZC, OPC_BLTC */
@@ -12720,10 +13139,16 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         gen_load_gpr(t1, rt);
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->base.pc_next + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BLEZALC: /* OPC_BGEZALC, OPC_BGEUC */
     case OPC_BGTZALC: /* OPC_BLTZALC, OPC_BLTUC */
         if (rs == 0 || rs == rt) {
+#ifdef CONFIG_ESESC
+          esesc_link = 1;
+#endif
             /* OPC_BLEZALC, OPC_BGEZALC */
             /* OPC_BGTZALC, OPC_BLTZALC */
             tcg_gen_movi_tl(cpu_gpr[31], ctx->base.pc_next + 4 + m16_lowbit);
@@ -12732,10 +13157,16 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         gen_load_gpr(t1, rt);
         bcond_compute = 1;
         ctx->btarget = addr_add(ctx, ctx->base.pc_next + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BC:
     case OPC_BALC:
         ctx->btarget = addr_add(ctx, ctx->base.pc_next + 4, offset);
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     case OPC_BEQZC:
     case OPC_BNEZC:
@@ -12755,6 +13186,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
             tcg_temp_free(tbase);
             tcg_temp_free(toffset);
         }
+#ifdef CONFIG_ESESC
+        esesc_ret = 0;
+#endif
         break;
     default:
         MIPS_INVAL("Compact branch/jump");
@@ -12766,12 +13200,18 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
         /* Uncoditional compact branch */
         switch (opc) {
         case OPC_JIALC:
+#ifdef CONFIG_ESESC
+            esesc_link = 1;
+#endif
             tcg_gen_movi_tl(cpu_gpr[31], ctx->base.pc_next + 4 + m16_lowbit);
             /* Fallthrough */
         case OPC_JIC:
             ctx->hflags |= MIPS_HFLAG_BR;
             break;
         case OPC_BALC:
+#ifdef CONFIG_ESESC
+            esesc_link = 1;
+#endif
             tcg_gen_movi_tl(cpu_gpr[31], ctx->base.pc_next + 4 + m16_lowbit);
             /* Fallthrough */
         case OPC_BC:
@@ -12785,6 +13225,9 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
 
         /* Generating branch here as compact branches don't have delay slot */
         gen_branch(ctx, 4);
+#ifdef CONFIG_ESESC
+        esesc_link = 0;
+#endif
     } else {
         /* Conditional compact branch */
         TCGLabel *fs = gen_new_label();
@@ -12906,10 +13349,22 @@ static void gen_compute_compact_branch(DisasContext *ctx, uint32_t opc,
             goto out;
         }
 
+#ifdef CONFIG_ESESC
+        if (rt == 31 || rs == 31)
+          ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+        else
+          ESESC_TRACE_LCTRL(ctx->base.pc_next,ctx->btarget,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+#endif
         /* Generating branch here as compact branches don't have delay slot */
         gen_goto_tb(ctx, 1, ctx->btarget);
         gen_set_label(fs);
 
+#ifdef CONFIG_ESESC
+        if (rt==31 || rs == 31)
+          ESESC_TRACE_LCTRL(ctx->base.pc_next,0,iBALU_RET, rs, rt<0?0:rt, LREG_InvalidOutput);
+        else
+          ESESC_TRACE_LCTRL(ctx->base.pc_next,0,iBALU_LBRANCH, rs, rt<0?0:rt, LREG_InvalidOutput);
+#endif
         ctx->hflags |= MIPS_HFLAG_FBNSLOT;
     }
 
@@ -15414,6 +15869,7 @@ static void gen_pool32axf (CPUMIPSState *env, DisasContext *ctx, int rt, int rs)
     case 0x2d:
         switch (minor) {
         case SYNC:
+            ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, 0, 0, LREG_InvalidOutput);
             gen_sync(extract32(ctx->opcode, 16, 5));
             break;
         case SYSCALL:
@@ -16305,6 +16761,7 @@ static void decode_micromips32_opc(CPUMIPSState *env, DisasContext *ctx)
                     }
                     break;
                 case PREFX:
+                    ESESC_TRACE_MEM(ctx->base.pc_next,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
                     check_insn_opc_removed(ctx, ISA_MIPS32R6);
                     break;
                 default:
@@ -16557,6 +17014,7 @@ static void decode_micromips32_opc(CPUMIPSState *env, DisasContext *ctx)
                 /* SYNCI */
                 /* Break the TB to be able to sync copied instructions
                    immediately */
+                ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, 0, 0, LREG_InvalidOutput);
                 ctx->base.is_jmp = DISAS_STOP;
             } else {
                 /* TNEI */
@@ -16797,6 +17255,7 @@ static void decode_micromips32_opc(CPUMIPSState *env, DisasContext *ctx)
             break;
         case PREF:
             /* Treat as no-op */
+            ESESC_TRACE_MEM(ctx->base.pc_next,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
             if ((ctx->insn_flags & ISA_MIPS32R6) && (rt >= 24)) {
                 /* hint codes 24-31 are reserved and signal RI */
                 generate_exception(ctx, EXCP_RI);
@@ -19928,18 +20387,22 @@ static void gen_p_lsx(DisasContext *ctx, int rd, int rs, int rt)
             switch (extract32(ctx->opcode, 7, 4)) {
             case NM_LWC1X:
             /*case NM_LWC1XS:*/
+                ESESC_TRACE_MEM(ctx->base.pc_next,t0,iLALU_LD, rs, 0, LREG_FP0+rd);
                 gen_flt_ldst(ctx, OPC_LWC1, rd, t0);
                 break;
             case NM_LDC1X:
             /*case NM_LDC1XS:*/
+                ESESC_TRACE_MEM(ctx->base.pc_next,t0,iLALU_LD, rs, 0, LREG_FP0+rd);
                 gen_flt_ldst(ctx, OPC_LDC1, rd, t0);
                 break;
             case NM_SWC1X:
             /*case NM_SWC1XS:*/
+                ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_ST, rs, LREG_FP0+rd, LREG_InvalidOutput);
                 gen_flt_ldst(ctx, OPC_SWC1, rd, t0);
                 break;
             case NM_SDC1X:
             /*case NM_SDC1XS:*/
+                ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_ST, rs, LREG_FP0+rd, LREG_InvalidOutput);
                 gen_flt_ldst(ctx, OPC_SDC1, rd, t0);
                 break;
             }
@@ -22130,6 +22593,7 @@ static void gen_mipsdsp_arith(DisasContext *ctx, uint32_t op1, uint32_t op2,
 
     gen_load_gpr(v1_t, v1);
     gen_load_gpr(v2_t, v2);
+    ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, v1, v2, ret);
 
     switch (op1) {
     /* OPC_MULT_G_2E is equal OPC_ADDUH_QB_DSP */
@@ -22825,6 +23289,7 @@ static void gen_mipsdsp_multiply(DisasContext *ctx, uint32_t op1, uint32_t op2,
     tcg_gen_movi_i32(t0, ret);
     gen_load_gpr(v1_t, v1);
     gen_load_gpr(v2_t, v2);
+    ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPMULT, v1, v2, ret);
 
     switch (op1) {
     /* OPC_MULT_G_2E, OPC_ADDUH_QB_DSP, OPC_MUL_PH_DSP have
@@ -23766,6 +24231,7 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
     op1 = MASK_SPECIAL(ctx->opcode);
     switch (op1) {
     case OPC_LSA:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
         gen_lsa(ctx, op1, rd, rs, rt, extract32(ctx->opcode, 6, 2));
         break;
     case OPC_MULT:
@@ -23817,6 +24283,7 @@ static void decode_opc_special_r6(CPUMIPSState *env, DisasContext *ctx)
         break;
 #if defined(TARGET_MIPS64)
     case OPC_DLSA:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs, rt, rd);
         check_mips_64(ctx);
         gen_lsa(ctx, op1, rd, rs, rt, extract32(ctx->opcode, 6, 2));
         break;
@@ -24094,15 +24561,26 @@ static void decode_opc_special(CPUMIPSState *env, DisasContext *ctx)
         }
         break;
     case OPC_SYSCALL:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, 0, 0, LREG_InvalidOutput);
         generate_exception_end(ctx, EXCP_SYSCALL);
         break;
     case OPC_BREAK:
         generate_exception_end(ctx, EXCP_BREAK);
         break;
     case OPC_SYNC:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, 0, 0, LREG_InvalidOutput);
         check_insn(ctx, ISA_MIPS2);
         gen_sync(extract32(ctx->opcode, 6, 5));
         break;
+#ifdef CONFIG_ESESC
+    case OPC_SPECIAL28_RESERVED:
+        gen_helper_esesc0(cpu_env);
+        break;
+#else
+    case OPC_SPECIAL28_RESERVED:
+        printf("esesc ROI\n");
+        break;
+#endif
 
 #if defined(TARGET_MIPS64)
         /* MIPS64 specific opcodes */
@@ -25864,12 +26342,14 @@ static void decode_opc_special3_r6(CPUMIPSState *env, DisasContext *ctx)
             generate_exception_end(ctx, EXCP_RI);
         }
         /* Treat as NOP. */
+        ESESC_TRACE_MEM(ctx->base.pc_next,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
         break;
     case R6_OPC_CACHE:
         check_cp0_enabled(ctx);
         if (ctx->hflags & MIPS_HFLAG_ITC_CACHE) {
             gen_cache_operation(ctx, rt, rs, imm);
         }
+        ESESC_TRACE_MEM(ctx->base.pc_next,0,iLALU_LD, rs, 0, LREG_InvalidOutput);
         break;
     case R6_OPC_SC:
         gen_st_cond(ctx, op1, rt, rs, imm);
@@ -26829,6 +27309,7 @@ static void decode_opc_special3(CPUMIPSState *env, DisasContext *ctx)
         break;
 #endif
     case OPC_RDHWR:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rd, 0, rt);
         gen_rdhwr(ctx, rt, rd, extract32(ctx->opcode, 6, 3));
         break;
     case OPC_FORK:
@@ -27199,6 +27680,13 @@ static void gen_msa_3r(CPUMIPSState *env, DisasContext *ctx)
     TCGv_i32 tws = tcg_const_i32(ws);
     TCGv_i32 twt = tcg_const_i32(wt);
 
+#ifdef CONFIG_ESESC
+    if (MASK_MSA_3R(ctx->opcode)== OPC_ILVL_df)
+      ESESC_TRACE_ALU(ctx->base.pc_next, iRALU , LREG_VECTOR0+ws, LREG_VECTOR0+wt, LREG_VECTOR0+wd);
+    else
+      ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU , LREG_VECTOR0+ws, LREG_VECTOR0+wt, LREG_VECTOR0+wd);
+#endif
+
     switch (MASK_MSA_3R(ctx->opcode)) {
     case OPC_SLL_df:
         gen_helper_msa_sll_df(cpu_env, tdf, twd, tws, twt);
@@ -27437,6 +27925,7 @@ static void gen_msa_elm_3e(CPUMIPSState *env, DisasContext *ctx)
         gen_store_gpr(telm, dest);
         break;
     case OPC_MOVE_V:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iRALU , LREG_VECTOR0+source, 0, LREG_VECTOR0+dest);
         gen_helper_msa_move_v(cpu_env, tdt, tsr);
         break;
     default:
@@ -27591,6 +28080,8 @@ static void gen_msa_3rf(CPUMIPSState *env, DisasContext *ctx)
         gen_helper_msa_fclt_df(cpu_env, tdf, twd, tws, twt);
         break;
     case OPC_FMADD_df:
+        ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_MULT, LREG_VECTOR0+ws, LREG_VECTOR0+wt, LREG_TMP1); // FIXME:MADD
+        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU , LREG_VECTOR0+wd, LREG_TMP1, LREG_VECTOR0+wd);
         gen_helper_msa_fmadd_df(cpu_env, tdf, twd, tws, twt);
         break;
     case OPC_MUL_Q_df:
@@ -27941,27 +28432,35 @@ static void gen_msa(CPUMIPSState *env, DisasContext *ctx)
 
             switch (MASK_MSA_MINOR(opcode)) {
             case OPC_LD_B:
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_b(cpu_env, twd, taddr);
                 break;
             case OPC_LD_H:
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_h(cpu_env, twd, taddr);
                 break;
             case OPC_LD_W:
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_w(cpu_env, twd, taddr);
                 break;
             case OPC_LD_D:
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_d(cpu_env, twd, taddr);
                 break;
             case OPC_ST_B:
+                ESESC_TRACE_MEM(ctx->base.pc_next,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_b(cpu_env, twd, taddr);
                 break;
             case OPC_ST_H:
+                ESESC_TRACE_MEM(ctx->base.pc_next,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_h(cpu_env, twd, taddr);
                 break;
             case OPC_ST_W:
+                ESESC_TRACE_MEM(ctx->base.pc_next,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_w(cpu_env, twd, taddr);
                 break;
             case OPC_ST_D:
+                ESESC_TRACE_MEM(ctx->base.pc_next,taddr,iSALU_ST, rs, LREG_VECTOR0+wd, LREG_InvalidOutput);
                 gen_helper_msa_st_d(cpu_env, twd, taddr);
                 break;
             }
@@ -28074,6 +28573,7 @@ static void decode_opc(CPUMIPSState *env, DisasContext *ctx)
             check_insn(ctx, ISA_MIPS32R2);
             /* Break the TB to be able to sync copied instructions
                immediately */
+            ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, 0, 0, LREG_InvalidOutput);
             ctx->base.is_jmp = DISAS_STOP;
             break;
         case OPC_BPOSGE32:    /* MIPS DSP branch */
@@ -28469,6 +28969,7 @@ static void decode_opc(CPUMIPSState *env, DisasContext *ctx)
                 case R6_OPC_CMP_SUNE_S:
                 case R6_OPC_CMP_SNE_S:
                     gen_r6_cmp_s(ctx, ctx->opcode & 0x1f, rt, rd, sa);
+                    ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+rd, 0, LREG_FP0+sa);
                     break;
                 case R6_OPC_CMP_AF_D:
                 case R6_OPC_CMP_UN_D:
@@ -28493,6 +28994,7 @@ static void decode_opc(CPUMIPSState *env, DisasContext *ctx)
                 case R6_OPC_CMP_SUNE_D:
                 case R6_OPC_CMP_SNE_D:
                     gen_r6_cmp_d(ctx, ctx->opcode & 0x1f, rt, rd, sa);
+                    ESESC_TRACE_ALU(ctx->base.pc_next, iCALU_FPALU, LREG_FP0+rd, 0, LREG_FP0+sa);
                     break;
                 default:
                     gen_farith(ctx, ctx->opcode & FOP(0x3f, 0x1f),
@@ -28831,7 +29333,14 @@ static void mips_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
         }
     }
     if (is_slot) {
+#ifdef CONFIG_ESESC
+          esesc_drop = 1;
+#endif
         gen_branch(ctx, insn_bytes);
+#ifdef CONFIG_ESESC
+          esesc_drop = 0;
+#endif
+
     }
     ctx->base.pc_next += insn_bytes;
 

@@ -440,6 +440,9 @@ static inline bool cpu_handle_halt(CPUState *cpu)
         }
 
         cpu->halted = 0;
+#ifdef CONFIG_ESESC
+        QEMUReader_cpu_start(cpu->fid);
+#endif
     }
 
     return false;

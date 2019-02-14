@@ -284,6 +284,7 @@ audio_drv_list=""
 block_drv_rw_whitelist=""
 block_drv_ro_whitelist=""
 host_cc="cc"
+esesc="no"
 libs_softmmu=""
 libs_tools=""
 audio_pt_int=""
@@ -1173,6 +1174,8 @@ for opt do
   ;;
   --enable-profiler) profiler="yes"
   ;;
+  --enable-esesc) esesc="yes"
+  ;;
   --disable-cocoa) cocoa="no"
   ;;
   --enable-cocoa)
@@ -1725,6 +1728,7 @@ disabled with --disable-FEATURE, default is enabled if available:
   hvf             Hypervisor.framework acceleration support
   whpx            Windows Hypervisor Platform acceleration support
   rdma            Enable RDMA-based migration
+  esesc           compile files needed for linking to ESESC
   pvrdma          Enable PVRDMA support
   vde             support for vde network
   netmap          support for netmap network
@@ -5984,6 +5988,7 @@ echo "gprof enabled     $gprof"
 echo "sparse enabled    $sparse"
 echo "strip binaries    $strip_opt"
 echo "profiler          $profiler"
+echo "esesc             $esesc"
 echo "static build      $static"
 if test "$darwin" = "yes" ; then
     echo "Cocoa support     $cocoa"
@@ -6550,6 +6555,9 @@ if test "$tcg" = "yes"; then
 fi
 if test "$fdatasync" = "yes" ; then
   echo "CONFIG_FDATASYNC=y" >> $config_host_mak
+fi
+if test "$esesc" = "yes" ; then
+  echo "CONFIG_ESESC=y" >> $config_host_mak
 fi
 if test "$madvise" = "yes" ; then
   echo "CONFIG_MADVISE=y" >> $config_host_mak

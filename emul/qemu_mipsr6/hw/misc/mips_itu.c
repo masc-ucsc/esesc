@@ -25,6 +25,10 @@
 #include "exec/exec-all.h"
 #include "hw/misc/mips_itu.h"
 
+#ifdef CONFIG_ESESC
+#include "../../esesc_qemu.h"
+#endif
+
 #define ITC_TAG_ADDRSPACE_SZ (ITC_ADDRESSMAP_NUM * 8)
 /* Initialize as 4kB area to fit all 32 cells with default 128B grain.
    Storage may be resized by the software. */
@@ -163,6 +167,9 @@ static void wake_blocked_threads(ITCStorageCell *c)
     CPUState *cs;
     CPU_FOREACH(cs) {
         if (cs->halted && (c->blocked_threads & (1ULL << cs->cpu_index))) {
+#ifdef CONFIG_ESESC
+            QEMUReader_cpu_start(cs->cpu_index);
+#endif
             cpu_interrupt(cs, CPU_INTERRUPT_WAKE);
         }
     }
@@ -173,6 +180,9 @@ static void QEMU_NORETURN block_thread_and_exit(ITCStorageCell *c)
 {
     c->blocked_threads |= 1ULL << current_cpu->cpu_index;
     current_cpu->halted = 1;
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_stop(current_cpu->cpu_index);
+#endif
     current_cpu->exception_index = EXCP_HLT;
     cpu_loop_exit_restore(current_cpu, current_cpu->mem_io_pc);
 }

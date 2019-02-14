@@ -24,6 +24,10 @@
 #include "hw/mips/cpudevs.h"
 #include "sysemu/kvm.h"
 
+#ifdef CONFIG_ESESC
+#include "../../esesc_qemu.h"
+#endif
+
 qemu_irq get_cps_irq(MIPSCPSState *s, int pin_number)
 {
     assert(pin_number < s->num_irq);
@@ -50,6 +54,9 @@ static void main_cpu_reset(void *opaque)
 
     /* All VPs are halted on reset. Leave powering up to CPC. */
     cs->halted = 1;
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_stop(cs->cpu_index);
+#endif
 }
 
 static bool cpu_mips_itu_supported(CPUMIPSState *env)

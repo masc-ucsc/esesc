@@ -132,6 +132,10 @@ int main(int argc, char **argv)
 #include "qapi/qmp/qerror.h"
 #include "sysemu/iothread.h"
 
+#ifdef CONFIG_ESESC
+#include "esesc_qemu.h"
+#endif
+
 #define MAX_VIRTIO_CONSOLES 1
 
 static const char *data_dir[16];
@@ -2973,7 +2977,13 @@ static void register_global_properties(MachineState *ms)
     user_register_global_props();
 }
 
+#ifdef CONFIG_ESESC
+int qemuesesc_main(int argc, char **argv, char **envp);
+
+int qemuesesc_main(int argc, char **argv, char **envp)
+#else
 int main(int argc, char **argv, char **envp)
+#endif
 {
     int i;
     int snapshot, linux_boot;

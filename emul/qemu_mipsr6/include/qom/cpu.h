@@ -339,6 +339,10 @@ struct CPUState {
     HANDLE hThread;
 #endif
     int thread_id;
+#ifdef CONFIG_ESESC
+    uint32_t fid; /* simu flow id */
+    uint64_t icount; /* instruction count */
+#endif
     bool running, has_waiter;
     struct QemuCond *halt_cond;
     bool thread_kicked;

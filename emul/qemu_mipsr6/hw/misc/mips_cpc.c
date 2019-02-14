@@ -30,6 +30,10 @@ static inline uint64_t cpc_vp_run_mask(MIPSCPCState *cpc)
     return (1ULL << cpc->num_vp) - 1;
 }
 
+#ifdef CONFIG_ESESC
+#include "esesc_qemu.h"
+#endif
+
 static void cpc_run_vp(MIPSCPCState *cpc, uint64_t vp_run)
 {
     CPUState *cs = first_cpu;
@@ -37,6 +41,9 @@ static void cpc_run_vp(MIPSCPCState *cpc, uint64_t vp_run)
     CPU_FOREACH(cs) {
         uint64_t i = 1ULL << cs->cpu_index;
         if (i & vp_run & ~cpc->vp_running) {
+#ifdef CONFIG_ESESC
+            QEMUReader_cpu_start(cs->cpu_index);
+#endif
             cpu_reset(cs);
             cpc->vp_running |= i;
         }
@@ -50,6 +57,9 @@ static void cpc_stop_vp(MIPSCPCState *cpc, uint64_t vp_stop)
     CPU_FOREACH(cs) {
         uint64_t i = 1ULL << cs->cpu_index;
         if (i & vp_stop & cpc->vp_running) {
+#ifdef CONFIG_ESESC
+            QEMUReader_cpu_stop(cs->cpu_index);
+#endif
             cpu_interrupt(cs, CPU_INTERRUPT_HALT);
             cpc->vp_running &= ~i;
         }
@@ -133,7 +143,17 @@ static void mips_cpc_reset(DeviceState *dev)
     s->vp_running = 0;
 
     /* Put selected VPs into run state */
+#ifdef CONFIG_ESESC
+    {
+        CPUState *cs = first_cpu;
+        CPU_FOREACH(cs) {
+            cs->fid = cs->cpu_index;
+        }
+    }
+    cpc_run_vp(s, 0x1);
+#else
     cpc_run_vp(s, s->vp_start_running);
+#endif
 }
 
 static const VMStateDescription vmstate_mips_cpc = {

@@ -35,6 +35,131 @@ void helper_raise_exception_err(CPUMIPSState *env, uint32_t exception,
     do_raise_exception_err(env, exception, error_code, 0);
 }
 
+#ifdef CONFIG_ESESC
+#include "esesc_qemu.h"
+#include "../libemulint/InstOpcode.h"
+
+#define AtomicAdd(ptr,val) __sync_fetch_and_add(ptr, val)
+#define AtomicSub(ptr,val) __sync_fetch_and_sub(ptr, val)
+
+volatile long long int icount = 0;
+volatile long long int tcount = 0;
+
+uint64_t esesc_mem_read(uint64_t addr);
+uint64_t esesc_mem_read(uint64_t addr) {
+  uint64_t buffer;
+
+  CPUState *other_cs = first_cpu;
+
+  CPU_FOREACH(other_cs) {
+#ifdef CONFIG_USER_ONLY
+    cpu_memory_rw_debug(other_cs, addr, (uint8_t *)&buffer, 8, 0);
+#else
+FIXME_NOT_DONE
+    // FIXME: pass fid to mem_read and potentially call the system
+    // cpu_physical_memory_read(memaddr, myaddr, length);
+#endif
+    break;
+  }
+  return buffer;
+}
+
+void helper_esesc_dump(void);
+void helper_esesc_dump(void) {
+    CPUState *other_cs = first_cpu;
+
+    CPU_FOREACH(other_cs) {
+        printf("cpuid=%d halted=%d icount=%lld tcount=%lld\n",other_cs->fid, other_cs->halted,icount, tcount);
+    }
+    }
+
+void helper_esesc_load(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t data, uint64_t reg) {
+
+#if 0
+  static int conta=0;
+  if (conta++>100000) {
+    helper_esesc_dump();
+    conta=0;
+  }
+
+  AtomicAdd(&tcount,1);
+#endif
+  if (icount>0) {
+    AtomicSub(&icount,1);
+    return;
+  }
+
+  CPUState *cpu       = ENV_GET_CPU(env);
+
+#if 0
+  if (pc == 0x120081c1c || pc == 0x120081c24)
+    fprintf(stderr,"4. %d pc:%llx addr:%llx data:%llx\n", cpu->fid, (long long)pc, (long long)target, (long long)data);
+#endif
+
+  int src1 = reg & 0xFF;
+  reg      = reg >> 8;
+  //int src2 = reg & 0xFF;
+  reg      = reg >> 8;
+  int dest = reg & 0xFF;
+
+  AtomicAdd(&icount,QEMUReader_queue_load(pc, target, data, cpu->fid, src1, dest));
+}
+
+void helper_esesc_ctrl(CPUMIPSState *env, uint64_t pc, uint64_t target, uint64_t op, uint64_t reg) {
+
+#if 0
+  static int conta=0;
+  if (conta++>100000) {
+    helper_esesc_dump();
+    conta=0;
+  }
+
+  AtomicAdd(&tcount,1);
+#endif
+  if (icount>0) {
+    AtomicSub(&icount,1);
+    return;
+  }
+
+  //qemu_log_mask(CPU_LOG_TB_IN_ASM,"4. %d pc:%llx op:%llx addr:%llx\n", env->fid, (long long)pc, (long long)op, (long long)target);
+  CPUState *cpu       = ENV_GET_CPU(env);
+
+  int src1 = reg & 0xFF;
+  reg      = reg >> 8;
+  int src2 = reg & 0xFF;
+  reg      = reg >> 8;
+  int dest = reg & 0xFF;
+
+  AtomicAdd(&icount,QEMUReader_queue_inst(pc, target, cpu->fid, op, src1, src2, dest));
+}
+
+void helper_esesc_alu(CPUMIPSState *env, uint64_t pc, uint64_t op, uint64_t reg) {
+
+#if 0
+  AtomicAdd(&tcount,1);
+#endif
+  if (icount>0) {
+    AtomicSub(&icount,1);
+    return;
+  }
+
+  CPUState *cpu       = ENV_GET_CPU(env);
+
+  int src1 = reg & 0xFF;
+  reg      = reg >> 8;
+  int src2 = reg & 0xFF;
+  reg      = reg >> 8;
+  int dest = reg & 0xFF;
+
+  //fprintf(stderr,"%d pc:%llx op:%llx src1:%d src2:%d dest:%d\n", cpu->fid, (long long)pc, (long long)op, src1, src2, dest);
+  //fprintf(stdout,"Here\n");
+  // This will not be accurate but it'll be faster
+  // Assuming that's why you are running in rabbit mode
+
+  AtomicAdd(&icount,QEMUReader_queue_inst(pc, 0, cpu->fid, op, src1, src2, dest));
+}
+#endif
+
 void helper_raise_exception(CPUMIPSState *env, uint32_t exception)
 {
     do_raise_exception(env, exception, GETPC());
@@ -665,6 +790,9 @@ static inline void mips_vpe_wake(MIPSCPU *c)
     /* Don't set ->halted = 0 directly, let it be done via cpu_has_work
        because there might be other conditions that state that c should
        be sleeping.  */
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_start(CPU(c)->cpu_index);
+#endif
     cpu_interrupt(CPU(c), CPU_INTERRUPT_WAKE);
 }
 
@@ -675,6 +803,9 @@ static inline void mips_vpe_sleep(MIPSCPU *cpu)
     /* The VPE was shut off, really go to bed.
        Reset any old _WAKE requests.  */
     cs->halted = 1;
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_stop(cs->cpu_index);
+#endif
     cpu_reset_interrupt(cs, CPU_INTERRUPT_WAKE);
 }
 
@@ -2601,11 +2732,24 @@ void helper_pmon(CPUMIPSState *env, int function)
     }
 }
 
+#ifdef CONFIG_ESESC
+void helper_esesc0(CPUMIPSState *env)
+{
+    CPUState *cs = CPU(mips_env_get_cpu(env));
+
+    icount = 0;
+    QEMUReader_start_roi(cs->fid);
+}
+#endif
+
 void helper_wait(CPUMIPSState *env)
 {
     CPUState *cs = CPU(mips_env_get_cpu(env));
 
     cs->halted = 1;
+#ifdef CONFIG_ESESC
+    QEMUReader_cpu_stop(cs->cpu_index);
+#endif
     cpu_reset_interrupt(cs, CPU_INTERRUPT_WAKE);
     /* Last instruction in the block, PC was updated before
        - no need to recover PC and icount */

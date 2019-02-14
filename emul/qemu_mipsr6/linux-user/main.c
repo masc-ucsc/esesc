@@ -584,7 +584,13 @@ static int parse_args(int argc, char **argv)
     return optind;
 }
 
+#ifdef CONFIG_ESESC
+int qemuesesc_main(int argc, char **argv, char **envp);
+
+int qemuesesc_main(int argc, char **argv, char **envp)
+#else
 int main(int argc, char **argv, char **envp)
+#endif
 {
     struct target_pt_regs regs1, *regs = &regs1;
     struct image_info info1, *info = &info1;
@@ -623,6 +629,9 @@ int main(int argc, char **argv, char **envp)
     }
 
     cpu_model = NULL;
+#ifdef CONFIG_ESESC
+    cpu_model = "I6400";
+#endif
 
     srand(time(NULL));
 
@@ -808,6 +817,104 @@ int main(int argc, char **argv, char **envp)
 
     target_cpu_copy_regs(env, regs);
 
+#ifdef CONFIG_ESESC
+enum
+{
+  /* Not tagged or not using any ABIs affected by the differences.  */
+  Val_GNU_MIPS_ABI_FP_ANY = 0,
+  /* Using hard-float -mdouble-float.  */
+  Val_GNU_MIPS_ABI_FP_DOUBLE = 1,
+  /* Using hard-float -msingle-float.  */
+  Val_GNU_MIPS_ABI_FP_SINGLE = 2,
+  /* Using soft-float.  */
+  Val_GNU_MIPS_ABI_FP_SOFT = 3,
+  /* Using -mips32r2 -mfp64.  */
+  Val_GNU_MIPS_ABI_FP_OLD_64 = 4,
+  /* Using -mfpxx.  */
+  Val_GNU_MIPS_ABI_FP_XX = 5,
+  /* Using -mips32r2 -mfp64.  */
+  Val_GNU_MIPS_ABI_FP_64 = 6,
+  /* Using -mips32r2 -mfp64 -mno-odd-spreg.  */
+  Val_GNU_MIPS_ABI_FP_64A = 7,
+  /* Maximum allocated FP ABI value.  */
+  Val_GNU_MIPS_ABI_FP_MAX = 7
+};
+        struct mode_req {
+            bool single;
+            bool soft;
+            bool fr1;
+            bool frdefault;
+            bool fre;
+        };
+        struct mode_req reqs[8] = { { true,  true,  true,  true,  true },
+                                    { false, false, false, true,  true },
+                                    { true,  false, false, false, false },
+                                    { false, true,  false, false, false },
+                                    { false, false, false, false, false },
+                                    { false, false, true,  true,  true },
+                                    { false, false, true,  false, false },
+                                    { false, false, true,  false, true } };
+        struct mode_req none_req = { true,  true,  false, true,  true };
+
+        struct mode_req prog_req;
+        struct mode_req interp_req;
+
+#ifdef TARGET_ABI_MIPSO32
+# define MAX_FP_ABI Val_GNU_MIPS_ABI_FP_64A
+#else
+# define MAX_FP_ABI Val_GNU_MIPS_ABI_FP_SOFT
+#endif
+
+        if ((info->fp_abi > Val_GNU_MIPS_ABI_FP_64A && info->fp_abi != -1)
+            || (info->interp_fp_abi > Val_GNU_MIPS_ABI_FP_64A &&
+                info->interp_fp_abi != -1)) {
+            fprintf(stderr, "qemu: Program and interpreter have "
+                            "unexpected FPU modes\n");
+            exit(137);
+        }
+        prog_req = (info->fp_abi == -1) ? none_req : reqs[info->fp_abi];
+        interp_req = (info->interp_fp_abi == -1) ? none_req
+                                                 : reqs[info->interp_fp_abi];
+
+        prog_req.single &= interp_req.single;
+        prog_req.soft &= interp_req.soft;
+        prog_req.fr1 &= interp_req.fr1;
+        prog_req.frdefault &= interp_req.frdefault;
+        prog_req.fre &= interp_req.fre;
+
+        if (prog_req.fr1 || prog_req.frdefault || prog_req.fre) {
+#ifdef TARGET_ABI_MIPSO32
+            if (!prog_req.frdefault) {
+                if ((env->CP0_Config1 & (1 << CP0C1_FP)) &&
+                    (env->CP0_Status_rw_bitmask & (1 << CP0St_FR))) {
+                    env->CP0_Status |= (1 << CP0St_FR);
+                    compute_hflags(env);
+                } else if ((env->CP0_Status & (1 << CP0St_FR)) == 0) {
+                    fprintf(stderr, "qemu: Program needs 64-bit floating-point "
+                                    "registers\n");
+                    exit(137);
+                }
+            }
+            if ((prog_req.fre && !prog_req.frdefault && !prog_req.fr1)
+                || (prog_req.frdefault && !prog_req.fr1
+                    && (env->insn_flags & ISA_MIPS32R6))) {
+                if (env->CP0_Config5_rw_bitmask & (1 << CP0C5_FRE)) {
+                    env->CP0_Config5 |= (1 << CP0C5_FRE);
+                    compute_hflags(env);
+                } else if ((env->CP0_Config5 & (1 << CP0C5_FRE)) == 0) {
+                    fprintf(stderr, "qemu: Program requires FRE mode\n");
+                    exit(137);
+                }
+            }
+#endif
+        } else if (!prog_req.single && !prog_req.soft) {
+            fprintf(stderr, "qemu: Program and interpreter require "
+                            "conflicting FP ABIs\n");
+            exit(137);
+        }
+
+#endif
+
     if (gdbstub_port) {
         if (gdbserver_start(gdbstub_port) < 0) {
             fprintf(stderr, "qemu: could not open gdbserver on port %d\n",
@@ -816,6 +923,9 @@ int main(int argc, char **argv, char **envp)
         }
         gdb_handlesig(cpu, 0);
     }
+#ifdef CONFIG_ESESC
+    ENV_GET_CPU(env)->fid = 0;
+#endif
     cpu_loop(env);
     /* never exits */
     return 0;

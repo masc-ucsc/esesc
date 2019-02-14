@@ -3,6 +3,11 @@ DEF_HELPER_2(raise_exception, noreturn, env, i32)
 DEF_HELPER_1(raise_exception_debug, noreturn, env)
 
 DEF_HELPER_1(do_semihosting, void, env)
+#ifdef CONFIG_ESESC
+DEF_HELPER_5(esesc_load, void, env, i64, i64, i64, i64)
+DEF_HELPER_5(esesc_ctrl, void, env, i64, i64, i64, i64)
+DEF_HELPER_4(esesc_alu , void, env, i64, i64, i64)
+#endif
 
 #ifdef TARGET_MIPS64
 DEF_HELPER_4(sdl, void, env, tl, tl, int)
@@ -376,6 +381,9 @@ DEF_HELPER_1(rdhwr_performance, tl, env)
 DEF_HELPER_1(rdhwr_xnp, tl, env)
 DEF_HELPER_2(pmon, void, env, int)
 DEF_HELPER_1(wait, void, env)
+#ifdef CONFIG_ESESC
+DEF_HELPER_1(esesc0, void, env)
+#endif
 
 /* Loongson multimedia functions.  */
 DEF_HELPER_FLAGS_2(paddsh, TCG_CALL_NO_RWG_SE, i64, i64, i64)

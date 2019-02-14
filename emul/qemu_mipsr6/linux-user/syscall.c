@@ -112,6 +112,11 @@
 #include "qemu.h"
 #include "fd-trans.h"
 
+#ifdef CONFIG_ESESC
+#include "../esesc_qemu.h"
+static struct timespec start_time={0,0};
+#endif
+
 #ifndef CLONE_IO
 #define CLONE_IO                0x80000000      /* Clone io context */
 #endif
@@ -1165,8 +1170,34 @@ static inline abi_long copy_to_user_timeval(abi_ulong target_tv_addr,
     if (!lock_user_struct(VERIFY_WRITE, target_tv, target_tv_addr, 0))
         return -TARGET_EFAULT;
 
+#ifdef CONFIG_ESESC
+    {
+      struct timespec curr_time;
+
+      if(start_time.tv_sec==0) {
+        int ret = clock_gettime(0,&start_time);
+        if (ret<0) {
+          fprintf(stderr,"ERROR: problem getting the time\n");
+        }
+      }
+      curr_time = start_time;
+      uint64_t nsticks = QEMUReader_get_time();
+
+      curr_time.tv_nsec += nsticks;
+      while (curr_time.tv_nsec>1e9) {
+        curr_time.tv_sec++;
+        curr_time.tv_nsec -= 1e9;
+      }
+
+      //fprintf(stderr,"QEMU Time: sec %ld, nsec %ld, ntics %llu\n",curr_time.tv_sec, curr_time.tv_nsec, (unsigned long long )nsticks);
+
+      __put_user(curr_time.tv_sec, &target_tv->tv_sec);
+      __put_user(curr_time.tv_nsec/1e3, &target_tv->tv_usec);
+    }
+#else
     __put_user(tv->tv_sec, &target_tv->tv_sec);
     __put_user(tv->tv_usec, &target_tv->tv_usec);
+#endif
 
     unlock_user_struct(target_tv, target_tv_addr, 1);
 
@@ -5397,6 +5428,9 @@ static void *clone_func(void *arg)
     pthread_cond_broadcast(&info->cond);
     pthread_mutex_unlock(&info->mutex);
     /* Wait until the parent has finished initializing the tls state.  */
+#ifdef CONFIG_ESESC
+    cpu->fid = QEMUReader_resumeThread(cpu->fid, UINT32_MAX);
+#endif
     pthread_mutex_lock(&clone_lock);
     pthread_mutex_unlock(&clone_lock);
     cpu_loop(env);
@@ -6358,9 +6392,16 @@ static inline abi_long host_to_target_stat64(void *cpu_env,
    futexes locally would make futexes shared between multiple processes
    tricky.  However they're probably useless because guest atomic
    operations won't work either.  */
+#ifdef CONFIG_ESESC
+static int do_futex(target_ulong uaddr, int op, int val, target_ulong timeout,
+                    target_ulong uaddr2, int val3, void *cpu_env)
+{
+    //CPUState *cpu = ENV_GET_CPU(cpu_env);
+#else
 static int do_futex(target_ulong uaddr, int op, int val, target_ulong timeout,
                     target_ulong uaddr2, int val3)
 {
+#endif
     struct timespec ts, *pts;
     int base_op;
 
@@ -6909,6 +6950,10 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
 #endif
     void *p;
 
+#ifdef CONFIG_ESESC
+    struct timespec startTime;
+    clock_gettime(CLOCK_REALTIME,&startTime);
+#endif
     switch(num) {
     case TARGET_NR_exit:
         /* In old applications this may be used to implement _exit(2).
@@ -6936,6 +6981,9 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
                 sys_futex(g2h(ts->child_tidptr), FUTEX_WAKE, INT_MAX,
                           NULL, NULL, 0);
             }
+#ifdef CONFIG_ESESC
+            QEMUReader_finish_thread(cpu->fid);
+#endif
             thread_cpu = NULL;
             object_unref(OBJECT(cpu));
             g_free(ts);
@@ -6945,6 +6993,9 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
 
         cpu_list_unlock();
         preexit_cleanup(cpu_env, arg1);
+#ifdef CONFIG_ESESC
+        QEMUReader_finish_thread(cpu->fid);
+#endif
         _exit(arg1);
         return 0; /* avoid warning */
     case TARGET_NR_read:
@@ -8912,8 +8963,19 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
 #ifdef __NR_exit_group
         /* new thread calls */
     case TARGET_NR_exit_group:
+#ifdef CONFIG_ESESC
+        QEMUReader_finish(cpu->fid);
+        if (cpu->fid > 4096 ) {
+            printf("QEMU impossible exit fid %d\n", cpu->fid);
+            get_errno(exit_group(arg1));
+        }
+        ret = 0;
+        pthread_exit(NULL);
+#else
         preexit_cleanup(cpu_env, arg1);
         return get_errno(exit_group(arg1));
+#endif
+
 #endif
     case TARGET_NR_setdomainname:
         if (!(p = lock_user_string(arg1)))
@@ -10844,7 +10906,11 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
         return ret;
 #endif
     case TARGET_NR_futex:
+#ifdef CONFIG_ESESC
+        ret = do_futex(arg1, arg2, arg3, arg4, arg5, arg6, cpu_env);
+#else
         return do_futex(arg1, arg2, arg3, arg4, arg5, arg6);
+#endif
 #if defined(TARGET_NR_inotify_init) && defined(__NR_inotify_init)
     case TARGET_NR_inotify_init:
         ret = get_errno(sys_inotify_init());
@@ -11472,11 +11538,39 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
         /* PowerPC specific.  */
         return do_swapcontext(cpu_env, arg1, arg2, arg3);
 #endif
+#ifdef CONFIG_ESESC2
+    case TARGET_NR_start_roi:
+        QEMUReader_start_roi(cpu->fid);
+        fprintf(stderr,"##QEMU syscall: start_roi\n");
+        break;
 
+    case TARGET_NR_end_roi:
+        fprintf(stderr,"##QEMU syscall: end_roi\n");
+        //TODO: see if this is correct way to exit simulation
+        QEMUReader_finish(cpu->fid);
+        if (cpu->fid > 4096 ) {
+          printf("QEMU impossible exit fid %d\n",cpu->fid);
+          get_errno(exit_group(arg1));
+        }
+        ret = 0;
+        pthread_exit(NULL);
+        break;
+#endif
     default:
         qemu_log_mask(LOG_UNIMP, "Unsupported syscall: %d\n", num);
         return -TARGET_ENOSYS;
     }
+#ifdef CONFIG_ESESC
+    // is this correct? there is no fail/efault label in QEMU3
+    {
+        struct timespec endTime;
+        clock_gettime(CLOCK_REALTIME,&endTime);
+        uint64_t usecs = endTime.tv_sec - startTime.tv_sec;
+        usecs *= 1000000;
+        usecs += (endTime.tv_nsec - startTime.tv_nsec)/1000;
+        QEMUReader_syscall((uint32_t)num, usecs, cpu->fid);
+    }
+#endif
     return ret;
 }
 

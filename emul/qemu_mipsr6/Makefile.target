@@ -196,10 +196,18 @@ COMMON_LDADDS = ../libqemuutil.a
 
 # build either PROG or PROGW
 $(QEMU_PROG_BUILD): $(all-obj-y) $(COMMON_LDADDS)
+ifdef CONFIG_ESESC
+	@echo $(filter-out %.mak, $^)
+	$(AR) rcs libqemu_esesc.a $(filter-out %.mak, $^)
+	@cp libqemu_esesc.a ../
+	@cp /bin/ls $@
+	@cp /bin/ls ../$@
+else
 	$(call LINK, $(filter-out %.mak, $^))
 ifdef CONFIG_DARWIN
 	$(call quiet-command,Rez -append $(SRC_PATH)/pc-bios/qemu.rsrc -o $@,"REZ","$(TARGET_DIR)$@")
 	$(call quiet-command,SetFile -a C $@,"SETFILE","$(TARGET_DIR)$@")
+endif
 endif
 
 gdbstub-xml.c: $(TARGET_XML_FILES) $(SRC_PATH)/scripts/feature_to_c.sh
