@@ -164,8 +164,10 @@ void Prefetcher::ret(DInst *dinst)
     return;
 
   int ret = apred->ret_update(dinst->getPC(), dinst->getAddr(), dinst->getData());
-  if(ret)
+  if(ret) {
     dinst->markPrefetch();
+    //printf("pref_retire clk=%u ldpc=%llx addr=%llx data=%d\n", globalClock, dinst->getPC(), dinst->getAddr(), dinst->getData());
+  }
 }
 // 1}}}
 

@@ -274,7 +274,9 @@ public:
     return br_ld_chain_predictable;
   }
 
-
+  void set_br_ld_chain_predictable(){
+    br_ld_chain_predictable = 1;
+  }
 
   static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
     DInst *i = dInstPool.out();

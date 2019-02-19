@@ -50,6 +50,7 @@
 
 #include <iostream>
 #include <deque>
+#include <map>
 
 #include "estl.h"
 #include "nanassert.h"
@@ -63,6 +64,7 @@
 #define RAP_T_NT_ONLY 1
 
 enum PredType { CorrectPrediction = 0, NoPrediction, NoBTBPrediction, MissPrediction };
+enum BrOpType { BEQ = 0, BNE = 1, BLT = 4, BGE = 5, BLTU = 6, BGEU = 7, ILLEGAL_BR = 8};
 
 class MemObj;
 
@@ -484,6 +486,7 @@ class BPLdbp : public BPred {
   private:
     BPBTB btb;
     SCTable ldbp_table;
+    std::map<uint64_t, bool> ldbp_map;
 
     struct ldbp_table{
       ldbp_table(){
@@ -500,6 +503,8 @@ class BPLdbp : public BPred {
     ~BPLdbp(){}
 
     PredType predict(DInst *dinst, bool doUpdate, bool doStats);
+    bool outcome_calculator(BrOpType br_op, uint64_t br_data1, uint64_t br_data2);
+    BrOpType branch_type(AddrType brpc);
 
 };
 

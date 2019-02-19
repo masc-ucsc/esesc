@@ -309,12 +309,20 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #if 0
         predictable = true; // FIXME2: ENABLE MAGIC/ORACLE PREDICTION FOR ALL
 #else
-        ideal_apred->exe_update(dinst->getPC(), dinst->getAddr(), dinst->getData());
-        ideal_apred->ret_update(dinst->getPC(), dinst->getAddr(), dinst->getData());
+        auto val = ideal_apred->exe_update(dinst->getPC(), dinst->getAddr(), dinst->getData());
+        int prefetch_conf = ideal_apred->ret_update(dinst->getPC(), dinst->getAddr(), dinst->getData());
+        //MSG("pc:%llx conf:%d c:%d",dinst->getPC(), val, prefetch_conf);
         AddrType naddr = ideal_apred->predict(dinst->getPC(), 0, false); // ideal, predict after update
 
-        if(naddr == dinst->getAddr())
+        if(naddr == dinst->getAddr()){
           predictable = true;
+          if(predictable && prefetch_conf){
+            dinst->markPrefetch();
+            //printf("pref_fetch clk=%u ldpc=%llx addr=%llx data=%d\n", globalClock, dinst->getPC(), 
+            //    dinst->getAddr(), dinst->getData());
+          }
+        }
+        //FIXME can we mark LD as prefetchable here if predictable == true????
 
         if(ld_tracking) {
           printf("predictable:%d ldpc:%llx naddr:%llx addr:%llx %d data:%d\n", predictable ? 1 : 0, dinst->getPC(), naddr,
@@ -418,8 +426,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
         if(dinst->getInst()->isBranch()) {
           ldpc2brpc[ldpc] = dinst->getPC(); // Not used now. Once prediction is updated
+          //MSG("brpc=%llx ldpc=%llx last_ldpc=%llx",ldpc2brpc[ldpc],ldpc,lastPredictable_ldpc);
 
-          //I(dinst->getDataSign() == DS_NoData); /?FIXME - uncomment later
+          I(dinst->getDataSign() == DS_NoData);
 
 #ifdef SBPT_JUSTLAST
           data  = lastPredictable_data;
@@ -439,6 +448,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
           if(d < 4) {
             dinst->setDataSign(data, ldpc);
+            if(ldpc == lastPredictable_ldpc) {
+              //printf("pref_br_chain clk=%u brpc=%llx ldpc=%llx addr=%llx data=%d\n", globalClock, dinst->getPC(), 
+              //    ldpc, lastPredictable_addr, data);
+              dinst->set_br_ld_chain_predictable();
+            }
 
 #if 1
             if(ldpc2) {

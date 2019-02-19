@@ -437,23 +437,26 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   bool     taken  = dinst->isTaken();
   AddrType br_pc = dinst->getPC();
   bool     ptaken;
-  uint64_t raw_op = esesc_mem_read(br_pc);
-  MSG("pc=%llx raw=%llx",br_pc, raw_op);
-  // printf("LDBP pc:%llx ldpc:%llx ds:%d\n", dinst->getPC(), dinst->getLDPC(), dinst->getDataSign());
-  // AddrType t_tag = dinst->getLDPC() ^ (old_pc<<7) ^ (old_pc>>3) ^ (dinst->getDataSign()<<10) ^ (dinst->getDataSign()<<2);
-  // AddrType t_tag = dinst->getPC() ^ dinst->getLDPC() ^ dinst->getDataSign();
   AddrType t_tag = dinst->getLDPC() ^ (br_pc << 7) ^ (dinst->getDataSign() << 10);
+  BrOpType br_op = branch_type(br_pc);
+  uint64_t raw_op = esesc_mem_read(br_pc); 
 
   //FIXME - add br opcode conditions for ldbp to perform prediction
-  if(dinst->is_br_ld_chain_predictable()){
-    if(doUpdate)
-      ptaken = ldbp_table.predict(t_tag, taken);
-    else
-      ptaken = ldbp_table.predict(t_tag);
+  //MSG("ldbp1 brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d d1=%u d2=%u correct_pred=%d is_pred=%d",dinst->getPC(),dinst->getLDPC(),
+  //    (raw_op & 3),br_op,dinst->getBrData1(),dinst->getBrData2(),
+  //    outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2())==taken,dinst->is_br_ld_chain_predictable());
+  if(dinst->is_br_ld_chain_predictable()) {
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+    auto it = ldbp_map.find(t_tag);
+    if(it == ldbp_map.end()) { //if tag not found in ldbp_map
+      ldbp_map.clear();
+      ldbp_map[t_tag] = ptaken;
+      return NoPrediction;
+    }
+    ldbp_map[t_tag] = ptaken;
+  }else {
+    return NoPrediction;
   }
-
-  if(!ldbp_table.isLowest(t_tag) && !ldbp_table.isHighest(t_tag))
-    return NoPrediction; // Only if Highly confident
 
   if(taken != ptaken) {
     if(doUpdate)
@@ -465,6 +468,60 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   return ptaken ? btb.predict(dinst, doUpdate, doStats) : CorrectPrediction;
 }
 
+BrOpType BPLdbp::branch_type(AddrType br_pc) {
+  uint64_t raw_op = esesc_mem_read(br_pc);
+  uint8_t br_opcode = raw_op & 3;
+  uint8_t get_br_bits = (raw_op >> 12) & 7;  //extract bits 12 to 14 to get Br Type
+  if(br_opcode == 3) {
+    switch(get_br_bits){
+      case BEQ:
+        return BEQ;
+      case BNE:
+        return BNE;
+      case BLT:
+        return BLT;
+      case BGE:
+        return BGE;
+      case BLTU:
+        return BLTU;
+      case BGEU:
+        return BGEU;
+      default:
+        MSG("ILLEGAL_BR=%llx OP_TYPE:%u", br_pc, get_br_bits);
+        break;
+    }
+  }else if(br_opcode == 1) {
+    if(get_br_bits == 4 || get_br_bits == 5){
+      return BEQ;
+    }else if(get_br_bits == 6 || get_br_bits == 7) {
+      return BNE;
+    }
+  }
+  return ILLEGAL_BR;
+}
+
+bool BPLdbp::outcome_calculator(BrOpType br_op, uint64_t br_data1, uint64_t br_data2) {
+  if(br_op == BEQ) {
+    if(br_data1 == br_data2)
+      return 1;
+    return 0;
+  }else if(br_op == BNE) {
+    if(br_data1 != br_data2)
+      return 1;
+    return 0;
+  }else if(br_op == BLT || br_op == BLTU) {
+    if(br_data1 < br_data2)
+      return 1;
+    return 0;
+  }else if(br_op == BGE || br_op == BGEU) {
+    if(br_data1 >= br_data2)
+      return 1;
+    return 0;
+  }
+
+  return 0; //default is "not taken"
+
+}
 
 
 /*****************************************
@@ -1482,6 +1539,8 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
     SescConf->isBetween("cpusimu", "bpredDelay", 1, 1024, id);
 
   bpredDelay1 = SescConf->getInt("cpusimu", "bpredDelay", id);
+  //bpredDelay2 = SescConf->getInt("cpusimu", "bpredDelay2", id);
+  //bpredDelay3 = SescConf->getInt("cpusimu", "bpredDelay3", id);
 
   SescConf->isInt(bpredSection, "BTACDelay");
   SescConf->isBetween(bpredSection, "BTACDelay", 0, 1024);
@@ -1656,6 +1715,7 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   outcome1 = ras->doPredict(dinst);
   if(outcome1 == NoPrediction) {
+  //if(pred1) {
     outcome1 = predict1(dinst);
     outcome2 = outcome1;
     if(pred2) {
@@ -1677,12 +1737,12 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
         //bool tracking = false;
     */
     if(pred3) {
-      AddrType old_addr  = dinst->getAddr();
-      AddrType old_addr1 = dinst->getAddr();
-      AddrType old_pc    = dinst->getPC();
+      //AddrType old_addr  = dinst->getAddr();
+      //AddrType old_addr1 = dinst->getAddr();
+      //AddrType old_pc    = dinst->getPC();
 #if 1
       // dinst->setPC(dinst->getLDPC() ^ (old_pc<<7) ^ (old_pc>>3) ^ (dinst->getDataSign()<<10) ^ (dinst->getDataSign()<<2));
-      dinst->setPC(dinst->getLDPC() ^ (old_pc << 7) ^ (dinst->getDataSign() << 10));
+      //dinst->setPC(dinst->getLDPC() ^ (old_pc << 7) ^ (dinst->getDataSign() << 10));
 #endif
       /*
               //try3 = try3 || !dinst->isBiasBranch(); //try3 || dinst->isBiasBranch() gives 98.5% bpred accuracy for bzip2
@@ -1734,11 +1794,10 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
       #endif
             }
       =======*/
-
-      dinst->setAddr(old_addr);
+      //dinst->setAddr(old_addr);
       outcome3 = predict3(dinst);
       used3    = true;
-      dinst->setPC(old_pc);
+      //dinst->setPC(old_pc);
 
       if(outcome3 == NoPrediction) {
         outcome3 = outcome2;
