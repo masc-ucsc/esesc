@@ -255,6 +255,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
 #ifdef ESESC_TRACE_DATA
     bool predictable = false;
+
+    if (dinst->getPC() == 0x1044c || dinst->getPC() == 0x1044e) {
+      dinst->dump("trace:");
+      MSG(" pc(%llx) = %lld %d", dinst->getPC(), dinst->getData(), dinst->getDataSign());
+    }
     // I(dinst->getPC() != 0x1001ec98ULL);
     /*if (dinst->getInst()->isLoad()) {
 
@@ -426,7 +431,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
         if(dinst->getInst()->isBranch()) {
           ldpc2brpc[ldpc] = dinst->getPC(); // Not used now. Once prediction is updated
-          //MSG("brpc=%llx ldpc=%llx last_ldpc=%llx",ldpc2brpc[ldpc],ldpc,lastPredictable_ldpc);
 
           I(dinst->getDataSign() == DS_NoData);
 
@@ -453,6 +457,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
               //    ldpc, lastPredictable_addr, data);
               dinst->set_br_ld_chain_predictable();
             }
+          //if (dinst->getPC() == 0x1044e)
+           // MSG("brpc=%llx ldpc=%llx last_ldpc=%llx d:%d pred:%d %d %d",ldpc2brpc[ldpc],ldpc,lastPredictable_ldpc,d,dinst->is_br_ld_chain_predictable(), dinst->getBrData1(), dinst->getBrData2());
 
 #if 1
             if(ldpc2) {

@@ -437,9 +437,9 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   bool     taken  = dinst->isTaken();
   AddrType br_pc = dinst->getPC();
   bool     ptaken;
-  AddrType t_tag = dinst->getLDPC() ^ (br_pc << 7) ^ (dinst->getDataSign() << 10);
+  AddrType t_tag = dinst->getLDPC() ^ (br_pc << 2); //  ^ (dinst->getDataSign() << 10);
   BrOpType br_op = branch_type(br_pc);
-  uint64_t raw_op = esesc_mem_read(br_pc); 
+  uint64_t raw_op = esesc_mem_read(br_pc);
 
   //FIXME - add br opcode conditions for ldbp to perform prediction
   //MSG("ldbp1 brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d d1=%u d2=%u correct_pred=%d is_pred=%d",dinst->getPC(),dinst->getLDPC(),
@@ -447,12 +447,9 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   //    outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2())==taken,dinst->is_br_ld_chain_predictable());
   if(dinst->is_br_ld_chain_predictable()) {
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
-    auto it = ldbp_map.find(t_tag);
-    if(it == ldbp_map.end()) { //if tag not found in ldbp_map
-      ldbp_map.clear();
-      ldbp_map[t_tag] = ptaken;
-      return NoPrediction;
-    }
+    if (dinst->getPC() == 0x1044e)
+      MSG("1.brpc=%llx ptaken:%d vs %d ds:%d",dinst->getPC(), ptaken, taken, dinst->getDataSign());
+
     ldbp_map[t_tag] = ptaken;
   }else {
     return NoPrediction;
