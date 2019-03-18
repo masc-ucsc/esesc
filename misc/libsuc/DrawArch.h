@@ -18,13 +18,10 @@ public:
   DrawArch(){
       // Constructor
   };
-
-  ~DrawArch() {
-    // Destructor
-    rows.clear();
+  ~DrawArch(){
   }
 
-  void addObj(std::string mystr) {
+  void addObj(const std::string &mystr) {
     rows.push_back(mystr);
   }
 

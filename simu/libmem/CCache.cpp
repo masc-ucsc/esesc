@@ -16,6 +16,7 @@
 #include "PortManager.h"
 #include "SescConf.h"
 #include "TaskHandler.h"
+//#define ENABLE_LDBP
 
 extern "C" uint64_t esesc_mem_read(uint64_t addr);
 
@@ -34,7 +35,7 @@ void CCache::trackAddress(MemRequest *mreq) {
 #define MTRACE(a...)
 //#define MTRACE(a...)   do{ if (mreq->getID()==49) { I(0); fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(),
 //(int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0) #define MTRACE(a...)
-// do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(),
+//do{ if ((mreq->getAddr()>>4) == 0x100080a) { fprintf(stderr,"@%lld %s %d 0x%x:",(long long int)globalClock,getName(),
 //(int)mreq->getID(), (unsigned int)mreq->getAddr()); fprintf(stderr,##a); fprintf(stderr,"\n"); } }while(0)
 // 1}}}
 
@@ -257,6 +258,7 @@ CCache::~CCache()
 }
 // }}}
 
+
 void CCache::cleanup() {
 
   int n = cacheBank->getNumLines();
@@ -276,6 +278,7 @@ void CCache::cleanup() {
 
   cleanupCB.scheduleAbs(globalClock + 1000000);
 }
+
 
 void CCache::dropPrefetch(MemRequest *mreq)
 // dropPrefetch {{{1
@@ -960,6 +963,11 @@ void CCache::doReq(MemRequest *mreq)
 
   if(mreq->isDemandCritical()) {
     I(!mreq->isPrefetch());
+#ifdef ENABLE_LDBP
+    if(mreq->isTriggerLoad() && mreq->isHomeNode()) {
+      mreq->getHomeNode()->find_cir_queue_index(mreq, "doReq");
+    }
+#endif
     double lat = mreq->getTimeDelay() + (when - globalClock);
     avgMemLat.sample(lat, mreq->getStatsFlag());
     if(retrying)
@@ -1106,6 +1114,7 @@ void CCache::doReqAck(MemRequest *mreq)
   }
 
   when = port->reqAckDone(mreq);
+  Time_t when_copy = when;
   if(when == 0) {
     MTRACE("doReqAck restartReqAck");
     // Must restart request
@@ -1126,8 +1135,12 @@ void CCache::doReqAck(MemRequest *mreq)
 
   if(mreq->isDemandCritical()) {
     I(!mreq->isPrefetch());
+#ifdef ENABLE_LDBP
+    if(mreq->isTriggerLoad() && mreq->isHomeNode()) {
+      mreq->getHomeNode()->find_cir_queue_index(mreq, "doReqAck");
+    }
+#endif
     double lat = mreq->getTimeDelay(when);
-    // I(lat<200 || strcmp(getName(),"L4(0)")!=0);
     avgMissLat.sample(lat, mreq->getStatsFlag() && !mreq->isPrefetch());
     avgMemLat.sample(lat, mreq->getStatsFlag() && !mreq->isPrefetch());
 #if 0

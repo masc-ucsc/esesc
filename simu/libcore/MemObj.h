@@ -36,6 +36,7 @@
 #ifndef MEMOBJ_H
 #define MEMOBJ_H
 
+#include <vector>
 #include "DInst.h"
 #include "callback.h"
 
@@ -54,6 +55,8 @@ class MemRequest;
 #define PSIGN_INDIRECT 5
 #define PSIGN_CHASE 6
 #define PSIGN_MEGA 7
+#define CIR_QUEUE_WINDOW 64 //FIXME: need to change this to a conf variable
+//#define ENABLE_LDBP
 
 class MemObj {
 private:
@@ -78,6 +81,58 @@ public:
   MemObj(const char *section, const char *sName);
   MemObj();
   virtual ~MemObj();
+
+#ifdef ENABLE_LDBP
+  AddrType q_start_index;
+  int q_end_index;
+  AddrType q_start_addr;
+  uint64_t q_delta;
+  AddrType curr_dep_pc;
+  int ret_br_count;
+  std::vector<int> cir_queue = std::vector<int>(CIR_QUEUE_WINDOW);
+
+  void find_cir_queue_index(MemRequest *mreq, const char *str);
+  void reset_cir_queue();
+  void shift_cir_queue();
+  void fill_cir_queue(MemRequest *mreq, int index);
+
+  int get_q_start_index() const {
+    return q_start_index;
+  }
+
+  int get_q_end_index() const {
+    return q_end_index;
+  }
+
+  void reset_q_pointers(int win_size) {
+    q_start_index = 0;
+    q_end_index   = win_size - 1;
+  }
+  
+  void setQDelta(uint64_t _delta) {
+    q_delta = _delta;
+  }
+
+  AddrType getQDelta() const {
+    return q_delta;
+  }
+
+  void setRetBrCount(int cnt) {
+    ret_br_count = cnt;
+  }
+
+  int getRetBrCount() const {
+    return ret_br_count;
+  }
+
+  void setQStartAddr(AddrType _addr) {
+    q_start_addr = _addr;
+  }
+
+  AddrType getQStartAddr() const {
+    return q_start_addr;
+  }
+#endif
 
   const char *getSection() const {
     return section;
@@ -156,6 +211,7 @@ public:
   virtual void clearNeedsCoherence();
 
   virtual bool Invalid(AddrType addr) const;
+  virtual bool get_cir_queue(int index ,AddrType pc);
 };
 
 class DummyMemObj : public MemObj {

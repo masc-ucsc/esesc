@@ -431,8 +431,16 @@ BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname)
 }
 
 PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
+
+#if 0
+  // OPTION for the paper. To show impact when no prediction is enabled
+  return NoPrediction;
+#endif
+
+  /* Not even faster branch
   if(dinst->getInst()->isJump())
     return btb.predict(dinst, doUpdate, doStats);
+    */
 
   bool     taken  = dinst->isTaken();
   AddrType br_pc = dinst->getPC();
@@ -442,18 +450,21 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   uint64_t raw_op = esesc_mem_read(br_pc);
 
   //FIXME - add br opcode conditions for ldbp to perform prediction
-  //MSG("ldbp1 brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d d1=%u d2=%u correct_pred=%d is_pred=%d",dinst->getPC(),dinst->getLDPC(),
-  //    (raw_op & 3),br_op,dinst->getBrData1(),dinst->getBrData2(),
-  //    outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2())==taken,dinst->is_br_ld_chain_predictable());
-  if(dinst->is_br_ld_chain_predictable()) {
-    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
-    if (dinst->getPC() == 0x1044e)
-      MSG("1.brpc=%llx ptaken:%d vs %d ds:%d",dinst->getPC(), ptaken, taken, dinst->getDataSign());
-
-    ldbp_map[t_tag] = ptaken;
-  }else {
+  if(!dinst->is_br_ld_chain())
     return NoPrediction;
-  }
+
+  if(!dinst->is_br_ld_chain_predictable())
+    return NoPrediction;
+
+  ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+  ldbp_map[t_tag] = ptaken;
+#if 0
+  MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
+      globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getData(), 
+      dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
+  //MSG("TRIGGER@bpred brpc=%llx out=%d pred=%d correct=%d op=%d", dinst->getPC(), taken, ptaken,
+  //    taken==ptaken, br_op);
+#endif
 
   if(taken != ptaken) {
     if(doUpdate)
@@ -1525,6 +1536,10 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
 
   FetchWidth = SescConf->getInt("cpusimu", "fetchWidth", id);
 
+  bpredDelay1 = SescConf->getInt("cpusimu", "bpredDelay", id);
+  //bpredDelay2 = SescConf->getInt("cpusimu", "bpredDelay2", id);
+  //bpredDelay3 = SescConf->getInt("cpusimu", "bpredDelay3", id);
+  
   if(!(bpredDelay1 <= bpredDelay2 <= bpredDelay3)) {
     MSG("ERROR: bpredDelay (%d) should be <= bpredDelay2 (%d) <= bpredDelay3 (%d)", bpredDelay1, bpredDelay2, bpredDelay3);
     SescConf->notCorrect();
@@ -1535,9 +1550,6 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
   else
     SescConf->isBetween("cpusimu", "bpredDelay", 1, 1024, id);
 
-  bpredDelay1 = SescConf->getInt("cpusimu", "bpredDelay", id);
-  //bpredDelay2 = SescConf->getInt("cpusimu", "bpredDelay2", id);
-  //bpredDelay3 = SescConf->getInt("cpusimu", "bpredDelay3", id);
 
   SescConf->isInt(bpredSection, "BTACDelay");
   SescConf->isBetween(bpredSection, "BTACDelay", 0, 1024);

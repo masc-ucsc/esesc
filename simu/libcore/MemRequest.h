@@ -113,6 +113,15 @@ protected:
   bool warmup;
   bool nonCacheable;
 
+  //trigger load params
+  bool trigger_load; //flag to trigger load
+  AddrType base_addr;
+  AddrType dep_pc;
+  uint64_t delta;
+  uint64_t delta2;
+  uint64_t inflight;
+  int dep_pc_count;
+
   AddrType pc;
   DInst *  dinst;     // WARNING: valid IFF demand DL1
   AddrType pref_sign; // WARNING: valid IFF prefetch is true
@@ -308,6 +317,17 @@ public:
     return mreq;
   }
 
+  static void triggerReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, AddrType _dep_pc, AddrType _base_addr, uint64_t _delta, uint64_t _inf, int dep_count, CallbackBase *cb = 0) {
+    MemRequest *mreq   = createReqRead(m, doStats, addr, pc, cb);
+    mreq->trigger_load = true;
+    mreq->dep_pc       = _dep_pc;
+    mreq->base_addr    = _base_addr;
+    mreq->delta        = _delta;
+    mreq->inflight     = _inf;
+    mreq->dep_pc_count = dep_count;
+    m->req(mreq);
+  }
+
   static void sendReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, CallbackBase *cb = 0) {
     MemRequest *mreq = createReqRead(m, doStats, addr, pc, cb);
     m->req(mreq);
@@ -358,6 +378,30 @@ public:
     mreq->ma         = ma_setDirty;
     mreq->ma_orig    = mreq->ma;
     m->req(mreq);
+  }
+
+  bool isTriggerLoad() const {
+    return trigger_load;
+  }
+  
+  AddrType getBaseAddr() const {
+    return base_addr;
+  }
+  
+  AddrType getDepPC() const {
+    return dep_pc;
+  }
+
+  uint64_t getDelta() const {
+    return delta;
+  }
+
+  uint64_t getInflight() const {
+    return inflight;
+  }
+
+  int getDepCount() const {
+    return dep_pc_count;
   }
 
   bool isDemandCritical() const {
@@ -568,19 +612,25 @@ public:
   }
 
   Time_t getTimeDelay() const {
+    I(startClock);
     return globalClock - startClock;
   }
   Time_t getTimeDelay(Time_t when) const {
+    I(startClock);
+    I(startClock<=when);
     return when - startClock;
   }
+  Time_t getStartClock() const { return startClock; }
 
   AddrType getAddr() const {
     return addr;
   }
 
+
   AddrType getPC() const {
     return pc;
   }
+
   void setPC(AddrType _pc) {
     pc = _pc;
   }

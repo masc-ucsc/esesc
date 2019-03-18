@@ -163,6 +163,7 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
 
   MemRequest *r = actPool.out();
 
+
   r->addr                    = addr;
   r->homeMemObj              = mobj;
   r->creatorObj              = mobj;
@@ -189,6 +190,7 @@ MemRequest *MemRequest::create(MemObj *mobj, AddrType addr, bool doStats, Callba
   r->pendingSetStateAck = 0;
   r->setStateAckOrig    = 0;
   r->pc                 = 0;
+  r->trigger_load       = false;
 
   return r;
 }

@@ -136,6 +136,60 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 }
 /* }}} */
 
+#ifdef ENABLE_LDBP
+void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
+  AddrType base_addr = mreq->getBaseAddr();
+  AddrType delta     = mreq->getDelta();
+  uint64_t inf       = mreq->getInflight();
+  uint64_t constant  = 64;
+  //AddrType end_addr  = base_addr + delta * (inf + constant);
+  AddrType start_addr = mreq->getHomeNode()->getQStartAddr();
+  AddrType end_addr   = start_addr + delta * (CIR_QUEUE_WINDOW - 1);
+#if 0
+  MSG("TRIGGER@%s clk=%u addr=%llx start=%llx end=%llx ldpc=%llx brpc=%llx delta=%u", str, globalClock,
+      mreq->getAddr(), start_addr, end_addr, mreq->getPC(), mreq->getDepPC(), mreq->getDelta());
+#endif
+
+  //increment_q_pointers(mreq->getHomeNode(), CIR_QUEUE_SIZE, CIR_QUEUE_WINDOW);
+  if(mreq->getAddr() >= start_addr && mreq->getAddr() <= end_addr) {
+    if(curr_dep_pc != mreq->getDepPC()) {
+      reset_cir_queue();
+      //mreq->getHomeNode()->reset_q_pointers(CIR_QUEUE_WINDOW);
+    }
+    int idx = 0;
+    if(delta != 0) {
+      idx     =  (mreq->getAddr() - start_addr) / delta;
+    }
+    if(idx <= CIR_QUEUE_WINDOW - 1) {
+      //idx = idx + mreq->getHomeNode()->get_q_start_index();
+      fill_cir_queue(mreq, idx);
+    }
+  } 
+  curr_dep_pc = mreq->getDepPC();
+
+}
+
+void MemObj::shift_cir_queue() {
+  //shift the cir queue left by one position and push zero at the end
+  cir_queue.erase(cir_queue.begin());
+  cir_queue.push_back(0);
+}
+
+void MemObj::fill_cir_queue(MemRequest *mreq, int index) {
+#if 0
+  MSG("TRIGGER@fill_cir clk=%u ldpc=%llx brpc=%llx ld_addr=%llx qidx=%d", globalClock, mreq->getPC(),
+      mreq->getDepPC(), mreq->getAddr(), index);
+#endif
+  cir_queue[index] = 1;
+}
+
+void MemObj::reset_cir_queue() {
+  cir_queue.clear();
+  for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
+    cir_queue.push_back(0);
+  }
+}
+#endif
 void DummyMemObj::doReq(MemRequest *req)
 /* req {{{1 */
 {
@@ -227,6 +281,10 @@ void MemObj::setNeedsCoherence() {
   // Only cache uses this
 }
 void MemObj::clearNeedsCoherence() {
+}
+
+bool MemObj::get_cir_queue(int index, AddrType pc) {
+  I(0);
 }
 
 bool MemObj::Invalid(AddrType addr) const {

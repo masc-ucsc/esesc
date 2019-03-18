@@ -48,6 +48,7 @@
 #include "Pipeline.h"
 extern bool MIMDmode;
 
+//#define ENABLE_LDBP
 //#define ENABLE_FAST_WARMUP 1
 //#define FETCH_TRACE 1
 
@@ -169,6 +170,12 @@ FetchEngine::FetchEngine(FlowID id, GMemorySystem *gms_, FetchEngine *fe)
   IL1HitDelay  = SescConf->getInt(isection, "hitDelay");
 
   lastMissTime = 0;
+#ifdef ENABLE_LDBP
+  DL1 = gms->getDL1();
+  dep_pc    = 0;
+  fetch_br_count = 0;
+#endif
+
 }
 
 FetchEngine::~FetchEngine() {
@@ -219,6 +226,14 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
 
 void FetchEngine::chainPrefDone(AddrType pc, int distance, AddrType addr) {
 
+#if 0
+  bool hit = !(DL1->invalid());
+    if(hit)
+      do ldbp
+    else
+      trigger new prefetch if it can be timely
+#endif
+
 #ifdef ESESC_TRACE_DATA
   // MSG("pfchain ldpc:%llx %d dist:%d addr:%llx",pc, oracleDataLast[pc].chained, distance, addr);
 #endif
@@ -232,7 +247,7 @@ void FetchEngine::chainLoadDone(DInst *dinst) {
 #endif
 }
 
-void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch) {
+void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DInst *_dinst, int32_t n2Fetch) {
 
   AddrType lastpc = 0;
 
@@ -253,13 +268,15 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       break;
     }
 
+
 #ifdef ESESC_TRACE_DATA
     bool predictable = false;
 
-    if (dinst->getPC() == 0x1044c || dinst->getPC() == 0x1044e) {
+    /*if (dinst->getPC() == 0x1044c || dinst->getPC() == 0x1044e) {
       dinst->dump("trace:");
       MSG(" pc(%llx) = %lld %d", dinst->getPC(), dinst->getData(), dinst->getDataSign());
-    }
+    }*/
+
     // I(dinst->getPC() != 0x1001ec98ULL);
     /*if (dinst->getInst()->isLoad()) {
 
@@ -321,11 +338,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
         if(naddr == dinst->getAddr()){
           predictable = true;
-          if(predictable && prefetch_conf){
-            dinst->markPrefetch();
-            //printf("pref_fetch clk=%u ldpc=%llx addr=%llx data=%d\n", globalClock, dinst->getPC(), 
-            //    dinst->getAddr(), dinst->getData());
-          }
         }
         //FIXME can we mark LD as prefetchable here if predictable == true????
 
@@ -354,7 +366,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       }
     }
 #if 1
-    if(!dinst->getInst()->isLoad()) { // Not for LD-LD chain
+    if(!dinst->getInst()->isLoad() && dinst->getInst()->isBranch()) { // Not for LD-LD chain
+      //this loop tracks LD-BR dependency for now
       // Copy Other
       int      d = 32768;
       AddrType ldpc;
@@ -432,7 +445,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         if(dinst->getInst()->isBranch()) {
           ldpc2brpc[ldpc] = dinst->getPC(); // Not used now. Once prediction is updated
 
-          I(dinst->getDataSign() == DS_NoData);
+          //I(dinst->getDataSign() == DS_NoData);
 
 #ifdef SBPT_JUSTLAST
           data  = lastPredictable_data;
@@ -450,15 +463,47 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           }
 #endif
 #endif
-          if(d < 4) {
+          AddrType x = dinst->getPC() - lastPredictable_ldpc;
+          if(d < 4 && (x > 0 && x < 64)) {
+#if 0
+            MSG("FABS x=%u brpc=%llx ldpc=%llx", x, dinst->getPC(), lastPredictable_ldpc);
+#endif
             dinst->setDataSign(data, ldpc);
-            if(ldpc == lastPredictable_ldpc) {
-              //printf("pref_br_chain clk=%u brpc=%llx ldpc=%llx addr=%llx data=%d\n", globalClock, dinst->getPC(), 
-              //    ldpc, lastPredictable_addr, data);
-              dinst->set_br_ld_chain_predictable();
+            dinst->setLdAddr(lastPredictable_addr);
+#ifdef ENABLE_LDBP
+            dinst->set_br_ld_chain();
+            //trigger next prefetches here so that it is timely
+            if(dinst->getPC() == dep_pc) {
+              fetch_br_count++;
+
+              bool hit = false;
+              int idx = 0;
+              idx = fetch_br_count - DL1->getRetBrCount();
+              if(idx < 0)
+                idx = -1 * idx;
+              hit = DL1->get_cir_queue(idx, dinst->getPC());
+              bool c_hit = !(DL1->Invalid(dinst->getLdAddr()));
+#if 0
+              MSG("TRIGGER@fetch2 clk=%u ldpc=%llx brpc=%llx ld_addr=%llx start=%llx qidx=%d c_hit=%d qhit=%d fc=%d rc=%d", globalClock, 
+                  dinst->getLDPC(), dinst->getPC(), dinst->getLdAddr(), DL1->getQStartAddr(), idx, !c_hit, hit, fetch_br_count,
+                  DL1->getRetBrCount());
+#endif
+              //if(c_hit && !hit) {
+              //  hit = true;
+              //}
+              if(hit) {
+                dinst->set_br_ld_chain_predictable();
+              }
+            }else {
+              dep_pc = dinst->getPC();
+              fetch_br_count = 1;
+#if 0
+              MSG("TRIGGER@fetch1 clk=%u ldpc=%llx brpc=%llx ld_addr=%llx fc=%d rc=%d", globalClock, dinst->getLDPC(), 
+                  dinst->getPC(), dinst->getLdAddr(), fetch_br_count, DL1->getRetBrCount());
+#endif
+
             }
-          //if (dinst->getPC() == 0x1044e)
-           // MSG("brpc=%llx ldpc=%llx last_ldpc=%llx d:%d pred:%d %d %d",ldpc2brpc[ldpc],ldpc,lastPredictable_ldpc,d,dinst->is_br_ld_chain_predictable(), dinst->getBrData1(), dinst->getBrData2());
+#endif
 
 #if 1
             if(ldpc2) {
@@ -707,13 +752,13 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
   }
 }
 
-void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
+void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DInst *dinst) {
   // Reset the max number of BB to fetch in this cycle (decreased in processBranch)
   maxBB = BB4Cycle;
 
   // You pass maxBB because there may be many fetches calls to realfetch in one cycle
   // (thanks to the callbacks)
-  realfetch(bucket, eint, fid, FetchWidth);
+  realfetch(bucket, eint, fid, dinst, FetchWidth);
 }
 
 void FetchEngine::dump(const char *str) const {

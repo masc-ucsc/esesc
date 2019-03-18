@@ -190,16 +190,22 @@ private:
   AddrType    addr; // Either load/store address or jump/branch address
 #ifdef ESESC_TRACE_DATA
   AddrType ldpc;
+  AddrType ld_addr;
+  AddrType base_pref_addr;
   DataType data;
   DataSign data_sign;
   int      chained;
   //BR stats
   AddrType brpc;
+  uint64_t inflight;
+  uint64_t delta;
   uint64_t br_op_type;
   DataType br_data1;
   DataType br_data2;
+  int ret_br_count;
 #endif
   bool br_ld_chain_predictable;
+  bool br_ld_chain;
   Cluster *    cluster;
   Resource *   resource;
   DInst **     RAT1Entry;
@@ -270,12 +276,44 @@ public:
     return keepStats;
   }
 
+  uint64_t getDelta() const{
+    return delta;
+  }
+
+  void setDelta(uint64_t _delta){
+    delta = _delta;
+  }
+
+  int getRetireBrCount() const{
+    return ret_br_count;
+  }
+
+  void setRetireBrCount(int _cnt){
+    ret_br_count = _cnt;
+  }
+
+  uint64_t getInflight() const{
+    return inflight;
+  }
+
+  void setInflight(uint64_t _inf){
+    inflight = _inf;
+  }
+
+  bool is_br_ld_chain() const{
+    return br_ld_chain;
+  }
+
+  void set_br_ld_chain(){
+    br_ld_chain = true;
+  }
+
   bool is_br_ld_chain_predictable(){
     return br_ld_chain_predictable;
   }
 
   void set_br_ld_chain_predictable(){
-    br_ld_chain_predictable = 1;
+    br_ld_chain_predictable = true;
   }
 
   static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
@@ -290,10 +328,15 @@ public:
 #ifdef ESESC_TRACE_DATA
     i->data      = 0;
     i->ldpc      = 0;
+    i->ld_addr   = 0;
+    i->base_pref_addr   = 0;
     i->data_sign = DS_NoData;
     i->chained   = 0;
     //BR stats
     i->brpc = 0;
+    i->inflight = 0;
+    i->delta = 0;
+    i->br_ld_chain = false;
     i->br_op_type = -1;
     i->br_data1   = 0;
     i->br_data2   = 0;
@@ -307,6 +350,22 @@ public:
     return i;
   }
 #ifdef ESESC_TRACE_DATA
+  AddrType getBasePrefAddr() const {
+    return base_pref_addr;
+  }
+
+  void setBasePrefAddr(AddrType _base_addr) {
+    base_pref_addr = _base_addr;
+  }
+
+  AddrType getLdAddr() const {
+    return ld_addr;
+  }
+
+  void setLdAddr(AddrType _ld_addr) {
+    ld_addr = _ld_addr;
+  }
+
   void setDataBr(uint64_t _data1, uint64_t _data2) {
     br_data1 = _data1;
     br_data2 = _data2;
@@ -322,6 +381,10 @@ public:
 
   AddrType getBrPC() const {
     return brpc;
+  }
+
+  void setBrPC(AddrType _brpc) {
+    brpc = _brpc;
   }
 
   static DataSign calcDataSign(int64_t data);

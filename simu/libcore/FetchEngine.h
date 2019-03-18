@@ -45,6 +45,7 @@
 
 #include "BPred.h"
 #include "GStats.h"
+//#define ENABLE_LDBP
 
 class GMemorySystem;
 class IBucket;
@@ -182,10 +183,29 @@ public:
 
   ~FetchEngine();
 
-  void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
-  typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface *, FlowID, &FetchEngine::fetch> fetchCB;
+#ifdef ENABLE_LDBP
+  MemObj *DL1;
+  DInst *ld_dinst;
+  AddrType dep_pc; //dependent instn's PC
+  int fetch_br_count;
+  
+  AddrType pref_addr;
+  AddrType check_line_addr;
+  AddrType base_addr;
+  AddrType tmp_base_addr;
+  uint64_t p_delta;
+  uint64_t inf;
+  uint64_t constant;
+#endif
 
-  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
+  void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid, DInst *dinst = 0);
+  //void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
+
+  //typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface *, FlowID, &FetchEngine::fetch> fetchCB;
+  typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface *, FlowID, DInst*, &FetchEngine::fetch> fetchCB;
+
+  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, DInst *dinst, int32_t n2Fetched);
+  //void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
   // typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, &FetchEngine::realfetch>  realfetchCB;
 
   void chainPrefDone(AddrType pc, int distance, AddrType addr);

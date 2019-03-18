@@ -238,8 +238,6 @@ GStatsHist::GStatsHist(const char *format, ...)
 }
 
 void GStatsHist::reportValue() const {
-  I(H.empty()); // call stop before
-
   int32_t maxKey = 0;
 
   for(Histogram::const_iterator it = H.begin(); it != H.end(); it++) {

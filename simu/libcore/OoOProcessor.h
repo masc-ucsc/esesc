@@ -37,6 +37,8 @@
 #ifndef _OOOPROCESSOR_H_
 #define _OOOPROCESSOR_H_
 
+#include <vector>
+#include <algorithm>
 #include "nanassert.h"
 
 #include "CodeProfile.h"
@@ -48,6 +50,7 @@
 
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
+//#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -138,6 +141,44 @@ protected:
 public:
   OoOProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~OoOProcessor();
+ 
+#ifdef ENABLE_LDBP
+  MemObj *DL1; 
+  AddrType ldbp_brpc;
+  AddrType ldbp_ldpc;
+  AddrType ldbp_curr_addr;
+  AddrType ldbp_start_addr;
+  AddrType ldbp_end_addr;
+  uint64_t ldbp_delta;
+  int brpc_count; //MATCH THIS COUNT WITH VEC_INDEX
+  uint64_t inflight_branch;
+  bool ldbp_reset;
+  Time_t avg_mem_lat;
+  Time_t total_mem_lat;
+  Time_t max_mem_lat;
+  Time_t last_mem_lat;
+  Time_t diff_mem_lat;
+  int num_mem_lat;
+  std::vector<Time_t> mem_lat_vec = std::vector<Time_t>(10);
+
+  //std::vector<int> ldbp_vector = std::vector<int>(LDBP_VEC_SIZE);
+
+  void ldbp_reset_field(){
+    ldbp_curr_addr      = 0;
+    ldbp_start_addr      = 0;
+    ldbp_end_addr        = 0;
+    ldbp_delta           = 0;
+    ldbp_brpc            = 0;
+    ldbp_ldpc            = 0;
+    ldbp_reset           = true;
+    brpc_count           = 0;
+
+    //for(int i = 0; i < LDBP_VEC_SIZE; i++) {
+    //  ldbp_vector[i] = 0;
+    //}
+  }
+  
+#endif
 
   void executing(DInst *dinst);
   void executed(DInst *dinst);

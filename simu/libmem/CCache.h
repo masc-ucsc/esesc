@@ -38,6 +38,7 @@
 #ifndef CCache_H
 #define CCache_H
 
+#include <vector>
 #include "CacheCore.h"
 #include "GProcessor.h"
 #include "GStats.h"
@@ -49,6 +50,7 @@
 #include "TaskHandler.h"
 #include "estl.h"
 //#include "Prefetcher.h"
+//#define ENABLE_LDBP
 
 class PortManager;
 class MemRequest;
@@ -299,6 +301,13 @@ public:
 
   int32_t getLineSize() const {
     return lineSize;
+  }
+
+  bool get_cir_queue(int index, AddrType pc) {
+    if(curr_dep_pc == pc) {
+      return cir_queue[index];
+    }
+    return 0;
   }
 
   // Entry points to schedule that may schedule a do?? if needed

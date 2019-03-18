@@ -47,11 +47,15 @@
 #include "FetchEngine.h"
 #include "GMemorySystem.h"
 #include "TaskHandler.h"
+#include "FastQueue.h"
+#include "MemRequest.h"
 
 /* }}} */
 
 //#define ESESC_CODEPROFILE
 #define ESESC_BRANCHPROFILE
+//#define ENABLE_LDBP
+
 // FIXME: to avoid deadlock, prealloc n to the n oldest instructions
 //#define LATE_ALLOC_REGISTER
 
@@ -114,6 +118,24 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   last_serialized       = 0;
   last_serializedST     = 0;
   forwardProg_threshold = 200;
+
+#ifdef ENABLE_LDBP
+  DL1 = gm->getDL1();
+  ldbp_curr_addr      = 0;
+  ldbp_start_addr     = 0;
+  ldbp_end_addr       = 0;
+  ldbp_delta          = 0;
+  inflight_branch     = 0;
+  ldbp_brpc           = 0;
+  ldbp_ldpc           = 0;
+  ldbp_reset          = true;
+  brpc_count          = 0;
+  avg_mem_lat         = 0;
+  total_mem_lat       = 0;
+  num_mem_lat         = 0;
+  last_mem_lat        = 0;
+  diff_mem_lat        = 0;
+#endif
   if(SescConf->checkBool("cpusimu", "scooreMemory", gm->getCoreId()))
     scooreMemory = SescConf->getBool("cpusimu", "scooreMemory", gm->getCoreId());
   else
@@ -141,7 +163,17 @@ void OoOProcessor::fetch(FlowID fid)
   } else {
     IBucket *bucket = pipeQ.pipeLine.newItem();
     if(bucket) {
-      IFID.fetch(bucket, eint, fid);
+      DInst *dinst = eint->peekHead(fid);
+#ifdef ENABLE_LDBP
+#if 0
+      //dinst->setBasePrefAddr(ldbp_curr_addr);
+      dinst->setRetireBrCount(brpc_count);
+      dinst->setBrPC(ldbp_brpc);
+      dinst->setInflight(inflight_branch);
+      dinst->setDelta(ldbp_delta);
+#endif
+#endif
+      IFID.fetch(bucket, eint, fid, dinst);
       if(!bucket->empty()) {
         avgFetchWidth.sample(bucket->size(), bucket->top()->getStatsFlag());
         busy = true;
@@ -520,12 +552,123 @@ void OoOProcessor::retire()
   // Pass all the ready instructions to the rrob
   while(!ROB.empty()) {
     DInst *dinst = ROB.top();
+    uint64_t num_inflight_branches = 0;
 
     bool done = dinst->getClusterResource()->preretire(dinst, flushing);
     GI(flushing && dinst->isExecuted(), done);
     if(!done) {
       break;
     }
+
+#ifdef ENABLE_LDBP
+    if(dinst->getInst()->getOpcode() == iLALU_LD && dinst->getPC() == ldbp_ldpc) {
+      //total_mem_lat += (globalClock - dinst->getExecutingTime());
+      num_mem_lat++;
+      if(num_mem_lat >= 10){
+        num_mem_lat   = 0;
+        total_mem_lat = 0;
+        mem_lat_vec.clear();
+      }
+      mem_lat_vec.push_back((globalClock - dinst->getExecutingTime()));
+      max_mem_lat = *std::max_element(mem_lat_vec.begin(), mem_lat_vec.end());
+      if (max_mem_lat>300) // FIXME: conf file 3x MemoryLatency
+        max_mem_lat = 300;
+    }
+
+    if(dinst->getInst()->isBranch() && dinst->is_br_ld_chain()) {
+      //MSG("ldbp_test1");
+      for(uint32_t i = 0; i < ROB.size(); i++) { //calculate num of inflight branches
+        uint32_t pos   = ROB.getIDFromTop(i);
+        DInst*  tmp_dinst = ROB.getData(pos);
+        if(tmp_dinst->getInst()->isBranch())
+          num_inflight_branches++;
+      }
+      inflight_branch = num_inflight_branches;
+      if(dinst->getPC() == ldbp_brpc) {
+        uint64_t constant = 32;
+        AddrType trigger_addr;
+        uint64_t delta2 = max_mem_lat; //amx mem latency of last 10 dependent LDs
+        if(inflight_branch > 0 && inflight_branch < 4) {
+          constant  = 32; //prefetch ahead by "constant"
+        }else if(inflight_branch >= 4) {
+          constant = 32;
+        }
+        if(ldbp_reset){ //this if loop is to calculate delta
+          if(ldbp_start_addr == 0){
+            ldbp_start_addr = dinst->getLdAddr();
+          }else{
+            ldbp_delta    = dinst->getLdAddr() - ldbp_start_addr;
+            ldbp_reset = false;
+          }
+        }
+        ldbp_curr_addr = dinst->getLdAddr();
+        brpc_count++;
+        trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2);
+        int qindex = 0;
+        if(ldbp_delta != 0) {
+          qindex = (trigger_addr - ldbp_start_addr) / ldbp_delta;
+        }
+#if 0
+        MSG("TRIGGER@ret2 clk=%u curr_addr=%llx trig_addr=%llx ldpc=%llx brpc=%llx delta=%u delta2=%u inf=%d rc=%d", 
+            globalClock, ldbp_curr_addr, trigger_addr, dinst->getLDPC(), dinst->getPC(), 
+            ldbp_delta, delta2, inflight_branch, brpc_count);
+#endif
+        DL1->setQStartAddr(ldbp_curr_addr);
+        DL1->setQDelta(ldbp_delta);
+        DL1->setRetBrCount(brpc_count);
+        DL1->shift_cir_queue();
+        MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, dinst->getLDPC(), ldbp_brpc,
+          ldbp_start_addr, ldbp_delta, inflight_branch, qindex);
+        if(last_mem_lat > max_mem_lat) {
+          diff_mem_lat = last_mem_lat - max_mem_lat + 6;
+          for(int i = 1; i <= diff_mem_lat; i++) {
+            trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2 + i);
+#if 0
+            MSG("TRIGGER@ret3 clk=%u curr_addr=%llx trig_addr=%llx ldpc=%llx brpc=%llx delta=%u delta2=%u inf=%d rc=%d", 
+                globalClock, ldbp_curr_addr, trigger_addr, dinst->getLDPC(), dinst->getPC(), 
+                ldbp_delta, delta2, inflight_branch, brpc_count);
+#endif
+            MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, dinst->getLDPC(), 
+                ldbp_brpc, ldbp_start_addr, ldbp_delta, inflight_branch, qindex);
+          } 
+        }else if(last_mem_lat < max_mem_lat) {
+          diff_mem_lat = max_mem_lat - last_mem_lat + 6; 
+          //for(int i = 1; i <= diff_mem_lat; i++) {
+          for(int i = diff_mem_lat; i > 0; i--) {
+            trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2 - i);
+#if 0
+            MSG("TRIGGER@ret4 clk=%u curr_addr=%llx trig_addr=%llx ldpc=%llx brpc=%llx delta=%u delta2=%u inf=%d rc=%d", 
+                globalClock, ldbp_curr_addr, trigger_addr, dinst->getLDPC(), dinst->getPC(), 
+                ldbp_delta, delta2, inflight_branch, brpc_count);
+#endif
+            MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, dinst->getLDPC(), 
+                ldbp_brpc, ldbp_start_addr, ldbp_delta, inflight_branch, qindex);
+          } 
+        }
+        last_mem_lat = max_mem_lat;
+
+      }else {
+        /*
+         *trigger mem_read(ldAddr + del*inf + constant) here if del != 0
+         *
+         * */
+        ldbp_reset_field();
+        ldbp_brpc       = dinst->getPC();
+        ldbp_ldpc       = dinst->getLDPC();
+        ldbp_curr_addr  = dinst->getLdAddr();
+        ldbp_start_addr = dinst->getLdAddr();
+        ldbp_end_addr   = ldbp_start_addr + 128;
+        brpc_count++;
+#if 0
+        MSG("TRIGGER@ret1 clk=%u curr_ld_addr=%llx r_ldpc=%llx r_brpc=%llx", 
+            globalClock, ldbp_curr_addr, dinst->getLDPC(), dinst->getPC());
+#endif
+        //MSG("ldbp_retire1 clk=%u brpc=%llx ld_addr=%u inf=%d", 
+        //    globalClock, ldbp_brpc, ldbp_start_addr, inflight_branch);
+      }
+    }
+
+#endif
 
     I(IFID.getMissDInst() != dinst);
 
