@@ -303,12 +303,14 @@ public:
     return lineSize;
   }
 
+#ifdef ENABLE_LDBP
   bool get_cir_queue(int index, AddrType pc) {
     if(curr_dep_pc == pc) {
       return cir_queue[index];
     }
     return 0;
   }
+#endif
 
   // Entry points to schedule that may schedule a do?? if needed
   void req(MemRequest *req);
