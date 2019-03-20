@@ -28429,22 +28429,23 @@ static void gen_msa(CPUMIPSState *env, DisasContext *ctx)
             TCGv_i32 twd = tcg_const_i32(wd);
             TCGv taddr = tcg_temp_new();
             gen_base_offset_addr(ctx, taddr, rs, s10 << df);
+            TCGv_i64 data = tcg_const_i64(0);
 
             switch (MASK_MSA_MINOR(opcode)) {
             case OPC_LD_B:
-                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, data, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_b(cpu_env, twd, taddr);
                 break;
             case OPC_LD_H:
-                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, data, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_h(cpu_env, twd, taddr);
                 break;
             case OPC_LD_W:
-                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, data, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_w(cpu_env, twd, taddr);
                 break;
             case OPC_LD_D:
-                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, 0, rs, LREG_VECTOR0+wd);
+                ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, data, rs, LREG_VECTOR0+wd);
                 gen_helper_msa_ld_d(cpu_env, twd, taddr);
                 break;
             case OPC_ST_B:
@@ -28465,6 +28466,7 @@ static void gen_msa(CPUMIPSState *env, DisasContext *ctx)
                 break;
             }
 
+            tcg_temp_free_i64(data);
             tcg_temp_free_i32(twd);
             tcg_temp_free(taddr);
         }
