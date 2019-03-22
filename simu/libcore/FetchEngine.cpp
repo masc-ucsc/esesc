@@ -48,7 +48,6 @@
 #include "Pipeline.h"
 extern bool MIMDmode;
 
-//#define ENABLE_LDBP
 //#define ENABLE_FAST_WARMUP 1
 //#define FETCH_TRACE 1
 
@@ -322,7 +321,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
 
     if(dinst->getInst()->isLoad()) {
 
-      bool ld_tracking = dinst->getPC() == 0x10006540 || dinst->getPC() == 0x10006544;
+      bool ld_tracking = false;
 
       // ld_tracking = false;
 
@@ -374,19 +373,29 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
       int      d1    = oracleDataRAT[dinst->getInst()->getSrc1()].depth;
       int      d2    = oracleDataRAT[dinst->getInst()->getSrc2()].depth;
       AddrType ldpc2 = 0;
+      int dep_reg_id1 = -1;
+      int dep_reg_id2 = -1;
+
       if(d1 < d2 && d1 < 3) {
         d    = d1;
         ldpc = oracleDataRAT[dinst->getInst()->getSrc1()].ldpc;
+        dep_reg_id1 = dinst->getInst()->getSrc1();
 #if 1
-        if(d2 < 4)
+        if(d2 < 4) {
           ldpc2 = oracleDataRAT[dinst->getInst()->getSrc2()].ldpc;
+          dep_reg_id2 = dinst->getInst()->getSrc2();
+        }
+          
 #endif
       } else if(d2 < d1 && d2 < 3) {
         d    = d2;
         ldpc = oracleDataRAT[dinst->getInst()->getSrc2()].ldpc;
+        dep_reg_id2 = dinst->getInst()->getSrc2();
 #if 1
-        if(d1 < 4)
+        if(d1 < 4) {
           ldpc2 = oracleDataRAT[dinst->getInst()->getSrc1()].ldpc;
+          dep_reg_id1 = dinst->getInst()->getSrc1();
+        }
 #endif
       } else if(d1 == d2 && d1 < 3) {
         // Closest ldpc
@@ -398,12 +407,18 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
           d = d2;
         if(x1 < x2) {
           ldpc = oracleDataRAT[dinst->getInst()->getSrc1()].ldpc;
-          if(d2 < 2)
+          dep_reg_id1 = dinst->getInst()->getSrc1();
+          if(d2 < 2) {
             ldpc2 = oracleDataRAT[dinst->getInst()->getSrc2()].ldpc;
+            dep_reg_id2 = dinst->getInst()->getSrc2();
+          }
         } else {
           ldpc = oracleDataRAT[dinst->getInst()->getSrc2()].ldpc;
-          if(d1 < 2)
+          dep_reg_id2 = dinst->getInst()->getSrc2();
+          if(d1 < 2) {
             ldpc2 = oracleDataRAT[dinst->getInst()->getSrc1()].ldpc;
+            dep_reg_id1 = dinst->getInst()->getSrc1();
+          }
         }
       } else {
         d    = 32768;
@@ -463,13 +478,25 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
           }
 #endif
 #endif
-          AddrType x = dinst->getPC() - lastPredictable_ldpc;
-          if(d < 4 && (x > 0 && x < 64)) {
+          AddrType x = dinst->getPC() - ldpc;
+          if(d < 4) {
+            int dep_reg = -1;
 #if 0
-            MSG("FABS x=%u brpc=%llx ldpc=%llx", x, dinst->getPC(), lastPredictable_ldpc);
+            if(dep_reg_id2 < 0 && dep_reg_id1 > 0) {
+              dep_reg = dep_reg_id1;
+              MSG("R1 r1=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc1(), dinst->getPC(), ldpc);
+            } else if(dep_reg_id1 < 0 && dep_reg_id2 > 0) {
+              dep_reg = dep_reg_id2;
+              MSG("R2 r2=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc2(), dinst->getPC(), ldpc);
+            } else if(dep_reg_id1 > 0 && dep_reg_id2 > 0) {
+              MSG("BOTH r1=%d r2=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc1(), dinst->getInst()->getSrc2(), dinst->getPC(), ldpc);
+            }
 #endif
+
+            //MSG("brpc=%llx ldpc=%llx addr=%u pred_addr=%u valid_addr=%d", dinst->getPC(), ldpc, addr, 
+            //    lastPredictable_addr, addr==lastPredictable_addr);
             dinst->setDataSign(data, ldpc);
-            dinst->setLdAddr(lastPredictable_addr);
+            dinst->setLdAddr(addr);  //addr or lastPredictable_addr???
 #ifdef ENABLE_LDBP
             dinst->set_br_ld_chain();
             //trigger next prefetches here so that it is timely

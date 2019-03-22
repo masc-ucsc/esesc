@@ -437,10 +437,10 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   return NoPrediction;
 #endif
 
-  /* Not even faster branch
-  if(dinst->getInst()->isJump())
-    return btb.predict(dinst, doUpdate, doStats);
-    */
+  //Not even faster branch
+  //if(dinst->getInst()->isJump())
+  //  return btb.predict(dinst, doUpdate, doStats);
+   
 
   bool     taken  = dinst->isTaken();
   AddrType br_pc = dinst->getPC();
@@ -456,7 +456,16 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if(!dinst->is_br_ld_chain_predictable())
     return NoPrediction;
 
-  ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+  ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());  //FIXME - use LD data, not Br data
+  if(ptaken != taken) {
+#if 0
+    MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
+      globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getData(),
+      dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
+#endif
+    
+    ptaken = taken; //FIXME: I should not do this - this will be resolved if we use Ld Data
+  }
   ldbp_map[t_tag] = ptaken;
 #if 0
   MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
@@ -1515,7 +1524,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
     , nFixes1("P(%d)_BPred:nFixes1", id)
     , nFixes2("P(%d)_BPred:nFixes2", id)
     , nFixes3("P(%d)_BPred:nFixes3", id)
-    , nUnFixes("P(%d)_BPred:nUnFixes", id)
+    , nUnFixes("P(%d)_BPred:nUnFixes", id) 
     , nAgree3("P(%d)_BPred:nAgree3", id) {
   const char *bpredSection  = SescConf->getCharPtr("cpusimu", "bpred", id);
   const char *bpredSection2 = 0;
@@ -1524,7 +1533,9 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
 
   if(SescConf->checkCharPtr("cpusimu", "bpred2", id)) {
     bpredSection2 = SescConf->getCharPtr("cpusimu", "bpred2", id);
-    bpredDelay3   = SescConf->getInt(bpredSection2, "BTACDelay");
+    bpredDelay3 = bpredDelay2;
+    if(SescConf->checkCharPtr("cpusimu", "bpred3", id))
+      bpredDelay3   = SescConf->getInt(bpredSection2, "BTACDelay");
   }
 
   const char *bpredSection3    = 0;
@@ -1540,7 +1551,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
   //bpredDelay2 = SescConf->getInt("cpusimu", "bpredDelay2", id);
   //bpredDelay3 = SescConf->getInt("cpusimu", "bpredDelay3", id);
   
-  if(!(bpredDelay1 <= bpredDelay2 <= bpredDelay3)) {
+  if(!(bpredDelay1 <= bpredDelay2 && bpredDelay2 <= bpredDelay3)) {
     MSG("ERROR: bpredDelay (%d) should be <= bpredDelay2 (%d) <= bpredDelay3 (%d)", bpredDelay1, bpredDelay2, bpredDelay3);
     SescConf->notCorrect();
   }
@@ -1738,72 +1749,7 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
       }
     }
     outcome3 = outcome2;
-    /*
-        //bool tracking = dinst->getPC() == 0x12000e288 && dinst->getStatsFlag();
-        //bool tracking = dinst->getPC() == 0x12000e288 && dinst->getStatsFlag();
-        //bool tracking = dinst->getPC() == 0x12001b870 && dinst->getStatsFlag();
-        bool tracking = dinst->getPC() == 0x100072dc && dinst->getStatsFlag();
-        //bool tracking = false;
-    */
     if(pred3) {
-      //AddrType old_addr  = dinst->getAddr();
-      //AddrType old_addr1 = dinst->getAddr();
-      //AddrType old_pc    = dinst->getPC();
-#if 1
-      // dinst->setPC(dinst->getLDPC() ^ (old_pc<<7) ^ (old_pc>>3) ^ (dinst->getDataSign()<<10) ^ (dinst->getDataSign()<<2));
-      //dinst->setPC(dinst->getLDPC() ^ (old_pc << 7) ^ (dinst->getDataSign() << 10));
-#endif
-      /*
-              //try3 = try3 || !dinst->isBiasBranch(); //try3 || dinst->isBiasBranch() gives 98.5% bpred accuracy for bzip2
-              try3 = worth_checking3 || !dinst->isBiasBranch();
-              //try3 = true;
-              //try3 = old_pc == 0x100072dc;
-              if (try3) {
-                outcome3 = predict3(dinst);
-                used3    = true;
-                if (tracking) {
-                  printf("btrack o:%d %s ldpc:%llx ds:%d brpc:%llx i:%x\n", outcome3, dinst->isTaken()?"T":"NT",dinst->getLDPC(),
-      dinst->getDataSign(), old_pc, pred3->calcHist(dinst->getPC())); printf("bmeta3 bias, pred %d %d %s\n", outcome2, outcome3,
-      dinst->isTaken()?"T":"NT");
-                }
-              }else{
-      #if 1
-                pred3->update(dinst); // update to keep prediction up to date, but nothing to do
-      #endif
-                if (tracking)
-                  printf("bmeta2 bias, no pred %d %s\n", outcome2, dinst->isTaken()?"T":"NT");
-              }
-
-              dinst->setPC(old_pc);
-            }else{
-                if (tracking) {
-                  printf("bmeta2 else, pred %d %s\n", outcome2, dinst->isTaken()?"T":"NT");
-                }
-      #if 1
-              // With history. Only needed if _data predictor has history
-
-              if (dinst->isBiasBranch() || dinst->getDataSign() == DS_NoData) {
-                // good for sjeng 0x100072dc if (dinst->getDataSign() == DS_NoData)
-                pred3->update(dinst); // update to keep prediction up to date, but nothing to do
-                if (tracking)
-                  printf("bpred2 bias, no pred %d %s\n", outcome2, dinst->isTaken()?"T":"NT");
-              } else {
-                outcome3 = predict3(dinst);
-                if (!dinst->isBiasBranch()) {
-                  if (dinst->getPC() == 0x100072dc && dinst->getStatsFlag())
-                    printf("bpred3 not bias, no pred %d %s\n", outcome2, dinst->isTaken()?"T":"NT");
-                  outcome3 = outcome2; // If unsure, use default TAGE
-                } else {
-                  if (tracking)
-                    printf("bpred3 bias, pred %d %d %s\n", outcome2, outcome3, dinst->isTaken()?"T":"NT");
-
-                  used3 = true;
-                }
-              }
-      #endif
-            }
-      =======*/
-      //dinst->setAddr(old_addr);
       outcome3 = predict3(dinst);
       used3    = true;
       //dinst->setPC(old_pc);
@@ -1835,7 +1781,6 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
   }
 
   if(outcome1 == CorrectPrediction && outcome2 == CorrectPrediction && outcome3 == CorrectPrediction) {
-    nAgree3.inc(dinst->getStatsFlag());
 
     if(dinst->isTaken()) {
 #ifdef CLOSE_TARGET_OPTIMIZATION
@@ -1858,6 +1803,21 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   int32_t bpred_total_delay = bpredDelay1 - 1;
 
+  if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 == NoPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction)) {
+    nFixes1.inc(dinst->getStatsFlag());
+    bpred_total_delay = bpredDelay1 - 1;
+  }else if((outcome2 == CorrectPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction)) {
+    nFixes2.inc(dinst->getStatsFlag());
+    bpred_total_delay = bpredDelay2 - 1;
+  }else if(outcome3 == CorrectPrediction) {
+    nFixes3.inc(dinst->getStatsFlag());
+    bpred_total_delay = bpredDelay3 - 1;
+  } else {
+    nUnFixes.inc(dinst->getStatsFlag());
+    *fastfix          = false;
+    bpred_total_delay = 2; // Anything but zero
+  }
+#if 0
   if(outcome1 != CorrectPrediction && outcome2 == CorrectPrediction && outcome3 == CorrectPrediction) {
     nFixes1.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay2 - 1;
@@ -1866,14 +1826,14 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     bpred_total_delay = bpredDelay3 - 1;
   } else if(outcome1 == CorrectPrediction && outcome2 != CorrectPrediction && outcome3 == CorrectPrediction) {
     nFixes3.inc(dinst->getStatsFlag());
-    bpred_total_delay = bpredDelay3 - 1;
+    bpred_total_delay = bpredDelay1 - 1; // FIXME: why both bpredDelay3????
   } else if(outcome3 != CorrectPrediction) {
     nUnFixes.inc(dinst->getStatsFlag());
     *fastfix          = false;
     bpred_total_delay = 2; // Anything but zero
   } else {
-    nAgree3.inc(dinst->getStatsFlag());
   }
+#endif
 
   return bpred_total_delay;
 }

@@ -54,7 +54,6 @@
 
 //#define ESESC_CODEPROFILE
 #define ESESC_BRANCHPROFILE
-//#define ENABLE_LDBP
 
 // FIXME: to avoid deadlock, prealloc n to the n oldest instructions
 //#define LATE_ALLOC_REGISTER

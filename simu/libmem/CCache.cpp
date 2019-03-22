@@ -16,7 +16,6 @@
 #include "PortManager.h"
 #include "SescConf.h"
 #include "TaskHandler.h"
-//#define ENABLE_LDBP
 
 extern "C" uint64_t esesc_mem_read(uint64_t addr);
 

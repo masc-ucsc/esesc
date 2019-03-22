@@ -10,14 +10,14 @@ memBW    =   11 #chromebook 11   # 4GHz :  64 (L2)/11 ~ 6 bytes per cycle ~ 24GB
 l3size = 8*1024*1024
 
 nlpenable = 0
-iw = 8
+iw = 6
 mw = $(iw)/4
 
 [tradCORE]
 type              = "ooo"
 areaFactor        = 2
 #issueWrongPath    = false not in new simu.conf
-fetchWidth        = 16
+fetchWidth        = 8
 alignedFetch      = false
 fetchPorts        = 1
 instQueueSize     = 32
@@ -80,9 +80,9 @@ blockName         = "PF"
 [AUNIT]
 blockName         = "AUNIT"
 nRegs             = 128
-winSize           = 1*16 
+winSize           = 32
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 2
+schedNumPorts     = 3
 schedPortOccp     = 1
 schedDelay        = 0
 iAALULat          = 1
@@ -93,9 +93,9 @@ iRALUUnit         = 'AUNIT_AALU'
 [BUNIT]
 blockName         = "BUNIT"
 nRegs             = 128
-winSize           = 1*8
+winSize           = 16
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 1
+schedNumPorts     = 2
 schedPortOccp     = 1
 schedDelay        = 0
 iBALU_LBRANCHLat  = 1
@@ -137,7 +137,7 @@ blockName         = "LSUNIT"
 nRegs             = 128
 winSize           = 2*16
 recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 2  
+schedNumPorts     = 3  
 schedPortOccp     = 1  
 schedDelay        = 0
 iLALU_LDLat       = 0
@@ -181,10 +181,9 @@ Occ               = 1
 
 [BPredIssueX] 
 type              = "2bit"
-addrShift         = 1
+addrShift         = 0
 size              = 256
 bits              = 1
-bpred4Cycle       = 1 
 BTACDelay         = 3
 btbSize           = 64
 btbBsize          = 1
@@ -197,12 +196,12 @@ numBanks            = 1
 [BPredIssueX2]
 type             = "imli"
 #type             = "oracle"
-FetchPredict      = true
+FetchPredict      = false
 bimodalSize      = 4096
 bimodalWidth     = 2
-nhist            = 4
-statcorrector    = false
-addrShift         = 1
+nhist            = 6
+statcorrector    = true
+addrShift         = 0
 BTACDelay         = 1 #3
 mtables           = 10       # Number of tables (M)
 glength           = 200
@@ -219,16 +218,15 @@ numBanks            = 1
 
 [BPredIssueX3]
 type              = "ldbp"
-addrShift         = 1
+addrShift         = 0
 size              = 64
 bits              = 1
-bpred4Cycle       = 1
-BTACDelay         = 1 #3
-btbSize           = 64
+BTACDelay         = 3 #3
+btbSize           = 512 #64
 btbBsize          = 1
-btbAssoc          = 64
+btbAssoc          = 4 #64
 btbReplPolicy     = 'LRU'
-rasSize           = 16
+rasSize           = 0 #16
 rasPrefetch       = 0
 numBanks            = 1
 
