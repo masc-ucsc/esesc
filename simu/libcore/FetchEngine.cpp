@@ -319,9 +319,46 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
     }//control
 #endif
 
+#ifdef ENABLE_LDBP   
+    AddrType q_saddr   = DL1->getQStartAddr();
+    AddrType q_eaddr   = DL1->getQEndAddr();
+    uint64_t q_delta   = DL1->getQDelta();
+ 
+    //update load data buffer if there is any older store for the same address
+    if(dinst->getInst()->getOpcode() == iSALU_ST) {
+      //MSG("STORE_TEST pc=%llx addr=%llx new_data=%u old_data=%u", dinst->getPC(), dinst->getAddr(),
+      //    dinst->getData(), dinst->getData2()); 
+      AddrType st_addr = dinst->getAddr();
+      if(st_addr >= q_saddr && st_addr <= q_eaddr) {
+        for(int i = 0; i < DL1->load_data_buffer.size(); i++) {
+          if(st_addr == DL1->load_data_buffer[i].ld_addr && !DL1->load_data_buffer[i].marked) {
+            DL1->load_data_buffer[i].ld_data = dinst->getData2();
+            DL1->load_data_buffer[i].marked  = true;
+          }
+        }
+      }
+    }
+#endif
+
     if(dinst->getInst()->isLoad()) {
 
       bool ld_tracking = false;
+
+#ifdef ENABLE_LDBP
+      //insert load into load data buff table if load's address is a hit on table
+      AddrType load_addr = dinst->getAddr();
+      int q_index = 0;
+      if(load_addr >= q_saddr && load_addr <= q_eaddr) {
+        if(q_delta != 0 && load_addr % q_delta == 0) { //random inbetween address is filtered
+          q_index = ((load_addr - q_saddr) / q_delta);
+          if(DL1->load_data_buffer[q_index].ld_addr == dinst->getAddr() && !DL1->load_data_buffer[q_index].marked)
+            DL1->load_data_buffer[q_index].fill_data(dinst->getData());
+        }else if(q_delta == 0) {
+          if(DL1->load_data_buffer[q_index].ld_addr == dinst->getAddr() && !DL1->load_data_buffer[q_index].marked)
+            DL1->load_data_buffer[q_index].fill_data(dinst->getData());
+        }
+      }
+#endif
 
       // ld_tracking = false;
 
@@ -364,6 +401,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
         dinst->setChain(this, oracleDataLast[dinst->getPC()].inc_chain());
       }
     }
+
 #if 1
     if(!dinst->getInst()->isLoad() && dinst->getInst()->isBranch()) { // Not for LD-LD chain
       //this loop tracks LD-BR dependency for now
@@ -481,7 +519,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
           AddrType x = dinst->getPC() - ldpc;
           if(d < 4) {
             int dep_reg = -1;
-#if 0
+#if 0 
             if(dep_reg_id2 < 0 && dep_reg_id1 > 0) {
               dep_reg = dep_reg_id1;
               MSG("R1 r1=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc1(), dinst->getPC(), ldpc);
@@ -489,7 +527,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
               dep_reg = dep_reg_id2;
               MSG("R2 r2=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc2(), dinst->getPC(), ldpc);
             } else if(dep_reg_id1 > 0 && dep_reg_id2 > 0) {
-              MSG("BOTH r1=%d r2=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc1(), dinst->getInst()->getSrc2(), dinst->getPC(), ldpc);
+              MSG("BOTH r1=%d r2=%d brpc=%llx ldpc=%llx ldpc2=%llx", 
+                 dinst->getInst()->getSrc1(), dinst->getInst()->getSrc2(), dinst->getPC(), ldpc, ldpc2);
             }
 #endif
 

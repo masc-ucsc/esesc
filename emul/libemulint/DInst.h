@@ -193,6 +193,7 @@ private:
   AddrType ld_addr;
   AddrType base_pref_addr;
   DataType data;
+  DataType data2;
   DataSign data_sign;
   int      chained;
   //BR stats
@@ -200,8 +201,6 @@ private:
   uint64_t inflight;
   uint64_t delta;
   uint64_t br_op_type;
-  DataType br_data1;
-  DataType br_data2;
   int ret_br_count;
 #endif
   bool br_ld_chain_predictable;
@@ -327,6 +326,7 @@ public:
     i->addr = address;
 #ifdef ESESC_TRACE_DATA
     i->data      = 0;
+    i->data2     = 0;
     i->ldpc      = 0;
     i->ld_addr   = 0;
     i->base_pref_addr   = 0;
@@ -338,8 +338,6 @@ public:
     i->delta = 0;
     i->br_ld_chain = false;
     i->br_op_type = -1;
-    i->br_data1   = 0;
-    i->br_data2   = 0;
 #endif
     i->fetched   = 0;
     i->keepStats = keepStats;
@@ -366,19 +364,6 @@ public:
     ld_addr = _ld_addr;
   }
 
-  void setDataBr(uint64_t _data1, uint64_t _data2) {
-    br_data1 = _data1;
-    br_data2 = _data2;
-  }
-
-  DataType getBrData1() const {
-    return br_data1;
-  }
-
-  DataType getBrData2() const {
-    return br_data2;
-  }
-
   AddrType getBrPC() const {
     return brpc;
   }
@@ -393,6 +378,10 @@ public:
     return data;
   }
 
+  DataType        getData2() const {
+    return data2;
+  }
+
   DataSign getDataSign() const {
     return (DataSign)(int(data_sign) & 0x1FF);
   } // FIXME:}
@@ -400,9 +389,15 @@ public:
   // DataSign getDataSign() const { return data_sign; }
   void setDataSign(int64_t _data, AddrType ldpc);
   void addDataSign(int ds, int64_t _data, AddrType ldpc);
+  
   void setData(uint64_t _data) {
     data = _data;
   }
+  
+  void setData2(uint64_t _data) {
+    data2 = _data;
+  }
+  
   AddrType getLDPC() const {
     return ldpc;
   }

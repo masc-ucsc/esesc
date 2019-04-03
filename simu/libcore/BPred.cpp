@@ -456,7 +456,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   if(!dinst->is_br_ld_chain_predictable())
     return NoPrediction;
 
-  ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());  //FIXME - use LD data, not Br data
+  ptaken = outcome_calculator(br_op, dinst->getData(), dinst->getData2());  //FIXME - use LD data, not Br data
   if(ptaken != taken) {
 #if 0
     MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
@@ -1553,7 +1553,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
   
   if(!(bpredDelay1 <= bpredDelay2 && bpredDelay2 <= bpredDelay3)) {
     MSG("ERROR: bpredDelay (%d) should be <= bpredDelay2 (%d) <= bpredDelay3 (%d)", bpredDelay1, bpredDelay2, bpredDelay3);
-    SescConf->notCorrect();
+    //SescConf->notCorrect(); // FIXME - uncomment this line
   }
 
   if(bpredDelay2)

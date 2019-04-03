@@ -79,6 +79,7 @@ DEF_HELPER_1(tlb_flush, void, env)
 
 #ifdef CONFIG_ESESC
 DEF_HELPER_5(esesc_load, void, env, i64, i64, i64, i64)
+DEF_HELPER_6(esesc_store, void, env, i64, i64, i64, i64, i64)
 DEF_HELPER_5(esesc_ctrl, void, env, i64, i64, i64, i64)
 DEF_HELPER_6(esesc_ctrl_data, void, env, i64, i64, i64, i64, i64)
 DEF_HELPER_4(esesc_alu , void, env, i64, i64, i64)

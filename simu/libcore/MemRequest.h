@@ -317,14 +317,13 @@ public:
     return mreq;
   }
 
-  static void triggerReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, AddrType _dep_pc, AddrType _base_addr, uint64_t _delta, uint64_t _inf, int dep_count, CallbackBase *cb = 0) {
+  static void triggerReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, AddrType _dep_pc, AddrType _base_addr, uint64_t _delta, uint64_t _inf, CallbackBase *cb = 0) {
     MemRequest *mreq   = createReqRead(m, doStats, addr, pc, cb);
     mreq->trigger_load = true;
     mreq->dep_pc       = _dep_pc;
     mreq->base_addr    = _base_addr;
     mreq->delta        = _delta;
     mreq->inflight     = _inf;
-    mreq->dep_pc_count = dep_count;
     m->req(mreq);
   }
 

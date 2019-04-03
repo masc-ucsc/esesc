@@ -50,8 +50,7 @@ private:
   AddrType addr;
 #ifdef ESESC_TRACE_DATA
   DataType data;
-  DataType br_data1;
-  DataType br_data2;
+  DataType data2;
 #endif
   Instruction inst;
 
@@ -64,7 +63,8 @@ public:
     inst      = p.inst;
     keepStats = p.keepStats;
 #ifdef ESESC_TRACE_DATA
-    data = p.data;
+    data  = p.data;
+    data2 = p.data2;
 #endif
   }
 
@@ -80,25 +80,22 @@ public:
   }
 
 #ifdef ESESC_TRACE_DATA
+  DataType getData2() const {
+    return data2;
+  };
+  
   DataType getData() const {
     return data;
   };
+  
+  void setData2(DataType _data) {
+    data2 = _data;
+  }
+  
   void setData(DataType _data) {
     data = _data;
   }
 
-  void setDataBr(uint64_t _data1, uint64_t _data2) {
-    br_data1 = _data1;
-    br_data2 = _data2;
-  }
-
-  DataType getBrData1() const {
-    return br_data1;
-  }
-
-  DataType getBrData2() const {
-    return br_data2;
-  }
 #endif
 
   AddrType getPC() const {

@@ -83,32 +83,49 @@ public:
   virtual ~MemObj();
 
 #ifdef ENABLE_LDBP
-  AddrType q_start_index;
-  int q_end_index;
+  struct load_data_buffer_entry{
+    load_data_buffer_entry() {
+      ld_addr = 0;
+      ld_data = 0;
+      marked = false;
+    }
+    AddrType ld_addr;
+    DataType ld_data;
+    bool marked;
+
+    void reset() {
+      ld_addr = 0;
+      ld_data = 0;
+    }
+
+    void fill_addr(AddrType addr) {
+      ld_addr = addr; 
+    }
+    
+    void fill_data(DataType data) {
+      ld_data = data; 
+    }
+  };
+ 
   AddrType q_start_addr;
+  AddrType q_end_addr;
   uint64_t q_delta;
   AddrType curr_dep_pc;
   int ret_br_count;
   std::vector<int> cir_queue = std::vector<int>(CIR_QUEUE_WINDOW);
+  std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);
 
   void find_cir_queue_index(MemRequest *mreq, const char *str);
   void reset_cir_queue();
+  void reset_load_data_buffer();
   void shift_cir_queue();
+  void shift_load_data_buffer();
   void fill_cir_queue(MemRequest *mreq, int index);
 
-  int get_q_start_index() const {
-    return q_start_index;
+  int getQSize() {
+    return CIR_QUEUE_WINDOW;
   }
 
-  int get_q_end_index() const {
-    return q_end_index;
-  }
-
-  void reset_q_pointers(int win_size) {
-    q_start_index = 0;
-    q_end_index   = win_size - 1;
-  }
-  
   void setQDelta(uint64_t _delta) {
     q_delta = _delta;
   }
@@ -131,6 +148,14 @@ public:
 
   AddrType getQStartAddr() const {
     return q_start_addr;
+  }
+
+  void setQEndAddr(AddrType _addr) {
+    q_end_addr = _addr;
+  }
+
+  AddrType getQEndAddr() const {
+    return q_end_addr;
   }
 #endif
 

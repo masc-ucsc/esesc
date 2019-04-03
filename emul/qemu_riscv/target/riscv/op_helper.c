@@ -77,6 +77,25 @@ void helper_esesc_load(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_
   AtomicAdd(&icount,QEMUReader_queue_load(pc, target, data, cpu->fid, src1, dest));
 }
 
+void helper_esesc_store(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_t data_new, uint64_t data_old, uint64_t reg) {
+  if (icount>0) {
+    AtomicSub(&icount,1);
+    return;
+  }
+
+  //printf("Hello pc:%llx data1:%lld data2:%lld\n",(long long)pc, (long long)data_new, (long long)data_old);
+
+  CPUState *cpu       = ENV_GET_CPU(env);
+
+  int src1 = reg & 0xFF;
+  reg      = reg >> 8;
+  int src2 = reg & 0xFF;
+  reg      = reg >> 8;
+  int dest = reg & 0xFF;
+
+  AtomicAdd(&icount,QEMUReader_queue_store(pc, target, data_new, data_old, cpu->fid, src1, src2, dest));
+}
+
 void helper_esesc_ctrl(CPURISCVState *env, uint64_t pc, uint64_t target, uint64_t op, uint64_t reg) {
   if (icount>0) {
     AtomicSub(&icount,1);

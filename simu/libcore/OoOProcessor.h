@@ -47,6 +47,7 @@
 #include "GOoOProcessor.h"
 #include "Pipeline.h"
 #include "callback.h"
+#include "GStats.h"
 
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
@@ -143,6 +144,101 @@ public:
   virtual ~OoOProcessor();
  
 #ifdef ENABLE_LDBP
+  struct ld_br_entry {
+    ld_br_entry() {
+      ld_pc            = 0;
+      ld_addr          = 0;
+      ld_data          = 0;
+      ld_delta         = 0;
+      ld_reg           = LREG_R0; 
+      br_pc            = 0;
+      br_src2          = LREG_R0;
+      br_data2         = 0;
+      ld_br_type       = 0;
+      dependency_depth = 0;
+      is_li            = false;
+      simple           = false;
+      direct           = false;
+    }
+    AddrType ld_pc;
+    AddrType ld_addr;
+    AddrType ld_data;
+    uint64_t ld_delta;
+    RegType ld_reg;
+    AddrType br_pc;
+    RegType br_src2; //src2 here refers to the source which is not dependent on Ld(it can be rs1 or rs2)
+    AddrType br_data2;
+    int ld_br_type;
+    int dependency_depth;
+    bool simple;
+    bool direct;
+    bool is_li; //is branch dependent on a load immediate?
+
+    void reset_entry() {
+      ld_delta         = 0;
+      ld_reg           = LREG_R0;
+      br_pc            = 0;
+      br_src2          = LREG_R0;
+      br_data2         = 0;
+      ld_br_type       = 0;
+      dependency_depth = 0;
+      simple           = false;
+      direct           = false;
+      is_li            = false;
+    }
+
+    bool is_hit(RegType reg) {
+      return reg == ld_reg;
+    }
+
+    void set_simple() {
+      simple = true;
+    }
+
+    bool is_simple() {
+      return simple;
+    }
+
+    void set_direct() {
+      direct = false;
+      if(dependency_depth == 1) {
+        direct = true;
+      }
+    } 
+
+    bool is_direct() {
+      return direct;
+    }
+    
+    void set_ld_retire(DInst *dinst) {
+      if(ld_pc != dinst->getPC()) {
+        reset_entry();
+        ld_pc   = dinst->getPC();
+        ld_addr = dinst->getAddr();
+        ld_data = dinst->getData();
+        ld_reg  = dinst->getInst()->getDst1();
+      }else {
+        /*if(ld_delta == 0) {
+          ld_delta = dinst->getAddr() - ld_addr;
+        } else if(ld_delta != (dinst->getAddr() - ld_addr)) {
+          ld_delta = dinst->getAddr() - ld_addr;
+        }*/
+        ld_delta = dinst->getAddr() - ld_addr;
+        ld_addr = dinst->getAddr();
+        ld_data = dinst->getData();
+      }
+    }
+
+    void set_br_retire(DInst *dinst) {
+      br_pc = dinst->getPC();
+      dependency_depth++;
+      //br_src2 = dinst->getInst()->getSrc2();
+      //br_data2 = dinst->getBrData2();
+    }
+
+  };
+
+  HASH_MAP<RegType, ld_br_entry> ldbp_retire_table;
   MemObj *DL1; 
   AddrType ldbp_brpc;
   AddrType ldbp_ldpc;

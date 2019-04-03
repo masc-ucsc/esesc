@@ -89,13 +89,30 @@ extern "C" uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t d
 
 #ifdef DEBUG_QEMU_TRACE
   //uint64_t raw = esesc_mem_read(pc);
-  MSG("pc=%llx addr=%llx data=%llx op=%d cpu=%d src:%d dst:%d",pc,addr,data,iLALU_LD,fid,src1,dest);
+  MSG("load pc=%llx addr=%llx data=%u op=%d cpu=%d src:%d dst:%d",pc,addr,data,iLALU_LD,fid,src1,dest);
 
   I(pc == (last_addr+2) || pc == (last_addr+4) || last_addr==0);
   last_addr = pc;
 #endif
 
   uint64_t res = qsamplerlist[fid]->queue(pc, addr, data, fid, iLALU_LD, src1, 0, dest, LREG_InvalidOutput);
+  return res;
+}
+
+extern "C" uint64_t QEMUReader_queue_store(uint64_t pc, uint64_t addr, uint64_t data_new, uint64_t data_old, uint16_t fid, uint16_t src1, uint16_t src2, uint16_t dest) {
+  I(fid < 128); // qsampler statically sized to 128 at most
+
+  // I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
+
+#ifdef DEBUG_QEMU_TRACE
+  //uint64_t raw = esesc_mem_read(pc);
+  MSG("store pc=%llx addr=%llx data_new=%u data_old=%u op=%d cpu=%d src1:%d src2:%d dst:%d",pc,addr,data_new,data_old,iSALU_ST,fid,src1,src2,dest);
+
+  I(pc == (last_addr+2) || pc == (last_addr+4) || last_addr==0);
+  last_addr = pc;
+#endif
+
+  uint64_t res = qsamplerlist[fid]->queue(pc, addr, data_new, fid, iSALU_ST, src1, src2, dest, LREG_InvalidOutput, data_old);
   return res;
 }
 extern "C" uint64_t QEMUReader_queue_inst(uint64_t pc, uint64_t addr, uint16_t fid, uint16_t op, uint16_t src1, uint16_t src2,

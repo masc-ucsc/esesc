@@ -138,6 +138,14 @@ static const int tcg_memop_lookup[8] = {
   tcg_temp_free_i64(hpc); \
   } while(0)
 
+#define ESESC_TRACE_STORE(pc,addr,data_new,data_old,src1,src2,dest) do { \
+  TCGv_i64 hpc     = tcg_const_i64(pc); \
+  TCGv_i64 reg     = tcg_const_i64(((src1)&0xFF) | (((src2)&0xFF)<<8) | (((dest)&0xFF)<<16)); \
+  gen_helper_esesc_store(cpu_env, hpc, addr, data_new, data_old, reg); \
+  tcg_temp_free_i64(reg); \
+  tcg_temp_free_i64(hpc); \
+  } while(0)
+
 #define ESESC_TRACE_ALU(pc,op,src1,src2,dest) do { \
   TCGv_i64 hpc     = tcg_const_i64(pc); \
   TCGv_i64 hop     = tcg_const_i64(op); \
@@ -156,6 +164,7 @@ static const int tcg_memop_lookup[8] = {
 #define ESESC_TRACE_RCTRL(pc,target,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_MEM(pc,addr,op,src1,src2,dest) do { }while(0)
 #define ESESC_TRACE_LOAD(pc,addr,data, src1,dest) do { }while(0)
+#define ESESC_TRACE_STORE(pc,addr,data_new, data_old, src1, src2, dest) do { }while(0)
 #endif
 
 static inline bool has_ext(DisasContext *ctx, uint32_t ext)
@@ -840,7 +849,12 @@ static void gen_store(DisasContext *ctx, uint32_t opc, int rs1, int rs2,
         gen_exception_illegal(ctx);
         return;
     }
-    ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_ST, rs1, rs2, LREG_InvalidOutput);
+#ifdef CONFIG_ESESC
+    TCGv d0 = tcg_temp_new();
+    tcg_gen_qemu_ld_tl(d0, t0, ctx->mem_idx, memop);
+    ESESC_TRACE_STORE(ctx->base.pc_next,t0, dat, d0, rs1, rs2, LREG_InvalidOutput);
+    tcg_temp_free(d0);
+#endif
 
     tcg_gen_qemu_st_tl(dat, t0, ctx->mem_idx, memop);
     tcg_temp_free(t0);
@@ -927,7 +941,11 @@ static void gen_fp_store(DisasContext *ctx, uint32_t opc, int rs1,
     gen_get_gpr(t0, rs1);
     tcg_gen_addi_tl(t0, t0, imm);
 
-    ESESC_TRACE_MEM(ctx->base.pc_next,t0,iSALU_ST, rs1, LREG_FP0+rs2, LREG_InvalidOutput);
+#ifdef CONFIG_ESESC
+    TCGv d0 = tcg_temp_new();
+    tcg_gen_qemu_ld_i64(d0, t0, ctx->mem_idx, MO_TEQ);
+    ESESC_TRACE_STORE(ctx->base.pc_next,t0,cpu_fpr[rs2],d0, rs1, LREG_FP0+rs2, LREG_InvalidOutput);
+#endif
 
     switch (opc) {
     case OPC_RISC_FSW:
