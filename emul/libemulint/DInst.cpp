@@ -33,6 +33,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+#include <math.h>
 #include "DInst.h"
 #include "EmulInterface.h"
 /* }}} */
@@ -165,6 +166,10 @@ DataSign DInst::calcDataSign(int64_t _data) {
     data_sign = DS_N1;
   else if(_data == -2)
     data_sign = DS_N2;
+  else if(_data % 5 == 0)
+    data_sign = DS_FIVE;
+  else if(std::ceil(log2(_data)) == std::floor(log2(_data))) //if data is power of 2
+    data_sign = DS_POW;
   else if(_data > 1024 * 1024 || _data < -1024 * 1024)
     data_sign = DS_PTR;
   else {

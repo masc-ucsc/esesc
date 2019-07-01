@@ -142,11 +142,8 @@ void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
   AddrType delta     = mreq->getHomeNode()->getQDelta();
   AddrType start_addr = mreq->getHomeNode()->getQStartAddr();
   AddrType end_addr   = mreq->getHomeNode()->getQEndAddr();
+  zero_delta = true;
   //AddrType end_addr   = start_addr + delta * (CIR_QUEUE_WINDOW - 1);
-#if 0
-  MSG("TRIGGER@%s clk=%u addr=%llx start=%llx end=%llx ldpc=%llx brpc=%llx delta=%u", str, globalClock,
-      mreq->getAddr(), start_addr, end_addr, mreq->getPC(), mreq->getDepPC(), mreq->getDelta());
-#endif
 
   if(mreq->getAddr() >= start_addr && mreq->getAddr() <= end_addr) {
     if(curr_dep_pc != mreq->getDepPC()) {
@@ -154,14 +151,19 @@ void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
     }
     int idx = 0;
     if(delta != 0) {
-      idx     =  (mreq->getAddr() - start_addr) / delta;
+      idx =  (mreq->getAddr() - start_addr) / delta;
+      zero_delta = false;
     }
+#if 0
+    MSG("TRIG_LD@%s clk=%u addr=%u start=%u end=%u ldpc=%llx brpc=%llx delta=%u idx=%d", str, globalClock, mreq->getAddr(), start_addr, end_addr, mreq->getPC(), mreq->getDepPC(), mreq->getDelta(), idx);
+#endif
     if(idx <= CIR_QUEUE_WINDOW - 1) {
       //idx = idx + mreq->getHomeNode()->get_q_start_index();
       fill_cir_queue(mreq, idx);
       load_data_buffer[idx].fill_addr(mreq->getAddr());
+      load_data_buffer[idx].fill_ld_br_type(mreq->getLBType());
     }
-  } 
+  }
   curr_dep_pc = mreq->getDepPC();
 
 }

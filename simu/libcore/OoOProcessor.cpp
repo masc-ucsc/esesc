@@ -162,7 +162,6 @@ void OoOProcessor::fetch(FlowID fid)
   } else {
     IBucket *bucket = pipeQ.pipeLine.newItem();
     if(bucket) {
-      DInst *dinst = eint->peekHead(fid);
 #ifdef ENABLE_LDBP
 #if 0
       //dinst->setBasePrefAddr(ldbp_curr_addr);
@@ -172,7 +171,7 @@ void OoOProcessor::fetch(FlowID fid)
       dinst->setDelta(ldbp_delta);
 #endif
 #endif
-      IFID.fetch(bucket, eint, fid, dinst);
+      IFID.fetch(bucket, eint, fid);
       if(!bucket->empty()) {
         avgFetchWidth.sample(bucket->size(), bucket->top()->getStatsFlag());
         busy = true;
@@ -545,6 +544,196 @@ void OoOProcessor::retire_lock_check()
 }
 /* }}} */
 
+#ifdef ENABLE_LDBP
+#if 0
+void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg) {
+
+  if(dinst->getPC() == ldbp_brpc) {
+    uint64_t constant = 32;
+    AddrType trigger_addr;
+    uint64_t delta2 = max_mem_lat; //amx mem latency of last 10 dependent LDs
+    AddrType load_addr = 0;
+    if(inflight_branch > 0 && inflight_branch < 4) {
+      constant  = 32; //prefetch ahead by "constant"
+    }else if(inflight_branch >= 4) {
+      constant = 32;
+    }
+
+#if 0
+    if(ldbp_reset){ //this if loop is to calculate delta
+      if(ldbp_start_addr == 0){
+        ldbp_start_addr = dinst->getLdAddr();
+      }else {
+        ldbp_delta    = dinst->getLdAddr() - ldbp_start_addr;
+        ldbp_reset = false;
+      }
+    }
+#endif
+    ldbp_delta = ldbp_retire_table[reg].ld_delta; 
+    ldbp_curr_addr = dinst->getLdAddr();
+    brpc_count++;
+    trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2);
+#if 1
+    MSG("TRIGGER@ret2 clk=%u curr_addr=%llx trig_addr=%llx ldpc=%llx brpc=%llx delta=%u delta2=%u inf=%d rc=%d", 
+        globalClock, ldbp_curr_addr, trigger_addr, dinst->getLDPC(), dinst->getPC(), 
+        ldbp_delta, delta2, inflight_branch, brpc_count);
+#endif
+    DL1->setQStartAddr(ldbp_curr_addr);
+    DL1->setQEndAddr(ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1));
+    DL1->setQDelta(ldbp_delta);
+    DL1->setRetBrCount(brpc_count);
+    DL1->shift_cir_queue();
+    int lb_type = ldbp_retire_table[reg].ld_br_type;
+
+    if(1) {
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, dinst->getLDPC(), ldbp_brpc,
+        ldbp_start_addr, ldbp_delta, inflight_branch, lb_type);
+      if(last_mem_lat > max_mem_lat) {
+        diff_mem_lat = last_mem_lat - max_mem_lat + 6;
+        for(int i = 1; i <= diff_mem_lat; i++) {
+          trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2 + i);
+#if 1
+          MSG("TRIGGER@ret3 clk=%u curr_addr=%llx trig_addr=%llx ldpc=%llx brpc=%llx delta=%u delta2=%u inf=%d rc=%d", 
+              globalClock, ldbp_curr_addr, trigger_addr, dinst->getLDPC(), dinst->getPC(), 
+              ldbp_delta, delta2, inflight_branch, brpc_count);
+#endif
+          MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, dinst->getLDPC(), 
+              ldbp_brpc, ldbp_start_addr, ldbp_delta, inflight_branch, lb_type);
+        }
+      }else if(last_mem_lat < max_mem_lat) {
+        diff_mem_lat = max_mem_lat - last_mem_lat + 6;
+        for(int i = diff_mem_lat; i > 0; i--) {
+          trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2 - i);
+#if 1
+          MSG("TRIGGER@ret4 clk=%u curr_addr=%llx trig_addr=%llx ldpc=%llx brpc=%llx delta=%u delta2=%u inf=%d rc=%d", 
+              globalClock, ldbp_curr_addr, trigger_addr, dinst->getLDPC(), dinst->getPC(), 
+              ldbp_delta, delta2, inflight_branch, brpc_count);
+#endif
+          MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, dinst->getLDPC(), 
+              ldbp_brpc, ldbp_start_addr, ldbp_delta, inflight_branch, lb_type);
+        }
+      }
+    }
+
+    last_mem_lat = max_mem_lat;
+
+  }else {
+    /*
+     *trigger mem_read(ldAddr + del*inf + constant) here if del != 0
+     *
+     * */
+    ldbp_reset_field();
+    ldbp_brpc       = dinst->getPC();
+    //ldbp_ldpc       = dinst->getLDPC();
+    ldbp_curr_addr  = dinst->getLdAddr();
+    ldbp_start_addr = dinst->getLdAddr();
+    //ldbp_end_addr   = ldbp_start_addr + 128;
+    brpc_count++;
+    DL1->setRetBrCount(brpc_count);
+#if 1
+    MSG("TRIGGER@ret1 clk=%u curr_ld_addr=%llx r_ldpc=%llx r_brpc=%llx", 
+        globalClock, ldbp_curr_addr, dinst->getLDPC(), dinst->getPC());
+#endif
+    //MSG("ldbp_retire1 clk=%u brpc=%llx ld_addr=%u inf=%d", 
+    //    globalClock, ldbp_brpc, ldbp_start_addr, inflight_branch);
+  }
+}
+#endif
+void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_index) {
+
+  uint64_t constant  = 32;
+  uint64_t delta2    = max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
+  //AddrType load_addr = 0;
+  AddrType trigger_addr = 0;
+
+  ldbp_ldpc          = lgt_table[lgt_index].ldpc;
+  ldbp_delta         = lgt_table[lgt_index].ld_delta;
+  ldbp_curr_addr     = lgt_table[lgt_index].start_addr;
+  //brpc_count         = lgt_table[lgt_index].br_ret_count;
+  trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2);
+#if 0
+  MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
+#endif
+  DL1->setQStartAddr(ldbp_curr_addr);
+  DL1->setQEndAddr(ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1));
+  DL1->setQDelta(ldbp_delta);
+  DL1->setRetBrCount(brpc_count);
+  DL1->shift_cir_queue();
+  int lb_type = lgt_table[lgt_index].ldbr_type;
+
+#if 1
+  MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, ldbp_delta, inflight_branch, lb_type);
+#if 1
+  if(last_mem_lat > max_mem_lat) {
+    diff_mem_lat = last_mem_lat - max_mem_lat + 6;
+    for(int i = 1; i <= diff_mem_lat; i++) {
+      trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2 + i);
+      //MSG("TRIG_LD@2 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, ldbp_delta, inflight_branch, lb_type);
+    }
+  }else if(last_mem_lat < max_mem_lat) {
+    diff_mem_lat = max_mem_lat - last_mem_lat + 6;
+    for(int i = diff_mem_lat; i > 0; i--) {
+      trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2 - i);
+      //MSG("TRIG_LD@3 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, ldbp_delta, inflight_branch, lb_type);
+    }
+  }
+#endif
+#endif
+  last_mem_lat = max_mem_lat;
+}
+
+void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag) {
+
+  if(ct_table[br_src1].valid) {
+    ct_table[br_src1].ct_br_hit(dinst, reg_flag);
+    int tmp = ct_table[br_src1].ldbr_type;
+#if 0
+    MSG("CT_BR clk=%u brpc=%llx reg_flag=%d reg1=%d reg2=%d ldpc=%llx depth=%d ldbr=%d", globalClock, dinst->getPC(), reg_flag, dinst->getInst()->getSrc1(), dinst->getInst()->getSrc2(), ct_table[br_src1].ldpc, ct_table[br_src1].dep_depth, ct_table[br_src1].ldbr_type);
+#endif
+
+    if(reg_flag == 3 && !ct_table[br_src1].complex_br_set) {
+      return;
+    }else if(reg_flag == 4 && !ct_table[br_src1].complex_br_set) {
+      return;
+    }
+
+    bool lgt_hit = false;
+    for(int i    = 0; i < LGT_SIZE; i++) {
+      if(lgt_table[i].ldpc == ct_table[br_src1].ldpc) { // hit
+        lgt_hit = true;
+        lgt_table[i].lgt_br_hit(dinst, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type);
+        brpc_count++;
+        if(ldbp_brpc != dinst->getPC()) {
+          brpc_count = 1;
+          ldbp_brpc  = dinst->getPC();
+        }
+        DL1->setRetBrCount(brpc_count);
+        //MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx r_count=%u ldbr=%d", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, brpc_count, lgt_table[i].ldbr_type);
+        //MSG("I=%d", i);
+        if(lgt_table[i].ld_conf > 3) {
+          generate_trigger_load(dinst, br_src1, i);
+        }
+        return;
+      }
+    }
+    if(!lgt_hit) { // miss on LGT
+      lgt_table.erase(lgt_table.begin());
+      lgt_table.push_back(load_gen_table_entry());
+      lgt_table[LGT_SIZE-1].lgt_br_miss(dinst, ct_table[br_src1].ldpc, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type);
+      brpc_count = 1;
+      ldbp_brpc = dinst->getPC();
+      DL1->setRetBrCount(brpc_count);
+      int i = LGT_SIZE - 1;
+      //MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx r_count=%u ldbr=%d", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, brpc_count, lgt_table[i].ldbr_type);
+      //lgt_update_on_miss(dinst, ct_table[br_src1].ldpc, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type);
+    }
+  }
+
+}
+#endif
+
 void OoOProcessor::retire()
 /* Try to retire instructions {{{1 */
 {
@@ -554,13 +743,107 @@ void OoOProcessor::retire()
     uint64_t num_inflight_branches = 0;
 
     bool done = dinst->getClusterResource()->preretire(dinst, flushing);
+    //AddrType ppc = dinst->getPC();
+    //MSG("MV");
     GI(flushing && dinst->isExecuted(), done);
     if(!done) {
       break;
     }
 
 #ifdef ENABLE_LDBP
-    if(dinst->getInst()->getOpcode() == iLALU_LD && dinst->getPC() == ldbp_ldpc) {
+    if(dinst->getInst()->isLoad()) {
+      num_mem_lat++;
+      //use max mem latency of last 10 loads to calculate trigger load address
+      if(num_mem_lat >= 10) {
+        num_mem_lat   = 0;
+        total_mem_lat = 0;
+        mem_lat_vec.clear();
+      }
+      mem_lat_vec.push_back((globalClock - dinst->getExecutingTime()));
+      max_mem_lat = *std::max_element(mem_lat_vec.begin(), mem_lat_vec.end());
+      if(max_mem_lat > 100) {
+        max_mem_lat = 100;
+      }
+
+      RegType ld_dst = dinst->getInst()->getDst1();
+      ct_table[ld_dst].ct_load_hit(dinst);
+    }
+
+    if(dinst->getInst()->getOpcode() == iAALU) { //if ALU hit on ldbp_retire_table
+      RegType alu_dst = dinst->getInst()->getDst1(); 
+      RegType alu_src1 = dinst->getInst()->getSrc1();
+      RegType alu_src2 = dinst->getInst()->getSrc2();
+      if(ct_table[alu_dst].valid) {
+        ct_table[alu_dst].ct_alu_hit(dinst);
+        if(alu_src1 == LREG_R0 && alu_src2 == LREG_R0) { //if load-immediate
+          ct_table[alu_dst].is_li = true;
+#if 0
+          MSG("CT_ALU_Li clk=%u alu_pc=%llx dst_reg=%d depth=%d ldpc=%llx", globalClock, dinst->getPC(), alu_dst, ct_table[alu_dst].dep_depth, ct_table[alu_dst].ldpc);
+#endif
+        }else {
+#if 0
+          MSG("CT_ALU clk=%u alu_pc=%llx dst_reg=%d depth=%d ldpc=%llx", globalClock, dinst->getPC(), alu_dst, ct_table[alu_dst].dep_depth, ct_table[alu_dst].ldpc);
+#endif
+          if(ct_table[alu_dst].is_li)
+            ct_table[alu_dst].is_li = false;
+        }
+      }
+    }
+
+    if(dinst->getInst()->getOpcode() == iBALU_LBRANCH) {
+      //compute num of inflight branches
+      for(uint32_t i = 0; i < ROB.size(); i++) { //calculate num of inflight branches
+        uint32_t pos   = ROB.getIDFromTop(i);
+        DInst*  tmp_dinst = ROB.getData(pos);
+        if(tmp_dinst->getInst()->isBranch() && (tmp_dinst->getPC() == dinst->getPC()))
+          num_inflight_branches++;
+      }
+      inflight_branch = num_inflight_branches;
+      dinst->setInflight(inflight_branch);
+
+      //classify Br
+      RegType br_src1 = dinst->getInst()->getSrc1();
+      RegType br_src2 = dinst->getInst()->getSrc2();
+#if 1
+      if(br_src2 == LREG_R0) {
+        classify_ld_br_chain(dinst, br_src1, 1);//update CT on Br hit
+      }else if(br_src1 == LREG_R0) {
+        classify_ld_br_chain(dinst, br_src2, 2);//update CT on Br hit
+      }else if(br_src1 != LREG_R0 && br_src2 != LREG_R0) {
+        if(!ct_table[br_src1].is_li && !ct_table[br_src2].is_li){
+          ct_table[br_src1].ldbr_type = 0;
+          ct_table[br_src2].ldbr_type = 0;
+        }else{
+          classify_ld_br_chain(dinst, br_src1, 3);
+          if(!ct_table[br_src1].complex_br_set) { //br_src1 is Li
+            classify_ld_br_chain(dinst, br_src2, 4);
+          }
+        }
+#if 0
+#endif
+      }
+#endif
+
+    }
+#if 0
+    if(dinst->getInst()->getOpcode() == iAALU) { //if ALU hit on ldbp_retire_table
+      RegType alu_dst = dinst->getInst()->getDst1(); 
+      RegType alu_src1 = dinst->getInst()->getSrc1();
+      RegType alu_src2 = dinst->getInst()->getSrc2();
+      if(ldbp_retire_table[alu_dst].is_hit(alu_dst)) {
+        ldbp_retire_table[alu_dst].increment_dep_depth();
+#if 0
+        if(alu_src1 == LREG_R0 && alu_src2 == LREG_R0) { //if load-immediate
+          ldbp_retire_table[alu_dst].set_li();
+        }else {
+          if(ldbp_retire_table[alu_dst].is_li)
+            ldbp_retire_table[alu_dst].is_li = false;
+        }
+#endif
+      }
+    }
+
+    if(dinst->getInst()->isLoad()) {
       //total_mem_lat += (globalClock - dinst->getExecutingTime());
       num_mem_lat++;
       if(num_mem_lat >= 10){
@@ -578,24 +861,42 @@ void OoOProcessor::retire()
     }
 
     //go into this if loop if ldbp_Ret_table[br_src(1 or 2)] exists
-    if(dinst->getInst()->isBranch() && dinst->is_br_ld_chain()) {
+    if(dinst->getInst()->getOpcode() == iBALU_LBRANCH) {
       for(uint32_t i = 0; i < ROB.size(); i++) { //calculate num of inflight branches
         uint32_t pos   = ROB.getIDFromTop(i);
         DInst*  tmp_dinst = ROB.getData(pos);
-        if(tmp_dinst->getInst()->isBranch())
+        if(tmp_dinst->getInst()->isBranch() && (tmp_dinst->getPC() == dinst->getPC()))
           num_inflight_branches++;
       }
       inflight_branch = num_inflight_branches;
-#if 0
-      if(dinst->getInst()->getSrc2() == LREG_R0) { //if Br has only src1
+#if 1 
+      if(dinst->getInst()->getSrc2() == LREG_R0 && dinst->is_br_ld_chain()) { //if Br has only src1
+        dinst->setInflight(inflight_branch);
         RegType br_src1 = dinst->getInst()->getSrc1();
         if(ldbp_retire_table[br_src1].is_hit(br_src1)) {
           ldbp_retire_table[br_src1].set_simple();
           ldbp_retire_table[br_src1].set_br_retire(dinst);
-          ldbp_retire_table[br_src1].set_direct();
+          //ldbp_retire_table[br_src1].set_direct();
+          if(ldbp_retire_table[br_src1].direct) {
+            ldbp_retire_table[br_src1].ld_br_type = 1;
+          }else {
+            ldbp_retire_table[br_src1].ld_br_type = 2;
+          }
+          MSG("BR CLASSIFY brpc=%llx ldpc=%llx ld_addr=%u ldbr=%d conf=%d", dinst->getPC(), ldbp_retire_table[br_src1].ld_pc, ldbp_retire_table[br_src1].ld_addr, ldbp_retire_table[br_src1].ld_br_type, ldbp_retire_table[br_src1].delta_conf);
+#if 1
+          if(ldbp_retire_table[br_src1].delta_conf > 0) {
+            generate_trigger_load(dinst, br_src1);
+            //ldbp_retire_table[br_src1].reset_entry(); //reset entry to make sure we don't pollute table in  next iteration of the loop
+          }
+#endif
+          ldbp_retire_table[br_src1].reset_br_fields(); //reset entry to make sure we don't pollute table in  next iteration of the loop
         }
+      }else {
+        //Br with 2 src regs
       }
 #endif
+
+#if 0
       if(dinst->getPC() == ldbp_brpc) {
         RegType br_src1 = dinst->getInst()->getSrc1();
         uint64_t constant = 32;
@@ -652,7 +953,6 @@ void OoOProcessor::retire()
             } 
           }else if(last_mem_lat < max_mem_lat) {
             diff_mem_lat = max_mem_lat - last_mem_lat + 6; 
-            //for(int i = 1; i <= diff_mem_lat; i++) {
             for(int i = diff_mem_lat; i > 0; i--) {
               trigger_addr = dinst->getLdAddr() + ldbp_delta*(inflight_branch + constant + delta2 - i);
 #if 0
@@ -687,7 +987,10 @@ void OoOProcessor::retire()
         //MSG("ldbp_retire1 clk=%u brpc=%llx ld_addr=%u inf=%d", 
         //    globalClock, ldbp_brpc, ldbp_start_addr, inflight_branch);
       }
+#endif
     }
+
+#endif
 
 #endif
 

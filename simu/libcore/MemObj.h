@@ -55,7 +55,7 @@ class MemRequest;
 #define PSIGN_INDIRECT 5
 #define PSIGN_CHASE 6
 #define PSIGN_MEGA 7
-#define CIR_QUEUE_WINDOW 64 //FIXME: need to change this to a conf variable
+#define CIR_QUEUE_WINDOW 128 //FIXME: need to change this to a conf variable
 //#define ENABLE_LDBP
 
 class MemObj {
@@ -85,32 +85,41 @@ public:
 #ifdef ENABLE_LDBP
   struct load_data_buffer_entry{
     load_data_buffer_entry() {
-      ld_addr = 0;
-      ld_data = 0;
-      marked = false;
+      ld_addr    = 0;
+      ld_data    = 0;
+      marked     = false;
+      ld_br_type = 0;
     }
     AddrType ld_addr;
     DataType ld_data;
     bool marked;
+    int ld_br_type;
 
     void reset() {
-      ld_addr = 0;
-      ld_data = 0;
+      ld_addr    = 0;
+      ld_data    = 0;
+      marked     = false;
+      ld_br_type = 0;
+    }
+
+    void fill_ld_br_type(int _lb) {
+      ld_br_type = _lb; 
     }
 
     void fill_addr(AddrType addr) {
       ld_addr = addr; 
     }
-    
+
     void fill_data(DataType data) {
       ld_data = data; 
     }
   };
- 
+
   AddrType q_start_addr;
   AddrType q_end_addr;
   uint64_t q_delta;
   AddrType curr_dep_pc;
+  bool zero_delta; //flag for mreq with delta == 0
   int ret_br_count;
   std::vector<int> cir_queue = std::vector<int>(CIR_QUEUE_WINDOW);
   std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);

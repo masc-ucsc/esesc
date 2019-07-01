@@ -169,10 +169,13 @@ FetchEngine::FetchEngine(FlowID id, GMemorySystem *gms_, FetchEngine *fe)
   IL1HitDelay  = SescConf->getInt(isection, "hitDelay");
 
   lastMissTime = 0;
+
 #ifdef ENABLE_LDBP
+
   DL1 = gms->getDL1();
   dep_pc    = 0;
   fetch_br_count = 0;
+
 #endif
 
 }
@@ -246,7 +249,7 @@ void FetchEngine::chainLoadDone(DInst *dinst) {
 #endif
 }
 
-void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DInst *_dinst, int32_t n2Fetch) {
+void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, int32_t n2Fetch) {
 
   AddrType lastpc = 0;
 
@@ -319,7 +322,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
     }//control
 #endif
 
-#ifdef ENABLE_LDBP   
+#ifdef ENABLE_LDBP
     AddrType q_saddr   = DL1->getQStartAddr();
     AddrType q_eaddr   = DL1->getQEndAddr();
     uint64_t q_delta   = DL1->getQDelta();
@@ -423,7 +426,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
           ldpc2 = oracleDataRAT[dinst->getInst()->getSrc2()].ldpc;
           dep_reg_id2 = dinst->getInst()->getSrc2();
         }
-          
 #endif
       } else if(d2 < d1 && d2 < 3) {
         d    = d2;
@@ -536,18 +538,26 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
             //    lastPredictable_addr, addr==lastPredictable_addr);
             dinst->setDataSign(data, ldpc);
             dinst->setLdAddr(addr);  //addr or lastPredictable_addr???
+
 #ifdef ENABLE_LDBP
             dinst->set_br_ld_chain();
-            //trigger next prefetches here so that it is timely
+            //trigger next prefetch here so that it is timely
             if(dinst->getPC() == dep_pc) {
               fetch_br_count++;
 
               bool hit = false;
               int idx = 0;
-              idx = fetch_br_count - DL1->getRetBrCount();
-              if(idx < 0)
-                idx = -1 * idx;
-              hit = DL1->get_cir_queue(idx, dinst->getPC());
+              idx = (fetch_br_count - DL1->getRetBrCount()) % DL1->getQSize();
+              if(DL1->zero_delta) {
+                //MSG("ZERO_DELTA=%d brpc=%llx", DL1->zero_delta, dinst->getPC());
+                idx = 0;
+              }
+              if(idx < 0) {
+                hit = false;
+              }
+              else {
+                hit = DL1->get_cir_queue(idx, dinst->getPC());
+              }
               bool c_hit = !(DL1->Invalid(dinst->getLdAddr()));
 #if 0
               MSG("TRIGGER@fetch2 clk=%u ldpc=%llx brpc=%llx ld_addr=%llx start=%llx qidx=%d c_hit=%d qhit=%d fc=%d rc=%d", globalClock, 
@@ -558,6 +568,46 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
               //  hit = true;
               //}
               if(hit) {
+                int db_idx = 0;
+                for(int i  = 0; i < DL1->load_data_buffer.size(); i++) {
+                  if(DL1->load_data_buffer[i].ld_addr == dinst->getLdAddr()) {
+                    db_idx     = i;
+                    //MSG("HIT@F clk=%u brpc=%llx ldpc=%llx ld_addr=%u fc=%u rc=%u idx=%d hit=%d ldbr=%d", globalClock, dinst->getPC(), dinst->getLDPC(), dinst->getLdAddr(), fetch_br_count, DL1->getRetBrCount(), idx, hit, DL1->load_data_buffer[db_idx].ld_br_type);
+                    break;
+                  }
+                }
+                dinst->setLBType(DL1->load_data_buffer[db_idx].ld_br_type);
+                DataType dd = DL1->load_data_buffer[db_idx].ld_data;
+                if(dinst->getLBType() == 1) {
+                  //MSG("TYPE1@fetch");
+                  dinst->setBrData1(dd);
+                  dinst->setBrData2(0);
+                }else if(dinst->getLBType() == 2) {
+                  //MSG("TYPE2@fetch");
+                  dinst->setBrData1(0);
+                  dinst->setBrData2(dd);
+                }else if(dinst->getLBType() == 3) {
+                }else if(dinst->getLBType() == 4) {
+                }else if(dinst->getLBType() == 5) {
+                }else if(dinst->getLBType() == 6) {
+                }else if(dinst->getLBType() == 7) {
+                }else if(dinst->getLBType() == 8) {
+                }else if(dinst->getLBType() == 9) {
+                }else if(dinst->getLBType() == 10) {
+                }
+#if 0
+                if(dinst->getInst()->getSrc2() == LREG_R0) {
+                  dinst->setLBType(DL1->load_data_buffer[idx].ld_br_type); //types =  1 or 2
+                  DataType d1 = DL1->load_data_buffer[idx].ld_data;
+                  if(dinst->getLBType() == 1) {
+                    dinst->setBrData1(d1);
+                  }else if(dinst->getLBType() == 2) { 
+                    dinst->setDataSign(d1, dinst->getLDPC());
+                  }
+                }
+#endif
+              }
+              if(0 && hit) {
                 dinst->set_br_ld_chain_predictable();
               }
             }else {
@@ -818,13 +868,13 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DI
   }
 }
 
-void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid, DInst *dinst) {
+void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
   // Reset the max number of BB to fetch in this cycle (decreased in processBranch)
   maxBB = BB4Cycle;
 
   // You pass maxBB because there may be many fetches calls to realfetch in one cycle
   // (thanks to the callbacks)
-  realfetch(bucket, eint, fid, dinst, FetchWidth);
+  realfetch(bucket, eint, fid, FetchWidth);
 }
 
 void FetchEngine::dump(const char *str) const {

@@ -496,7 +496,7 @@ StallCause FUStore::canIssue(DInst *dinst) {
     }
   }
 #endif
-  
+
   if(dinst->getInst()->isStoreAddress())
     return NoStall;
 

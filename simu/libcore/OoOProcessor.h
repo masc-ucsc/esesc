@@ -52,6 +52,7 @@
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
 //#define ENABLE_LDBP
+#define LGT_SIZE 128
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -142,104 +143,179 @@ protected:
 public:
   OoOProcessor(GMemorySystem *gm, CPU_t i);
   virtual ~OoOProcessor();
- 
+
 #ifdef ENABLE_LDBP
-  struct ld_br_entry {
-    ld_br_entry() {
-      ld_pc            = 0;
-      ld_addr          = 0;
-      ld_data          = 0;
-      ld_delta         = 0;
-      ld_reg           = LREG_R0; 
-      br_pc            = 0;
-      br_src2          = LREG_R0;
-      br_data2         = 0;
-      ld_br_type       = 0;
-      dependency_depth = 0;
-      is_li            = false;
-      simple           = false;
-      direct           = false;
+
+  void classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag);
+
+  struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
+    classify_table_entry(){
+      dest_reg   = LREG_R0;
+      ldpc       = 0;
+      ld_addr    = 0;
+      dep_depth  = 0;
+      ldbr_type  = 0;
+      ldbr_set   = false;
+      simple     = false;
+      is_li      = false;
+      valid      = false;
+      complex_br_set = false;
     }
-    AddrType ld_pc;
+
+    RegType dest_reg;
+    AddrType ldpc;
     AddrType ld_addr;
-    AddrType ld_data;
-    uint64_t ld_delta;
-    RegType ld_reg;
-    AddrType br_pc;
-    RegType br_src2; //src2 here refers to the source which is not dependent on Ld(it can be rs1 or rs2)
-    AddrType br_data2;
-    int ld_br_type;
-    int dependency_depth;
-    bool simple;
-    bool direct;
-    bool is_li; //is branch dependent on a load immediate?
+    int dep_depth;
+    int ldbr_type;
+    // 1->simple & trivial & R1           -> src2 == 0 && dep == 1
+    // 2->simple & trivial & R2           -> src1 == 0 && dep == 1
+    // 3->simple & direct & R1 = ALU      -> src2 == 0 && dep > 1
+    // 4->simple & direct & R2 = ALU      -> src1 == 0 && dep > 1
+    // 5->simple & direct & R1 = Li       -> src2 == 0 && dep > 1
+    // 6->simple & direct & R2 = L1       -> src1 == 0 && dep > 1
+    // 7->complex & 1 Li + 1 ALU & R1=Li  -> dep > 1 && R1 == is_li, R2 == ALU
+    // 8->complex & 1 Li + 1 ALU & R2=Li  -> dep > 1 && R2 == is_li, R1 == ALU
+    // 9->complex & 1 Li + 1 LD & R1=Li   -> dep > 1 && R1 == is_li, R2 == LD
+    // 10->complex & 1 Li + 1 LD & R2=Li  -> dep > 1 && R2 == is_li, R1 == LD
+    // 11->simple & indirect FIXME???
+    bool ldbr_set; //is ldbr set?
+    bool simple; //does BR have only one Src operand
+    bool is_li; //is one Br data dependent on a Li or Lui instruction
+    bool valid;
+    bool complex_br_set;
 
-    void reset_entry() {
-      ld_delta         = 0;
-      ld_reg           = LREG_R0;
-      br_pc            = 0;
-      br_src2          = LREG_R0;
-      br_data2         = 0;
-      ld_br_type       = 0;
-      dependency_depth = 0;
-      simple           = false;
-      direct           = false;
-      is_li            = false;
+    void ct_load_hit(DInst *dinst) { //add/reset entry on CT
+      classify_table_entry(); // reset entries
+      dest_reg  = dinst->getInst()->getDst1();
+      ldpc      = dinst->getPC();
+      ld_addr   = dinst->getAddr();
+      dep_depth = 1;
+      ldbr_type = 0;
+      valid     = true;
+      complex_br_set = false;
     }
 
-    bool is_hit(RegType reg) {
-      return reg == ld_reg;
-    }
-
-    void set_simple() {
-      simple = true;
-    }
-
-    bool is_simple() {
-      return simple;
-    }
-
-    void set_direct() {
-      direct = false;
-      if(dependency_depth == 1) {
-        direct = true;
+    void ct_br_hit(DInst *dinst, int reg_flag) {
+      simple = false;
+      if(ldbr_type > 0)
+        ldbr_set = true;
+      if(dinst->getInst()->getSrc1() == 0 || dinst->getInst()->getSrc2() == 0) {
+        simple = true;
       }
-    } 
-
-    bool is_direct() {
-      return direct;
-    }
-    
-    void set_ld_retire(DInst *dinst) {
-      if(ld_pc != dinst->getPC()) {
-        reset_entry();
-        ld_pc   = dinst->getPC();
-        ld_addr = dinst->getAddr();
-        ld_data = dinst->getData();
-        ld_reg  = dinst->getInst()->getDst1();
+      if(simple) {
+        if(dep_depth == 1) {
+          ldbr_type = 1;
+          if(reg_flag == 2)
+            ldbr_type = 2;
+        }else if(dep_depth > 1) {
+          ldbr_type = 3;
+          if(is_li) {
+            ldbr_type = 5;
+          }
+          if(reg_flag == 2) {
+            ldbr_type = 4;
+            if(is_li)
+              ldbr_type = 6;
+          }
+        }
       }else {
-        /*if(ld_delta == 0) {
-          ld_delta = dinst->getAddr() - ld_addr;
-        } else if(ld_delta != (dinst->getAddr() - ld_addr)) {
-          ld_delta = dinst->getAddr() - ld_addr;
-        }*/
-        ld_delta = dinst->getAddr() - ld_addr;
-        ld_addr = dinst->getAddr();
-        ld_data = dinst->getData();
+        if(reg_flag == 3) {
+          if(dep_depth > 1 && is_li) {
+            //ldbr_type      = 0;
+            complex_br_set = false;
+            return;
+          }
+          if(dep_depth == 1 && !is_li) {
+            ldbr_type = 10;
+            complex_br_set = true;
+          }else if(dep_depth > 1 && !is_li) {
+            ldbr_type = 8;
+            complex_br_set = true;
+          }
+        }else if(reg_flag == 4) {
+          //ldbr_type = 0;
+          complex_br_set = false;
+          if(dep_depth == 1 && !is_li) {
+            ldbr_type = 9;
+          }else if(dep_depth > 1 && !is_li) {
+            ldbr_type = 7;
+          }
+        }
       }
     }
 
-    void set_br_retire(DInst *dinst) {
-      br_pc = dinst->getPC();
-      dependency_depth++;
-      //br_src2 = dinst->getInst()->getSrc2();
-      //br_data2 = dinst->getBrData2();
+    void ct_alu_hit(DInst *dinst) {
+      //FIXME - check if alu is Li or Lui
+      dep_depth++;
+    }
+
+
+  };
+
+  struct load_gen_table_entry {
+    load_gen_table_entry() {
+      ldpc            = 0;
+      start_addr      = 0;
+      end_addr        = 0;
+      inf_branch      = 0;
+      brpc            = 0;
+      brop            = ILLEGAL_BR;
+      br_data2        = 0;
+      br_outcome      = false;
+      ldbr_type       = 0;
+      ld_delta        = 0;
+      prev_delta      = 0;
+      ld_conf         = 0;
+    }
+
+    AddrType ldpc;
+    AddrType start_addr;
+    AddrType end_addr;
+    uint64_t inf_branch;  //number of inflight branches
+    AddrType brpc;
+    BrOpType brop;
+    DataType br_data2; // Br's operand which is not dependent on LD(could be src1 or src2)
+    bool br_outcome;
+    int ldbr_type;
+    uint64_t ld_delta;
+    uint64_t prev_delta;
+    uint64_t ld_conf;
+    classify_table_entry ct;
+
+    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr) {
+      //if(!ldbr_set) {
+      prev_delta = ld_delta;
+      ld_delta   = ld_addr - start_addr;
+      start_addr = ld_addr;
+      if(ld_delta == prev_delta) {
+        ld_conf++;
+      }else {
+        ld_conf = ld_conf / 2;
+      }
+      ldbr_type  = ldbr;
+      lgt_update_br_fields(dinst);
+      //ldbr_set = false;
+    }
+
+    void lgt_br_miss(DInst *dinst, AddrType _ldpc, AddrType ld_addr, int ldbr) {
+      ldpc       = _ldpc;
+      start_addr = ld_addr;
+      ldbr_type  = ldbr;
+      lgt_update_br_fields(dinst);
+      //MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d", globalClock, ldpc, start_addr, ld_delta, prev_delta, ld_conf, brpc, ldbr_type);
+    }
+
+    void lgt_update_br_fields(DInst *dinst) {
+      brpc            = dinst->getPC();
+      inf_branch      = dinst->getInflight(); //FIXME use dinst->getInflight() instead of variable
     }
 
   };
 
-  HASH_MAP<RegType, ld_br_entry> ldbp_retire_table;
-  MemObj *DL1; 
+  std::vector<classify_table_entry> ct_table = std::vector<classify_table_entry>(32);
+  std::vector<load_gen_table_entry> lgt_table = std::vector<load_gen_table_entry>(LGT_SIZE);
+
+  MemObj *DL1;
   AddrType ldbp_brpc;
   AddrType ldbp_ldpc;
   AddrType ldbp_curr_addr;
@@ -259,6 +335,7 @@ public:
 
   //std::vector<int> ldbp_vector = std::vector<int>(LDBP_VEC_SIZE);
 
+  void generate_trigger_load(DInst *dinst, RegType reg, int lgt_index);
   void ldbp_reset_field(){
     ldbp_curr_addr      = 0;
     ldbp_start_addr      = 0;
@@ -273,7 +350,7 @@ public:
     //  ldbp_vector[i] = 0;
     //}
   }
-  
+
 #endif
 
   void executing(DInst *dinst);

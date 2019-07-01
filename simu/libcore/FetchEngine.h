@@ -184,11 +184,12 @@ public:
   ~FetchEngine();
 
 #ifdef ENABLE_LDBP
+
   MemObj *DL1;
   DInst *ld_dinst;
   AddrType dep_pc; //dependent instn's PC
   int fetch_br_count;
-  
+
   AddrType pref_addr;
   AddrType check_line_addr;
   AddrType base_addr;
@@ -198,14 +199,11 @@ public:
   uint64_t constant;
 #endif
 
-  void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid, DInst *dinst = 0);
-  //void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
+  void fetch(IBucket *buffer, EmulInterface *eint, FlowID fid);
 
-  //typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface *, FlowID, &FetchEngine::fetch> fetchCB;
-  typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface *, FlowID, DInst*, &FetchEngine::fetch> fetchCB;
+  typedef CallbackMember3<FetchEngine, IBucket *, EmulInterface *, FlowID, &FetchEngine::fetch> fetchCB;
 
-  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, DInst *dinst, int32_t n2Fetched);
-  //void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
+  void realfetch(IBucket *buffer, EmulInterface *eint, FlowID fid, int32_t n2Fetched);
   // typedef CallbackMember4<FetchEngine, IBucket *, EmulInterface* , FlowID, int32_t, &FetchEngine::realfetch>  realfetchCB;
 
   void chainPrefDone(AddrType pc, int distance, AddrType addr);

@@ -51,6 +51,8 @@ private:
 #ifdef ESESC_TRACE_DATA
   DataType data;
   DataType data2;
+  DataType br_data1;
+  DataType br_data2;
 #endif
   Instruction inst;
 
@@ -94,6 +96,22 @@ public:
   
   void setData(DataType _data) {
     data = _data;
+  }
+
+  DataType getBrData1() const {
+    return br_data1;
+  }
+
+  DataType getBrData2() const {
+    return br_data2;
+  }
+
+  void setBrData1(DataType _data) {
+    br_data1 = _data;
+  }
+
+  void setBrData2(DataType _data) {
+    br_data2 = _data;
   }
 
 #endif

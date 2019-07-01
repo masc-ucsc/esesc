@@ -450,27 +450,60 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   uint64_t raw_op = esesc_mem_read(br_pc);
 
   //FIXME - add br opcode conditions for ldbp to perform prediction
+#if 0
   if(!dinst->is_br_ld_chain())
     return NoPrediction;
 
   if(!dinst->is_br_ld_chain_predictable())
     return NoPrediction;
+#endif
 
-  ptaken = outcome_calculator(br_op, dinst->getData(), dinst->getData2());  //FIXME - use LD data, not Br data
+#if 0
+  MSG("BR clk=%u brpc=%llx ldpc=%llx ld_br=%d br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
+    globalClock, dinst->getPC(),dinst->getLDPC(), dinst->getLBType(), (raw_op & 3), br_op, dinst->getData(),
+    dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
+#endif
+  
+  if(dinst->getLBType() == 0){
+    //MSG("TYPE0");
+    return NoPrediction;
+  }
+
+  if(dinst->getLBType() == 1) {
+    MSG("TYPE1");
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2()); 
+  }else if(dinst->getLBType() == 2) {
+    MSG("TYPE2");
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2()); 
+  }else if(dinst->getLBType() == 3) {
+    MSG("TYPE3");
+    return NoPrediction;
+
+#if 0
+    AddrType doc_tag = dinst->getPC() ^ dinst->getDataSign() ^ dinst->getInst()->getSrc2(); //FIXME - tag must be hash(brpc, datasign(BrData1))
+    int conf = outcome_doc(doc_tag, taken);
+    return NoPrediction;
+    if(conf == 1)
+      ptaken = false;
+    else if(conf == 2)
+      ptaken = true;
+    else
+      return NoPrediction;
+#endif
+  }else{
+    return NoPrediction;
+  }
   if(ptaken != taken) {
 #if 0
     MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
       globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getData(),
       dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
 #endif
-    
-    ptaken = taken; //FIXME: I should not do this - this will be resolved if we use Ld Data
+    //ptaken = taken; //FIXME: I should not do this - this will be resolved if we use Ld Data
   }
   ldbp_map[t_tag] = ptaken;
 #if 0
-  MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
-      globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getData(), 
-      dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
+  MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
   //MSG("TRIGGER@bpred brpc=%llx out=%d pred=%d correct=%d op=%d", dinst->getPC(), taken, ptaken,
   //    taken==ptaken, br_op);
 #endif

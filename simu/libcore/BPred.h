@@ -51,6 +51,8 @@
 #include <iostream>
 #include <deque>
 #include <map>
+#include <vector>
+#include <algorithm>
 
 #include "estl.h"
 #include "nanassert.h"
@@ -62,7 +64,7 @@
 #include "SCTable.h"
 
 #define RAP_T_NT_ONLY 1
-
+#define DOC_SIZE 128
 enum PredType { CorrectPrediction = 0, NoPrediction, NoBTBPrediction, MissPrediction };
 enum BrOpType { BEQ = 0, BNE = 1, BLT = 4, BGE = 5, BLTU = 6, BGEU = 7, ILLEGAL_BR = 8};
 
@@ -498,6 +500,7 @@ class BPLdbp : public BPred {
       int8_t ctr;
     };
 
+    
   public:
     BPLdbp(int32_t i, const char *section, const char *sname);
     ~BPLdbp(){}
@@ -505,6 +508,73 @@ class BPLdbp : public BPred {
     PredType predict(DInst *dinst, bool doUpdate, bool doStats);
     bool outcome_calculator(BrOpType br_op, uint64_t br_data1, uint64_t br_data2);
     BrOpType branch_type(AddrType brpc);
+
+    struct data_outcome_correlator {
+      
+      data_outcome_correlator() {
+        tag    = 0;
+        taken  = 0;
+        ntaken = 0;
+      }
+      AddrType tag;
+      int taken;  //taken counter
+      int ntaken; // not taken counter
+      
+      int update_doc(AddrType _tag, bool outcome) { 
+        int max_counter = 8;
+        //extract current outcome here
+        int conf_pred = 0;
+        
+        if(tag != 0) {
+          tag = _tag;
+          conf_pred = doc_compute();
+        }
+        //this if loop updates DOC counters
+        if(outcome == true) {
+          if(taken < max_counter)
+            taken++;
+          else if(ntaken > 0)
+            ntaken--;
+        }else {
+          if(ntaken < max_counter)
+            ntaken++;
+          else if(taken > 0)
+            taken--;
+        }
+        return conf_pred;
+      }
+
+      int doc_compute() {
+        double m = 0;
+        m        = (double)(1 + std::min(taken, ntaken)) / (double)(2 + taken + ntaken);
+        if(m <= 1/3) {
+          if(taken > ntaken)
+            return 2; //predict taken
+          return 1; //predict not taken
+        }
+        return 0; // no prediction - not confident enough
+      }
+    };
+
+    //std::vector<data_outcome_correlator> doc_table = std::vector<data_outcome_correlator>(DOC_SIZE);
+    std::vector<data_outcome_correlator> doc_table;
+    
+    int outcome_doc(AddrType _tag, bool outcome) {
+      int empty_slot = -1;
+      for(int i = 0; i < DOC_SIZE; i++) {
+        if(doc_table[i].tag == _tag) {
+          MSG("DOC hit");
+          return doc_table[i].update_doc(_tag, outcome);
+        }
+        //if(doc_table[i].tag == 0 && empty_slot == -1)
+        //  empty_slot = i;
+      }
+      //if no tag hit, update table and return NoPrediction
+      doc_table.erase(doc_table.begin());
+      doc_table.push_back(data_outcome_correlator());
+      doc_table[DOC_SIZE - 1].tag = _tag;
+      return doc_table[DOC_SIZE - 1].update_doc(0, outcome);
+    }
 
 };
 

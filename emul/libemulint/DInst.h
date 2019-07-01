@@ -143,7 +143,10 @@ enum DataSign {
   DS_LTZ    = 34,
   DS_NE     = 35,
   DS_PTR    = 36,
-  DS_OPos   = 37
+  DS_OPos   = 37,
+  DS_FIVE   = 38, //factor of 5
+  DS_POW    = 39, // n is 2^n
+  DS_MOD    = 40  // n%255 + (DS_V0...DS_N2 or DS_FIVE or DS_POW)
 };
 
 class DInst {
@@ -195,6 +198,9 @@ private:
   DataType data;
   DataType data2;
   DataSign data_sign;
+  DataType br_data1;
+  DataType br_data2;
+  int ld_br_type;
   int      chained;
   //BR stats
   AddrType brpc;
@@ -327,6 +333,9 @@ public:
 #ifdef ESESC_TRACE_DATA
     i->data      = 0;
     i->data2     = 0;
+    i->br_data1  = 0;
+    i->br_data2  = 0;
+    i->ld_br_type = 0;
     i->ldpc      = 0;
     i->ld_addr   = 0;
     i->base_pref_addr   = 0;
@@ -374,11 +383,27 @@ public:
 
   static DataSign calcDataSign(int64_t data);
   
-  DataType        getData() const {
+  int getLBType() const {
+    return ld_br_type;
+  }
+  
+  void setLBType(int lb) {
+    ld_br_type = lb;
+  }
+
+  DataType getBrData1() const {
+    return br_data1;
+  }
+
+  DataType getBrData2() const {
+    return br_data2;
+  }
+  
+  DataType getData() const {
     return data;
   }
 
-  DataType        getData2() const {
+  DataType getData2() const {
     return data2;
   }
 
@@ -389,6 +414,14 @@ public:
   // DataSign getDataSign() const { return data_sign; }
   void setDataSign(int64_t _data, AddrType ldpc);
   void addDataSign(int ds, int64_t _data, AddrType ldpc);
+  
+  void setBrData1(DataType _data) {
+    br_data1 = _data;
+  }
+  
+  void setBrData2(DataType _data) {
+    br_data2 = _data;
+  }
   
   void setData(uint64_t _data) {
     data = _data;
