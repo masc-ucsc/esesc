@@ -572,28 +572,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 for(int i  = 0; i < DL1->load_data_buffer.size(); i++) {
                   if(DL1->load_data_buffer[i].ld_addr == dinst->getLdAddr()) {
                     db_idx     = i;
+                    DInst *tmp_dinst = init_ldbp(dinst, db_idx);
+                    dinst            = tmp_dinst;
                     //MSG("HIT@F clk=%u brpc=%llx ldpc=%llx ld_addr=%u fc=%u rc=%u idx=%d hit=%d ldbr=%d", globalClock, dinst->getPC(), dinst->getLDPC(), dinst->getLdAddr(), fetch_br_count, DL1->getRetBrCount(), idx, hit, DL1->load_data_buffer[db_idx].ld_br_type);
                     break;
                   }
-                }
-                dinst->setLBType(DL1->load_data_buffer[db_idx].ld_br_type);
-                DataType dd = DL1->load_data_buffer[db_idx].ld_data;
-                if(dinst->getLBType() == 1) {
-                  //MSG("TYPE1@fetch");
-                  dinst->setBrData1(dd);
-                  dinst->setBrData2(0);
-                }else if(dinst->getLBType() == 2) {
-                  //MSG("TYPE2@fetch");
-                  dinst->setBrData1(0);
-                  dinst->setBrData2(dd);
-                }else if(dinst->getLBType() == 3) {
-                }else if(dinst->getLBType() == 4) {
-                }else if(dinst->getLBType() == 5) {
-                }else if(dinst->getLBType() == 6) {
-                }else if(dinst->getLBType() == 7) {
-                }else if(dinst->getLBType() == 8) {
-                }else if(dinst->getLBType() == 9) {
-                }else if(dinst->getLBType() == 10) {
                 }
 #if 0
                 if(dinst->getInst()->getSrc2() == LREG_R0) {
@@ -606,9 +589,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                   }
                 }
 #endif
-              }
-              if(0 && hit) {
-                dinst->set_br_ld_chain_predictable();
               }
             }else {
               dep_pc = dinst->getPC();
@@ -867,6 +847,55 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
   }
 }
+
+#ifdef ENABLE_LDBP
+DInst* FetchEngine::init_ldbp(DInst *dinst, int db_idx) {
+  dinst->setLBType(DL1->load_data_buffer[db_idx].ld_br_type);
+  DataType dd = DL1->load_data_buffer[db_idx].ld_data;
+  if(dinst->getLBType() == 1) {
+    //MSG("TYPE1@fetch");
+    dinst->setBrData1(dd);
+    dinst->setBrData2(0);
+  }else if(dinst->getLBType() == 2) {
+    //MSG("TYPE2@fetch");
+    dinst->setBrData1(0);
+    dinst->setBrData2(dd);
+  }else if(dinst->getLBType() == 3) {
+    //MSG("TYPE3@fetch");
+    dinst->setBrData1(dd); //LD data -> not ALU modified LD data
+    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setBrData2(0);
+  }else if(dinst->getLBType() == 4) {
+    //MSG("TYPE4@fetch");
+    dinst->setBrData2(dd); //LD data -> not ALU modified LD data
+    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setBrData1(0);
+  }else if(dinst->getLBType() == 5) {
+    MSG("TYPE5@fetch");
+  }else if(dinst->getLBType() == 6) {
+    MSG("TYPE6@fetch");
+  }else if(dinst->getLBType() == 7) {
+    MSG("TYPE7@fetch");
+    dinst->setBrData2(dd); //LD data -> not ALU modified LD data
+    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setBrData1(dinst->getData());
+  }else if(dinst->getLBType() == 8) {
+    MSG("TYPE8@fetch");
+    dinst->setBrData1(dd); //LD data -> not ALU modified LD data
+    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setBrData2(dinst->getData2());
+  }else if(dinst->getLBType() == 9) {
+    MSG("TYPE9@fetch");
+    dinst->setBrData1(dinst->getData());
+    dinst->setBrData2(dd);
+  }else if(dinst->getLBType() == 10) {
+    MSG("TYPE10@fetch");
+    dinst->setBrData2(dinst->getData2());
+    dinst->setBrData1(dd);
+  }
+  return dinst;
+}
+#endif
 
 void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {
   // Reset the max number of BB to fetch in this cycle (decreased in processBranch)

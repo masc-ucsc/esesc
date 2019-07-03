@@ -418,8 +418,7 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
 BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname)
     : BPred(i, section, sname, "ldbp")
-    , btb(i, section, sname)
-    , ldbp_table(section, SescConf->getInt(section, "size"), SescConf->getInt(section, "bits")) {
+    , btb(i, section, sname) {
   // Constraints
   SescConf->isInt(section, "size");
   SescConf->isPower2(section, "size");
@@ -469,39 +468,37 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return NoPrediction;
   }
 
-  if(dinst->getLBType() == 1) {
-    MSG("TYPE1");
+  if(dinst->getLBType() == 1 || dinst->getLBType() == 10) {
+    MSG("TYPE%d@br",dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2()); 
-  }else if(dinst->getLBType() == 2) {
-    MSG("TYPE2");
-    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2()); 
-  }else if(dinst->getLBType() == 3) {
-    MSG("TYPE3");
-    return NoPrediction;
-
-#if 0
-    AddrType doc_tag = dinst->getPC() ^ dinst->getDataSign() ^ dinst->getInst()->getSrc2(); //FIXME - tag must be hash(brpc, datasign(BrData1))
-    int conf = outcome_doc(doc_tag, taken);
-    return NoPrediction;
-    if(conf == 1)
+    if(ptaken == taken)
+      MSG("OC@type1 correct prediction");
+  }else if(dinst->getLBType() == 2 || dinst->getLBType() == 9) { //FIXME should type9 be in prev if block???
+    MSG("TYPE%d@br", dinst->getLBType());
+    ptaken = outcome_calculator(br_op, dinst->getBrData2(), dinst->getBrData1()); 
+    if(ptaken == taken)
+      MSG("OC@type2 correct prediction");
+  }else if(dinst->getLBType() == 3 || dinst->getLBType() == 4 || dinst->getLBType() == 7 || dinst->getLBType() == 8) {
+    MSG("TYPE%d@br", dinst->getLBType());
+    RegType reg2 = dinst->getInst()->getSrc2();
+    if(dinst->getLBType() == 4 || dinst->getLBType() == 7)
+      reg2 = dinst->getInst()->getSrc1(); //FIXME: src reg2 or data2???
+#if 1
+    //doc_table has 128 entries - pick a 14 bit tag+index
+    AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2) & 0x3FFF; //FIXME - tag must be hash(brpc, datasign(BrData1))
+    int conf = outcome_doc(dinst, doc_tag, taken);
+    if(conf == 2)
       ptaken = false;
-    else if(conf == 2)
+    else if(conf == 1)
       ptaken = true;
     else
       return NoPrediction;
+    if(ptaken == taken)
+      MSG("DOC@type%d pred=%d correct prediction",dinst->getLBType(), ptaken);
 #endif
   }else{
     return NoPrediction;
   }
-  if(ptaken != taken) {
-#if 0
-    MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
-      globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getData(),
-      dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
-#endif
-    //ptaken = taken; //FIXME: I should not do this - this will be resolved if we use Ld Data
-  }
-  ldbp_map[t_tag] = ptaken;
 #if 0
   MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
   //MSG("TRIGGER@bpred brpc=%llx out=%d pred=%d correct=%d op=%d", dinst->getPC(), taken, ptaken,
@@ -509,6 +506,9 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
 #endif
 
   if(taken != ptaken) {
+#if 1
+    MSG("TRIGGER@mis_pred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d br1=%u br2=%u d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), ptaken==taken, ptaken);
+#endif
     if(doUpdate)
       btb.updateOnly(dinst);
     // tDataTable.update(t_tag, taken); //update needed here?
@@ -1836,15 +1836,15 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   int32_t bpred_total_delay = bpredDelay1 - 1;
 
-  if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 == NoPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction)) {
+  if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 != CorrectPrediction) && (outcome3 == CorrectPrediction || outcome3 == CorrectPrediction)) {
     nFixes1.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay1 - 1;
-  }else if((outcome2 == CorrectPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction)) {
-    nFixes2.inc(dinst->getStatsFlag());
-    bpred_total_delay = bpredDelay2 - 1;
-  }else if(outcome3 == CorrectPrediction) {
+  }else if((outcome3 == CorrectPrediction) && (outcome2 == CorrectPrediction || outcome2 != CorrectPrediction)) {
     nFixes3.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay3 - 1;
+  }else if(outcome2 == CorrectPrediction) {
+    nFixes2.inc(dinst->getStatsFlag());
+    bpred_total_delay = bpredDelay2 - 1;
   } else {
     nUnFixes.inc(dinst->getStatsFlag());
     *fastfix          = false;

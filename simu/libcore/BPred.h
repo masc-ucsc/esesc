@@ -487,6 +487,7 @@ public:
 class BPLdbp : public BPred {
   private:
     BPBTB btb;
+#if 0
     SCTable ldbp_table;
     std::map<uint64_t, bool> ldbp_map;
 
@@ -499,8 +500,8 @@ class BPLdbp : public BPred {
       AddrType tag;
       int8_t ctr;
     };
+#endif
 
-    
   public:
     BPLdbp(int32_t i, const char *section, const char *sname);
     ~BPLdbp(){}
@@ -510,7 +511,7 @@ class BPLdbp : public BPred {
     BrOpType branch_type(AddrType brpc);
 
     struct data_outcome_correlator {
-      
+
       data_outcome_correlator() {
         tag    = 0;
         taken  = 0;
@@ -519,61 +520,62 @@ class BPLdbp : public BPred {
       AddrType tag;
       int taken;  //taken counter
       int ntaken; // not taken counter
-      
-      int update_doc(AddrType _tag, bool outcome) { 
-        int max_counter = 8;
+
+      int update_doc(AddrType _tag, bool doc_miss, bool outcome) {
         //extract current outcome here
+        int max_counter = 8;
         int conf_pred = 0;
-        
-        if(tag != 0) {
+
+        if(!doc_miss) {
           tag = _tag;
           conf_pred = doc_compute();
+        }else{
+          taken  = 0;
+          ntaken = 0;
         }
         //this if loop updates DOC counters
         if(outcome == true) {
           if(taken < max_counter)
             taken++;
-          else if(ntaken > 0)
+          if(ntaken > 0)
             ntaken--;
         }else {
           if(ntaken < max_counter)
             ntaken++;
-          else if(taken > 0)
+          if(taken > 0)
             taken--;
         }
         return conf_pred;
       }
 
       int doc_compute() {
-        double m = 0;
-        m        = (double)(1 + std::min(taken, ntaken)) / (double)(2 + taken + ntaken);
-        if(m <= 1/3) {
+        int med = (taken == (2*ntaken + 1)) || (ntaken == (2*taken + 1));
+        int low = (taken < (2*ntaken + 1)) && (ntaken < (2*taken + 1));
+        int m = 2 * low + med;
+        if(m < 2) {
           if(taken > ntaken)
-            return 2; //predict taken
-          return 1; //predict not taken
+            return 1;
+          return 2;
         }
-        return 0; // no prediction - not confident enough
+        return 0;
       }
     };
 
-    //std::vector<data_outcome_correlator> doc_table = std::vector<data_outcome_correlator>(DOC_SIZE);
-    std::vector<data_outcome_correlator> doc_table;
-    
-    int outcome_doc(AddrType _tag, bool outcome) {
-      int empty_slot = -1;
-      for(int i = 0; i < DOC_SIZE; i++) {
-        if(doc_table[i].tag == _tag) {
-          MSG("DOC hit");
-          return doc_table[i].update_doc(_tag, outcome);
-        }
-        //if(doc_table[i].tag == 0 && empty_slot == -1)
-        //  empty_slot = i;
+    std::vector<data_outcome_correlator> doc_table = std::vector<data_outcome_correlator>(DOC_SIZE);
+    //std::vector<data_outcome_correlator> doc_table;
+
+    int outcome_doc(DInst *dinst, AddrType _tag, bool outcome) {
+      AddrType t         = (_tag >> 7) & 0x7F; //upper 7 bits for tag
+      int index          = _tag & 0x7F;  //lower 7 bits for index
+      if(doc_table[index].tag == t) {
+        MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
+        return doc_table[index].update_doc(_tag, false, outcome);
       }
-      //if no tag hit, update table and return NoPrediction
-      doc_table.erase(doc_table.begin());
-      doc_table.push_back(data_outcome_correlator());
-      doc_table[DOC_SIZE - 1].tag = _tag;
-      return doc_table[DOC_SIZE - 1].update_doc(0, outcome);
+
+      //DOC miss
+      doc_table[index].tag  = t;
+      MSG("DOC_TABLE_MISS brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
+      return doc_table[index].update_doc(t, true, outcome);
     }
 
 };

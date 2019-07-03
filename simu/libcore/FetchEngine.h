@@ -185,6 +185,7 @@ public:
 
 #ifdef ENABLE_LDBP
 
+  DInst* init_ldbp(DInst *dinst, int db_idx);
   MemObj *DL1;
   DInst *ld_dinst;
   AddrType dep_pc; //dependent instn's PC

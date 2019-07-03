@@ -121,6 +121,8 @@ public:
   AddrType curr_dep_pc;
   bool zero_delta; //flag for mreq with delta == 0
   int ret_br_count;
+  //std::vector<std::vector<int>> cir_queue = std::vector<std::vector<int>>(4, std::vector<int>(CIR_QUEUE_WINDOW, 0));
+  //std::vector<std::vector<load_data_buffer_entry>> load_data_buffer = std::vector<std::vector<load_data_buffer_entry>>(64, std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW, load_data_buffer_entry()));
   std::vector<int> cir_queue = std::vector<int>(CIR_QUEUE_WINDOW);
   std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);
 
