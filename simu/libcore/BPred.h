@@ -552,7 +552,7 @@ class BPLdbp : public BPred {
         int med = (taken == (2*ntaken + 1)) || (ntaken == (2*taken + 1));
         int low = (taken < (2*ntaken + 1)) && (ntaken < (2*taken + 1));
         int m = 2 * low + med;
-        if(m < 2) {
+        if(m < 1) {
           if(taken > ntaken)
             return 1;
           return 2;
@@ -568,13 +568,13 @@ class BPLdbp : public BPred {
       AddrType t         = (_tag >> 7) & 0x7F; //upper 7 bits for tag
       int index          = _tag & 0x7F;  //lower 7 bits for index
       if(doc_table[index].tag == t) {
-        MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
-        return doc_table[index].update_doc(_tag, false, outcome);
+        //MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
+        return doc_table[index].update_doc(t, false, outcome);
       }
 
       //DOC miss
       doc_table[index].tag  = t;
-      MSG("DOC_TABLE_MISS brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
+      //MSG("DOC_TABLE_MISS brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
       return doc_table[index].update_doc(t, true, outcome);
     }
 
@@ -601,14 +601,17 @@ private:
   GStatsCntr nBTAC;
 
   GStatsCntr nBranches;
+  GStatsCntr nNoPredict;
   GStatsCntr nTaken;
   GStatsCntr nMiss; // hits == nBranches - nMiss
 
   GStatsCntr nBranches2;
+  GStatsCntr nNoPredict2;
   GStatsCntr nTaken2;
   GStatsCntr nMiss2; // hits == nBranches - nMiss
 
   GStatsCntr nBranches3;
+  GStatsCntr nNoPredict3;
   GStatsCntr nTaken3;
   GStatsCntr nMiss3; // hits == nBranches - nMiss
 

@@ -138,7 +138,7 @@ extern "C" uint64_t QEMUReader_queue_ctrl_data(uint64_t pc, uint64_t addr, uint6
   // I(qsamplerlist[fid]->isActive(fid) || EmuSampler::isTerminated());
 #ifdef DEBUG_QEMU_TRACE
   uint64_t raw = esesc_mem_read(pc);
-  MSG("pc=%llx addr=%llx data1=%llx data2=%llx op=%d cpu=%d raw=%llx",pc,addr,data1,data2,op,fid, raw);
+  MSG("ctrl pc=%llx addr=%llx data1=%llx data2=%llx op=%d cpu=%d raw=%llx",pc,addr,data1,data2,op,fid, raw);
 
   I(pc == (last_addr+2) || pc == (last_addr+4) || last_addr==0);
   last_addr = pc;

@@ -1613,6 +1613,7 @@ sub branchStats {
 ################
     my $nBranches = 0;
     my $nMiss     = 0;
+    my $nNoPredict     = 0;
     my $avgBranchTime=0;
     my $avgFetchTime =0;
     for(my $j=0;$j<$smtContexts;$j++) {
@@ -1620,6 +1621,7 @@ sub branchStats {
 
       $nBranches += $cf->getResultField("P(${id})_BPred","nBranches");
       $nMiss     += $cf->getResultField("P(${id})_BPred","nMiss");
+      $nNoPredict += $cf->getResultField("P(${id})_BPred","nNopredict");
       $avgBranchTime += $cf->getResultField("P(${id})_FetchEngine_avgBranchTime","v");
       $avgFetchTime  += $cf->getResultField("P(${id})_FetchEngine_avgFetchTime","v");
     }
@@ -1632,7 +1634,7 @@ sub branchStats {
 
     printf "%-16s :",$type;
 
-    printf "%7.2f%% :",100*($nBranches-$nMiss)/($nBranches);
+    printf "%7.2f%% :",100*($nBranches-$nMiss-$nNoPredict)/($nBranches-$nNoPredict);
 
 ################
     my $rasHit  = 0;
@@ -1645,7 +1647,7 @@ sub branchStats {
 
     my $rasRatio = ($rasMiss+$rasHit) <= 0 ? 0 : ($rasHit/($rasMiss+$rasHit));
 
-    printf " %6.2f%% of %5.2f%% :",100*$rasRatio ,100*($rasHit+$rasMiss)/$nBranches;
+    printf " %6.2f%% of %5.2f%% :",100*$rasRatio ,100*($rasHit+$rasMiss)/($nBranches-$nNoPredict);
 
 ################
     my $predHit  = $cf->getResultField("P(${i})_BPred_${type}","nHit");
@@ -1653,7 +1655,7 @@ sub branchStats {
 
     my $predRatio = ($predMiss+$predHit) <= 0 ? 0 : ($predHit/($predMiss+$predHit));
 
-    printf " %6.2f%% of %5.2f%% :",100*$predRatio, 100*($predHit+$predMiss)/$nBranches;
+    printf " %6.2f%% of %5.2f%% :",100*$predRatio, 100*($predHit+$predMiss)/($nBranches-$nNoPredict);
 
 ################
     my $btbHit  = $cf->getResultField("P(${i})_BPred_BTB","nHit");
@@ -1661,10 +1663,10 @@ sub branchStats {
 
     my $btbRatio = ($btbMiss+$btbHit) <= 0 ? 0 : ($btbHit/($btbMiss+$btbHit));
 
-    printf " %6.2f%% of %5.2f%% :",100*$btbRatio ,100*($btbHit+$btbMiss)/$nBranches;
+    printf " %6.2f%% of %5.2f%% :",100*$btbRatio ,100*($btbHit+$btbMiss)/($nBranches-$nNoPredict);
 
     my $btbHitLabel  = $cf->getResultField("P(${i})_BPred_BTB","nHitLabel");
-    printf " %6.2f%% :",100*($btbHitLabel)/$nBranches;
+    printf " %6.2f%% :",100*($btbHitLabel)/($nBranches-$nNoPredict);
 
     my $nBTAC = 0;
     for(my $j=0;$j<$smtContexts;$j++) {
@@ -1672,7 +1674,7 @@ sub branchStats {
 
       $nBTAC += $cf->getResultField("P(${id})_FetchEngine","nBTAC");
     }
-    printf "%7.2f%% :",100*$nBTAC/$nBranches;
+    printf "%7.2f%% :",100*$nBTAC/($nBranches-$nNoPredict);
 ################
     printf "%7.2f%% ",100*($avgBranchTime)/($avgBranchTime+$avgFetchTime+1);
 
@@ -1685,7 +1687,7 @@ sub branchStats {
 
       my $rapRatio = ($rapMiss+$rapHit) <= 0 ? 0 : ($rapHit/($rapMiss+$rapHit));
 
-      printf "%6.2f%% of %6.2f%% ",100*$rapRatio ,100*($rapHit+$rapMiss)/$nBranches;
+      printf "%6.2f%% of %6.2f%% ",100*$rapRatio ,100*($rapHit+$rapMiss)/($nBranches-$nNoPredict);
     }
 
     print "\n";
@@ -1699,10 +1701,14 @@ sub branchStats {
       printf "%8.3f :  ",$avgBranchTime;
       printf "%-16s :",$type2;
 
-      my $nBranches2= $cf->getResultField("P(${i})_BPred","nBranches2");
-      my $nMiss2    = $cf->getResultField("P(${i})_BPred","nMiss2");
+      my $nBranches2  = $cf->getResultField("P(${i})_BPred","nBranches2");
+      my $nMiss2      = $cf->getResultField("P(${i})_BPred","nMiss2");
+      my $nNoPredict2 = $cf->getResultField("P(${i})_BPred","nNopredict2");
 
-      printf "%7.2f%% :",100*($nBranches2-$nMiss2)/($nBranches2);
+      printf "%7.2f%% :",100*(($nBranches2-$nMiss2-$nNoPredict2)/($nBranches2-$nNoPredict2));
+      if ($nNoPredict2 > 0) {
+        printf " of %7.2f%% :",100*(1-($nNoPredict2/$nBranches2));
+      }
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
       my $predHit2  = $cf->getResultField("P(${i})_BPred2_${type2}","nHit");
@@ -1710,20 +1716,21 @@ sub branchStats {
 
       my $predRatio2 = ($predMiss2+$predHit2) <= 0 ? 0 : ($predHit2/($predMiss2+$predHit2)); # also the 1st level hits
 
-      printf " %6.2f%% of %5.2f%% :",100*$predRatio2, 100*($predHit2+$predMiss2)/$nBranches;
+      #printf " %6.2f%% of %5.2f%% :",100*$predRatio2, 100*($predHit2+$predMiss2)/$nBranches; #FIXME -> why nBranches??? must be nBranches2
+      printf " %6.2f%% of %5.2f%% :",100*$predRatio2, 100*($predHit2+$predMiss2)/($nBranches-$nNoPredict);
 
       my $btbHit2  = $cf->getResultField("P(${i})_BPred2_BTB","nHit");
       my $btbMiss2 = $cf->getResultField("P(${i})_BPred2_BTB","nMiss");
 
       my $btbRatio2 = ($btbMiss2+$btbHit2) <= 0 ? 0 : ($btbHit2/($btbMiss2+$btbHit2+1));
 
-      printf " %6.2f%% of %5.2f%% :",100*$btbRatio2 ,100*($btbHit2+$btbMiss2)/($nBranches2+1);
+      printf " %6.2f%% of %5.2f%% :",100*$btbRatio2 ,100*($btbHit2+$btbMiss2)/($nBranches2-$nNoPredict2+1);
 
       my $btbHitLabel2  = $cf->getResultField("P(${i})_BPred2_BTB","nHitLabel");
-      printf " %6.2f%% :",100*($btbHitLabel2)/$nBranches;
+      printf " %6.2f%% :",100*($btbHitLabel2)/($nBranches-$nNoPredict);
 
       my $nFixes2  = $cf->getResultField("P(${i})_BPred","nFixes2");
-      printf " (%6.2f%% fixed) :",100*($nFixes2)/$nBranches;
+      printf " (%6.2f%% fixed) :",100*($nFixes2)/($nBranches-$nNoPredict);
 
       printf "\n";
     }
@@ -1739,8 +1746,9 @@ sub branchStats {
 
       my $nBranches3= $cf->getResultField("P(${i})_BPred","nBranches3");
       my $nMiss3    = $cf->getResultField("P(${i})_BPred","nMiss3");
+      my $nNoPredict3 = $cf->getResultField("P(${i})_BPred","nNopredict3");
 
-      printf "%7.2f%% :",100*($nBranches3-$nMiss3)/($nBranches3+1);
+      printf "%7.2f%% :",100*($nBranches3-$nMiss3-$nNoPredict3)/($nBranches3-$nNoPredict3+1);
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
       my $predHit3  = $cf->getResultField("P(${i})_BPred3_${type3}","nHit");
@@ -1748,21 +1756,21 @@ sub branchStats {
 
       my $predRatio3 = ($predMiss3+$predHit3) <= 0 ? 0 : ($predHit3/(1+$predMiss3+$predHit3)); # also the 1st level hits
 
-      printf " %6.2f%% of %5.2f%% :",100*$predRatio3, 100*($predHit3+$predMiss3)/$nBranches;
+      printf " %6.2f%% of %5.2f%% :",100*$predRatio3, 100*($predHit3+$predMiss3)/($nBranches-$nNoPredict);
 
       my $btbHit3  = $cf->getResultField("P(${i})_BPred3_BTB","nHit");
       my $btbMiss3 = $cf->getResultField("P(${i})_BPred3_BTB","nMiss");
 
       my $btbRatio3 = ($btbMiss3+$btbHit3) <= 0 ? 0 : ($btbHit3/($btbMiss3+$btbHit3+1));
 
-      printf " %6.2f%% of %5.2f%% :",100*$btbRatio3 ,100*($btbHit3+$btbMiss3)/($nBranches3+1);
+      printf " %6.2f%% of %5.2f%% :",100*$btbRatio3 ,100*($btbHit3+$btbMiss3)/($nBranches3-$nNoPredict3+1);
 
       my $btbHitLabel3  = $cf->getResultField("P(${i})_BPred3_BTB","nHitLabel");
-      printf " %6.2f%% :",100*($btbHitLabel3)/$nBranches;
+      printf " %6.2f%% :",100*($btbHitLabel3)/($nBranches-$nNoPredict);
 
       my $nFixes3  = $cf->getResultField("P(${i})_BPred","nFixes3");
       my $nUnFixes3  = $cf->getResultField("P(${i})_BPred","nUnFixes3");
-      printf " (%6.2f%%-%6.2f%% fixed) :",100*($nFixes3)/$nBranches, 100*($nUnFixes3)/$nBranches;
+      printf " (%6.2f%%-%6.2f%% fixed) :",100*($nFixes3)/($nBranches-$nNoPredict), 100*($nUnFixes3)/($nBranches-$nNoPredict);
 
       printf "\n";
     }

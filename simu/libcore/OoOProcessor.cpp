@@ -641,7 +641,7 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg) {
 #endif
 void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_index) {
 
-  uint64_t constant  = 32;
+  uint64_t constant  = 8; //32;
   uint64_t delta2    = max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
   //AddrType load_addr = 0;
   AddrType trigger_addr = 0;
@@ -652,7 +652,7 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
   //brpc_count         = lgt_table[lgt_index].br_ret_count;
   trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2);
 #if 0
-  MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
+  MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u conf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, brpc_count, dinst->getPC());
 #endif
   DL1->setQStartAddr(ldbp_curr_addr);
   DL1->setQEndAddr(ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1));
@@ -701,7 +701,7 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
 
     bool lgt_hit = false;
     for(int i    = 0; i < LGT_SIZE; i++) {
-      if(lgt_table[i].ldpc == ct_table[br_src1].ldpc) { // hit
+      if(lgt_table[i].ldpc == ct_table[br_src1].ldpc && lgt_table[i].brpc == dinst->getPC()) { // hit
         lgt_hit = true;
         lgt_table[i].lgt_br_hit(dinst, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type);
         brpc_count++;
@@ -713,7 +713,9 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
         //MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
         //MSG("I=%d", i);
         if(lgt_table[i].ld_conf > 15) {
-          //MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
+#if 0
+          MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
+#endif
           generate_trigger_load(dinst, br_src1, i);
         }
         return;
@@ -727,7 +729,9 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
       ldbp_brpc = dinst->getPC();
       DL1->setRetBrCount(brpc_count);
       int i = LGT_SIZE - 1;
-      //MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
+#if 0
+      MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
+#endif
       //lgt_update_on_miss(dinst, ct_table[br_src1].ldpc, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type);
     }
   }
@@ -762,8 +766,10 @@ void OoOProcessor::retire()
       }
       mem_lat_vec.push_back((globalClock - dinst->getExecutingTime()));
       max_mem_lat = *std::max_element(mem_lat_vec.begin(), mem_lat_vec.end());
-      if(max_mem_lat > 100) {
-        max_mem_lat = 100;
+      if(max_mem_lat > 8) {
+        //max_mem_lat = 100;
+        //max_mem_lat = 50;
+        max_mem_lat = 8;
       }
 
       RegType ld_dst = dinst->getInst()->getDst1();

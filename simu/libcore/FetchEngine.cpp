@@ -574,7 +574,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                     db_idx     = i;
                     DInst *tmp_dinst = init_ldbp(dinst, db_idx);
                     dinst            = tmp_dinst;
-                    //MSG("HIT@F clk=%u brpc=%llx ldpc=%llx ld_addr=%u fc=%u rc=%u idx=%d hit=%d ldbr=%d", globalClock, dinst->getPC(), dinst->getLDPC(), dinst->getLdAddr(), fetch_br_count, DL1->getRetBrCount(), idx, hit, DL1->load_data_buffer[db_idx].ld_br_type);
+#if 0
+                    MSG("HIT@F clk=%u brpc=%llx ldpc=%llx ld_addr=%u ldb_data=%u d1=%u d2=%u fc=%u rc=%u idx=%d hit=%d ldbr=%d", globalClock, dinst->getPC(), dinst->getLDPC(), dinst->getLdAddr(), DL1->load_data_buffer[i].ld_data, dinst->getData(), dinst->getData2(), fetch_br_count, DL1->getRetBrCount(), idx, hit, DL1->load_data_buffer[db_idx].ld_br_type);
+#endif
                     break;
                   }
                 }

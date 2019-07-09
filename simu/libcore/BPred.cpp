@@ -469,20 +469,24 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   }
 
   if(dinst->getLBType() == 1 || dinst->getLBType() == 10) {
-    MSG("TYPE%d@br",dinst->getLBType());
+    //MSG("TYPE%d@br",dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2()); 
+#if 0
     if(ptaken == taken)
       MSG("OC@type1 correct prediction");
+#endif
   }else if(dinst->getLBType() == 2 || dinst->getLBType() == 9) { //FIXME should type9 be in prev if block???
-    MSG("TYPE%d@br", dinst->getLBType());
+    //MSG("TYPE%d@br", dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData2(), dinst->getBrData1()); 
+#if 0
     if(ptaken == taken)
       MSG("OC@type2 correct prediction");
+#endif
   }else if(dinst->getLBType() == 3 || dinst->getLBType() == 4 || dinst->getLBType() == 7 || dinst->getLBType() == 8) {
-    MSG("TYPE%d@br", dinst->getLBType());
-    RegType reg2 = dinst->getInst()->getSrc2();
+    //MSG("TYPE%d@br", dinst->getLBType());
+    DataType reg2 = dinst->getData2();
     if(dinst->getLBType() == 4 || dinst->getLBType() == 7)
-      reg2 = dinst->getInst()->getSrc1(); //FIXME: src reg2 or data2???
+      reg2 = dinst->getData(); //FIXME: src reg2 or data2???
 #if 1
     //doc_table has 128 entries - pick a 14 bit tag+index
     AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2) & 0x3FFF; //FIXME - tag must be hash(brpc, datasign(BrData1))
@@ -493,21 +497,24 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
       ptaken = true;
     else
       return NoPrediction;
+#if 0
     if(ptaken == taken)
       MSG("DOC@type%d pred=%d correct prediction",dinst->getLBType(), ptaken);
+#endif
 #endif
   }else{
     return NoPrediction;
   }
+
 #if 0
-  MSG("TRIGGER@bpred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
-  //MSG("TRIGGER@bpred brpc=%llx out=%d pred=%d correct=%d op=%d", dinst->getPC(), taken, ptaken,
-  //    taken==ptaken, br_op);
+  if(taken == ptaken) {
+    MSG("TRIGGER@correct_pred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ldbr=%d br1=%u br2=%u d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), ptaken==taken, ptaken);
+  }
 #endif
 
   if(taken != ptaken) {
-#if 1
-    MSG("TRIGGER@mis_pred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d br1=%u br2=%u d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), ptaken==taken, ptaken);
+#if 0
+    MSG("TRIGGER@mis_pred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ldbr=%d br1=%u br2=%u d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), ptaken==taken, ptaken);
 #endif
     if(doUpdate)
       btb.updateOnly(dinst);
@@ -1546,12 +1553,15 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
     , il1(iobj)
     , nBTAC("P(%d)_BPred:nBTAC", id)
     , nBranches("P(%d)_BPred:nBranches", id)
+    , nNoPredict("P(%d)_BPred:nNoPredict", id)
     , nTaken("P(%d)_BPred:nTaken", id)
     , nMiss("P(%d)_BPred:nMiss", id)
     , nBranches2("P(%d)_BPred:nBranches2", id)
+    , nNoPredict2("P(%d)_BPred:nNoPredict2", id)
     , nTaken2("P(%d)_BPred:nTaken2", id)
     , nMiss2("P(%d)_BPred:nMiss2", id)
     , nBranches3("P(%d)_BPred:nBranches3", id)
+    , nNoPredict3("P(%d)_BPred:nNoPredict3", id)
     , nTaken3("P(%d)_BPred:nTaken3", id)
     , nMiss3("P(%d)_BPred:nMiss3", id)
     , nFixes1("P(%d)_BPred:nFixes1", id)
@@ -1712,7 +1722,8 @@ PredType BPredictor::predict1(DInst *dinst) {
 
   PredType p = pred1->doPredict(dinst);
 
-  nMiss.inc(p != CorrectPrediction && dinst->getStatsFlag());
+  nMiss.inc(p == MissPrediction && dinst->getStatsFlag());
+  nNoPredict.inc(p == NoPrediction && dinst->getStatsFlag());
 
   return p;
 }
@@ -1726,7 +1737,9 @@ PredType BPredictor::predict2(DInst *dinst) {
 
   PredType p = pred2->doPredict(dinst);
 
-  nMiss2.inc(p != CorrectPrediction && dinst->getStatsFlag());
+  //nMiss2.inc(p != CorrectPrediction && dinst->getStatsFlag());
+  nMiss2.inc(p == MissPrediction && dinst->getStatsFlag());
+  nNoPredict2.inc(p == NoPrediction && dinst->getStatsFlag());
 
   return p;
 }
@@ -1739,18 +1752,24 @@ PredType BPredictor::predict3(DInst *dinst) {
     return NoPrediction;
 #endif
 
+#if 0
   if(dinst->getDataSign() == DS_NoData)
     return NoPrediction;
+#endif
 
   nBranches3.inc(dinst->getStatsFlag());
   nTaken3.inc(dinst->isTaken() && dinst->getStatsFlag());
   // No RAS in L2
 
   PredType p = pred3->doPredict(dinst);
+#if 0
   if(p == NoPrediction)
     return p;
+#endif
 
-  nMiss3.inc(p != CorrectPrediction && dinst->getStatsFlag());
+  //nMiss3.inc(p != CorrectPrediction && dinst->getStatsFlag());
+  nMiss3.inc(p == MissPrediction && dinst->getStatsFlag());
+  nNoPredict3.inc(p == NoPrediction && dinst->getStatsFlag());
 
   return p;
 }
@@ -1836,16 +1855,26 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   int32_t bpred_total_delay = bpredDelay1 - 1;
 
-  if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 != CorrectPrediction) && (outcome3 == CorrectPrediction || outcome3 == CorrectPrediction)) {
+  if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 == NoPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction)) {
+
+    I(bpredDelay1<=bpredDelay3);
     nFixes1.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay1 - 1;
-  }else if((outcome3 == CorrectPrediction) && (outcome2 == CorrectPrediction || outcome2 != CorrectPrediction)) {
+
+  }else if(outcome1 != CorrectPrediction && outcome3 == CorrectPrediction) {
+
+    I(bpredDelay3<=bpredDelay2);
     nFixes3.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay3 - 1;
-  }else if(outcome2 == CorrectPrediction) {
+
+  }else if(outcome1 != CorrectPrediction && outcome2 == CorrectPrediction && outcome3 == NoPrediction) {
+
     nFixes2.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay2 - 1;
+
   } else {
+    I(outcome3 != CorrectPrediction || (outcome2 == MissPrediction && outcome3 == NoPrediction) || (outcome1 != CorrectPrediction && outcome2 == NoPrediction && outcome3 == NoPrediction));
+
     nUnFixes.inc(dinst->getStatsFlag());
     *fastfix          = false;
     bpred_total_delay = 2; // Anything but zero
