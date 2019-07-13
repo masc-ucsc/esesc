@@ -436,6 +436,8 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   return NoPrediction;
 #endif
 
+  if(dinst->getInst()->getOpcode() != iBALU_LBRANCH) //don't bother about jumps and calls
+    return NoPrediction;
   //Not even faster branch
   //if(dinst->getInst()->isJump())
   //  return btb.predict(dinst, doUpdate, doStats);
@@ -462,7 +464,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     globalClock, dinst->getPC(),dinst->getLDPC(), dinst->getLBType(), (raw_op & 3), br_op, dinst->getData(),
     dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
 #endif
-  
+
   if(dinst->getLBType() == 0){
     //MSG("TYPE0");
     return NoPrediction;
@@ -477,7 +479,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
 #endif
   }else if(dinst->getLBType() == 2 || dinst->getLBType() == 9) { //FIXME should type9 be in prev if block???
     //MSG("TYPE%d@br", dinst->getLBType());
-    ptaken = outcome_calculator(br_op, dinst->getBrData2(), dinst->getBrData1()); 
+    ptaken = outcome_calculator(br_op, dinst->getBrData2(), dinst->getBrData1());
 #if 0
     if(ptaken == taken)
       MSG("OC@type2 correct prediction");
@@ -506,14 +508,14 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return NoPrediction;
   }
 
-#if 0
+#if 1
   if(taken == ptaken) {
     MSG("TRIGGER@correct_pred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ldbr=%d br1=%u br2=%u d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), ptaken==taken, ptaken);
   }
 #endif
 
   if(taken != ptaken) {
-#if 0
+#if 1
     MSG("TRIGGER@mis_pred clk=%u brpc=%llx ldpc=%llx br_opcode=%llx br_op=%d ldbr=%d br1=%u br2=%u d1=%u d2=%u correct_pred=%d ptaken=%d", globalClock, dinst->getPC(),dinst->getLDPC(), (raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), ptaken==taken, ptaken);
 #endif
     if(doUpdate)

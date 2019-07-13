@@ -649,13 +649,14 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
   ldbp_ldpc          = lgt_table[lgt_index].ldpc;
   ldbp_delta         = lgt_table[lgt_index].ld_delta;
   ldbp_curr_addr     = lgt_table[lgt_index].start_addr;
+  AddrType end_addr  = ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1);
   //brpc_count         = lgt_table[lgt_index].br_ret_count;
   trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2);
-#if 0
+#if 1
   MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u conf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, brpc_count, dinst->getPC());
 #endif
   DL1->setQStartAddr(ldbp_curr_addr);
-  DL1->setQEndAddr(ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1));
+  DL1->setQEndAddr(end_addr);
   DL1->setQDelta(ldbp_delta);
   DL1->setRetBrCount(brpc_count);
   DL1->shift_cir_queue();
@@ -664,14 +665,14 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
 #if 1
   MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, ldbp_delta, inflight_branch, lb_type);
 #if 1
-  if(last_mem_lat > max_mem_lat) {
+  if(ldbp_delta != 0 && last_mem_lat > max_mem_lat) {
     diff_mem_lat = last_mem_lat - max_mem_lat + 6;
     for(int i = 1; i <= diff_mem_lat; i++) {
       trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2 + i);
       //MSG("TRIG_LD@2 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
       MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, ldbp_delta, inflight_branch, lb_type);
     }
-  }else if(last_mem_lat < max_mem_lat) {
+  }else if(ldbp_delta != 0 && last_mem_lat < max_mem_lat) {
     diff_mem_lat = max_mem_lat - last_mem_lat + 6;
     for(int i = diff_mem_lat; i > 0; i--) {
       trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2 - i);
@@ -713,7 +714,7 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
         //MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
         //MSG("I=%d", i);
         if(lgt_table[i].ld_conf > 15) {
-#if 0
+#if 1
           MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
 #endif
           generate_trigger_load(dinst, br_src1, i);

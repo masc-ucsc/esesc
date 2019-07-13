@@ -175,8 +175,8 @@ public:
     // 6->simple & direct & R2 = L1       -> src1 == 0 && dep > 1
     // 7->complex & 1 Li + 1 ALU & R1=Li  -> dep > 1 && R1 == is_li, R2 == ALU
     // 8->complex & 1 Li + 1 ALU & R2=Li  -> dep > 1 && R2 == is_li, R1 == ALU
-    // 9->complex & 1 Li + 1 LD & R1=Li   -> dep > 1 && R1 == is_li, R2 == LD
-    // 10->complex & 1 Li + 1 LD & R2=Li  -> dep > 1 && R2 == is_li, R1 == LD
+    // 9->complex & 1 Li + 1 LD & R1=Li   -> dep == 1 && R1 == is_li, R2 == LD
+    // 10->complex & 1 Li + 1 LD & R2=Li  -> dep == 1 && R2 == is_li, R1 == LD
     // 11->simple & indirect FIXME???
     bool ldbr_set; //is ldbr set?
     bool simple; //does BR have only one Src operand
