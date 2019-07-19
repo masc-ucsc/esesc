@@ -116,6 +116,7 @@ protected:
   //trigger load params
   bool trigger_load; //flag to trigger load
   AddrType base_addr;
+  AddrType end_addr;
   AddrType dep_pc;
   uint64_t delta;
   uint64_t delta2;
@@ -318,11 +319,12 @@ public:
     return mreq;
   }
 
-  static void triggerReqRead(MemObj *m, bool doStats, AddrType addr, AddrType pc, AddrType _dep_pc, AddrType _base_addr, uint64_t _delta, uint64_t _inf, int _ld_br_type, CallbackBase *cb = 0) {
-    MemRequest *mreq   = createReqRead(m, doStats, addr, pc, cb);
+  static void triggerReqRead(MemObj *m, bool doStats, AddrType trig_addr, AddrType pc, AddrType _dep_pc, AddrType _start_addr, AddrType _end_addr, uint64_t _delta, uint64_t _inf, int _ld_br_type, CallbackBase *cb = 0) {
+    MemRequest *mreq   = createReqRead(m, doStats, trig_addr, pc, cb);
     mreq->trigger_load = true;
     mreq->dep_pc       = _dep_pc;
-    mreq->base_addr    = _base_addr;
+    mreq->base_addr    = _start_addr;
+    mreq->end_addr     = _end_addr;
     mreq->delta        = _delta;
     mreq->inflight     = _inf;
     mreq->ld_br_type   = _ld_br_type;
@@ -394,6 +396,10 @@ public:
 
   AddrType getBaseAddr() const {
     return base_addr;
+  }
+
+  AddrType getEndAddr() const {
+    return end_addr;
   }
   
   AddrType getDepPC() const {

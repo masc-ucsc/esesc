@@ -56,6 +56,8 @@ class MemRequest;
 #define PSIGN_CHASE 6
 #define PSIGN_MEGA 7
 #define CIR_QUEUE_WINDOW 128 //FIXME: need to change this to a conf variable
+#define BOT_SIZE 32
+#define LDBUFF_SIZE 512
 //#define ENABLE_LDBP
 
 class MemObj {
@@ -83,36 +85,59 @@ public:
   virtual ~MemObj();
 
 #ifdef ENABLE_LDBP
+  struct bot_entry {
+    bot_entry() {
+      brpc         = 0;
+      ldpc         = 0;
+      req_addr     = 0;
+      start_addr   = 0;
+      end_addr     = 0;
+      delta        = 0;
+      fetch_count  = 0;
+      retire_count = 0;
+      for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
+        set_flag[i]  = 0;
+        ldbr_type[i] = 0;
+        trig_addr[i] = 0;
+      }
+    }
+    AddrType brpc;
+    AddrType ldpc;
+    AddrType req_addr;
+    AddrType start_addr;
+    AddrType end_addr;
+    AddrType delta;
+    int fetch_count;
+    int retire_count;
+    std::vector<int> set_flag  = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<int> ldbr_type = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<AddrType> trig_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+  };
+
   struct load_data_buffer_entry{
     load_data_buffer_entry() {
-      ld_addr    = 0;
-      ld_data    = 0;
-      marked     = false;
-      ld_br_type = 0;
+      brpc         = 0;
+      ldpc         = 0;
+      start_addr   = 0;
+      end_addr     = 0;
+      delta        = 0;
+      for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
+        req_addr[i]  = 0;
+        req_data[i]  = 0;
+        marked[i]    = false;
+        valid[i]     = false;
+      }
     }
-    AddrType ld_addr;
-    DataType ld_data;
-    bool marked;
-    int ld_br_type;
+    std::vector<AddrType> req_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+    std::vector<DataType> req_data = std::vector<DataType>(CIR_QUEUE_WINDOW);
+    std::vector<bool> marked = std::vector<bool>(CIR_QUEUE_WINDOW);
+    std::vector<bool> valid  = std::vector<bool>(CIR_QUEUE_WINDOW);
+    AddrType brpc;
+    AddrType ldpc;
+    AddrType start_addr;
+    AddrType end_addr;
+    AddrType delta;
 
-    void reset() {
-      ld_addr    = 0;
-      ld_data    = 0;
-      marked     = false;
-      ld_br_type = 0;
-    }
-
-    void fill_ld_br_type(int _lb) {
-      ld_br_type = _lb; 
-    }
-
-    void fill_addr(AddrType addr) {
-      ld_addr = addr; 
-    }
-
-    void fill_data(DataType data) {
-      ld_data = data; 
-    }
   };
 
   AddrType q_start_addr;
@@ -121,20 +146,37 @@ public:
   AddrType curr_dep_pc;
   bool zero_delta; //flag for mreq with delta == 0
   int ret_br_count;
-  //std::vector<std::vector<int>> cir_queue = std::vector<std::vector<int>>(4, std::vector<int>(CIR_QUEUE_WINDOW, 0));
-  //std::vector<std::vector<load_data_buffer_entry>> load_data_buffer = std::vector<std::vector<load_data_buffer_entry>>(64, std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW, load_data_buffer_entry()));
-  std::vector<int> cir_queue = std::vector<int>(CIR_QUEUE_WINDOW);
-  std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);
 
+  //std::vector<int> cir_queue = std::vector<int>(CIR_QUEUE_WINDOW);
+  std::vector<bot_entry> cir_queue = std::vector<bot_entry>(BOT_SIZE);
+  std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(LDBUFF_SIZE);
+  //std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);
+
+  //Load data buffer interface functions
+  int hit_on_ldbuff(AddrType pc);
+  void fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, AddrType del, AddrType raddr, int q_idx);
+  void shift_load_data_buffer(AddrType pc);
+  void flush_ldbuff_mem(AddrType pc);
+
+  //BOT interface functions
   void find_cir_queue_index(MemRequest *mreq, const char *str);
-  void reset_cir_queue();
-  void reset_load_data_buffer();
-  void shift_cir_queue();
-  void shift_load_data_buffer();
-  void fill_cir_queue(MemRequest *mreq, int index);
+  int hit_on_bot(AddrType pc);
+  void flush_bot_mem(int idx);
+  void shift_cir_queue(AddrType pc);
+  void fill_fetch_count_bot(AddrType pc);
+  void fill_retire_count_bot(AddrType pc);
+  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, AddrType del);
 
   int getQSize() {
     return CIR_QUEUE_WINDOW;
+  }
+
+  int getBotSize() {
+    return BOT_SIZE;
+  }
+
+  int getLdBuffSize() {
+    return LDBUFF_SIZE;
   }
 
   void setQDelta(uint64_t _delta) {
@@ -247,7 +289,9 @@ public:
   virtual void clearNeedsCoherence();
 
   virtual bool Invalid(AddrType addr) const;
+#if 0
   virtual bool get_cir_queue(int index ,AddrType pc);
+#endif
 };
 
 class DummyMemObj : public MemObj {

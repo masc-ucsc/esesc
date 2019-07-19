@@ -266,6 +266,7 @@ public:
       ld_delta        = 0;
       prev_delta      = 0;
       ld_conf         = 0;
+      br_miss_ctr     = 0;
     }
 
     AddrType ldpc;
@@ -280,7 +281,7 @@ public:
     uint64_t ld_delta;
     uint64_t prev_delta;
     uint64_t ld_conf;
-    classify_table_entry ct;
+    int br_miss_ctr;
 
     void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr) {
       //if(!ldbr_set) {
@@ -308,6 +309,13 @@ public:
     void lgt_update_br_fields(DInst *dinst) {
       brpc            = dinst->getPC();
       inf_branch      = dinst->getInflight(); //FIXME use dinst->getInflight() instead of variable
+      if(dinst->isBranchMiss_tage()) {
+        if(br_miss_ctr < 4)
+          br_miss_ctr++;
+      }else{
+        if(br_miss_ctr > 0)
+          br_miss_ctr--;
+      }
     }
 
   };

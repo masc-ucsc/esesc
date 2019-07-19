@@ -1704,8 +1704,9 @@ sub branchStats {
       my $nBranches2  = $cf->getResultField("P(${i})_BPred","nBranches2");
       my $nMiss2      = $cf->getResultField("P(${i})_BPred","nMiss2");
       my $nNoPredict2 = $cf->getResultField("P(${i})_BPred","nNopredict2");
+      my $nNoPredict_miss2 = $cf->getResultField("P(${i})_BPred","nNopredict_miss2");
 
-      printf "%7.2f%% :",100*(($nBranches2-$nMiss2-$nNoPredict2)/($nBranches2-$nNoPredict2));
+      printf "%7.2f%% :",100*(1-($nMiss2+$nNoPredict_miss2)/($nBranches+1));
       if ($nNoPredict2 > 0) {
         printf " of %7.2f%% :",100*(1-($nNoPredict2/$nBranches2));
       }
@@ -1744,11 +1745,12 @@ sub branchStats {
       printf "%8.3f :  ",$avgBranchTime;
       printf "%-16s :",$type3;
 
-      my $nBranches3= $cf->getResultField("P(${i})_BPred","nBranches3");
-      my $nMiss3    = $cf->getResultField("P(${i})_BPred","nMiss3");
-      my $nNoPredict3 = $cf->getResultField("P(${i})_BPred","nNopredict3");
+      my $nBranches3       = $cf->getResultField("P(${i})_BPred","nBranches3");
+      my $nMiss3           = $cf->getResultField("P(${i})_BPred","nMiss3");
+      my $nNoPredict3      = $cf->getResultField("P(${i})_BPred","nNopredict3");
+      my $nNoPredict_miss3 = $cf->getResultField("P(${i})_BPred","nNopredict_miss3");
 
-      printf "%7.2f%% :",100*($nBranches3-$nMiss3-$nNoPredict3)/($nBranches3-$nNoPredict3+1);
+      printf "%7.2f%% :",100*(1-($nMiss3+$nNoPredict_miss3)/($nBranches+1));
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
       my $predHit3  = $cf->getResultField("P(${i})_BPred3_${type3}","nHit");

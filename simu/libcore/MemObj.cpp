@@ -137,7 +137,130 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 /* }}} */
 
 #ifdef ENABLE_LDBP
+int MemObj::hit_on_ldbuff(AddrType pc) {
+  //hit on ld_buff is start addr and end addr matches
+  for(int i = 0; i < LDBUFF_SIZE; i++) {
+    if(load_data_buffer[i].brpc == pc) { //hit on ld_buff @retire
+      return i;
+    }
+  }
+  return -1;
+}
+int MemObj::hit_on_bot(AddrType pc) {
+  for(int i = 0; i < BOT_SIZE; i++) {
+    if(cir_queue[i].brpc == pc) //hit on BOT
+      return i;
+  }
+  return -1; //miss
+}
+
+void MemObj::fill_fetch_count_bot(AddrType pc) {
+  int idx = hit_on_bot(pc);
+  if(idx != -1) { //hit on bot
+    cir_queue[idx].fetch_count++;
+    return;
+  }
+  //insert entry into LRU postion (last index)
+  cir_queue.erase(cir_queue.begin());
+  cir_queue.push_back(bot_entry());
+  cir_queue[BOT_SIZE-1].brpc        = pc;
+  cir_queue[BOT_SIZE-1].fetch_count = 1;
+}
+
+void MemObj::fill_retire_count_bot(AddrType pc) {
+  int idx = hit_on_bot(pc);
+  if(idx != -1) {
+    if(cir_queue[idx].fetch_count > cir_queue[idx].retire_count) {
+      cir_queue[idx].retire_count++;
+      return;
+    }
+    //reset fc and rc if rc > fc at any point
+    ////FIXME: should u also retire set_flag cir_queue here?????
+    cir_queue[idx].fetch_count = 0;
+    cir_queue[idx].retire_count = 0;
+  }
+}
+
+void MemObj::fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, AddrType del, AddrType raddr, int q_idx) {
+  int i = hit_on_ldbuff(pc);
+  if(i != -1) { //hit on ldbuff
+    load_data_buffer[i].start_addr      = sa;
+    load_data_buffer[i].end_addr        = ea;
+    load_data_buffer[i].delta           = del;
+    load_data_buffer[i].req_addr[q_idx] = raddr;
+    //move this entry to LRU position
+    load_data_buffer_entry l = load_data_buffer[i];
+    load_data_buffer.erase(load_data_buffer.begin() + i);
+    load_data_buffer.push_back(load_data_buffer_entry());
+    load_data_buffer[LDBUFF_SIZE-1] = l;
+    return;
+  }
+  //if miss, insert entry into LRU postion (last index)
+  load_data_buffer.erase(load_data_buffer.begin());
+  load_data_buffer.push_back(load_data_buffer_entry());
+  load_data_buffer[LDBUFF_SIZE-1].brpc            = pc;
+  load_data_buffer[LDBUFF_SIZE-1].delta           = del;
+  load_data_buffer[LDBUFF_SIZE-1].start_addr      = sa;
+  load_data_buffer[LDBUFF_SIZE-1].end_addr        = ea;
+  load_data_buffer[LDBUFF_SIZE-1].req_addr[q_idx] = raddr;
+}
+
+#if 1
+void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, AddrType del) {
+/*
+ * fill ret count, saddr, eaddr ,delta @retire and move entry to LRU; send trig_load req
+ * @mem - if mreq addr is within [saddr, eaddr], then fill cir_queue
+ * */
+  int bot_idx = hit_on_bot(pc);
+  //must be a hit(bcos fc must be inserted @F). if miss, then don't do anything
+  if(bot_idx != -1) {
+    cir_queue[bot_idx].ldpc       = ldpc;
+    cir_queue[bot_idx].start_addr = saddr;
+    cir_queue[bot_idx].end_addr   = eaddr;
+    cir_queue[bot_idx].delta      = del;
+  }
+}
+#endif
+
 void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
+  AddrType delta      = mreq->getDelta();
+  AddrType ldbr       = mreq->getLBType();
+  AddrType brpc       = mreq->getDepPC();
+  AddrType req_addr   = mreq->getAddr();
+  int bot_idx         = hit_on_bot(brpc);
+  int q_idx           = 0;
+  zero_delta          = true;
+
+  if(bot_idx != -1) {
+    AddrType saddr = cir_queue[bot_idx].start_addr;
+    AddrType eaddr = cir_queue[bot_idx].end_addr;
+    AddrType del   = cir_queue[bot_idx].delta;
+    if(delta != del) {
+      //reset fc, rc, cir_queue
+      flush_bot_mem(bot_idx);
+      flush_ldbuff_mem(brpc);
+      return;
+    }
+    if(req_addr >= saddr && req_addr <= eaddr) {
+      if(delta != 0) {
+        q_idx      = (req_addr - saddr) / delta;
+        zero_delta = false;
+      }
+      if(q_idx <= CIR_QUEUE_WINDOW - 1) {
+        cir_queue[bot_idx].set_flag[q_idx]  = 1;
+        cir_queue[bot_idx].ldbr_type[q_idx] = ldbr;
+        cir_queue[bot_idx].trig_addr[q_idx] = req_addr;
+        fill_ldbuff_mem(brpc, saddr, eaddr, del, req_addr, q_idx);
+        // move this entry to LRU position
+        bot_entry b = cir_queue[bot_idx];
+        cir_queue.erase(cir_queue.begin() + bot_idx);
+        cir_queue.push_back(bot_entry());
+        cir_queue[BOT_SIZE - 1] = b;
+      }
+    }
+  }
+
+#if 0
   //AddrType delta     = mreq->getDelta();
   AddrType delta     = mreq->getHomeNode()->getQDelta();
   AddrType start_addr = mreq->getHomeNode()->getQStartAddr();
@@ -165,43 +288,51 @@ void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
     }
   }
   curr_dep_pc = mreq->getDepPC();
-
-}
-
-void MemObj::shift_cir_queue() {
-  //shift the cir queue left by one position and push zero at the end
-  cir_queue.erase(cir_queue.begin());
-  cir_queue.push_back(0);
-  shift_load_data_buffer();
-}
-
-void MemObj::shift_load_data_buffer() {
-  //shift the cir queue left by one position and push zero at the end
-  load_data_buffer.erase(load_data_buffer.begin());
-  load_data_buffer.push_back(load_data_buffer_entry());
-}
-
-void MemObj::fill_cir_queue(MemRequest *mreq, int index) {
-#if 0
-  MSG("TRIGGER@fill_cir clk=%u ldpc=%llx brpc=%llx ld_addr=%llx qidx=%d", globalClock, mreq->getPC(),
-      mreq->getDepPC(), mreq->getAddr(), index);
 #endif
-  cir_queue[index] = 1;
+
 }
 
-void MemObj::reset_load_data_buffer() {
-  for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
-    load_data_buffer[i].reset();
+void MemObj::flush_ldbuff_mem(AddrType pc) {
+  int i = hit_on_ldbuff(pc);
+  if(i != -1) {
+    load_data_buffer.erase(load_data_buffer.begin() + i);
+    load_data_buffer.push_back(load_data_buffer_entry());
   }
 }
 
-void MemObj::reset_cir_queue() {
-  reset_load_data_buffer();
-  cir_queue.clear();
-  for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
-    cir_queue.push_back(0);
+void MemObj::flush_bot_mem(int idx) {
+  cir_queue.erase(cir_queue.begin() + idx);
+  cir_queue.push_back(bot_entry());
+}
+
+void MemObj::shift_cir_queue(AddrType pc) {
+  //shift the cir queue left by one position and push zero at the end
+  int bot_idx         = hit_on_bot(pc);
+  if(bot_idx != -1) {
+    cir_queue[bot_idx].set_flag.erase(cir_queue[bot_idx].set_flag.begin());
+    cir_queue[bot_idx].set_flag.push_back(0);
+    cir_queue[bot_idx].ldbr_type.erase(cir_queue[bot_idx].ldbr_type.begin());
+    cir_queue[bot_idx].ldbr_type.push_back(0);
+    cir_queue[bot_idx].trig_addr.erase(cir_queue[bot_idx].trig_addr.begin());
+    cir_queue[bot_idx].trig_addr.push_back(0);
+  }
+  //shift load data buffer as well
+  shift_load_data_buffer(pc);
+}
+
+void MemObj::shift_load_data_buffer(AddrType pc) {
+  //shift the load data buff left by one position and push zero at the end
+  int i = hit_on_ldbuff(pc);
+  if(i != -1) {
+    load_data_buffer[i].req_addr.erase(load_data_buffer[i].req_addr.begin());
+    load_data_buffer[i].req_addr.push_back(0);
+    load_data_buffer[i].req_data.erase(load_data_buffer[i].req_data.begin());
+    load_data_buffer[i].req_data.push_back(0);
+    load_data_buffer[i].marked.erase(load_data_buffer[i].marked.begin());
+    load_data_buffer[i].marked.push_back(false);
   }
 }
+
 #endif
 void DummyMemObj::doReq(MemRequest *req)
 /* req {{{1 */
@@ -296,9 +427,11 @@ void MemObj::setNeedsCoherence() {
 void MemObj::clearNeedsCoherence() {
 }
 
+#if 0
 bool MemObj::get_cir_queue(int index, AddrType pc) {
   I(0);
 }
+#endif
 
 bool MemObj::Invalid(AddrType addr) const {
   I(0);

@@ -174,6 +174,7 @@ private:
   bool loadForwarded;
   bool replay;
   bool branchMiss;
+  bool branchMiss_tage;
 
   bool performed;
 
@@ -240,6 +241,7 @@ private:
     serializeEntry  = 0;
     fetch           = 0;
     branchMiss      = false;
+    branchMiss_tage = false;
     gproc           = 0;
     SSID            = -1;
     conflictStorePC = 0;
@@ -554,6 +556,14 @@ public:
     fetched = globalClock;
   }
 
+  void setBranchMiss_tage() {
+    branchMiss_tage = true;
+  }
+
+  bool isBranchMiss_tage() const {
+    return branchMiss_tage;
+  }
+
   bool isBranchMiss() const {
     return branchMiss;
   }
@@ -654,9 +664,11 @@ public:
     last       = n;
   }
 
+#if 0
   void setAddr(AddrType a) {
     addr = a;
   }
+#endif
   void setPC(AddrType a) {
     pc = a;
   }

@@ -286,6 +286,11 @@ bool QEMUReader::populate(FlowID fid) {
 #ifdef ESESC_TRACE_DATA
     (*dinsth)->setData(rinst->getData());
     (*dinsth)->setData2(rinst->getData2());
+#if 0
+    if (rinst->getPC()==0x142cc) {
+      MSG("pc=142cc ID=%d d1=%d d2=%d d1=%d d2=%d\n",(int)(*dinsth)->getID(), (int)rinst->getData(), (int)rinst->getData2(), (int)(*dinsth)->getData(), (int)(*dinsth)->getData2());
+    }
+#endif
 #endif
 
     ruffer[fid].add();

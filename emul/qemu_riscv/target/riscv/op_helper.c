@@ -139,7 +139,10 @@ void helper_esesc_ctrl_data(CPURISCVState *env, uint64_t pc, uint64_t target, ui
   reg      = reg >> 8;
   int dest = reg & 0xFF;
 
-  // fprintf(stderr,"RAW: pc=%llx addr=%llx data1=%llx data2=%llx\n",(long long)pc,(long long)target,(long long)data1,(long long)data2);
+#if 0
+  if (pc==0x142cc)
+    fprintf(stderr,"RAW: pc=%llx addr=%llx data1=%llx data2=%llx\n",(long long)pc,(long long)target,(long long)data1,(long long)data2);
+#endif
 
   AtomicAdd(&icount,QEMUReader_queue_ctrl_data(pc, target, data1, data2, cpu->fid, iBALU_LBRANCH, src1, src2, dest));
 }

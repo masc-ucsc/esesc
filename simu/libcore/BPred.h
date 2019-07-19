@@ -568,7 +568,7 @@ class BPLdbp : public BPred {
       AddrType t         = (_tag >> 7) & 0x7F; //upper 7 bits for tag
       int index          = _tag & 0x7F;  //lower 7 bits for index
       if(doc_table[index].tag == t) {
-        //MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken);
+        //MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d conf=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken, doc_table[index].doc_compute());
         return doc_table[index].update_doc(t, false, outcome);
       }
 
@@ -607,11 +607,13 @@ private:
 
   GStatsCntr nBranches2;
   GStatsCntr nNoPredict2;
+  GStatsCntr nNoPredict_miss2; // NoPred by bpred 2 and no correct pred by other bpreds
   GStatsCntr nTaken2;
   GStatsCntr nMiss2; // hits == nBranches - nMiss
 
   GStatsCntr nBranches3;
   GStatsCntr nNoPredict3;
+  GStatsCntr nNoPredict_miss3; // NoPred by bpred 3 and no correct pred by other bpreds
   GStatsCntr nTaken3;
   GStatsCntr nMiss3; // hits == nBranches - nMiss
 

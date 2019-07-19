@@ -323,14 +323,15 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
 
 #ifdef ENABLE_LDBP
+#if 0
     AddrType q_saddr   = DL1->getQStartAddr();
     AddrType q_eaddr   = DL1->getQEndAddr();
     uint64_t q_delta   = DL1->getQDelta();
- 
+
     //update load data buffer if there is any older store for the same address
     if(dinst->getInst()->getOpcode() == iSALU_ST) {
       //MSG("STORE_TEST pc=%llx addr=%llx new_data=%u old_data=%u", dinst->getPC(), dinst->getAddr(),
-      //    dinst->getData(), dinst->getData2()); 
+      //    dinst->getData(), dinst->getData2());
       AddrType st_addr = dinst->getAddr();
       if(st_addr >= q_saddr && st_addr <= q_eaddr) {
         for(int i = 0; i < DL1->load_data_buffer.size(); i++) {
@@ -342,12 +343,33 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       }
     }
 #endif
+    //update load data buffer if there is any older store for the same address
+    if(dinst->getInst()->getOpcode() == iSALU_ST) {
+      AddrType st_addr = dinst->getAddr();
+      for(int i = 0; i < DL1->getLdBuffSize(); i++) {
+        AddrType saddr = DL1->load_data_buffer[i].start_addr;
+        AddrType eaddr = DL1->load_data_buffer[i].end_addr;
+        AddrType del   = DL1->load_data_buffer[i].delta;
+        if(st_addr >= saddr && st_addr <= eaddr) {
+          int idx        = 0;
+          if(del != 0) {
+            idx = (st_addr - saddr) / del;
+          }
+          if(st_addr == (idx * del + saddr)) { //check if st_addr exactly matches this entry in buff
+            DL1->load_data_buffer[i].req_data[idx] = dinst->getData2();
+            DL1->load_data_buffer[i].marked[idx] = true;
+          }
+        }
+      }
+    }
+#endif
 
     if(dinst->getInst()->isLoad()) {
 
       bool ld_tracking = false;
 
 #ifdef ENABLE_LDBP
+#if 0
       //insert load into load data buff table if load's address is a hit on table
       AddrType load_addr = dinst->getAddr();
       int q_index = 0;
@@ -359,6 +381,25 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         }else if(q_delta == 0) {
           if(DL1->load_data_buffer[q_index].ld_addr == dinst->getAddr() && !DL1->load_data_buffer[q_index].marked)
             DL1->load_data_buffer[q_index].fill_data(dinst->getData());
+        }
+      }
+#endif
+
+      //insert load into load data buff table if load's address is a hit on table
+      AddrType ld_addr = dinst->getAddr();
+      for(int i = 0; i < DL1->getLdBuffSize(); i++) {
+        AddrType saddr = DL1->load_data_buffer[i].start_addr;
+        AddrType eaddr = DL1->load_data_buffer[i].end_addr;
+        AddrType del   = DL1->load_data_buffer[i].delta;
+        if(ld_addr >= saddr && ld_addr <= eaddr) {
+          int idx = 0;
+          if(del != 0) {
+            idx = (ld_addr - saddr) / del;
+          }
+          if(ld_addr == DL1->load_data_buffer[i].req_addr[idx] && !DL1->load_data_buffer[i].marked[idx]) { //check if st_addr exactly matches this entry in buff
+            DL1->load_data_buffer[i].req_data[idx] = dinst->getData();
+            DL1->load_data_buffer[i].valid[idx] = true;
+          }
         }
       }
 #endif
@@ -541,6 +582,38 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
 #ifdef ENABLE_LDBP
             dinst->set_br_ld_chain();
+
+            //fill fetch count on BOT
+            DL1->fill_fetch_count_bot(dinst->getPC());
+            int bot_idx    = DL1->hit_on_bot(dinst->getPC());
+            int ldbuff_idx = DL1->hit_on_ldbuff(dinst->getPC());
+            int bot_q_idx  = (DL1->cir_queue[bot_idx].fetch_count - DL1->cir_queue[bot_idx].retire_count) % DL1->getQSize();
+            int q_hit    = 0;
+            int q_ldbr   = 0;
+            bool zero_delta = false;
+            if(DL1->cir_queue[bot_idx].delta == 0) {
+              bot_q_idx       = 0;
+              zero_delta      = true;
+            }
+            if(bot_q_idx < 0) {
+              //do nothing
+            }else {
+              q_hit  = DL1->cir_queue[bot_idx].set_flag[bot_q_idx];
+              q_ldbr = DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx];
+            }
+
+            if(q_hit && q_ldbr > 0) {
+              //MSG("FETCH@0 clk=%u brpc=%llx trig_addr=%u ldbuff_addr=%u addr_match=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].trig_addr[bot_q_idx], DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]==DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]);
+              if(DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) {
+                dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx]);
+                DataType dd      = DL1->load_data_buffer[ldbuff_idx].req_data[bot_q_idx];
+                DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
+                dinst            = tmp_dinst;
+                //MSG("FETCH@1 clk=%u brpc=%llx ldpc=%llx ldbr=%d br_d1=%u br_d2=%u d1=%u d2=%u d1_match=%d d2_match=%d oracle_addr=%u buff_addr=%u zero_delta=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].ldpc, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), (dinst->getBrData1() == dinst->getData()), (dinst->getBrData2() == dinst->getData2()), addr, DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], zero_delta);
+              }
+            }
+
+#if 0
             //trigger next prefetch here so that it is timely
             if(dinst->getPC() == dep_pc) {
               fetch_br_count++;
@@ -601,6 +674,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
 
             }
+#endif
 #endif
 
 #if 1
@@ -851,49 +925,49 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 }
 
 #ifdef ENABLE_LDBP
-DInst* FetchEngine::init_ldbp(DInst *dinst, int db_idx) {
-  dinst->setLBType(DL1->load_data_buffer[db_idx].ld_br_type);
-  DataType dd = DL1->load_data_buffer[db_idx].ld_data;
-  if(dinst->getLBType() == 1) {
+DInst* FetchEngine::init_ldbp(DInst *dinst, DataType dd, AddrType ldpc) {
+  if(dinst->getLBType() == 1) {  //present
     //MSG("TYPE1@fetch");
-    dinst->setBrData1(dd);
+    //dinst->setBrData1(dd);
+    dinst->setBrData1(dinst->getData());
     dinst->setBrData2(0);
   }else if(dinst->getLBType() == 2) {
     //MSG("TYPE2@fetch");
     dinst->setBrData1(0);
     dinst->setBrData2(dd);
-  }else if(dinst->getLBType() == 3) {
+  }else if(dinst->getLBType() == 3) { //present
     //MSG("TYPE3@fetch");
     dinst->setBrData1(dd); //LD data -> not ALU modified LD data
-    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setDataSign(dd, ldpc); //create data signature
     dinst->setBrData2(0);
   }else if(dinst->getLBType() == 4) {
     //MSG("TYPE4@fetch");
     dinst->setBrData2(dd); //LD data -> not ALU modified LD data
-    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setDataSign(dd, ldpc); //create data signature
     dinst->setBrData1(0);
   }else if(dinst->getLBType() == 5) {
     MSG("TYPE5@fetch");
   }else if(dinst->getLBType() == 6) {
     MSG("TYPE6@fetch");
   }else if(dinst->getLBType() == 7) {
-    MSG("TYPE7@fetch");
+    //MSG("TYPE7@fetch");
     dinst->setBrData2(dd); //LD data -> not ALU modified LD data
-    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setDataSign(dd, ldpc); //create data signature
     dinst->setBrData1(dinst->getData());
-  }else if(dinst->getLBType() == 8) {
-    MSG("TYPE8@fetch");
+  }else if(dinst->getLBType() == 8) { //present
+    //MSG("TYPE8@fetch");
     dinst->setBrData1(dd); //LD data -> not ALU modified LD data
-    dinst->setDataSign(dd, dinst->getLDPC()); //create data signature
+    dinst->setDataSign(dd, ldpc); //create data signature
     dinst->setBrData2(dinst->getData2());
   }else if(dinst->getLBType() == 9) {
-    MSG("TYPE9@fetch");
+    //MSG("TYPE9@fetch");
     dinst->setBrData1(dinst->getData());
     dinst->setBrData2(dd);
-  }else if(dinst->getLBType() == 10) {
-    MSG("TYPE10@fetch");
+  }else if(dinst->getLBType() == 10) {   //present
+    //MSG("TYPE10@fetch");
     dinst->setBrData2(dinst->getData2());
-    dinst->setBrData1(dd);
+    //dinst->setBrData1(dd);
+    dinst->setBrData1(dinst->getData());
   }
   return dinst;
 }

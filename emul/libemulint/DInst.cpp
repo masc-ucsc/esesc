@@ -180,7 +180,7 @@ DataSign DInst::calcDataSign(int64_t _data) {
 }
 
 void DInst::setDataSign(int64_t _data, AddrType _ldpc) {
-  data = _data;
+  ///data = _data;
   ldpc = _ldpc;
 
   data_sign = calcDataSign(_data);

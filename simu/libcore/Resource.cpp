@@ -477,24 +477,25 @@ StallCause FUStore::canIssue(DInst *dinst) {
   /* canIssue {{{1 */
 
 #ifdef ENABLE_LDBP
-  AddrType q_saddr   = DL1->getQStartAddr();
-  AddrType q_eaddr   = DL1->getQEndAddr();
-  uint64_t q_delta   = DL1->getQDelta();
-
-  //update load data buffer if there is any older store for the same address
-  if(dinst->getInst()->getOpcode() == iSALU_ST) {
-    //MSG("STORE_TEST pc=%llx addr=%llx new_data=%u old_data=%u", dinst->getPC(), dinst->getAddr(),
-    //    dinst->getData(), dinst->getData2());
-    AddrType st_addr = dinst->getAddr();
-    if(st_addr >= q_saddr && st_addr <= q_eaddr) {
-      for(int i = 0; i < DL1->load_data_buffer.size(); i++) {
-        if(st_addr == DL1->load_data_buffer[i].ld_addr && !DL1->load_data_buffer[i].marked) {
-          DL1->load_data_buffer[i].ld_data = dinst->getData2();
-          DL1->load_data_buffer[i].marked  = true;
+    //update load data buffer if there is any older store for the same address
+    if(dinst->getInst()->getOpcode() == iSALU_ST) {
+      AddrType st_addr = dinst->getAddr();
+      for(int i = 0; i < DL1->getLdBuffSize(); i++) {
+        AddrType saddr = DL1->load_data_buffer[i].start_addr;
+        AddrType eaddr = DL1->load_data_buffer[i].end_addr;
+        AddrType del   = DL1->load_data_buffer[i].delta;
+        if(st_addr >= saddr && st_addr <= eaddr) {
+          int idx        = 0;
+          if(del != 0) {
+            idx = (st_addr - saddr) / del;
+          }
+          if(st_addr == (idx * del + saddr)) { //check if st_addr exactly matches this entry in buff
+            DL1->load_data_buffer[i].req_data[idx] = dinst->getData2();
+            DL1->load_data_buffer[i].marked[idx] = true;
+          }
         }
       }
     }
-  }
 #endif
 
   if(dinst->getInst()->isStoreAddress())
