@@ -357,6 +357,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           }
           if(st_addr == (idx * del + saddr)) { //check if st_addr exactly matches this entry in buff
             DL1->load_data_buffer[i].req_data[idx] = dinst->getData2();
+            DL1->load_data_buffer[i].valid[idx] = true;
             DL1->load_data_buffer[i].marked[idx] = true;
           }
         }
@@ -601,15 +602,16 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
               q_hit  = DL1->cir_queue[bot_idx].set_flag[bot_q_idx];
               q_ldbr = DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx];
             }
-
             if(q_hit && q_ldbr > 0) {
               //MSG("FETCH@0 clk=%u brpc=%llx trig_addr=%u ldbuff_addr=%u addr_match=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].trig_addr[bot_q_idx], DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]==DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]);
-              if(DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) {
+              if((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) {
+                bool c_hit = !DL1->Invalid(DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]);
                 dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx]);
+                dinst->setDepDepth(DL1->cir_queue[bot_idx].dep_depth[bot_q_idx]);
                 DataType dd      = DL1->load_data_buffer[ldbuff_idx].req_data[bot_q_idx];
                 DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
                 dinst            = tmp_dinst;
-                //MSG("FETCH@1 clk=%u brpc=%llx ldpc=%llx ldbr=%d br_d1=%u br_d2=%u d1=%u d2=%u d1_match=%d d2_match=%d oracle_addr=%u buff_addr=%u zero_delta=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].ldpc, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), (dinst->getBrData1() == dinst->getData()), (dinst->getBrData2() == dinst->getData2()), addr, DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], zero_delta);
+                //MSG("FETCH@1 clk=%u brpc=%llx ldpc=%llx ldbr=%d br_d1=%u br_d2=%u d1=%u d2=%u d_match=%d c_hit=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].ldpc, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), (dinst->getBrData1() == dinst->getData()), c_hit);
               }
             }
 
@@ -934,7 +936,7 @@ DInst* FetchEngine::init_ldbp(DInst *dinst, DataType dd, AddrType ldpc) {
   }else if(dinst->getLBType() == 2) {
     //MSG("TYPE2@fetch");
     dinst->setBrData1(0);
-    dinst->setBrData2(dd);
+    dinst->setBrData2(dinst->getData2());
   }else if(dinst->getLBType() == 3) { //present
     //MSG("TYPE3@fetch");
     dinst->setBrData1(dd); //LD data -> not ALU modified LD data
@@ -947,8 +949,12 @@ DInst* FetchEngine::init_ldbp(DInst *dinst, DataType dd, AddrType ldpc) {
     dinst->setBrData1(0);
   }else if(dinst->getLBType() == 5) {
     MSG("TYPE5@fetch");
+    dinst->setBrData1(dinst->getData());
+    dinst->setBrData2(0);
   }else if(dinst->getLBType() == 6) {
     MSG("TYPE6@fetch");
+    dinst->setBrData2(dinst->getData2());
+    dinst->setBrData1(dinst->getData());
   }else if(dinst->getLBType() == 7) {
     //MSG("TYPE7@fetch");
     dinst->setBrData2(dd); //LD data -> not ALU modified LD data

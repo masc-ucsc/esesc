@@ -52,7 +52,7 @@
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
 //#define ENABLE_LDBP
-#define LGT_SIZE 128
+#define LGT_SIZE 512 //128
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -263,6 +263,7 @@ public:
       br_data2        = 0;
       br_outcome      = false;
       ldbr_type       = 0;
+      dep_depth       = 0;
       ld_delta        = 0;
       prev_delta      = 0;
       ld_conf         = 0;
@@ -278,12 +279,13 @@ public:
     DataType br_data2; // Br's operand which is not dependent on LD(could be src1 or src2)
     bool br_outcome;
     int ldbr_type;
+    int dep_depth;
     uint64_t ld_delta;
     uint64_t prev_delta;
     uint64_t ld_conf;
     int br_miss_ctr;
 
-    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr) {
+    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr, int depth) {
       //if(!ldbr_set) {
       prev_delta = ld_delta;
       ld_delta   = ld_addr - start_addr;
@@ -294,6 +296,7 @@ public:
         ld_conf = ld_conf / 2;
       }
       ldbr_type  = ldbr;
+      dep_depth  = depth;
       lgt_update_br_fields(dinst);
       //ldbr_set = false;
     }
@@ -309,8 +312,8 @@ public:
     void lgt_update_br_fields(DInst *dinst) {
       brpc            = dinst->getPC();
       inf_branch      = dinst->getInflight(); //FIXME use dinst->getInflight() instead of variable
-      if(dinst->isBranchMiss_tage()) {
-        if(br_miss_ctr < 4)
+      if(dinst->isBranchMiss_level2()) {
+        if(br_miss_ctr < 7)
           br_miss_ctr++;
       }else{
         if(br_miss_ctr > 0)

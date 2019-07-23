@@ -638,7 +638,7 @@ sub showStatReport {
     # brMissTime
     printf " %9.2f ", $cf->getResultField("P(${i})_FetchEngine_avgBranchTime","v");
 
-    printf " %-20s\n ", $file;          
+    printf " %-20s\n ", $file;
     print "\n";
   }
 
@@ -1707,9 +1707,9 @@ sub branchStats {
       my $nNoPredict_miss2 = $cf->getResultField("P(${i})_BPred","nNopredict_miss2");
 
       printf "%7.2f%% :",100*(1-($nMiss2+$nNoPredict_miss2)/($nBranches+1));
-      if ($nNoPredict2 > 0) {
-        printf " of %7.2f%% :",100*(1-($nNoPredict2/$nBranches2));
-      }
+      #if ($nNoPredict2 > 0) {
+        #printf " of %7.2f%% :",100*(1-($nNoPredict2/$nBranches2));
+        #}
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
       my $predHit2  = $cf->getResultField("P(${i})_BPred2_${type2}","nHit");

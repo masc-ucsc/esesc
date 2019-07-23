@@ -123,6 +123,7 @@ protected:
   uint64_t inflight;
   int dep_pc_count;
   int ld_br_type;
+  int dep_depth;
 
   AddrType pc;
   DInst *  dinst;     // WARNING: valid IFF demand DL1
@@ -319,7 +320,7 @@ public:
     return mreq;
   }
 
-  static void triggerReqRead(MemObj *m, bool doStats, AddrType trig_addr, AddrType pc, AddrType _dep_pc, AddrType _start_addr, AddrType _end_addr, uint64_t _delta, uint64_t _inf, int _ld_br_type, CallbackBase *cb = 0) {
+  static void triggerReqRead(MemObj *m, bool doStats, AddrType trig_addr, AddrType pc, AddrType _dep_pc, AddrType _start_addr, AddrType _end_addr, uint64_t _delta, uint64_t _inf, int _ld_br_type, int _depth, CallbackBase *cb = 0) {
     MemRequest *mreq   = createReqRead(m, doStats, trig_addr, pc, cb);
     mreq->trigger_load = true;
     mreq->dep_pc       = _dep_pc;
@@ -328,6 +329,7 @@ public:
     mreq->delta        = _delta;
     mreq->inflight     = _inf;
     mreq->ld_br_type   = _ld_br_type;
+    mreq->dep_depth    = _depth;
 #if 0
     MSG("TRIG_LD CREATED clk=%u ldpc=%llx brpc=%llx, trig_addr=%u ld_addr=%u del=%u ldbr=%d", globalClock, pc, _dep_pc, addr, _base_addr, _delta, _ld_br_type);
 #endif
@@ -389,7 +391,11 @@ public:
   bool isTriggerLoad() const {
     return trigger_load;
   }
- 
+
+  int getDepDepth() const {
+    return dep_depth;
+  }
+
   int getLBType() const {
     return ld_br_type;
   }
@@ -401,7 +407,7 @@ public:
   AddrType getEndAddr() const {
     return end_addr;
   }
-  
+
   AddrType getDepPC() const {
     return dep_pc;
   }

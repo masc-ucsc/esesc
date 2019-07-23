@@ -64,7 +64,7 @@
 #include "SCTable.h"
 
 #define RAP_T_NT_ONLY 1
-#define DOC_SIZE 128
+#define DOC_SIZE 512 //128
 enum PredType { CorrectPrediction = 0, NoPrediction, NoBTBPrediction, MissPrediction };
 enum BrOpType { BEQ = 0, BNE = 1, BLT = 4, BGE = 5, BLTU = 6, BGEU = 7, ILLEGAL_BR = 8};
 
@@ -523,7 +523,7 @@ class BPLdbp : public BPred {
 
       int update_doc(AddrType _tag, bool doc_miss, bool outcome) {
         //extract current outcome here
-        int max_counter = 8;
+        int max_counter = 7;
         int conf_pred = 0;
 
         if(!doc_miss) {
@@ -537,12 +537,12 @@ class BPLdbp : public BPred {
         if(outcome == true) {
           if(taken < max_counter)
             taken++;
-          if(ntaken > 0)
+          else if(ntaken > 0)
             ntaken--;
         }else {
           if(ntaken < max_counter)
             ntaken++;
-          if(taken > 0)
+          else if(taken > 0)
             taken--;
         }
         return conf_pred;
@@ -565,8 +565,9 @@ class BPLdbp : public BPred {
     //std::vector<data_outcome_correlator> doc_table;
 
     int outcome_doc(DInst *dinst, AddrType _tag, bool outcome) {
-      AddrType t         = (_tag >> 7) & 0x7F; //upper 7 bits for tag
-      int index          = _tag & 0x7F;  //lower 7 bits for index
+      //tag is 2n bits
+      AddrType t         = (_tag >> (int)log2(DOC_SIZE)) & (DOC_SIZE - 1); //upper n bits for tag
+      int index          = _tag & (DOC_SIZE - 1);  //lower n bits for index
       if(doc_table[index].tag == t) {
         //MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d conf=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken, doc_table[index].doc_compute());
         return doc_table[index].update_doc(t, false, outcome);

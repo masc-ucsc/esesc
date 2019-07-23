@@ -470,7 +470,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return NoPrediction;
   }
 
-  if(dinst->getLBType() == 1 || dinst->getLBType() == 10) {
+  if(dinst->getLBType() == 1 || dinst->getLBType() == 5 || dinst->getLBType() == 10) {
     //MSG("TYPE%d@br",dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
 #if 0
@@ -479,7 +479,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
 #endif
   }else if(dinst->getLBType() == 2 || dinst->getLBType() == 9) { //FIXME should type9 be in prev if block???
     //MSG("TYPE%d@br", dinst->getLBType());
-    ptaken = outcome_calculator(br_op, dinst->getBrData2(), dinst->getBrData1());
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
 #if 0
     if(ptaken == taken)
       MSG("OC@type2 correct prediction");
@@ -487,11 +487,14 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   }else if(dinst->getLBType() == 3 || dinst->getLBType() == 4 || dinst->getLBType() == 7 || dinst->getLBType() == 8) {
     //MSG("TYPE%d@br", dinst->getLBType());
     DataType reg2 = dinst->getData2();
+    int dep_depth = dinst->getDepDepth();
     if(dinst->getLBType() == 4 || dinst->getLBType() == 7)
       reg2 = dinst->getData(); //FIXME: src reg2 or data2???
 #if 1
     //doc_table has 128 entries - pick a 14 bit tag+index
-    AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2) & 0x3FFF; //FIXME - tag must be hash(brpc, datasign(BrData1))
+    //AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2 ^ dep_depth) & (0x3FFF); //FIXME - tag must be hash(brpc, datasign(BrData1))
+    AddrType tt = ((DOC_SIZE - 1) << (int)log2(DOC_SIZE) | (DOC_SIZE - 1));
+    AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2 ^ dep_depth) & tt; //FIXME - tag must be hash(brpc, datasign(BrData1))
     int conf = outcome_doc(dinst, doc_tag, taken);
     if(conf == 2)
       ptaken = false;
@@ -510,13 +513,13 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
 #if 0
   if(taken == ptaken) {
-    MSG("TRIGGER@correct_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d br1=%u br2=%u d1=%u d2=%u ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
+    MSG("TRIGGER@correct_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d dep_dep=%d br1=%u br2=%u d1=%u d2=%u ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
   }
 #endif
 
   if(taken != ptaken) {
 #if 0
-    MSG("TRIGGER@mis_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d br1=%u br2=%u d1=%u d2=%u ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
+    MSG("TRIGGER@mis_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d dep_dep=%d br1=%u br2=%u d1=%u d2=%u ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
 #endif
     if(doUpdate)
       btb.updateOnly(dinst);
@@ -1745,12 +1748,12 @@ PredType BPredictor::predict2(DInst *dinst) {
   nMiss2.inc(p == MissPrediction && dinst->getStatsFlag());
   nNoPredict2.inc(p == NoPrediction && dinst->getStatsFlag());
 
-#if 0
+#if 1
   if(p != CorrectPrediction) {
-    MSG("tage_mispred clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
-    dinst->setBranchMiss_tage();
+    //MSG("tage_mispred clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
+    dinst->setBranchMiss_level2();
   }else{
-    MSG("tage_correct clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
+    //MSG("tage_correct clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
   }
 #endif
   return p;

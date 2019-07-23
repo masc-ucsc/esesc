@@ -55,8 +55,8 @@ class MemRequest;
 #define PSIGN_INDIRECT 5
 #define PSIGN_CHASE 6
 #define PSIGN_MEGA 7
-#define CIR_QUEUE_WINDOW 128 //FIXME: need to change this to a conf variable
-#define BOT_SIZE 32
+#define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
+#define BOT_SIZE 512 //32
 #define LDBUFF_SIZE 512
 //#define ENABLE_LDBP
 
@@ -98,6 +98,7 @@ public:
       for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
         set_flag[i]  = 0;
         ldbr_type[i] = 0;
+        dep_depth[i] = 0;
         trig_addr[i] = 0;
       }
     }
@@ -111,6 +112,7 @@ public:
     int retire_count;
     std::vector<int> set_flag  = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<int> ldbr_type = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<int> dep_depth = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<AddrType> trig_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
   };
 
@@ -123,7 +125,7 @@ public:
       delta        = 0;
       for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
         req_addr[i]  = 0;
-        req_data[i]  = 0;
+        //req_data[i]  = 0;
         marked[i]    = false;
         valid[i]     = false;
       }

@@ -224,7 +224,8 @@ void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrTyp
 
 void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
   AddrType delta      = mreq->getDelta();
-  AddrType ldbr       = mreq->getLBType();
+  int ldbr       = mreq->getLBType();
+  int depth       = mreq->getDepDepth();
   AddrType brpc       = mreq->getDepPC();
   AddrType req_addr   = mreq->getAddr();
   int bot_idx         = hit_on_bot(brpc);
@@ -249,6 +250,7 @@ void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
       if(q_idx <= CIR_QUEUE_WINDOW - 1) {
         cir_queue[bot_idx].set_flag[q_idx]  = 1;
         cir_queue[bot_idx].ldbr_type[q_idx] = ldbr;
+        cir_queue[bot_idx].dep_depth[q_idx] = depth;
         cir_queue[bot_idx].trig_addr[q_idx] = req_addr;
         fill_ldbuff_mem(brpc, saddr, eaddr, del, req_addr, q_idx);
         // move this entry to LRU position

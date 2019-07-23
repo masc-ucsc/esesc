@@ -174,7 +174,9 @@ private:
   bool loadForwarded;
   bool replay;
   bool branchMiss;
-  bool branchMiss_tage;
+  bool branchMiss_level1;
+  bool branchMiss_level2;
+  bool branchMiss_level3;
 
   bool performed;
 
@@ -202,6 +204,7 @@ private:
   DataType br_data1;
   DataType br_data2;
   int ld_br_type;
+  int dep_depth;
   int      chained;
   //BR stats
   AddrType brpc;
@@ -241,7 +244,9 @@ private:
     serializeEntry  = 0;
     fetch           = 0;
     branchMiss      = false;
-    branchMiss_tage = false;
+    branchMiss_level1 = false;
+    branchMiss_level2 = false;
+    branchMiss_level3 = false;
     gproc           = 0;
     SSID            = -1;
     conflictStorePC = 0;
@@ -338,6 +343,7 @@ public:
     i->br_data1  = 0;
     i->br_data2  = 0;
     i->ld_br_type = 0;
+    i->dep_depth = 0;
     i->ldpc      = 0;
     i->ld_addr   = 0;
     i->base_pref_addr   = 0;
@@ -384,11 +390,19 @@ public:
   }
 
   static DataSign calcDataSign(int64_t data);
-  
+
+  int getDepDepth() const {
+    return dep_depth;
+  }
+
+  void setDepDepth(int d) {
+    dep_depth = d;
+  }
+
   int getLBType() const {
     return ld_br_type;
   }
-  
+
   void setLBType(int lb) {
     ld_br_type = lb;
   }
@@ -400,7 +414,7 @@ public:
   DataType getBrData2() const {
     return br_data2;
   }
-  
+
   DataType getData() const {
     return data;
   }
@@ -556,12 +570,28 @@ public:
     fetched = globalClock;
   }
 
-  void setBranchMiss_tage() {
-    branchMiss_tage = true;
+  void setBranchMiss_level1() {
+    branchMiss_level1 = true;
   }
 
-  bool isBranchMiss_tage() const {
-    return branchMiss_tage;
+  bool isBranchMiss_level1() const {
+    return branchMiss_level1;
+  }
+
+  void setBranchMiss_level2() {
+    branchMiss_level2 = true;
+  }
+
+  bool isBranchMiss_level2() const {
+    return branchMiss_level2;
+  }
+
+  void setBranchMiss_level3() {
+    branchMiss_level3 = true;
+  }
+
+  bool isBranchMiss_level3() const {
+    return branchMiss_level3;
   }
 
   bool isBranchMiss() const {

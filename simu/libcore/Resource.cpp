@@ -491,6 +491,7 @@ StallCause FUStore::canIssue(DInst *dinst) {
           }
           if(st_addr == (idx * del + saddr)) { //check if st_addr exactly matches this entry in buff
             DL1->load_data_buffer[i].req_data[idx] = dinst->getData2();
+            DL1->load_data_buffer[i].valid[idx] = true;
             DL1->load_data_buffer[i].marked[idx] = true;
           }
         }

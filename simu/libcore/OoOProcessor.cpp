@@ -641,7 +641,7 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg) {
 #endif
 void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_index) {
 
-  uint64_t constant  = 8; //32;
+  uint64_t constant  = 4; //8; //32;
   uint64_t delta2    = max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
   //AddrType load_addr = 0;
   AddrType trigger_addr = 0;
@@ -652,6 +652,11 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
   AddrType end_addr  = ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1);
   //brpc_count         = lgt_table[lgt_index].br_ret_count;
   trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2);
+#if 0
+  if(dinst->getPC() == 0x23934) {
+    MSG("DEPTH clk=%u brpc=%llx d1=%u d2=%u ldbr=%d depth=%d", globalClock, dinst->getPC(), dinst->getData(), dinst->getData2(), lgt_table[lgt_index].ldbr_type, lgt_table[lgt_index].dep_depth);
+  }
+#endif
 #if 0
   MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u conf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, brpc_count, dinst->getPC());
 #endif
@@ -665,21 +670,21 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
   int lb_type = lgt_table[lgt_index].ldbr_type;
 
 #if 1
-  MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type);
+  MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth);
 #if 1
-  if(ldbp_delta != 0 && last_mem_lat > max_mem_lat) {
+  if(ldbp_delta != 0 && (last_mem_lat > max_mem_lat)) {
     diff_mem_lat = last_mem_lat - max_mem_lat + 6;
     for(int i = 1; i <= diff_mem_lat; i++) {
       trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2 + i);
       //MSG("TRIG_LD@2 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
-      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type);
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth);
     }
-  }else if(ldbp_delta != 0 && last_mem_lat < max_mem_lat) {
+  }else if(ldbp_delta != 0 && (last_mem_lat < max_mem_lat)) {
     diff_mem_lat = max_mem_lat - last_mem_lat + 6;
     for(int i = diff_mem_lat; i > 0; i--) {
       trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2 - i);
       //MSG("TRIG_LD@3 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, brpc_count, dinst->getPC());
-      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type);
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth);
     }
   }
 #endif
@@ -706,7 +711,7 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
     for(int i    = 0; i < LGT_SIZE; i++) {
       if(lgt_table[i].ldpc == ct_table[br_src1].ldpc && lgt_table[i].brpc == dinst->getPC()) { // hit
         lgt_hit = true;
-        lgt_table[i].lgt_br_hit(dinst, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type);
+        lgt_table[i].lgt_br_hit(dinst, ct_table[br_src1].ld_addr, ct_table[br_src1].ldbr_type, ct_table[br_src1].dep_depth);
         //brpc_count++;
         DL1->fill_retire_count_bot(dinst->getPC());
         /*if(ldbp_brpc != dinst->getPC()) {
@@ -716,7 +721,7 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
         DL1->setRetBrCount(brpc_count);
         //MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
         //MSG("I=%d", i);
-        if(lgt_table[i].ld_conf > 15) {
+        if(lgt_table[i].ld_conf > 7) {
 #if 0
           MSG("LGT_BR_HIT clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d r_count=%u", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, lgt_table[i].ldbr_type, brpc_count);
 #endif
@@ -782,7 +787,7 @@ void OoOProcessor::retire()
     }
 
     if(dinst->getInst()->getOpcode() == iAALU) { //if ALU hit on ldbp_retire_table
-      RegType alu_dst = dinst->getInst()->getDst1(); 
+      RegType alu_dst = dinst->getInst()->getDst1();
       RegType alu_src1 = dinst->getInst()->getSrc1();
       RegType alu_src2 = dinst->getInst()->getSrc2();
       if(ct_table[alu_dst].valid) {
@@ -816,6 +821,10 @@ void OoOProcessor::retire()
       //classify Br
       RegType br_src1 = dinst->getInst()->getSrc1();
       RegType br_src2 = dinst->getInst()->getSrc2();
+#if 0
+      if(dinst->getPC() == 0x19744)
+        MSG("TEST brpc=%llx ldpc1=%llx ldpc2=%llx ld_addr1=%u ld_addr2=%u", dinst->getPC(), ct_table[br_src1].ldpc, ct_table[br_src2].ldpc, ct_table[br_src1].ld_addr, ct_table[br_src2].ld_addr);
+#endif
 #if 1
       if(br_src2 == LREG_R0) {
         classify_ld_br_chain(dinst, br_src1, 1);//update CT on Br hit
@@ -955,6 +964,13 @@ void OoOProcessor::retire()
         dinst->getInst()->getDst1(), dinst->getInst()->getDst2(), dinst->getInst()->getSrc1(), dinst->getInst()->getOpcode(),
         dinst->getInst()->getSrc2(), dinst->getFetchedTime() - globalClock, dinst->getRenamedTime() - globalClock,
         dinst->getIssuedTime() - globalClock, dinst->getExecutedTime() - globalClock, globalClock - globalClock);
+#endif
+    // sjeng 2nd: if (dinst->getPC() == 0x1d46c || dinst->getPC() == 0x1d462)
+#if 0
+    if (dinst->getPC() == 0x10c96 || dinst->getPC() == 0x10c9a || dinst->getPC() == 0x10c9e)
+      MSG("TR %8lld %8llx R%-2d,R%-2d=R%-2d op=%-2d R%-2d  %lld %lld %lld", dinst->getID(), dinst->getPC(),
+          dinst->getInst()->getDst1(), dinst->getInst()->getDst2(), dinst->getInst()->getSrc1(), dinst->getInst()->getOpcode(),
+          dinst->getInst()->getSrc2(), dinst->getData(), dinst->getData2(), dinst->getAddr());
 #endif
 
 #if 0
