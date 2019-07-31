@@ -62,6 +62,9 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
     /* constructor {{{1 */
     : GOoOProcessor(gm, i)
     , MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay", i))
+#ifdef ENABLE_LDBP
+    , LGT_SIZE(SescConf->getInt("cpusimu", "lgt_size", i))
+#endif
     , RetireDelay(SescConf->getInt("cpusimu", "RetireDelay", i))
     , IFID(i, gm)
     , pipeQ(i)
@@ -641,10 +644,17 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg) {
 #endif
 void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_index) {
 
-  uint64_t constant  = 4; //8; //32;
+  uint64_t constant  = 0; //4; //8; //32;
   uint64_t delta2    = max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
   //AddrType load_addr = 0;
   AddrType trigger_addr = 0;
+
+  if(inflight_branch > 1 && inflight_branch <= 4)
+    constant = inflight_branch + 2;
+  else if(inflight_branch > 4 && inflight_branch <= 7)
+    constant = inflight_branch + 4;
+  else if(inflight_branch > 7)
+    constant = inflight_branch + 6;
 
   ldbp_ldpc          = lgt_table[lgt_index].ldpc;
   ldbp_delta         = lgt_table[lgt_index].ld_delta;
@@ -653,9 +663,7 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
   //brpc_count         = lgt_table[lgt_index].br_ret_count;
   trigger_addr       = ldbp_curr_addr + ldbp_delta*(inflight_branch + constant + delta2);
 #if 0
-  if(dinst->getPC() == 0x23934) {
-    MSG("DEPTH clk=%u brpc=%llx d1=%u d2=%u ldbr=%d depth=%d", globalClock, dinst->getPC(), dinst->getData(), dinst->getData2(), lgt_table[lgt_index].ldbr_type, lgt_table[lgt_index].dep_depth);
-  }
+  MSG("DEPTH clk=%u brpc=%llx d1=%u d2=%u ldbr=%d depth=%d", globalClock, dinst->getPC(), dinst->getData(), dinst->getData2(), lgt_table[lgt_index].ldbr_type, lgt_table[lgt_index].dep_depth);
 #endif
 #if 0
   MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%u max_lat=%u inf=%u conf=%u rc=%d brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, brpc_count, dinst->getPC());
@@ -821,7 +829,7 @@ void OoOProcessor::retire()
       //classify Br
       RegType br_src1 = dinst->getInst()->getSrc1();
       RegType br_src2 = dinst->getInst()->getSrc2();
-#if 0
+#if 1
       if(dinst->getPC() == 0x19744)
         MSG("TEST brpc=%llx ldpc1=%llx ldpc2=%llx ld_addr1=%u ld_addr2=%u", dinst->getPC(), ct_table[br_src1].ldpc, ct_table[br_src2].ldpc, ct_table[br_src1].ld_addr, ct_table[br_src2].ld_addr);
 #endif

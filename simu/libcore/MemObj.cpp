@@ -40,6 +40,7 @@
 #include "MemObj.h"
 #include "MemRequest.h"
 #include "SescConf.h"
+#include "string.h"
 /* }}} */
 
 #ifdef DEBUG
@@ -59,6 +60,9 @@ MemObj::MemObj(const char *sSection, const char *sName)
     /* constructor {{{1 */
     : section(sSection)
     , name(sName)
+#ifdef ENABLE_LDBP
+    , BOT_SIZE(SescConf->getInt(section, "bot_size"))
+#endif
     , id(id_counter++) {
   deviceType = SescConf->getCharPtr(section, "deviceType");
 
@@ -67,6 +71,9 @@ MemObj::MemObj(const char *sSection, const char *sName)
   firstLevelDL1 = false;
   // Create router (different objects may override the default router)
   router = new MRouter(this);
+  /*if(strcmp(section, "DL1_core") == 0){
+  }*/
+
 
 #ifdef DEBUG
   static std::set<const char *, Setltstr> usedNames;

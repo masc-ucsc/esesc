@@ -143,10 +143,10 @@ enum DataSign {
   DS_LTZ    = 34,
   DS_NE     = 35,
   DS_PTR    = 36,
-  DS_OPos   = 37,
-  DS_FIVE   = 38, //factor of 5
-  DS_POW    = 39, // n is 2^n
-  DS_MOD    = 40  // n%255 + (DS_V0...DS_N2 or DS_FIVE or DS_POW)
+  DS_FIVE   = 37, //factor of 5
+  DS_POW    = 38, // n is 2^n
+  DS_MOD    = 39,  // n%255 + (DS_V0...DS_N2 or DS_FIVE or DS_POW)
+  DS_OPos   = 40
 };
 
 class DInst {

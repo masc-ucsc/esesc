@@ -52,7 +52,7 @@
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
 //#define ENABLE_LDBP
-#define LGT_SIZE 512 //128
+//#define LGT_SIZE 512 //128
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -146,6 +146,7 @@ public:
 
 #ifdef ENABLE_LDBP
 
+  const int LGT_SIZE;
   void classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag);
 
   struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
@@ -160,6 +161,7 @@ public:
       is_li      = false;
       valid      = false;
       complex_br_set = false;
+      ld_data_conf = 0;
     }
 
     RegType dest_reg;
@@ -177,12 +179,18 @@ public:
     // 8->complex & 1 Li + 1 ALU & R2=Li  -> dep > 1 && R2 == is_li, R1 == ALU
     // 9->complex & 1 Li + 1 LD & R1=Li   -> dep == 1 && R1 == is_li, R2 == LD
     // 10->complex & 1 Li + 1 LD & R2=Li  -> dep == 1 && R2 == is_li, R1 == LD
-    // 11->simple & indirect FIXME???
+    // 11->double & 2 LDs                 -> dep == 1 && R1 == R2 == LD  // use outcome calc
+    // 12->double & 1 LD + 1 ALU          -> src1 == LD, src2 == ALU // similar to type 7
+    // 13->double & 1 ALU + 1 LD          -> src1 == ALU, src2 == LD //similar to type 8
     bool ldbr_set; //is ldbr set?
     bool simple; //does BR have only one Src operand
     bool is_li; //is one Br data dependent on a Li or Lui instruction
     bool valid;
     bool complex_br_set;
+    DataType ld_data;
+    DataType prev_ld_data;
+    uint64_t ld_data_conf;
+
 
     void ct_load_hit(DInst *dinst) { //add/reset entry on CT
       classify_table_entry(); // reset entries
@@ -193,6 +201,12 @@ public:
       ldbr_type = 0;
       valid     = true;
       complex_br_set = false;
+      prev_ld_data = ld_data;
+      ld_data   = dinst->getData();
+      if(ld_data == prev_ld_data)
+        ld_data_conf++;
+      else
+        ld_data_conf = ld_data_conf / 2;
     }
 
     void ct_br_hit(DInst *dinst, int reg_flag) {
@@ -267,6 +281,7 @@ public:
       ld_delta        = 0;
       prev_delta      = 0;
       ld_conf         = 0;
+      ld_data_conf    = 0;
       br_miss_ctr     = 0;
     }
 
@@ -283,6 +298,8 @@ public:
     uint64_t ld_delta;
     uint64_t prev_delta;
     uint64_t ld_conf;
+    DataType ld_data;
+    uint64_t ld_data_conf;
     int br_miss_ctr;
 
     void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr, int depth) {

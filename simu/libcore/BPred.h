@@ -64,7 +64,7 @@
 #include "SCTable.h"
 
 #define RAP_T_NT_ONLY 1
-#define DOC_SIZE 512 //128
+//#define DOC_SIZE 512 //128
 enum PredType { CorrectPrediction = 0, NoPrediction, NoBTBPrediction, MissPrediction };
 enum BrOpType { BEQ = 0, BNE = 1, BLT = 4, BGE = 5, BLTU = 6, BGEU = 7, ILLEGAL_BR = 8};
 
@@ -503,6 +503,9 @@ class BPLdbp : public BPred {
 #endif
 
   public:
+
+    const int DOC_SIZE;
+
     BPLdbp(int32_t i, const char *section, const char *sname);
     ~BPLdbp(){}
 
@@ -586,6 +589,7 @@ private:
   const int32_t id;
   const bool    SMTcopy;
   MemObj *      il1; // For prefetch
+  MemObj *      DL1; //
 
   BPRas *ras;
   BPred *pred1;
@@ -630,7 +634,7 @@ protected:
   PredType predict3(DInst *dinst);
 
 public:
-  BPredictor(int32_t i, MemObj *il1, BPredictor *bpred = 0);
+  BPredictor(int32_t i, MemObj *il1, MemObj *DL1, BPredictor *bpred = 0);
   ~BPredictor();
 
   static BPred *getBPred(int32_t id, const char *sname, const char *sec);

@@ -56,7 +56,7 @@ class MemRequest;
 #define PSIGN_CHASE 6
 #define PSIGN_MEGA 7
 #define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
-#define BOT_SIZE 512 //32
+//#define BOT_SIZE 512 //32
 #define LDBUFF_SIZE 512
 //#define ENABLE_LDBP
 
@@ -80,11 +80,15 @@ protected:
   void addUpperLevel(MemObj *obj);
 
 public:
+
+
   MemObj(const char *section, const char *sName);
   MemObj();
   virtual ~MemObj();
 
 #ifdef ENABLE_LDBP
+  const int BOT_SIZE;
+
   struct bot_entry {
     bot_entry() {
       brpc         = 0;

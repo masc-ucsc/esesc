@@ -418,13 +418,16 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
 BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname)
     : BPred(i, section, sname, "ldbp")
-    , btb(i, section, sname) {
+    , btb(i, section, sname)
+    , DOC_SIZE(SescConf->getInt(section, "doc_size")) {
   // Constraints
   SescConf->isInt(section, "size");
   SescConf->isPower2(section, "size");
   SescConf->isGT(section, "size", 1);
 
   SescConf->isBetween(section, "bits", 1, 7);
+
+  SescConf->isPower2(section, "doc_size");
 
   // Done
 }
@@ -491,7 +494,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     if(dinst->getLBType() == 4 || dinst->getLBType() == 7)
       reg2 = dinst->getData(); //FIXME: src reg2 or data2???
 #if 1
-    //doc_table has 128 entries - pick a 14 bit tag+index
+    //doc_table has n entries - pick a log2(n) bit tag+index
     //AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2 ^ dep_depth) & (0x3FFF); //FIXME - tag must be hash(brpc, datasign(BrData1))
     AddrType tt = ((DOC_SIZE - 1) << (int)log2(DOC_SIZE) | (DOC_SIZE - 1));
     AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2 ^ dep_depth) & tt; //FIXME - tag must be hash(brpc, datasign(BrData1))
@@ -1552,10 +1555,11 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
   return pred;
 }
 
-BPredictor::BPredictor(int32_t i, MemObj *iobj, BPredictor *bpred)
+BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
     : id(i)
     , SMTcopy(bpred != 0)
     , il1(iobj)
+    , DL1(dobj)
     , nBTAC("P(%d)_BPred:nBTAC", id)
     , nBranches("P(%d)_BPred:nBranches", id)
     , nNoPredict("P(%d)_BPred:nNoPredict", id)
@@ -1749,10 +1753,12 @@ PredType BPredictor::predict2(DInst *dinst) {
   nNoPredict2.inc(p == NoPrediction && dinst->getStatsFlag());
 
 #if 1
-  if(p != CorrectPrediction) {
+  if(p == MissPrediction) {
     //MSG("tage_mispred clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
+    //DL1->fill_level2_hit_bot(dinst->getPC(), false);
     dinst->setBranchMiss_level2();
   }else{
+    //DL1->fill_level2_hit_bot(dinst->getPC(), true);
     //MSG("tage_correct clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
   }
 #endif
@@ -1770,6 +1776,12 @@ PredType BPredictor::predict3(DInst *dinst) {
 #if 0
   if(dinst->getDataSign() == DS_NoData)
     return NoPrediction;
+#endif
+
+#if 0
+  if(!dinst->isBranchMiss_level2()) {
+    return NoPrediction;
+  }
 #endif
 
   nBranches3.inc(dinst->getStatsFlag());
