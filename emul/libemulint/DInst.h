@@ -174,6 +174,12 @@ private:
   bool loadForwarded;
   bool replay;
   bool branchMiss;
+  bool use_level3; //use level3 bpred or not?
+  bool branch_hit2_miss3; //coorect pred by level 2 BP but misprediction by level 3 BP
+  bool branch_hit3_miss2; //coorect pred by level 3 BP but misprediction by level 2 BP
+  bool branchHit_level1;
+  bool branchHit_level2;
+  bool branchHit_level3;
   bool branchMiss_level1;
   bool branchMiss_level2;
   bool branchMiss_level3;
@@ -244,6 +250,12 @@ private:
     serializeEntry  = 0;
     fetch           = 0;
     branchMiss      = false;
+    use_level3 = false;
+    branch_hit2_miss3 = false;
+    branch_hit3_miss2 = false;
+    branchHit_level1 = false;
+    branchHit_level2 = false;
+    branchHit_level3 = false;
     branchMiss_level1 = false;
     branchMiss_level2 = false;
     branchMiss_level3 = false;
@@ -568,6 +580,54 @@ public:
 #endif
     I(!branchMiss);
     fetched = globalClock;
+  }
+
+  void setUseLevel3() {
+    use_level3 = true;
+  }
+
+  bool isUseLevel3() const {
+    return use_level3;
+  }
+
+  void setBranch_hit2_miss3() {
+    branch_hit2_miss3 = true;
+  }
+
+  bool isBranch_hit2_miss3() const {
+    return branch_hit2_miss3;
+  }
+
+  void setBranch_hit3_miss2() {
+    branch_hit3_miss2 = true;
+  }
+
+  bool isBranch_hit3_miss2() const {
+    return branch_hit3_miss2;
+  }
+
+  void setBranchHit_level1() {
+    branchHit_level1 = true;
+  }
+
+  bool isBranchHit_level1() const {
+    return branchHit_level1;
+  }
+
+  void setBranchHit_level2() {
+    branchHit_level2 = true;
+  }
+
+  bool isBranchHit_level2() const {
+    return branchHit_level2;
+  }
+
+  void setBranchHit_level3() {
+    branchHit_level3 = true;
+  }
+
+  bool isBranchHit_level3() const {
+    return branchHit_level3;
   }
 
   void setBranchMiss_level1() {

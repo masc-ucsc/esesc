@@ -109,7 +109,7 @@ uint16_t StrideAddressPredictor::exe_update(AddrType pc, AddrType addr, DataType
 uint16_t StrideAddressPredictor::ret_update(AddrType pc, AddrType addr, DataType data) {
   if(bimodal.get_conf(pc) > 16) //if conf > 16, the mark as prefetch
     return 1;
-  
+
   return 0;
 }
 

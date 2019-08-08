@@ -97,13 +97,24 @@ public:
       start_addr   = 0;
       end_addr     = 0;
       delta        = 0;
-      fetch_count  = 0;
-      retire_count = 0;
+      ldpc2         = 0;
+      req_addr2     = 0;
+      start_addr2   = 0;
+      end_addr2     = 0;
+      delta2        = 0;
+      fetch_count   = 0;
+      retire_count  = 0;
+      hit2_miss3    = 0;
+      hit3_miss2    = 0;
       for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
         set_flag[i]  = 0;
         ldbr_type[i] = 0;
         dep_depth[i] = 0;
         trig_addr[i] = 0;
+        set_flag2[i]  = 0;
+        ldbr_type2[i] = 0;
+        dep_depth2[i] = 0;
+        trig_addr2[i] = 0;
       }
     }
     AddrType brpc;
@@ -111,13 +122,26 @@ public:
     AddrType req_addr;
     AddrType start_addr;
     AddrType end_addr;
-    AddrType delta;
+    int64_t delta;
     int fetch_count;
     int retire_count;
+    int hit2_miss3;
+    int hit3_miss2;
     std::vector<int> set_flag  = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<int> ldbr_type = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<int> dep_depth = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<AddrType> trig_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+
+    //for LD2
+    AddrType ldpc2;
+    AddrType req_addr2;
+    AddrType start_addr2;
+    AddrType end_addr2;
+    int64_t delta2;
+    std::vector<int> set_flag2  = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<int> ldbr_type2 = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<int> dep_depth2 = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<AddrType> trig_addr2 = std::vector<AddrType>(CIR_QUEUE_WINDOW);
   };
 
   struct load_data_buffer_entry{
@@ -127,29 +151,42 @@ public:
       start_addr   = 0;
       end_addr     = 0;
       delta        = 0;
+      ldpc2         = 0;
+      start_addr2   = 0;
+      end_addr2     = 0;
+      delta2        = 0;
       for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
         req_addr[i]  = 0;
         //req_data[i]  = 0;
         marked[i]    = false;
         valid[i]     = false;
+        req_addr2[i]  = 0;
+        //req_data2[i]  = 0;
+        marked2[i]    = false;
+        valid2[i]     = false;
       }
     }
-    std::vector<AddrType> req_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
-    std::vector<DataType> req_data = std::vector<DataType>(CIR_QUEUE_WINDOW);
-    std::vector<bool> marked = std::vector<bool>(CIR_QUEUE_WINDOW);
-    std::vector<bool> valid  = std::vector<bool>(CIR_QUEUE_WINDOW);
     AddrType brpc;
     AddrType ldpc;
     AddrType start_addr;
     AddrType end_addr;
-    AddrType delta;
+    int64_t delta;
+    std::vector<AddrType> req_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+    std::vector<DataType> req_data = std::vector<DataType>(CIR_QUEUE_WINDOW);
+    std::vector<bool> marked = std::vector<bool>(CIR_QUEUE_WINDOW);
+    std::vector<bool> valid  = std::vector<bool>(CIR_QUEUE_WINDOW);
+    //for LD2
+    AddrType ldpc2;
+    AddrType start_addr2;
+    AddrType end_addr2;
+    int64_t delta2;
+    std::vector<AddrType> req_addr2 = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+    std::vector<DataType> req_data2 = std::vector<DataType>(CIR_QUEUE_WINDOW);
+    std::vector<bool> marked2 = std::vector<bool>(CIR_QUEUE_WINDOW);
+    std::vector<bool> valid2  = std::vector<bool>(CIR_QUEUE_WINDOW);
 
   };
 
-  AddrType q_start_addr;
-  AddrType q_end_addr;
-  uint64_t q_delta;
-  AddrType curr_dep_pc;
   bool zero_delta; //flag for mreq with delta == 0
   int ret_br_count;
 
@@ -160,18 +197,19 @@ public:
 
   //Load data buffer interface functions
   int hit_on_ldbuff(AddrType pc);
-  void fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, AddrType del, AddrType raddr, int q_idx);
-  void shift_load_data_buffer(AddrType pc);
+  void fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, int64_t del, AddrType raddr, int q_idx, int tl_type);
+  void shift_load_data_buffer(AddrType pc, int tl_type);
   void flush_ldbuff_mem(AddrType pc);
 
   //BOT interface functions
   void find_cir_queue_index(MemRequest *mreq, const char *str);
   int hit_on_bot(AddrType pc);
   void flush_bot_mem(int idx);
-  void shift_cir_queue(AddrType pc);
+  void shift_cir_queue(AddrType pc, int tl_type);
   void fill_fetch_count_bot(AddrType pc);
   void fill_retire_count_bot(AddrType pc);
-  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, AddrType del);
+  void fill_bpred_use_count_bot(AddrType pc, int _hit2_miss3, int _hit3_miss2);
+  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int tl_type);
 
   int getQSize() {
     return CIR_QUEUE_WINDOW;
@@ -185,14 +223,6 @@ public:
     return LDBUFF_SIZE;
   }
 
-  void setQDelta(uint64_t _delta) {
-    q_delta = _delta;
-  }
-
-  AddrType getQDelta() const {
-    return q_delta;
-  }
-
   void setRetBrCount(int cnt) {
     ret_br_count = cnt;
   }
@@ -201,21 +231,7 @@ public:
     return ret_br_count;
   }
 
-  void setQStartAddr(AddrType _addr) {
-    q_start_addr = _addr;
-  }
 
-  AddrType getQStartAddr() const {
-    return q_start_addr;
-  }
-
-  void setQEndAddr(AddrType _addr) {
-    q_end_addr = _addr;
-  }
-
-  AddrType getQEndAddr() const {
-    return q_end_addr;
-  }
 #endif
 
   const char *getSection() const {

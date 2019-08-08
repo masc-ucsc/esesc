@@ -123,6 +123,11 @@
 #define CSR_MIMPID          0xf13
 #define CSR_MHARTID         0xf14
 
+#ifdef CONFIG_ESESC
+#define CSR_ESESC_TOGGLE_ROI 0x214
+#define CSR_ESESC_FINISH     0x215
+#endif
+
 /* Machine Trap Setup */
 #define CSR_MSTATUS         0x300
 #define CSR_MISA            0x301

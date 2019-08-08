@@ -439,12 +439,14 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   return NoPrediction;
 #endif
 
+  if(!dinst->isUseLevel3())
+    return NoPrediction;
+
   if(dinst->getInst()->getOpcode() != iBALU_LBRANCH) //don't bother about jumps and calls
     return NoPrediction;
   //Not even faster branch
   //if(dinst->getInst()->isJump())
   //  return btb.predict(dinst, doUpdate, doStats);
-   
 
   const bool taken = dinst->isTaken();
   AddrType br_pc = dinst->getPC();
@@ -473,7 +475,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return NoPrediction;
   }
 
-  if(dinst->getLBType() == 1 || dinst->getLBType() == 5 || dinst->getLBType() == 10) {
+  if(dinst->getLBType() == 1 || dinst->getLBType() == 5 || dinst->getLBType() == 10 || dinst->getLBType() == 11) {
     //MSG("TYPE%d@br",dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
 #if 0
@@ -487,11 +489,11 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     if(ptaken == taken)
       MSG("OC@type2 correct prediction");
 #endif
-  }else if(dinst->getLBType() == 3 || dinst->getLBType() == 4 || dinst->getLBType() == 7 || dinst->getLBType() == 8) {
+  }else if(dinst->getLBType() == 3 || dinst->getLBType() == 4 || dinst->getLBType() == 7 || dinst->getLBType() == 8 || dinst->getLBType() == 12 || dinst->getLBType() == 13) {
     //MSG("TYPE%d@br", dinst->getLBType());
     DataType reg2 = dinst->getData2();
     int dep_depth = dinst->getDepDepth();
-    if(dinst->getLBType() == 4 || dinst->getLBType() == 7)
+    if(dinst->getLBType() == 4 || dinst->getLBType() == 7 || dinst->getLBType() == 12)
       reg2 = dinst->getData(); //FIXME: src reg2 or data2???
 #if 1
     //doc_table has n entries - pick a log2(n) bit tag+index
@@ -1752,16 +1754,6 @@ PredType BPredictor::predict2(DInst *dinst) {
   nMiss2.inc(p == MissPrediction && dinst->getStatsFlag());
   nNoPredict2.inc(p == NoPrediction && dinst->getStatsFlag());
 
-#if 1
-  if(p == MissPrediction) {
-    //MSG("tage_mispred clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
-    //DL1->fill_level2_hit_bot(dinst->getPC(), false);
-    dinst->setBranchMiss_level2();
-  }else{
-    //DL1->fill_level2_hit_bot(dinst->getPC(), true);
-    //MSG("tage_correct clk=%u id=%u brpc=%llx out=%d", globalClock, dinst->getID(), dinst->getPC(), p);
-  }
-#endif
   return p;
 }
 
@@ -1874,23 +1866,53 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
   int32_t bpred_total_delay = bpredDelay1 - 1;
 
 #if 1
+  if(outcome1 != CorrectPrediction) {
+    dinst->setBranchMiss_level1();
+  }else {
+    dinst->setBranchHit_level1();
+  }
+
+  if(outcome2 != CorrectPrediction) {
+    dinst->setBranchMiss_level2();
+  }else {
+    dinst->setBranchHit_level2();
+    if(outcome3 == MissPrediction || outcome3 == NoBTBPrediction)
+      dinst->setBranch_hit2_miss3();
+  }
+
+  if(outcome3 == MissPrediction || outcome3 == NoBTBPrediction) {
+    dinst->setBranchMiss_level3();
+  }else if(outcome3 == CorrectPrediction) {
+    dinst->setBranchHit_level3();
+    if(outcome2 != CorrectPrediction)
+      dinst->setBranch_hit3_miss2();
+  }
+#endif
+
+#if 1
   if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 == NoPrediction || outcome2 == NoBTBPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction || outcome3 == NoBTBPrediction)) {
 
     I(bpredDelay1<=bpredDelay3);
     nFixes1.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay1 - 1;
 
-  }else if(outcome1 != CorrectPrediction && outcome3 == CorrectPrediction) {
+  }else if(/*outcome1 != CorrectPrediction && */outcome3 == CorrectPrediction) {
 
     I(bpredDelay3<=bpredDelay2);
     nFixes3.inc(dinst->getStatsFlag());
     bpred_total_delay = bpredDelay3 - 1;
 
-  }else if(outcome1 != CorrectPrediction && outcome2 == CorrectPrediction && outcome3 != CorrectPrediction) {
+  }else if(/*outcome1 != CorrectPrediction && outcome3 != CorrectPrediction && */outcome2 == CorrectPrediction) {
 
-    nFixes2.inc(dinst->getStatsFlag());
-    bpred_total_delay = bpredDelay2 - 1;
-
+    if(outcome1 != CorrectPrediction) {
+      if(outcome3 == CorrectPrediction) {
+        nFixes3.inc(dinst->getStatsFlag());
+        bpred_total_delay = bpredDelay3 - 1;
+      }else if(outcome3 == NoPrediction || outcome3 == NoBTBPrediction) {
+        nFixes2.inc(dinst->getStatsFlag());
+        bpred_total_delay = bpredDelay2 - 1;
+      }
+    }
   } else {
     I(outcome3 != CorrectPrediction || (outcome2 == MissPrediction && outcome3 == NoPrediction) || (outcome1 != CorrectPrediction && outcome2 == NoPrediction && outcome3 == NoPrediction));
 

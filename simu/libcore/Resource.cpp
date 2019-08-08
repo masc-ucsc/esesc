@@ -483,16 +483,30 @@ StallCause FUStore::canIssue(DInst *dinst) {
       for(int i = 0; i < DL1->getLdBuffSize(); i++) {
         AddrType saddr = DL1->load_data_buffer[i].start_addr;
         AddrType eaddr = DL1->load_data_buffer[i].end_addr;
-        AddrType del   = DL1->load_data_buffer[i].delta;
+        int64_t del    = DL1->load_data_buffer[i].delta;
         if(st_addr >= saddr && st_addr <= eaddr) {
           int idx        = 0;
           if(del != 0) {
-            idx = (st_addr - saddr) / del;
+            idx = abs((int)(st_addr - saddr) / del);
           }
           if(st_addr == (idx * del + saddr)) { //check if st_addr exactly matches this entry in buff
             DL1->load_data_buffer[i].req_data[idx] = dinst->getData2();
             DL1->load_data_buffer[i].valid[idx] = true;
             DL1->load_data_buffer[i].marked[idx] = true;
+          }
+        }
+        AddrType saddr2 = DL1->load_data_buffer[i].start_addr2;
+        AddrType eaddr2 = DL1->load_data_buffer[i].end_addr2;
+        int64_t del2   = DL1->load_data_buffer[i].delta2;
+        if(st_addr >= saddr2 && st_addr <= eaddr2) {
+          int idx2        = 0;
+          if(del2 != 0) {
+            idx2 = abs((int)(st_addr - saddr2) / del2);
+          }
+          if(st_addr == (idx2 * del2 + saddr2)) { //check if st_addr exactly matches this entry in buff
+            DL1->load_data_buffer[i].req_data2[idx2] = dinst->getData2();
+            DL1->load_data_buffer[i].valid2[idx2] = true;
+            DL1->load_data_buffer[i].marked2[idx2] = true;
           }
         }
       }

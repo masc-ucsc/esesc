@@ -148,6 +148,11 @@ public:
 
   const int LGT_SIZE;
   void classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag);
+  void classify_ld_br_double_chain(DInst *dinst, RegType br_src1, RegType br_src2, int reg_flag);
+  void ct_br_hit_double(DInst *dinst, RegType b1, RegType b2, int reg_flag);
+  void lgt_br_miss_double(DInst *dinst, RegType b1, RegType b2);
+  void lgt_br_hit_double(DInst *dinst, RegType b1, RegType b2, int idx);
+  void generate_trigger_load(DInst *dinst, RegType reg, int lgt_index, int tl_type);
 
   struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
     classify_table_entry(){
@@ -212,7 +217,7 @@ public:
     void ct_br_hit(DInst *dinst, int reg_flag) {
       simple = false;
       if(ldbr_type > 0)
-        ldbr_set = true;
+        ldbr_set = true; //unused
       if(dinst->getInst()->getSrc1() == 0 || dinst->getInst()->getSrc2() == 0) {
         simple = true;
       }
@@ -271,6 +276,10 @@ public:
       ldpc            = 0;
       start_addr      = 0;
       end_addr        = 0;
+      //ld_delta        = 0;
+      //prev_delta      = 0;
+      ld_conf         = 0;
+      ld_data_conf    = 0;
       inf_branch      = 0;
       brpc            = 0;
       brop            = ILLEGAL_BR;
@@ -278,31 +287,51 @@ public:
       br_outcome      = false;
       ldbr_type       = 0;
       dep_depth       = 0;
-      ld_delta        = 0;
-      prev_delta      = 0;
-      ld_conf         = 0;
-      ld_data_conf    = 0;
       br_miss_ctr     = 0;
+      hit2_miss3      = 0;
+      hit3_miss2      = 0;
+
+      //LD2 fields
+      ldpc2            = 0;
+      start_addr2      = 0;
+      end_addr2        = 0;
+      ld_conf2         = 0;
+      ld_data_conf2    = 0;
+      dep_depth2       = 0;
     }
 
     AddrType ldpc;
     AddrType start_addr;
     AddrType end_addr;
-    uint64_t inf_branch;  //number of inflight branches
-    AddrType brpc;
-    BrOpType brop;
-    DataType br_data2; // Br's operand which is not dependent on LD(could be src1 or src2)
-    bool br_outcome;
-    int ldbr_type;
-    int dep_depth;
-    uint64_t ld_delta;
-    uint64_t prev_delta;
+    int64_t ld_delta;
+    int64_t prev_delta;
     uint64_t ld_conf;
     DataType ld_data;
     uint64_t ld_data_conf;
+
+    int64_t inf_branch;  //number of inflight branches
+    AddrType brpc;
+    BrOpType brop;
+    DataType br_data2; // Br's operand which is not dependent on LD(could be src1 or src2)
+    int hit2_miss3; //hit in level2 BP, miss in level 3
+    int hit3_miss2; // hit in level 3 BP, miss in level 2
+    bool br_outcome;
+    int ldbr_type;
+    int dep_depth;
     int br_miss_ctr;
 
-    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr, int depth) {
+    //for LD2
+    AddrType ldpc2;
+    AddrType start_addr2;
+    AddrType end_addr2;
+    int64_t ld_delta2;
+    int64_t prev_delta2;
+    uint64_t ld_conf2;
+    DataType ld_data2;
+    uint64_t ld_data_conf2;
+    int dep_depth2;
+
+    void lgt_br_hit(DInst *dinst, AddrType ld_addr, DataType data, uint64_t data_conf, int ldbr, int depth) {
       //if(!ldbr_set) {
       prev_delta = ld_delta;
       ld_delta   = ld_addr - start_addr;
@@ -312,16 +341,20 @@ public:
       }else {
         ld_conf = ld_conf / 2;
       }
+      ld_data      = data;
+      ld_data_conf = data_conf;
       ldbr_type  = ldbr;
       dep_depth  = depth;
       lgt_update_br_fields(dinst);
       //ldbr_set = false;
     }
 
-    void lgt_br_miss(DInst *dinst, AddrType _ldpc, AddrType ld_addr, int ldbr) {
+    void lgt_br_miss(DInst *dinst, AddrType _ldpc, AddrType ld_addr, DataType data, uint64_t data_conf, int ldbr) {
       ldpc       = _ldpc;
       start_addr = ld_addr;
       ldbr_type  = ldbr;
+      ld_data      = data;
+      ld_data_conf = data_conf;
       lgt_update_br_fields(dinst);
       //MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d", globalClock, ldpc, start_addr, ld_delta, prev_delta, ld_conf, brpc, ldbr_type);
     }
@@ -329,12 +362,26 @@ public:
     void lgt_update_br_fields(DInst *dinst) {
       brpc            = dinst->getPC();
       inf_branch      = dinst->getInflight(); //FIXME use dinst->getInflight() instead of variable
+#if 0
       if(dinst->isBranchMiss_level2()) {
         if(br_miss_ctr < 7)
           br_miss_ctr++;
       }else{
         if(br_miss_ctr > 0)
           br_miss_ctr--;
+      }
+#endif
+      if(dinst->isBranch_hit2_miss3()) {
+        if(hit2_miss3 < 7)
+          hit2_miss3++;
+      }else {
+        if(hit2_miss3 > 0)
+          hit2_miss3--;
+      }
+      if(dinst->isBranch_hit3_miss2()) {
+        hit3_miss2++;
+        if(hit2_miss3 > 0)
+          hit2_miss3--;
       }
     }
 
@@ -347,37 +394,14 @@ public:
   AddrType ldbp_brpc;
   AddrType ldbp_ldpc;
   AddrType ldbp_curr_addr;
-  AddrType ldbp_start_addr;
-  AddrType ldbp_end_addr;
-  uint64_t ldbp_delta;
-  int brpc_count; //MATCH THIS COUNT WITH VEC_INDEX
-  uint64_t inflight_branch;
-  bool ldbp_reset;
-  Time_t avg_mem_lat;
-  Time_t total_mem_lat;
+  int64_t ldbp_delta;
+  int64_t inflight_branch;
   Time_t max_mem_lat;
   Time_t last_mem_lat;
   Time_t diff_mem_lat;
   int num_mem_lat;
   std::vector<Time_t> mem_lat_vec = std::vector<Time_t>(10);
 
-  //std::vector<int> ldbp_vector = std::vector<int>(LDBP_VEC_SIZE);
-
-  void generate_trigger_load(DInst *dinst, RegType reg, int lgt_index);
-  void ldbp_reset_field(){
-    ldbp_curr_addr      = 0;
-    ldbp_start_addr      = 0;
-    ldbp_end_addr        = 0;
-    ldbp_delta           = 0;
-    ldbp_brpc            = 0;
-    ldbp_ldpc            = 0;
-    ldbp_reset           = true;
-    brpc_count           = 0;
-
-    //for(int i = 0; i < LDBP_VEC_SIZE; i++) {
-    //  ldbp_vector[i] = 0;
-    //}
-  }
 
 #endif
 

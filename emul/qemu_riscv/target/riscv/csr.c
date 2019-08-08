@@ -23,6 +23,30 @@
 #include "qemu/main-loop.h"
 #include "exec/exec-all.h"
 
+#ifdef CONFIG_ESESC
+
+extern volatile long long int icount;
+
+static int csr_esesc_toggle_roi(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    CPUState *cpu       = ENV_GET_CPU(env);
+
+    icount = 0;
+    QEMUReader_start_roi(cpu->fid);
+    return *val = 0;
+}
+
+static int csr_esesc_finish(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    CPUState *cpu       = ENV_GET_CPU(env);
+
+    icount = 0;
+    QEMUReader_finish(cpu->fid);
+
+    return *val = 0;
+}
+#endif
+
 /* CSR function table */
 
 static riscv_csr_operations csr_ops[];
@@ -868,6 +892,11 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_MARCHID] =             { any,  read_zero                           },
     [CSR_MIMPID] =              { any,  read_zero                           },
     [CSR_MHARTID] =             { any,  read_mhartid                        },
+
+#ifdef CONFIG_ESESC
+    [CSR_ESESC_TOGGLE_ROI] =    { any,  csr_esesc_toggle_roi                },
+    [CSR_ESESC_FINISH] =        { any,  csr_esesc_finish                    },
+#endif
 
     /* Machine Trap Setup */
     [CSR_MSTATUS] =             { any,  read_mstatus,     write_mstatus     },
