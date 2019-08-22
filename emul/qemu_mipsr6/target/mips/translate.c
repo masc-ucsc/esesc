@@ -3633,7 +3633,11 @@ static void gen_ld(DisasContext *ctx, uint32_t opc,
         break;
     }
 #ifdef CONFIG_ESESC
-    ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, cpu_gpr[rt], base, rt);
+    // FIXME: Should data be the final register value (cpu_gpr[rt]) or the value read from memory (t0)
+    TCGv_i64 data = (rt != 0) ? cpu_gpr[rt] : tcg_const_i64(0);
+    ESESC_TRACE_LOAD(ctx->base.pc_next,taddr, data, base, rt);
+    if (rt == 0)
+        tcg_temp_free_i64(data);
     tcg_temp_free(taddr);
 #endif
     tcg_temp_free(t0);
