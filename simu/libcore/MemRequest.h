@@ -115,6 +115,7 @@ protected:
 
   //trigger load params
   bool trigger_load; //flag to trigger load
+  bool ld_used; //
   AddrType base_addr;
   AddrType end_addr;
   AddrType dep_pc;
@@ -321,7 +322,7 @@ public:
     return mreq;
   }
 
-  static void triggerReqRead(MemObj *m, bool doStats, AddrType trig_addr, AddrType pc, AddrType _dep_pc, AddrType _start_addr, AddrType _end_addr, int64_t _delta, int64_t _inf, int _ld_br_type, int _depth, int tl_type, CallbackBase *cb = 0) {
+  static void triggerReqRead(MemObj *m, bool doStats, AddrType trig_addr, AddrType pc, AddrType _dep_pc, AddrType _start_addr, AddrType _end_addr, int64_t _delta, int64_t _inf, int _ld_br_type, int _depth, int tl_type, bool _ld_used, CallbackBase *cb = 0) {
     MemRequest *mreq   = createReqRead(m, doStats, trig_addr, pc, cb);
     mreq->trigger_load = true;
     mreq->dep_pc       = _dep_pc;
@@ -332,6 +333,7 @@ public:
     mreq->ld_br_type   = _ld_br_type;
     mreq->dep_depth    = _depth;
     mreq->tl_type      = tl_type;
+    mreq->ld_used      = _ld_used;
 #if 0
     MSG("TRIG_LD CREATED clk=%u ldpc=%llx brpc=%llx, trig_addr=%u ld_addr=%u del=%u ldbr=%d", globalClock, pc, _dep_pc, addr, _base_addr, _delta, _ld_br_type);
 #endif
@@ -392,6 +394,10 @@ public:
 
   bool isTriggerLoad() const {
     return trigger_load;
+  }
+
+  bool isLoadUsed() const {
+    return ld_used;
   }
 
   int getTLType() const {

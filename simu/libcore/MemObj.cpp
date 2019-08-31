@@ -43,6 +43,8 @@
 #include "string.h"
 /* }}} */
 
+extern "C" uint64_t esesc_mem_read(uint64_t addr);
+
 #ifdef DEBUG
 /* Debug class to search for duplicate names {{{1 */
 class Setltstr {
@@ -144,6 +146,7 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 /* }}} */
 
 #ifdef ENABLE_LDBP
+
 int MemObj::hit_on_ldbuff(AddrType pc) {
   //hit on ld_buff is start addr and end addr matches
   for(int i = 0; i < LDBUFF_SIZE; i++) {
@@ -161,17 +164,28 @@ int MemObj::hit_on_bot(AddrType pc) {
   return -1; //miss
 }
 
+void MemObj::fill_mv_stats(AddrType pc, DataType d1, DataType d2, int mv_out) {
+  int idx = hit_on_bot(pc);
+  if(idx != -1 && cir_queue[idx].br_mv_outcome == 0) { //hit on bot
+    cir_queue[idx].br_mv_outcome = mv_out;
+    cir_queue[idx].br_data1      = d1;
+    cir_queue[idx].br_data2      = d2;
+    return;
+  }
+}
+
 void MemObj::fill_fetch_count_bot(AddrType pc) {
   int idx = hit_on_bot(pc);
   if(idx != -1) { //hit on bot
     cir_queue[idx].fetch_count++;
-    return;
+    //return;
+  }else {
+    //insert entry into LRU postion (last index)
+    cir_queue.erase(cir_queue.begin());
+    cir_queue.push_back(bot_entry());
+    cir_queue[BOT_SIZE-1].brpc        = pc;
+    cir_queue[BOT_SIZE-1].fetch_count = 1;
   }
-  //insert entry into LRU postion (last index)
-  cir_queue.erase(cir_queue.begin());
-  cir_queue.push_back(bot_entry());
-  cir_queue[BOT_SIZE-1].brpc        = pc;
-  cir_queue[BOT_SIZE-1].fetch_count = 1;
 }
 
 void MemObj::fill_retire_count_bot(AddrType pc) {
@@ -180,11 +194,12 @@ void MemObj::fill_retire_count_bot(AddrType pc) {
     if(cir_queue[idx].fetch_count > cir_queue[idx].retire_count) {
       cir_queue[idx].retire_count++;
       return;
+    }else {
+      //reset fc and rc if rc > fc at any point
+      ////FIXME: should u also retire set_flag cir_queue here?????
+      cir_queue[idx].fetch_count = 0;
+      cir_queue[idx].retire_count = 0;
     }
-    //reset fc and rc if rc > fc at any point
-    ////FIXME: should u also retire set_flag cir_queue here?????
-    cir_queue[idx].fetch_count = 0;
-    cir_queue[idx].retire_count = 0;
   }
 }
 
@@ -235,7 +250,7 @@ void MemObj::fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, int64_t del,
 }
 
 #if 1
-void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int tl_type) {
+void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int lb_type, int tl_type) {
 /*
  * fill ret count, saddr, eaddr ,delta @retire and move entry to LRU; send trig_load req
  * @mem - if mreq addr is within [saddr, eaddr], then fill cir_queue
@@ -244,21 +259,29 @@ void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrTyp
   //must be a hit(bcos fc must be inserted @F). if miss, then don't do anything
   if(bot_idx != -1) {
     if(tl_type == 1) {
+      if(cir_queue[bot_idx].seq_start_addr == 0) {
+        cir_queue[bot_idx].seq_start_addr = saddr;
+      }
       cir_queue[bot_idx].ldpc       = ldpc;
       cir_queue[bot_idx].start_addr = saddr;
       cir_queue[bot_idx].end_addr   = eaddr;
       cir_queue[bot_idx].delta      = del;
+      cir_queue[bot_idx].ldbr       = lb_type;
     }else if(tl_type == 2) {
+      if(cir_queue[bot_idx].seq_start_addr2 == 0) {
+        cir_queue[bot_idx].seq_start_addr2 = saddr;
+      }
       cir_queue[bot_idx].ldpc2       = ldpc;
       cir_queue[bot_idx].start_addr2 = saddr;
       cir_queue[bot_idx].end_addr2   = eaddr;
       cir_queue[bot_idx].delta2      = del;
+      cir_queue[bot_idx].ldbr2       = lb_type;
     }
   }
 }
 #endif
 
-void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
+void MemObj::find_cir_queue_index(MemRequest *mreq) {
   int64_t delta      = mreq->getDelta();
   int ldbr            = mreq->getLBType();
   int depth           = mreq->getDepDepth();
@@ -299,11 +322,13 @@ void MemObj::find_cir_queue_index(MemRequest *mreq, const char *str) {
           cir_queue[bot_idx].ldbr_type[q_idx] = ldbr;
           cir_queue[bot_idx].dep_depth[q_idx] = depth;
           cir_queue[bot_idx].trig_addr[q_idx] = req_addr;
+          cir_queue[bot_idx].ld_used[q_idx]   = mreq->isLoadUsed();
         }else if(tl_type == 2) {
           cir_queue[bot_idx].set_flag2[q_idx]  = 1;
           cir_queue[bot_idx].ldbr_type2[q_idx] = ldbr;
           cir_queue[bot_idx].dep_depth2[q_idx] = depth;
           cir_queue[bot_idx].trig_addr2[q_idx] = req_addr;
+          cir_queue[bot_idx].ld_used2[q_idx]   = mreq->isLoadUsed();
         }
         fill_ldbuff_mem(brpc, saddr, eaddr, del, req_addr, q_idx, tl_type);
         // move this entry to LRU position
@@ -326,8 +351,35 @@ void MemObj::flush_ldbuff_mem(AddrType pc) {
 }
 
 void MemObj::flush_bot_mem(int idx) {
-  cir_queue.erase(cir_queue.begin() + idx);
-  cir_queue.push_back(bot_entry());
+  for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
+    cir_queue[idx].set_flag[i]  = 0;
+    cir_queue[idx].ld_used[i]  = 0;
+    cir_queue[idx].ldbr_type[i]  = 0;
+    cir_queue[idx].dep_depth[i]  = 0;
+    cir_queue[idx].trig_addr[i]  = 0;
+    cir_queue[idx].set_flag2[i]  = 0;
+    cir_queue[idx].ld_used2[i]  = 0;
+    cir_queue[idx].ldbr_type2[i]  = 0;
+    cir_queue[idx].dep_depth2[i]  = 0;
+    cir_queue[idx].trig_addr2[i]  = 0;
+  }
+  cir_queue[idx].fetch_count = 0;
+  cir_queue[idx].retire_count = 0;
+
+  cir_queue[idx].seq_start_addr = 0;
+  cir_queue[idx].start_addr = 0;
+  cir_queue[idx].end_addr = 0;
+  cir_queue[idx].req_addr = 0;
+  cir_queue[idx].ldpc     = 0;
+
+  cir_queue[idx].seq_start_addr2 = 0;
+  cir_queue[idx].start_addr2 = 0;
+  cir_queue[idx].end_addr2 = 0;
+  cir_queue[idx].req_addr2 = 0;
+  cir_queue[idx].ldpc2     = 0;
+
+  //cir_queue.erase(cir_queue.begin() + idx);
+  //cir_queue.push_back(bot_entry());
 }
 
 void MemObj::shift_cir_queue(AddrType pc, int tl_type) {

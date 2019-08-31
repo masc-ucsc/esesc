@@ -37,6 +37,7 @@
 #define MEMOBJ_H
 
 #include <vector>
+#include <queue>
 #include "DInst.h"
 #include "callback.h"
 
@@ -91,6 +92,8 @@ public:
 
   struct bot_entry {
     bot_entry() {
+      seq_start_addr = 0;
+      seq_start_addr2 = 0;
       brpc         = 0;
       ldpc         = 0;
       req_addr     = 0;
@@ -106,42 +109,68 @@ public:
       retire_count  = 0;
       hit2_miss3    = 0;
       hit3_miss2    = 0;
+      mv_type = 0;
+      br_mv_outcome = 0;
+      br_mv_init    = true;
+      ldbr  = 0;
+      ldbr2 = 0;
       for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
         set_flag[i]  = 0;
+        ld_used[i]   = false;
         ldbr_type[i] = 0;
         dep_depth[i] = 0;
         trig_addr[i] = 0;
         set_flag2[i]  = 0;
+        ld_used2[i]   = false;
         ldbr_type2[i] = 0;
         dep_depth2[i] = 0;
         trig_addr2[i] = 0;
+
       }
     }
-    AddrType brpc;
+    //LD fields'
+    AddrType seq_start_addr; //start addr of a sequence of LDs (is reset only when we flush on delta change)
     AddrType ldpc;
     AddrType req_addr;
-    AddrType start_addr;
-    AddrType end_addr;
+    AddrType start_addr; //start addr when TL is triggered (changes with each TL)
+    AddrType end_addr; //end addr when TL is triggered (changes with each TL)
     int64_t delta;
+    //
+    int ldbr;  //ldbr type
     int fetch_count;
     int retire_count;
     int hit2_miss3;
     int hit3_miss2;
+    //br fields
+    AddrType brpc;
+    DataType br_data1;
+    DataType br_data2;
+    int br_mv_outcome;
+    bool br_mv_init; //when this flag is false, LDBP doesn't swap data mandatorily
+    //mv stats
+    DataType mv_data;
+    int mv_type;
+    //circular queues
     std::vector<int> set_flag  = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<bool> ld_used  = std::vector<bool>(CIR_QUEUE_WINDOW);
     std::vector<int> ldbr_type = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<int> dep_depth = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<AddrType> trig_addr = std::vector<AddrType>(CIR_QUEUE_WINDOW);
 
     //for LD2
     AddrType ldpc2;
+    AddrType seq_start_addr2; //start addr of a sequence of LDs (is reset only when we flush on delta change)
     AddrType req_addr2;
     AddrType start_addr2;
     AddrType end_addr2;
     int64_t delta2;
+    int ldbr2;
     std::vector<int> set_flag2  = std::vector<int>(CIR_QUEUE_WINDOW);
+    std::vector<bool> ld_used2  = std::vector<bool>(CIR_QUEUE_WINDOW);
     std::vector<int> ldbr_type2 = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<int> dep_depth2 = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<AddrType> trig_addr2 = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+
   };
 
   struct load_data_buffer_entry{
@@ -202,14 +231,15 @@ public:
   void flush_ldbuff_mem(AddrType pc);
 
   //BOT interface functions
-  void find_cir_queue_index(MemRequest *mreq, const char *str);
+  void find_cir_queue_index(MemRequest *mreq);
   int hit_on_bot(AddrType pc);
   void flush_bot_mem(int idx);
   void shift_cir_queue(AddrType pc, int tl_type);
   void fill_fetch_count_bot(AddrType pc);
   void fill_retire_count_bot(AddrType pc);
   void fill_bpred_use_count_bot(AddrType pc, int _hit2_miss3, int _hit3_miss2);
-  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int tl_type);
+  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int lbtype, int tl_type);
+  void fill_mv_stats(AddrType pc, DataType d1, DataType d2, int mv_out);
 
   int getQSize() {
     return CIR_QUEUE_WINDOW;

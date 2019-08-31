@@ -161,12 +161,13 @@ public:
       ld_addr    = 0;
       dep_depth  = 0;
       ldbr_type  = 0;
-      ldbr_set   = false;
+      ld_used    = false;
       simple     = false;
       is_li      = false;
       valid      = false;
       complex_br_set = false;
-      ld_data_conf = 0;
+      mv_src    = LREG_R0;
+      mv_active = false;
     }
 
     RegType dest_reg;
@@ -187,15 +188,16 @@ public:
     // 11->double & 2 LDs                 -> dep == 1 && R1 == R2 == LD  // use outcome calc
     // 12->double & 1 LD + 1 ALU          -> src1 == LD, src2 == ALU // similar to type 7
     // 13->double & 1 ALU + 1 LD          -> src1 == ALU, src2 == LD //similar to type 8
-    bool ldbr_set; //is ldbr set?
+    // 14->Any type + mv to src2(src1->src2) -> if a mv instn swaps data(similar to qsort) Br src2 data = mv data
+    // 15->Any type + mv to src1(src2->src1) -> if a mv instn swaps data(similar to qsort) Br src1 data = mv data
+    bool ld_used; //is ld inst executed before the current dependent branch inst?
     bool simple; //does BR have only one Src operand
     bool is_li; //is one Br data dependent on a Li or Lui instruction
     bool valid;
     bool complex_br_set;
-    DataType ld_data;
-    DataType prev_ld_data;
-    uint64_t ld_data_conf;
-
+    //parameters to track move instructions
+    RegType mv_src; //source Reg of mv instruction
+    bool mv_active; //
 
     void ct_load_hit(DInst *dinst) { //add/reset entry on CT
       classify_table_entry(); // reset entries
@@ -205,19 +207,12 @@ public:
       dep_depth = 1;
       ldbr_type = 0;
       valid     = true;
+      ld_used   = true;
       complex_br_set = false;
-      prev_ld_data = ld_data;
-      ld_data   = dinst->getData();
-      if(ld_data == prev_ld_data)
-        ld_data_conf++;
-      else
-        ld_data_conf = ld_data_conf / 2;
     }
 
     void ct_br_hit(DInst *dinst, int reg_flag) {
       simple = false;
-      if(ldbr_type > 0)
-        ldbr_set = true; //unused
       if(dinst->getInst()->getSrc1() == 0 || dinst->getInst()->getSrc2() == 0) {
         simple = true;
       }
@@ -273,52 +268,63 @@ public:
 
   struct load_gen_table_entry {
     load_gen_table_entry() {
+      //ld fields
       ldpc            = 0;
       start_addr      = 0;
       end_addr        = 0;
       //ld_delta        = 0;
       //prev_delta      = 0;
       ld_conf         = 0;
-      ld_data_conf    = 0;
-      inf_branch      = 0;
-      brpc            = 0;
-      brop            = ILLEGAL_BR;
-      br_data2        = 0;
-      br_outcome      = false;
+      //
       ldbr_type       = 0;
       dep_depth       = 0;
+      //dump fields
       br_miss_ctr     = 0;
       hit2_miss3      = 0;
       hit3_miss2      = 0;
-
+      //br fields
+      inf_branch      = 0;
+      brpc            = 0;
+      brop            = ILLEGAL_BR;
+      br_outcome      = false;
+      br_mv_outcome   = 0;
       //LD2 fields
       ldpc2            = 0;
       start_addr2      = 0;
       end_addr2        = 0;
       ld_conf2         = 0;
-      ld_data_conf2    = 0;
       dep_depth2       = 0;
+
+      //mv stats
+      mv_type = 0;
     }
 
+    //ld vars
     AddrType ldpc;
     AddrType start_addr;
     AddrType end_addr;
     int64_t ld_delta;
     int64_t prev_delta;
     uint64_t ld_conf;
-    DataType ld_data;
-    uint64_t ld_data_conf;
+    //mv stats
+    DataType mv_data; // data from a mv inst
+    int mv_type; //0-> mv inactive, 1 = src1->Src2, 2 = src2->src1
 
+    //br fields
     int64_t inf_branch;  //number of inflight branches
     AddrType brpc;
     BrOpType brop;
-    DataType br_data2; // Br's operand which is not dependent on LD(could be src1 or src2)
-    int hit2_miss3; //hit in level2 BP, miss in level 3
-    int hit3_miss2; // hit in level 3 BP, miss in level 2
     bool br_outcome;
+    DataType br_data1;
+    DataType br_data2;
+    int br_mv_outcome; //0->N/A; 1->Not Taken; 2->Taken
+    //
     int ldbr_type;
     int dep_depth;
+    //stats/dump fields
     int br_miss_ctr;
+    int hit2_miss3; //hit in level2 BP, miss in level 3
+    int hit3_miss2; // hit in level 3 BP, miss in level 2
 
     //for LD2
     AddrType ldpc2;
@@ -327,12 +333,9 @@ public:
     int64_t ld_delta2;
     int64_t prev_delta2;
     uint64_t ld_conf2;
-    DataType ld_data2;
-    uint64_t ld_data_conf2;
     int dep_depth2;
 
-    void lgt_br_hit(DInst *dinst, AddrType ld_addr, DataType data, uint64_t data_conf, int ldbr, int depth) {
-      //if(!ldbr_set) {
+    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr, int depth) {
       prev_delta = ld_delta;
       ld_delta   = ld_addr - start_addr;
       start_addr = ld_addr;
@@ -341,20 +344,15 @@ public:
       }else {
         ld_conf = ld_conf / 2;
       }
-      ld_data      = data;
-      ld_data_conf = data_conf;
       ldbr_type  = ldbr;
       dep_depth  = depth;
       lgt_update_br_fields(dinst);
-      //ldbr_set = false;
     }
 
-    void lgt_br_miss(DInst *dinst, AddrType _ldpc, AddrType ld_addr, DataType data, uint64_t data_conf, int ldbr) {
-      ldpc       = _ldpc;
-      start_addr = ld_addr;
-      ldbr_type  = ldbr;
-      ld_data      = data;
-      ld_data_conf = data_conf;
+    void lgt_br_miss(DInst *dinst, AddrType _ldpc, AddrType ld_addr, int ldbr) {
+      ldpc         = _ldpc;
+      start_addr   = ld_addr;
+      ldbr_type    = ldbr;
       lgt_update_br_fields(dinst);
       //MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d", globalClock, ldpc, start_addr, ld_delta, prev_delta, ld_conf, brpc, ldbr_type);
     }
@@ -362,6 +360,17 @@ public:
     void lgt_update_br_fields(DInst *dinst) {
       brpc            = dinst->getPC();
       inf_branch      = dinst->getInflight(); //FIXME use dinst->getInflight() instead of variable
+      if(br_mv_outcome == 0) {
+        if(ldbr_type > 13) {
+          br_mv_outcome = 1; //swap data on BR not taken
+          if(br_outcome)
+            br_mv_outcome = 2; //swap data on BR taken
+        }
+      }
+      br_outcome      = dinst->isTaken();
+      br_data1        = dinst->getData();
+      br_data2        = dinst->getData2();
+
 #if 0
       if(dinst->isBranchMiss_level2()) {
         if(br_miss_ctr < 7)

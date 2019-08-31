@@ -505,12 +505,13 @@ class BPLdbp : public BPred {
   public:
 
     const int DOC_SIZE;
+    MemObj *DL1;
 
-    BPLdbp(int32_t i, const char *section, const char *sname);
+    BPLdbp(int32_t i, const char *section, const char *sname, MemObj *dl1 = 0);
     ~BPLdbp(){}
 
     PredType predict(DInst *dinst, bool doUpdate, bool doStats);
-    bool outcome_calculator(BrOpType br_op, uint64_t br_data1, uint64_t br_data2);
+    bool outcome_calculator(BrOpType br_op, DataType br_data1, DataType br_data2);
     BrOpType branch_type(AddrType brpc);
 
     struct data_outcome_correlator {
@@ -589,7 +590,7 @@ private:
   const int32_t id;
   const bool    SMTcopy;
   MemObj *      il1; // For prefetch
-  MemObj *      DL1; //
+  MemObj *      dl1; //
 
   BPRas *ras;
   BPred *pred1;
@@ -637,7 +638,7 @@ public:
   BPredictor(int32_t i, MemObj *il1, MemObj *DL1, BPredictor *bpred = 0);
   ~BPredictor();
 
-  static BPred *getBPred(int32_t id, const char *sname, const char *sec);
+  static BPred *getBPred(int32_t id, const char *sname, const char *sec, MemObj *dl1 = 0);
 
   void        fetchBoundaryBegin(DInst *dinst);
   void        fetchBoundaryEnd();

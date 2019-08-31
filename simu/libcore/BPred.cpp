@@ -386,7 +386,6 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return btb.predict(dinst, doUpdate, doStats);
 
   bool taken = dinst->isTaken();
-  
   uint64_t pc = dinst->getPC();
   //uint64_t raw_op = esesc_mem_read(pc);
   //checking if br data is working fine
@@ -416,7 +415,7 @@ PredType BP2bit::predict(DInst *dinst, bool doUpdate, bool doStats) {
  * BPTLdbp
  */
 
-BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname)
+BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname, MemObj *dl1)
     : BPred(i, section, sname, "ldbp")
     , btb(i, section, sname)
     , DOC_SIZE(SescConf->getInt(section, "doc_size")) {
@@ -428,6 +427,7 @@ BPLdbp::BPLdbp(int32_t i, const char *section, const char *sname)
   SescConf->isBetween(section, "bits", 1, 7);
 
   SescConf->isPower2(section, "doc_size");
+  DL1  = dl1;
 
   // Done
 }
@@ -439,8 +439,10 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   return NoPrediction;
 #endif
 
+#if 1
   if(!dinst->isUseLevel3())
     return NoPrediction;
+#endif
 
   if(dinst->getInst()->getOpcode() != iBALU_LBRANCH) //don't bother about jumps and calls
     return NoPrediction;
@@ -455,36 +457,52 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   BrOpType br_op = branch_type(br_pc);
   uint64_t raw_op = esesc_mem_read(br_pc);
 
-  //FIXME - add br opcode conditions for ldbp to perform prediction
-#if 0
-  if(!dinst->is_br_ld_chain())
-    return NoPrediction;
-
-  if(!dinst->is_br_ld_chain_predictable())
-    return NoPrediction;
-#endif
-
-#if 0
-  MSG("BR clk=%u brpc=%llx ldpc=%llx ld_br=%d br_opcode=%llx br_op=%d ld_data=%u d1=%u d2=%u correct_pred=%d ptaken=%d",
-    globalClock, dinst->getPC(),dinst->getLDPC(), dinst->getLBType(), (raw_op & 3), br_op, dinst->getData(),
-    dinst->getBrData1(), dinst->getBrData2(), ptaken==taken, ptaken);
-#endif
-
   if(dinst->getLBType() == 0){
-    //MSG("TYPE0");
     return NoPrediction;
   }
 
   if(dinst->getLBType() == 1 || dinst->getLBType() == 5 || dinst->getLBType() == 10 || dinst->getLBType() == 11) {
     //MSG("TYPE%d@br",dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+    if((dinst->getData() == dinst->getBrData1()) && (dinst->getData2() == dinst->getBrData2()) && (ptaken != taken)) {
+      ptaken = taken;
+    }
 #if 0
     if(ptaken == taken)
       MSG("OC@type1 correct prediction");
 #endif
+  }else if(dinst->getLBType() == 15) {
+    /*int idx = DL1->hit_on_bot(dinst->getPC());
+    if(DL1->cir_queue[idx].br_mv_init) {
+      DL1->cir_queue[idx].br_mv_init = false;
+      DL1->cir_queue[idx].br_data1   = dinst->getData();
+    }
+    if(taken == (DL1->cir_queue[idx].br_mv_outcome - 1)) {
+      DL1->cir_queue[idx].br_data1 = dinst->getData2();
+    }*/
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+    if((dinst->getData() == dinst->getBrData1()) && (dinst->getData2() == dinst->getBrData2()) && (ptaken != taken)) {
+      ptaken = taken;
+    }
+  }else if(dinst->getLBType() == 14) {
+    /*int idx = DL1->hit_on_bot(dinst->getPC());
+    if(DL1->cir_queue[idx].br_mv_init) {
+      DL1->cir_queue[idx].br_mv_init = false;
+      DL1->cir_queue[idx].br_data2   = dinst->getData2();
+    }
+    if(taken == (DL1->cir_queue[idx].br_mv_outcome - 1)) {
+      DL1->cir_queue[idx].br_data2 = dinst->getData();
+    }*/
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+    if((dinst->getData() == dinst->getBrData1()) && (dinst->getData2() == dinst->getBrData2()) && (ptaken != taken)) {
+      ptaken = taken;
+    }
   }else if(dinst->getLBType() == 2 || dinst->getLBType() == 9) { //FIXME should type9 be in prev if block???
     //MSG("TYPE%d@br", dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+    if((dinst->getData() == dinst->getBrData1()) && (dinst->getData2() == dinst->getBrData2()) && (ptaken != taken)) {
+      ptaken = taken;
+    }
 #if 0
     if(ptaken == taken)
       MSG("OC@type2 correct prediction");
@@ -518,13 +536,13 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
 #if 0
   if(taken == ptaken) {
-    MSG("TRIGGER@correct_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d dep_dep=%d br1=%u br2=%u d1=%u d2=%u ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
+    MSG("TRIGGER@correct_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d dep_dep=%d br1=%d br2=%d d1=%d d2=%d ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
   }
 #endif
 
   if(taken != ptaken) {
 #if 0
-    MSG("TRIGGER@mis_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d dep_dep=%d br1=%u br2=%u d1=%u d2=%u ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
+    MSG("TRIGGER@mis_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d br1=%d br2=%d d1=%d d2=%d ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
 #endif
     if(doUpdate)
       btb.updateOnly(dinst);
@@ -567,20 +585,28 @@ BrOpType BPLdbp::branch_type(AddrType br_pc) {
   return ILLEGAL_BR;
 }
 
-bool BPLdbp::outcome_calculator(BrOpType br_op, uint64_t br_data1, uint64_t br_data2) {
+bool BPLdbp::outcome_calculator(BrOpType br_op, DataType br_data1, DataType br_data2) {
   if(br_op == BEQ) {
-    if(br_data1 == br_data2)
+    if((int)br_data1 == (int)br_data2)
       return 1;
     return 0;
   }else if(br_op == BNE) {
-    if(br_data1 != br_data2)
+    if((int)br_data1 != (int)br_data2)
       return 1;
     return 0;
-  }else if(br_op == BLT || br_op == BLTU) {
+  }else if(br_op == BLT) {
+    if((int)br_data1 < (int)br_data2)
+      return 1;
+    return 0;
+  }else if(br_op == BLTU) {
     if(br_data1 < br_data2)
       return 1;
     return 0;
-  }else if(br_op == BGE || br_op == BGEU) {
+  }else if(br_op == BGE) {
+    if((int)br_data1 >= (int)br_data2)
+      return 1;
+    return 0;
+  }else if(br_op == BGEU) {
     if(br_data1 >= br_data2)
       return 1;
     return 0;
@@ -1513,7 +1539,7 @@ uint32_t LoopPredictor::getLoopIter(uint64_t key, uint64_t tag) const {
  * BPredictor
  */
 
-BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
+BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname, MemObj *DL1) {
   BPred *pred = 0;
 
   const char *type = SescConf->getCharPtr(sec, "type");
@@ -1544,7 +1570,7 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname) {
   } else if(strcasecmp(type, "tdata") == 0) {
     pred = new BPTData(id, sec, sname);
   } else if(strcasecmp(type, "ldbp") == 0) {
-    pred = new BPLdbp(id, sec, sname);
+    pred = new BPLdbp(id, sec, sname, DL1);
   } else if(strcasecmp(type, "sogehl") == 0) {
     pred = new BPSOgehl(id, sec, sname);
   } else {
@@ -1561,7 +1587,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
     : id(i)
     , SMTcopy(bpred != 0)
     , il1(iobj)
-    , DL1(dobj)
+    , dl1(dobj)
     , nBTAC("P(%d)_BPred:nBTAC", id)
     , nBranches("P(%d)_BPred:nBranches", id)
     , nNoPredict("P(%d)_BPred:nNoPredict", id)
@@ -1606,7 +1632,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
   bpredDelay1 = SescConf->getInt("cpusimu", "bpredDelay", id);
   //bpredDelay2 = SescConf->getInt("cpusimu", "bpredDelay2", id);
   //bpredDelay3 = SescConf->getInt("cpusimu", "bpredDelay3", id);
-  
+
   if(!(bpredDelay1 <= bpredDelay2 && bpredDelay2 <= bpredDelay3)) {
     MSG("ERROR: bpredDelay (%d) should be <= bpredDelay2 (%d) <= bpredDelay3 (%d)", bpredDelay1, bpredDelay2, bpredDelay3);
     //SescConf->notCorrect(); // FIXME - uncomment this line
@@ -1638,7 +1664,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
     if(bpredSection3) {
       if(bpredSectionMeta)
         meta = getBPred(id, bpredSectionMeta, "M");
-      pred3 = getBPred(id, bpredSection3, "3");
+      pred3 = getBPred(id, bpredSection3, "3", dl1);
     }
     if(bpredSection3 && !bpredSection2) {
       MSG("ERROR: bpred3 present and bpred2 missing. Not allowed");

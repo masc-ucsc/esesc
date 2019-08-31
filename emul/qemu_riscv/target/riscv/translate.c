@@ -326,7 +326,11 @@ static void gen_arith(DisasContext *ctx, uint32_t opc, int rd, int rs1,
 
     switch (opc) {
     CASE_OP_32_64(OPC_RISC_ADD):
-        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs1, rs2, rd);
+        if(opc == 51 && (rs1 == 0 || rs2 == 0)) { //MOV instruction
+          ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rs1, rs2, rd);
+        }else {
+          ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs1, rs2, rd);
+        }
         tcg_gen_add_tl(source1, source1, source2);
         break;
     CASE_OP_32_64(OPC_RISC_SUB):
@@ -595,7 +599,11 @@ static void gen_arith_imm(DisasContext *ctx, uint32_t opc, int rd,
 #if defined(TARGET_RISCV64)
     case OPC_RISC_ADDIW:
 #endif
-        ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs1, 0, rd);
+        if(opc == 19 && imm == 0 && (rs1 != 0)) {  //MOV instruction
+          ESESC_TRACE_ALU(ctx->base.pc_next, iRALU, rs1, 0, rd);
+        }else {
+          ESESC_TRACE_ALU(ctx->base.pc_next, iAALU, rs1, 0, rd);
+        }
         tcg_gen_addi_tl(source1, source1, imm);
         break;
     case OPC_RISC_SLTI:

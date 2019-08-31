@@ -55,6 +55,8 @@ extern bool MIMDmode;
 //#define SBPT_JUSTLAST 1
 //#define SBPT_JUSTDELTA0 1
 
+extern "C" uint64_t esesc_mem_read(uint64_t addr);
+
 FetchEngine::FetchEngine(FlowID id, GMemorySystem *gms_, FetchEngine *fe)
     : gms(gms_)
     , avgFetchLost("P(%d)_FetchEngine_avgFetchLost", id)
@@ -191,6 +193,21 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
 
   bool        fastfix;
   TimeDelta_t delay = bpred->predict(dinst, &fastfix);
+
+#ifdef ENABLE_LDBP
+  //update TYPE14 and TYPE15 Br's data after a flip outcome
+  int idx = DL1->hit_on_bot(dinst->getPC());
+  if(idx != -1) {
+    if(dinst->isTaken() == DL1->cir_queue[idx].br_mv_outcome - 1) {
+      if(DL1->cir_queue[idx].ldbr == 13 || DL1->cir_queue[idx].ldbr2 == 13 || DL1->cir_queue[idx].ldbr == 15 || DL1->cir_queue[idx].ldbr2 == 15) {
+        DL1->cir_queue[idx].br_data1 = dinst->getData2();
+      }else if(DL1->cir_queue[idx].ldbr == 12 || DL1->cir_queue[idx].ldbr2 == 12 || DL1->cir_queue[idx].ldbr == 14 || DL1->cir_queue[idx].ldbr2 == 14) {
+        DL1->cir_queue[idx].br_data2 = dinst->getData();
+      }
+    }
+  }
+#endif
+
 #ifdef ESESC_TRACE_DATA
   if(dinst->getDataSign() != DS_NoData) {
     oracleDataLast[dinst->getLDPC()].chain(); // getLDPC only works (hash otherwise) when there is a single ldpc
@@ -274,10 +291,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #ifdef ESESC_TRACE_DATA
     bool predictable = false;
 
-    /*if (dinst->getPC() == 0x1044c || dinst->getPC() == 0x1044e) {
-      dinst->dump("trace:");
-      MSG(" pc(%llx) = %lld %d", dinst->getPC(), dinst->getData(), dinst->getDataSign());
-    }*/
 
     // I(dinst->getPC() != 0x1001ec98ULL);
     /*if (dinst->getInst()->isLoad()) {
@@ -581,6 +594,10 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
             int ldbuff_idx = DL1->hit_on_ldbuff(dinst->getPC());
             int bot_q_idx  = (DL1->cir_queue[bot_idx].fetch_count - DL1->cir_queue[bot_idx].retire_count) % DL1->getQSize();
             int bot_q_idx2 = bot_q_idx;
+            //find cir_queue index
+            /*
+             *cir_queue_idx = (((Fc * del) - seq_start_addr) - (start_addr - seq_start_addr)) / del
+             * */
             int q_hit    = 0;
             int q_ldbr   = 0;
             int q_hit2    = 0;
@@ -601,8 +618,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 q_ldbr2 = DL1->cir_queue[bot_idx].ldbr_type2[bot_q_idx2];
               }
             }
-            if(q_hit && (q_ldbr > 0 && q_ldbr < 11)) {
-              //MSG("FETCH@0 clk=%u brpc=%llx trig_addr=%u ldbuff_addr=%u addr_match=%d invalid=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].trig_addr[bot_q_idx], DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]==DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx] == false);
+            if(q_hit && (ldbuff_idx != -1) && (q_ldbr > 0 && q_ldbr < 11)) {
+#if 0
+              if(dinst->getPC() == 0x19744)
+                MSG("FETCH@0 clk=%u brpc=%llx trig_addr=%u ldbuff_addr=%u addr_match=%d invalid=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].trig_addr[bot_q_idx], DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]==DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx], DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx] == false);
+#endif
               if((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) {
 
                 bool c_hit = !DL1->Invalid(DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]);
@@ -614,9 +634,87 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 DataType dd      = DL1->load_data_buffer[ldbuff_idx].req_data[bot_q_idx];
                 DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
                 dinst            = tmp_dinst;
-                //MSG("FETCH@1 clk=%u brpc=%llx ldpc=%llx ldbr=%d dep_depth=%d br_d1=%u br_d2=%u d1=%u d2=%u d_match=%d c_hit=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].ldpc, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), (dinst->getBrData1() == dinst->getData()), c_hit);
               }
-            }else if((q_hit && q_ldbr > 10) && (q_hit2 && q_ldbr2 > 10)) {
+            }else if(q_hit && (ldbuff_idx != -1) && q_hit2 && q_ldbr == 11) {
+              if(((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) && ((DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2] == DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2]) && DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx2])) {
+                bool c_hit  = !DL1->Invalid(DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]);
+                bool c_hit2 = !DL1->Invalid(DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2]);
+                if(DL1->cir_queue[bot_idx].hit2_miss3 < 7) {
+                  dinst->setUseLevel3();
+                }
+                dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx]);
+                DInst *tmp_dinst = init_ldbp(dinst, 0, DL1->cir_queue[bot_idx].ldpc);
+                dinst            = tmp_dinst;
+              }
+            }else if(q_hit && (ldbuff_idx != -1) && q_ldbr == 12) {
+              if((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) {
+                if(!DL1->cir_queue[bot_idx].ld_used2[bot_q_idx2]) {
+                  dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type2[bot_q_idx2]);
+                  dinst->setDepDepth(DL1->cir_queue[bot_idx].dep_depth2[bot_q_idx2]);
+                  DataType dd = DL1->load_data_buffer[ldbuff_idx].req_data2[bot_q_idx2];
+                  DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc2);
+                  dinst            = tmp_dinst;
+                }else if((DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2] == DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2]) && DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx2]) {
+                  dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type2[bot_q_idx2]);
+                  dinst->setDepDepth(DL1->cir_queue[bot_idx].dep_depth2[bot_q_idx2]);
+                  DataType dd = DL1->load_data_buffer[ldbuff_idx].req_data2[bot_q_idx2];
+                  DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc2);
+                  dinst            = tmp_dinst;
+                }
+                if(DL1->cir_queue[bot_idx].hit2_miss3 < 7) {
+                  dinst->setUseLevel3();
+                }
+              }
+            }else if(q_hit2 && (ldbuff_idx != -1) && q_ldbr2 == 13) {
+              if((DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2] == DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2]) && DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx2]) {
+                if(!DL1->cir_queue[bot_idx].ld_used[bot_q_idx]) {
+                  dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx]);
+                  dinst->setDepDepth(DL1->cir_queue[bot_idx].dep_depth[bot_q_idx]);
+                  DataType dd = DL1->load_data_buffer[ldbuff_idx].req_data[bot_q_idx];
+                  DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
+                  dinst            = tmp_dinst;
+                }else if((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) {
+                  dinst->setLBType(DL1->cir_queue[bot_idx].ldbr_type[bot_q_idx]);
+                  dinst->setDepDepth(DL1->cir_queue[bot_idx].dep_depth[bot_q_idx]);
+                  DataType dd = DL1->load_data_buffer[ldbuff_idx].req_data[bot_q_idx];
+                  DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
+                  dinst            = tmp_dinst;
+                }
+                if(DL1->cir_queue[bot_idx].hit2_miss3 < 7) {
+                  dinst->setUseLevel3();
+                }
+              }
+            }else if(q_hit && (ldbuff_idx != -1) && (q_ldbr == 14 || q_ldbr2 == 14)) { // src1 -> LD, src2 -> mv
+              if((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) {
+                if(DL1->cir_queue[bot_idx].br_mv_outcome > 0) {
+                  dinst->setLBType(14);
+                  DataType dd = DL1->cir_queue[bot_idx].br_data2;
+                  DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
+                  dinst            = tmp_dinst;
+                }
+                if(DL1->cir_queue[bot_idx].hit2_miss3 < 7) {
+                  dinst->setUseLevel3();
+                }
+              }
+            }else if(q_hit2 && (ldbuff_idx != -1) && (q_ldbr == 15 || q_ldbr2 == 15)) { // src1 -> mv, src2 -> ld
+#if 0
+              if(dinst->getPC() == 0x19744)
+                MSG("FETCH@0 clk=%u brpc=%llx trig_addr=%u ldbuff_addr=%u addr_match=%d invalid=%d", globalClock, dinst->getPC(), DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2], DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2], DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2]==DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2], DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx] == false);
+#endif
+              if((DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2] == DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2]) && DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx2]) {
+                if(DL1->cir_queue[bot_idx].br_mv_outcome > 0) {
+                  dinst->setLBType(15);
+                  DataType dd = DL1->cir_queue[bot_idx].br_data1;
+                  DInst *tmp_dinst = init_ldbp(dinst, dd, DL1->cir_queue[bot_idx].ldpc);
+                  dinst            = tmp_dinst;
+                }
+                if(DL1->cir_queue[bot_idx].hit2_miss3 < 7) {
+                  dinst->setUseLevel3();
+                }
+              }
+            }
+#if 0
+            else if((q_hit && q_ldbr > 10) && (q_hit2 && q_ldbr2 > 10)) {
               if(((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) && ((DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2] == DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2]) && DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx2])) {
                 bool c_hit  = !DL1->Invalid(DL1->cir_queue[bot_idx].trig_addr[bot_q_idx]);
                 bool c_hit2 = !DL1->Invalid(DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2]);
@@ -634,6 +732,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 dinst            = tmp_dinst;
               }
             }
+#endif
 
 #endif
 
@@ -943,6 +1042,12 @@ DInst* FetchEngine::init_ldbp(DInst *dinst, DataType dd, AddrType ldpc) {
     dinst->setBrData2(dinst->getData2());
     dinst->setBrData1(dd); //LD data -> not ALU modified LD data
     dinst->setDataSign(dd, ldpc); //create data signature
+  }else if(dinst->getLBType() == 14) {   //not in use
+    dinst->setBrData1(dinst->getData());
+    dinst->setBrData2(dd); //mv data -> not ALU modified LD data
+  }else if(dinst->getLBType() == 15) {   //not in use
+    dinst->setBrData2(dinst->getData2());
+    dinst->setBrData1(dd); //mv data -> not ALU modified LD data
   }
   return dinst;
 }
