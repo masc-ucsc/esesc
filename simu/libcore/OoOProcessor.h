@@ -175,19 +175,19 @@ public:
     AddrType ld_addr;
     int dep_depth;
     int ldbr_type;
-    // 1->simple & trivial & R1           -> src2 == 0 && dep == 1
-    // 2->simple & trivial & R2           -> src1 == 0 && dep == 1
-    // 3->simple & direct & R1 = ALU      -> src2 == 0 && dep > 1
-    // 4->simple & direct & R2 = ALU      -> src1 == 0 && dep > 1
-    // 5->simple & direct & R1 = Li       -> src2 == 0 && dep > 1
-    // 6->simple & direct & R2 = L1       -> src1 == 0 && dep > 1
-    // 7->complex & 1 Li + 1 ALU & R1=Li  -> dep > 1 && R1 == is_li, R2 == ALU
-    // 8->complex & 1 Li + 1 ALU & R2=Li  -> dep > 1 && R2 == is_li, R1 == ALU
+    // 1->simple & trivial & R1           -> src1 => LD && src2 == 0 && dep == 1
+    // 2->simple & trivial & R2           -> src2 => LD && src1 == 0 && dep == 1
+    // 3->simple & direct & R1 = ALU      -> src1 => LD->ALU && src2 == 0 && dep > 1
+    // 4->simple & direct & R2 = ALU      -> src2 => LD->ALU && src1 == 0 && dep > 1
+    // 5->simple & direct & R1 = Li       -> src1 => Li && src2 == 0 && dep > 1
+    // 6->simple & direct & R2 = L1       -> src2 => Li && src1 == 0 && dep > 1
+    // 7->complex & 1 Li + 1 ALU & R1=Li  -> dep > 1 && R1 == is_li, R2 == LD->ALU
+    // 8->complex & 1 Li + 1 ALU & R2=Li  -> dep > 1 && R2 == is_li, R1 == LD->ALU
     // 9->complex & 1 Li + 1 LD & R1=Li   -> dep == 1 && R1 == is_li, R2 == LD
     // 10->complex & 1 Li + 1 LD & R2=Li  -> dep == 1 && R2 == is_li, R1 == LD
     // 11->double & 2 LDs                 -> dep == 1 && R1 == R2 == LD  // use outcome calc
-    // 12->double & 1 LD + 1 ALU          -> src1 == LD, src2 == ALU // similar to type 7
-    // 13->double & 1 ALU + 1 LD          -> src1 == ALU, src2 == LD //similar to type 8
+    // 12->double & 1 LD + 1 ALU          -> src1 == LD, src2 == LD->ALU // similar to type 7
+    // 13->double & 1 ALU + 1 LD          -> src1 == LD->ALU, src2 == LD //similar to type 8
     // 14->Any type + mv to src2(src1->src2) -> if a mv instn swaps data(similar to qsort) Br src2 data = mv data
     // 15->Any type + mv to src1(src2->src1) -> if a mv instn swaps data(similar to qsort) Br src1 data = mv data
     bool ld_used; //is ld inst executed before the current dependent branch inst?

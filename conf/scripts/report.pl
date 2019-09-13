@@ -760,17 +760,17 @@ sub showStatReport {
       @flist = @ARGV;
     }
 
-    printf "#table15                Benchmark:      nFetched:   nCommitted:       Ratio:            filename:\n";
-    printf "table15 %26s ", $name;
+    printf "#table15:Benchmark:nFetched:nCommitted:Ratio:filename\n";
+    printf "table15:%s", $name;
     foreach my $file (@flist) {
       my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
       my $fetched  = ($cf->getResultField("P(${i})_FetchEngine", "nFetched"));
       my $ratio    = $fetched/$committed;
 
-      printf "     %d ", $fetched;
-      printf "     %d ", $committed;
-      printf "     %f ", $ratio;
-      printf "           %-20s\n ", $file;
+      printf ":%d", $fetched;
+      printf ":%5d", $committed;
+      printf ":%f", $ratio;
+      printf ":%-20s\n ", $file;
     }
     print "\n";
   }
@@ -1152,18 +1152,19 @@ sub showStatReport {
     my $committed = ($cf->getResultField("P(${i})", "nCommitted"));
     next unless( $committed > 1 );
 
-    printf "#table9a                            IPC : brMiss : szFB : szBB : brMissTime : wasteRatio : iMissRate\n";
-    printf "table9a  %26s ", $name;
+    printf "#table9a:filename:IPC:nBranches:brMiss:szFB:szBB:brMissTime:wasteRatio:iMissRate\n";
+    printf "table9a:%s", $name;
 
     $nInst = getProcnInst($i);
 
     # IPC
-    printf " %9.3f ", $nInst/$globalClock;
+    printf ":%.3f", $nInst/$globalClock;
 
     # branchMissRate
     my $nBranches = $cf->getResultField("P(${i})_BPred","nBranches");
     my $nMiss = $cf->getResultField("P(${i})_BPred","nMiss");
-    printf " %9.3f ", 100*$nMiss/($nBranches+1);
+    printf ":%d", $nBranches;
+    printf ":%.3f", 100*$nMiss/($nBranches+1);
 
     # imli
     my $type     = "imli";
@@ -1172,7 +1173,7 @@ sub showStatReport {
 
     my $predRatio = ($predMiss+$predHit) <= 0 ? 0 : ($predHit/($predMiss+$predHit));
 
-    printf " %6.2f%% ",100*$predRatio;
+    printf ":%6.2f%% ",100*$predRatio;
 
     # szFB
     my $nTaken    = $cf->getResultField("P(${i})_BPred","nTaken");

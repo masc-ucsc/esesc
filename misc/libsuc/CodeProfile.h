@@ -14,6 +14,7 @@ private:
       sum_wt    = 0;
       sum_et    = 0;
       sum_flush = 0;
+      ldbr      = 0;
       sum_bp1_hit = 0;
       sum_bp2_hit = 0;
       sum_bp3_hit = 0;
@@ -28,6 +29,7 @@ private:
     double   sum_wt;
     double   sum_et;
     uint64_t sum_flush;
+    int      ldbr;
     uint64_t sum_bp1_hit;
     uint64_t sum_bp2_hit;
     uint64_t sum_bp3_hit;
@@ -51,7 +53,7 @@ protected:
 public:
   CodeProfile(const char *format, ...);
 
-  void sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch, bool bp1_miss = 0, bool bp2_miss = 0, bool bp3_miss = 0, bool bp1_hit = 0, bool bp2_hit = 0, bool bp3_hit = 0, bool hit2_miss3 = 0, bool hit3_miss2 = 0);
+  void sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch, int ldbr = 0, bool bp1_miss = 0, bool bp2_miss = 0, bool bp3_miss = 0, bool bp1_hit = 0, bool bp2_hit = 0, bool bp3_hit = 0, bool hit2_miss3 = 0, bool hit3_miss2 = 0);
 
   double  getDouble() const;
   int64_t getSamples() const;
