@@ -439,7 +439,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   return NoPrediction;
 #endif
 
-#if 1
+#if 0
   if(!dinst->isUseLevel3())
     return NoPrediction;
 #endif

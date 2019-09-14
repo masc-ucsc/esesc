@@ -621,6 +621,8 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
 
 void OoOProcessor::ct_br_hit_double(DInst *dinst, RegType b1, RegType b2, int reg_flag) {
 #if 1
+  ct_table[b1].ldbr_type = 0;
+  ct_table[b2].ldbr_type = 0;
   if(ct_table[b1].dep_depth == 1) {
     if(ct_table[b2].dep_depth == 1) {
       ct_table[b1].ldbr_type = 11;
@@ -718,7 +720,7 @@ void OoOProcessor::classify_ld_br_double_chain(DInst *dinst, RegType b1, RegType
 
         DL1->fill_bpred_use_count_bot(dinst->getPC(), lgt_table[i].hit2_miss3, lgt_table[i].hit3_miss2);
 #if 0
-        if(dinst->getPC() == 0x19744)
+        if(dinst->getPC() == 0x1d47c)
           MSG("LGT_BR_HIT2 clk=%u brpc=%llx id=%d ldpc1=%llx ld_addr1=%u del1=%d conf1=%u depth1=%d ldpc2=%llx ld_addr2=%u del2=%d conf2=%u depth2=%d d1=%d d2=%d ldbr=%d", globalClock, lgt_table[i].brpc, dinst->getID(), lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].ld_conf, lgt_table[i].dep_depth, lgt_table[i].ldpc2, lgt_table[i].start_addr2, lgt_table[i].ld_delta2, lgt_table[i].ld_conf2, lgt_table[i].dep_depth2, dinst->getData(), dinst->getData2(), lgt_table[i].ldbr_type);
 #endif
         //generate trigger load
@@ -777,7 +779,7 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
         }*/
         //DL1->setRetBrCount(brpc_count);
 #if 0
-        if(dinst->getPC() == 0x1974e)
+        if(dinst->getPC() == 0x1d47c)
         MSG("LGT_BR_HIT1 clk=%u ldpc=%llx ld_addr=%u del=%d prev_del=%d conf=%u brpc=%llx d1=%d d2=%d ldbr=%d", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, dinst->getData(), dinst->getData2(), lgt_table[i].ldbr_type);
 #endif
         //MSG("I=%d", i);

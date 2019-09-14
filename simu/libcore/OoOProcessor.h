@@ -51,8 +51,8 @@
 
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
-//#define ENABLE_LDBP
 //#define LGT_SIZE 512 //128
+//#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -212,6 +212,7 @@ public:
     }
 
     void ct_br_hit(DInst *dinst, int reg_flag) {
+      ldbr_type = 0;
       simple = false;
       if(dinst->getInst()->getSrc1() == 0 || dinst->getInst()->getSrc2() == 0) {
         simple = true;
