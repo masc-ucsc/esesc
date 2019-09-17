@@ -324,6 +324,7 @@ static void gen_arith(DisasContext *ctx, uint32_t opc, int rd, int rs1,
     gen_get_gpr(source1, rs1);
     gen_get_gpr(source2, rs2);
 
+
     switch (opc) {
     CASE_OP_32_64(OPC_RISC_ADD):
         if(opc == 51 && (rs1 == 0 || rs2 == 0)) { //MOV instruction

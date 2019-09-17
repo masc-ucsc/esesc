@@ -567,21 +567,6 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           AddrType x = dinst->getPC() - ldpc;
           if(d < 4) {
             int dep_reg = -1;
-#if 0 
-            if(dep_reg_id2 < 0 && dep_reg_id1 > 0) {
-              dep_reg = dep_reg_id1;
-              MSG("R1 r1=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc1(), dinst->getPC(), ldpc);
-            } else if(dep_reg_id1 < 0 && dep_reg_id2 > 0) {
-              dep_reg = dep_reg_id2;
-              MSG("R2 r2=%d brpc=%llx ldpc=%llx", dinst->getInst()->getSrc2(), dinst->getPC(), ldpc);
-            } else if(dep_reg_id1 > 0 && dep_reg_id2 > 0) {
-              MSG("BOTH r1=%d r2=%d brpc=%llx ldpc=%llx ldpc2=%llx", 
-                 dinst->getInst()->getSrc1(), dinst->getInst()->getSrc2(), dinst->getPC(), ldpc, ldpc2);
-            }
-#endif
-
-            //MSG("brpc=%llx ldpc=%llx addr=%u pred_addr=%u valid_addr=%d", dinst->getPC(), ldpc, addr, 
-            //    lastPredictable_addr, addr==lastPredictable_addr);
             dinst->setDataSign(data, ldpc);
             dinst->setLdAddr(addr);  //addr or lastPredictable_addr???
 
@@ -618,6 +603,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 q_ldbr2 = DL1->cir_queue[bot_idx].ldbr_type2[bot_q_idx2];
               }
             }
+
+#if 1
+
             if(q_hit && (ldbuff_idx != -1) && (q_ldbr > 0 && q_ldbr < 11)) {
 #if 0
               if(dinst->getPC() == 0x19744)
@@ -713,6 +701,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 }
               }
             }
+#endif
+
+
 #if 0
             else if((q_hit && q_ldbr > 10) && (q_hit2 && q_ldbr2 > 10)) {
               if(((DL1->cir_queue[bot_idx].trig_addr[bot_q_idx] == DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx]) && DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx]) && ((DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx2] == DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx2]) && DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx2])) {
