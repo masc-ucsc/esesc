@@ -231,5 +231,6 @@ void MemObj::clearNeedsCoherence() {
 
 bool MemObj::Invalid(AddrType addr) const {
   I(0);
+  return false;
 }
 /* }}} */
