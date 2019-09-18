@@ -5749,7 +5749,9 @@ if test "$softmmu" = yes ; then
       fi
       mpath=no
     fi
-    tools="$tools scsi/qemu-pr-helper\$(EXESUF)"
+    if test "$esesc" = no; then
+      tools="$tools scsi/qemu-pr-helper\$(EXESUF)"
+    fi
   else
     if test "$virtfs" = yes; then
       error_exit "VirtFS is supported only on Linux"

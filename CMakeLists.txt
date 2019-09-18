@@ -99,8 +99,8 @@ ENDIF(ESESC_MIPSR6)
 ExternalProject_Add(qemu
   SOURCE_DIR ${qemu_SOURCE}
   CONFIGURE_COMMAND ${qemu_SOURCE}/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/qemu ${QEMU_TARGET}
-  --disable-virtfs --disable-numa --disable-nettle --disable-gcrypt --disable-bzip2 --disable-libssh2 --disable-curl
-  --disable-linux-aio --disable-sdl --disable-docs --enable-esesc --python=python2.7 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
+  --disable-virtfs --disable-numa --disable-nettle
+  --disable-docs --enable-esesc --python=python2.7 --disable-seccomp --disable-spice --disable-tools --disable-werror --disable-guest-agent --disable-gtk --disable-libusb --disable-libnfs --disable-xen --disable-snappy --disable-lzo --disable-gnutls --disable-vnc --disable-bluez ${QEMU_EXTRA}
   PREFIX ${esesc_SOURCE_DIR}/emul/qemu
   BUILD_COMMAND ${MAKE}
   BUILD_IN_SOURCE 0
