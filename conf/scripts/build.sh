@@ -4,12 +4,21 @@
 : ${ESESC_SRC:=${HOME}/projs/esesc}
 : ${ESESC_BUILD_DIR:=${HOME}/build}
 : ${ESESC_BUILD_TYPE:=Debug}
+: ${ESESC_TARGET:riscv64}
 : ${ESESC_HOST_PROCS:=$(nproc)}
 : ${ESESC_ENABLE_LIVE:=0}
 
 BUILD_DIR=${ESESC_BUILD_DIR}/${ESESC_BUILD_TYPE,,}
 RUN_DIR=${BUILD_DIR}/run
 
+case ${ESESC_TARGET} in
+    riscv)
+        ESESC_MIPSR6=0
+        ;;
+    mips64)
+        ESESC_MIPSR6=1
+        ;;
+esac
 
 if [ ! -e ${ESESC_SRC}/CMakeLists.txt ]; then
   echo "BUILD ERROR: '${ESESC_SRC}' does not contain ESESC source code"
@@ -27,7 +36,7 @@ if [ -d ${BUILD_DIR} ]; then
 else
   mkdir -p ${BUILD_DIR}
   cd ${BUILD_DIR}
-  cmake -DCMAKE_BUILD_TYPE=${ESESC_BUILD_TYPE} -DENABLE_LIVE=${ESESC_ENABLE_LIVE} -DENABLE_LIVE=${ESESC_ENABLE_LIVECRIU} ${ESESC_SRC}
+  cmake -DCMAKE_BUILD_TYPE=${ESESC_BUILD_TYPE} -DENABLE_LIVE=${ESESC_ENABLE_LIVE} -DENABLE_LIVE=${ESESC_ENABLE_LIVECRIU} -DESESC_MIPSR6=${ESESC_MIPSR6} ${ESESC_SRC}
   make -j${ESESC_HOST_PROCS}
 fi
 
