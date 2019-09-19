@@ -10,49 +10,62 @@
  * See the COPYING file in the top-level directory.
  *
  */
-#ifndef QEMU_SEQLOCK_H
-#define QEMU_SEQLOCK_H 1
 
-#include <qemu/atomic.h>
-#include <qemu/thread.h>
+#ifndef QEMU_SEQLOCK_H
+#define QEMU_SEQLOCK_H
+
+#include "qemu/atomic.h"
+#include "qemu/thread.h"
+#include "qemu/lockable.h"
 
 typedef struct QemuSeqLock QemuSeqLock;
 
 struct QemuSeqLock {
-    QemuMutex *mutex;
     unsigned sequence;
 };
 
-static inline void seqlock_init(QemuSeqLock *sl, QemuMutex *mutex)
+static inline void seqlock_init(QemuSeqLock *sl)
 {
-    sl->mutex = mutex;
     sl->sequence = 0;
 }
 
 /* Lock out other writers and update the count.  */
-static inline void seqlock_write_lock(QemuSeqLock *sl)
+static inline void seqlock_write_begin(QemuSeqLock *sl)
 {
-    if (sl->mutex) {
-        qemu_mutex_lock(sl->mutex);
-    }
-    ++sl->sequence;
+    atomic_set(&sl->sequence, sl->sequence + 1);
 
     /* Write sequence before updating other fields.  */
     smp_wmb();
 }
 
-static inline void seqlock_write_unlock(QemuSeqLock *sl)
+static inline void seqlock_write_end(QemuSeqLock *sl)
 {
     /* Write other fields before finalizing sequence.  */
     smp_wmb();
 
-    ++sl->sequence;
-    if (sl->mutex) {
-        qemu_mutex_unlock(sl->mutex);
-    }
+    atomic_set(&sl->sequence, sl->sequence + 1);
 }
 
-static inline unsigned seqlock_read_begin(QemuSeqLock *sl)
+/* Lock out other writers and update the count.  */
+static inline void seqlock_write_lock_impl(QemuSeqLock *sl, QemuLockable *lock)
+{
+    qemu_lockable_lock(lock);
+    seqlock_write_begin(sl);
+}
+#define seqlock_write_lock(sl, lock) \
+    seqlock_write_lock_impl(sl, QEMU_MAKE_LOCKABLE(lock))
+
+/* Lock out other writers and update the count.  */
+static inline void seqlock_write_unlock_impl(QemuSeqLock *sl, QemuLockable *lock)
+{
+    qemu_lockable_unlock(lock);
+    seqlock_write_begin(sl);
+}
+#define seqlock_write_unlock(sl, lock) \
+    seqlock_write_unlock_impl(sl, QEMU_MAKE_LOCKABLE(lock))
+
+
+static inline unsigned seqlock_read_begin(const QemuSeqLock *sl)
 {
     /* Always fail if a write is in progress.  */
     unsigned ret = atomic_read(&sl->sequence);

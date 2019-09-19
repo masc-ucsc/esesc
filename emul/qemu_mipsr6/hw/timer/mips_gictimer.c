@@ -9,9 +9,15 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/sysbus.h"
+#include "qemu/timer.h"
 #include "hw/timer/mips_gictimer.h"
 
 #define TIMER_PERIOD 10 /* 10 ns period for 100 Mhz frequency */
+
+uint32_t mips_gictimer_get_freq(MIPSGICTimerState *gic)
+{
+    return NANOSECONDS_PER_SECOND / TIMER_PERIOD;
+}
 
 static void gic_vptimer_update(MIPSGICTimerState *gictimer,
                                    uint32_t vp_index, uint64_t now)

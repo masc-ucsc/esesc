@@ -10,6 +10,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
+#include "qapi/error.h"
 #include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "exec/memory.h"
@@ -18,30 +20,28 @@
 #include "kvm_mips.h"
 #include "hw/intc/mips_gic.h"
 
-static void mips_gic_set_vp_irq(MIPSGICState *gic, int vp, int pin, int level)
+static void mips_gic_set_vp_irq(MIPSGICState *gic, int vp, int pin)
 {
-    int ored_level = level;
+    int ored_level = 0;
     int i;
 
     /* ORing pending registers sharing same pin */
-    if (!ored_level) {
-        for (i = 0; i < gic->num_irq; i++) {
-            if ((gic->irq_state[i].map_pin & GIC_MAP_MSK) == pin &&
-                    gic->irq_state[i].map_vp == vp &&
-                    gic->irq_state[i].enabled) {
-                ored_level |= gic->irq_state[i].pending;
-            }
-            if (ored_level) {
-                /* no need to iterate all interrupts */
-                break;
-            }
+    for (i = 0; i < gic->num_irq; i++) {
+        if ((gic->irq_state[i].map_pin & GIC_MAP_MSK) == pin &&
+                gic->irq_state[i].map_vp == vp &&
+                gic->irq_state[i].enabled) {
+            ored_level |= gic->irq_state[i].pending;
         }
-        if (((gic->vps[vp].compare_map & GIC_MAP_MSK) == pin) &&
-                (gic->vps[vp].mask & GIC_VP_MASK_CMP_MSK)) {
-            /* ORing with local pending register (count/compare) */
-            ored_level |= (gic->vps[vp].pend & GIC_VP_MASK_CMP_MSK) >>
-                          GIC_VP_MASK_CMP_SHF;
+        if (ored_level) {
+            /* no need to iterate all interrupts */
+            break;
         }
+    }
+    if (((gic->vps[vp].compare_map & GIC_MAP_MSK) == pin) &&
+            (gic->vps[vp].mask & GIC_VP_MASK_CMP_MSK)) {
+        /* ORing with local pending register (count/compare) */
+        ored_level |= (gic->vps[vp].pend & GIC_VP_MASK_CMP_MSK) >>
+                      GIC_VP_MASK_CMP_SHF;
     }
     if (kvm_enabled())  {
         kvm_mips_set_ipi_interrupt(mips_env_get_cpu(gic->vps[vp].env),
@@ -53,21 +53,27 @@ static void mips_gic_set_vp_irq(MIPSGICState *gic, int vp, int pin, int level)
     }
 }
 
+static void gic_update_pin_for_irq(MIPSGICState *gic, int n_IRQ)
+{
+    int vp = gic->irq_state[n_IRQ].map_vp;
+    int pin = gic->irq_state[n_IRQ].map_pin & GIC_MAP_MSK;
+
+    if (vp < 0 || vp >= gic->num_vps) {
+        return;
+    }
+    mips_gic_set_vp_irq(gic, vp, pin);
+}
+
 static void gic_set_irq(void *opaque, int n_IRQ, int level)
 {
     MIPSGICState *gic = (MIPSGICState *) opaque;
-    int vp = gic->irq_state[n_IRQ].map_vp;
-    int pin = gic->irq_state[n_IRQ].map_pin & GIC_MAP_MSK;
 
     gic->irq_state[n_IRQ].pending = (uint8_t) level;
     if (!gic->irq_state[n_IRQ].enabled) {
         /* GIC interrupt source disabled */
         return;
     }
-    if (vp < 0 || vp >= gic->num_vps) {
-        return;
-    }
-    mips_gic_set_vp_irq(gic, vp, pin, level);
+    gic_update_pin_for_irq(gic, n_IRQ);
 }
 
 #define OFFSET_CHECK(c)                         \
@@ -207,7 +213,7 @@ static void gic_timer_store_vp_compare(MIPSGICState *gic, uint32_t vp_index,
     gic->vps[vp_index].pend &= ~(1 << GIC_LOCAL_INT_COMPARE);
     if (gic->vps[vp_index].compare_map & GIC_MAP_TO_PIN_MSK) {
         uint32_t pin = (gic->vps[vp_index].compare_map & GIC_MAP_MSK);
-        mips_gic_set_vp_irq(gic, vp_index, pin, 0);
+        mips_gic_set_vp_irq(gic, vp_index, pin);
     }
     mips_gictimer_store_vp_compare(gic->gic_timer, vp_index, compare);
 }
@@ -284,6 +290,7 @@ static void gic_write(void *opaque, hwaddr addr, uint64_t data, unsigned size)
         OFFSET_CHECK((base + size * 8) <= gic->num_irq);
         for (i = 0; i < size * 8; i++) {
             gic->irq_state[base + i].enabled &= !((data >> i) & 1);
+            gic_update_pin_for_irq(gic, base + i);
         }
         break;
     case GIC_SH_WEDGE_OFS:
@@ -303,6 +310,7 @@ static void gic_write(void *opaque, hwaddr addr, uint64_t data, unsigned size)
         OFFSET_CHECK((base + size * 8) <= gic->num_irq);
         for (i = 0; i < size * 8; i++) {
             gic->irq_state[base + i].enabled |= (data >> i) & 1;
+            gic_update_pin_for_irq(gic, base + i);
         }
         break;
     case GIC_SH_MAP0_PIN_OFS ... GIC_SH_MAP255_PIN_OFS:
@@ -400,13 +408,12 @@ static void mips_gic_realize(DeviceState *dev, Error **errp)
     int i;
 
     if (s->num_vps > GIC_MAX_VPS) {
-        error_setg(errp, "Exceed maximum CPUs %d", s->num_vps);
+        error_setg(errp, "Exceeded maximum CPUs %d", s->num_vps);
         return;
     }
     if ((s->num_irq > GIC_MAX_INTRS) || (s->num_irq % 8) || (s->num_irq <= 0)) {
-        error_setg(errp,
-            "GIC supports up to 256 external interrupts in multiples of 8 : %d",
-            s->num_irq);
+        error_setg(errp, "GIC supports up to %d external interrupts in "
+                   "multiples of 8 : %d", GIC_MAX_INTRS, s->num_irq);
         return;
     }
     s->vps = g_new(MIPSGICVPState, s->num_vps);

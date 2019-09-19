@@ -15,6 +15,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/usb/hcd-ehci.h"
 #include "qemu/range.h"
 
@@ -88,6 +89,14 @@ static void usb_ehci_pci_init(Object *obj)
     usb_ehci_init(s, DEVICE(obj));
 }
 
+static void usb_ehci_pci_finalize(Object *obj)
+{
+    EHCIPCIState *i = PCI_EHCI(obj);
+    EHCIState *s = &i->ehci;
+
+    usb_ehci_finalize(s);
+}
+
 static void usb_ehci_pci_exit(PCIDevice *dev)
 {
     EHCIPCIState *i = PCI_EHCI(dev);
@@ -158,8 +167,13 @@ static const TypeInfo ehci_pci_type_info = {
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(EHCIPCIState),
     .instance_init = usb_ehci_pci_init,
+    .instance_finalize = usb_ehci_pci_finalize,
     .abstract = true,
     .class_init = ehci_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void ehci_data_class_init(ObjectClass *klass, void *data)

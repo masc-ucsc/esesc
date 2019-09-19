@@ -7,15 +7,19 @@ services:
 
 env:
   matrix:
-    - BUILD_TYPE=Release DOCKER=mascucsc/archlinux-masc
-    - BUILD_TYPE=Debug   DOCKER=mascucsc/archlinux-masc
-    - BUILD_TYPE=Release DOCKER=mascucsc/ubuntu-masc
-    - BUILD_TYPE=Debug   DOCKER=mascucsc/ubuntu-masc
+    - BUILD_TYPE=Release DOCKER=mascucsc/archlinux-masc TARGET=mips64
+    - BUILD_TYPE=Debug   DOCKER=mascucsc/archlinux-masc TARGET=mips64
+    - BUILD_TYPE=Release DOCKER=mascucsc/ubuntu-masc    TARGET=mips64
+    - BUILD_TYPE=Debug   DOCKER=mascucsc/ubuntu-masc    TARGET=mips64
+    - BUILD_TYPE=Release DOCKER=mascucsc/archlinux-masc TARGET=riscv64
+    - BUILD_TYPE=Debug   DOCKER=mascucsc/archlinux-masc TARGET=riscv64
+    - BUILD_TYPE=Release DOCKER=mascucsc/ubuntu-masc    TARGET=riscv64
+    - BUILD_TYPE=Debug   DOCKER=mascucsc/ubuntu-masc    TARGET=riscv64
 
 before_install:
   - docker pull mascucsc/archlinux-masc
   - docker pull mascucsc/ubuntu-masc
 
 script:
-  - conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE $DOCKER
+  - conf/scripts/run-docker-test.sh `pwd` $BUILD_TYPE $DOCKER $TARGET
 

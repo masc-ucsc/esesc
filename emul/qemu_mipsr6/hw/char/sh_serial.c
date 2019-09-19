@@ -24,10 +24,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/sh4/sh.h"
-#include "sysemu/char.h"
-#include "exec/address-spaces.h"
+#include "chardev/char-fe.h"
+#include "qapi/error.h"
+#include "qemu/timer.h"
 
 //#define DEBUG_SERIAL
 
@@ -61,7 +63,9 @@ typedef struct {
     int flags;
     int rtrg;
 
-    CharDriverState *chr;
+    CharBackend chr;
+    QEMUTimer *fifo_timeout_timer;
+    uint64_t etu; /* Elementary Time Unit (ns) */
 
     qemu_irq eri;
     qemu_irq rxi;
@@ -108,9 +112,11 @@ static void sh_serial_write(void *opaque, hwaddr offs,
         }
         return;
     case 0x0c: /* FTDR / TDR */
-        if (s->chr) {
+        if (qemu_chr_fe_backend_connected(&s->chr)) {
             ch = val;
-            qemu_chr_fe_write(s->chr, &ch, 1);
+            /* XXX this blocks entire thread. Rewrite to use
+             * qemu_chr_fe_write and background I/O callbacks */
+            qemu_chr_fe_write_all(&s->chr, &ch, 1);
 	}
 	s->dr = val;
 	s->flags &= ~SH_SERIAL_FLAG_TDE;
@@ -311,6 +317,16 @@ static int sh_serial_can_receive1(void *opaque)
     return sh_serial_can_receive(s);
 }
 
+static void sh_serial_timeout_int(void *opaque)
+{
+    sh_serial_state *s = opaque;
+
+    s->flags |= SH_SERIAL_FLAG_RDF;
+    if (s->scr & (1 << 6) && s->rxi) {
+        qemu_set_irq(s->rxi, 1);
+    }
+}
+
 static void sh_serial_receive1(void *opaque, const uint8_t *buf, int size)
 {
     sh_serial_state *s = opaque;
@@ -327,8 +343,12 @@ static void sh_serial_receive1(void *opaque, const uint8_t *buf, int size)
                 if (s->rx_cnt >= s->rtrg) {
                     s->flags |= SH_SERIAL_FLAG_RDF;
                     if (s->scr & (1 << 6) && s->rxi) {
+                        timer_del(s->fifo_timeout_timer);
                         qemu_set_irq(s->rxi, 1);
                     }
+                } else {
+                    timer_mod(s->fifo_timeout_timer,
+                        qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 15 * s->etu);
                 }
             }
         }
@@ -352,7 +372,7 @@ static const MemoryRegionOps sh_serial_ops = {
 
 void sh_serial_init(MemoryRegion *sysmem,
                     hwaddr base, int feat,
-                    uint32_t freq, CharDriverState *chr,
+                    uint32_t freq, Chardev *chr,
                     qemu_irq eri_source,
                     qemu_irq rxi_source,
                     qemu_irq txi_source,
@@ -392,14 +412,16 @@ void sh_serial_init(MemoryRegion *sysmem,
                              0, 0x28);
     memory_region_add_subregion(sysmem, A7ADDR(base), &s->iomem_a7);
 
-    s->chr = chr;
-
     if (chr) {
-        qemu_chr_fe_claim_no_fail(chr);
-        qemu_chr_add_handlers(chr, sh_serial_can_receive1, sh_serial_receive1,
-			      sh_serial_event, s);
+        qemu_chr_fe_init(&s->chr, chr, &error_abort);
+        qemu_chr_fe_set_handlers(&s->chr, sh_serial_can_receive1,
+                                 sh_serial_receive1,
+                                 sh_serial_event, NULL, s, NULL, true);
     }
 
+    s->fifo_timeout_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+                                         sh_serial_timeout_int, s);
+    s->etu = NANOSECONDS_PER_SECOND / 9600;
     s->eri = eri_source;
     s->rxi = rxi_source;
     s->txi = txi_source;

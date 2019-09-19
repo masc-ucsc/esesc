@@ -343,9 +343,9 @@
 #define TARGET_NR_io_cancel			402
 #define TARGET_NR_exit_group			405
 #define TARGET_NR_lookup_dcookie		406
-#define TARGET_NR_sys_epoll_create		407
-#define TARGET_NR_sys_epoll_ctl		408
-#define TARGET_NR_sys_epoll_wait		409
+#define TARGET_NR_epoll_create          407
+#define TARGET_NR_epoll_ctl             408
+#define TARGET_NR_epoll_wait            409
 #define TARGET_NR_remap_file_pages		410
 #define TARGET_NR_set_tid_address		411
 #define TARGET_NR_restart_syscall		412
@@ -444,3 +444,9 @@
 #define TARGET_NR_process_vm_writev             505
 #define TARGET_NR_kcmp                          506
 #define TARGET_NR_finit_module                  507
+#define TARGET_NR_sched_setattr                 508
+#define TARGET_NR_sched_getattr                 509
+#define TARGET_NR_renameat2                     510
+#define TARGET_NR_getrandom                     511
+#define TARGET_NR_memfd_create                  512
+#define TARGET_NR_execveat                      513

@@ -1,6 +1,8 @@
 /*
  * graphics passthrough
  */
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "xen_pt.h"
 #include "xen-host-pci-device.h"
 #include "hw/xen/xen_backend.h"
@@ -130,7 +132,7 @@ int xen_pt_unregister_vga_regions(XenHostPCIDevice *dev)
 static void *get_vgabios(XenPCIPassthroughState *s, int *size,
                        XenHostPCIDevice *dev)
 {
-    return pci_assign_dev_load_option_rom(&s->dev, OBJECT(&s->dev), size,
+    return pci_assign_dev_load_option_rom(&s->dev, size,
                                           dev->domain, dev->bus,
                                           dev->dev, dev->func);
 }
@@ -161,7 +163,8 @@ struct pci_data {
     uint16_t reserved;
 } __attribute__((packed));
 
-int xen_pt_setup_vga(XenPCIPassthroughState *s, XenHostPCIDevice *dev)
+void xen_pt_setup_vga(XenPCIPassthroughState *s, XenHostPCIDevice *dev,
+                     Error **errp)
 {
     unsigned char *bios = NULL;
     struct rom_header *rom;
@@ -172,13 +175,14 @@ int xen_pt_setup_vga(XenPCIPassthroughState *s, XenHostPCIDevice *dev)
     struct pci_data *pd = NULL;
 
     if (!is_igd_vga_passthrough(dev)) {
-        return -1;
+        error_setg(errp, "Need to enable igd-passthrough");
+        return;
     }
 
     bios = get_vgabios(s, &bios_size, dev);
     if (!bios) {
-        XEN_PT_ERR(&s->dev, "VGA: Can't getting VBIOS!\n");
-        return -1;
+        error_setg(errp, "VGA: Can't get VBIOS");
+        return;
     }
 
     /* Currently we fixed this address as a primary. */
@@ -203,7 +207,6 @@ int xen_pt_setup_vga(XenPCIPassthroughState *s, XenHostPCIDevice *dev)
 
     /* Currently we fixed this address as a primary for legacy BIOS. */
     cpu_physical_memory_rw(0xc0000, bios, bios_size, 1);
-    return 0;
 }
 
 uint32_t igd_read_opregion(XenPCIPassthroughState *s)

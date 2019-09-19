@@ -7,10 +7,8 @@
  * See the COPYING file in the top-level directory.
  */
 
-#include <glib.h>
-#include <string.h>
-#include "libqtest.h"
 #include "qemu/osdep.h"
+#include "libqtest.h"
 #include "libqos/usb.h"
 
 
@@ -21,7 +19,7 @@ static void test_ohci_init(void)
 
 static void test_ohci_hotplug(void)
 {
-    usb_test_hotplug("ohci", 1, NULL);
+    usb_test_hotplug("ohci", "1", NULL);
 }
 
 int main(int argc, char **argv)

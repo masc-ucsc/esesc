@@ -1,5 +1,5 @@
 #ifndef HW_SYSBUS_H
-#define HW_SYSBUS_H 1
+#define HW_SYSBUS_H
 
 /* Devices attached directly to the main system bus.  */
 
@@ -72,16 +72,16 @@ struct SysBusDevice {
         MemoryRegion *memory;
     } mmio[QDEV_MAX_MMIO];
     int num_pio;
-    pio_addr_t pio[QDEV_MAX_PIO];
+    uint32_t pio[QDEV_MAX_PIO];
 };
 
-typedef int FindSysbusDeviceFunc(SysBusDevice *sbdev, void *opaque);
+typedef void FindSysbusDeviceFunc(SysBusDevice *sbdev, void *opaque);
 
 void sysbus_init_mmio(SysBusDevice *dev, MemoryRegion *memory);
 MemoryRegion *sysbus_mmio_get_region(SysBusDevice *dev, int n);
 void sysbus_init_irq(SysBusDevice *dev, qemu_irq *p);
 void sysbus_pass_irq(SysBusDevice *dev, SysBusDevice *target);
-void sysbus_init_ioports(SysBusDevice *dev, pio_addr_t ioport, pio_addr_t size);
+void sysbus_init_ioports(SysBusDevice *dev, uint32_t ioport, uint32_t size);
 
 
 bool sysbus_has_irq(SysBusDevice *dev, int n);
@@ -95,6 +95,23 @@ void sysbus_mmio_map_overlap(SysBusDevice *dev, int n, hwaddr addr,
 void sysbus_add_io(SysBusDevice *dev, hwaddr addr,
                    MemoryRegion *mem);
 MemoryRegion *sysbus_address_space(SysBusDevice *dev);
+
+/**
+ * sysbus_init_child_obj:
+ * @parent: The parent object
+ * @childname: Used as name of the "child<>" property in the parent
+ * @child: A pointer to the memory to be used for the object.
+ * @childsize: The maximum size available at @child for the object.
+ * @childtype: The name of the type of the object to instantiate.
+ *
+ * This function will initialize an object and attach it to the main system
+ * bus. The memory for the object should have already been allocated. The
+ * object will then be added as child to the given parent. The returned object
+ * has a reference count of 1 (for the "child<...>" property from the parent),
+ * so the object will be finalized automatically when the parent gets removed.
+ */
+void sysbus_init_child_obj(Object *parent, const char *childname, void *child,
+                           size_t childsize, const char *childtype);
 
 /* Call func for every dynamically created sysbus device in the system */
 void foreach_dynamic_sysbus_device(FindSysbusDeviceFunc *func, void *opaque);
@@ -118,4 +135,4 @@ static inline DeviceState *sysbus_try_create_simple(const char *name,
     return sysbus_try_create_varargs(name, addr, irq, NULL);
 }
 
-#endif /* !HW_SYSBUS_H */
+#endif /* HW_SYSBUS_H */

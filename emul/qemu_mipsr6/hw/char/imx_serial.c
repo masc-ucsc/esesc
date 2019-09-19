@@ -18,9 +18,10 @@
  *     is a real serial device.
  */
 
+#include "qemu/osdep.h"
 #include "hw/char/imx_serial.h"
 #include "sysemu/sysemu.h"
-#include "sysemu/char.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_UART
 #define DEBUG_IMX_UART 0
@@ -36,8 +37,8 @@
 
 static const VMStateDescription vmstate_imx_serial = {
     .name = TYPE_IMX_SERIAL,
-    .version_id = 1,
-    .minimum_version_id = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
     .fields = (VMStateField[]) {
         VMSTATE_INT32(readbuff, IMXSerialState),
         VMSTATE_UINT32(usr1, IMXSerialState),
@@ -49,22 +50,37 @@ static const VMStateDescription vmstate_imx_serial = {
         VMSTATE_UINT32(ubmr, IMXSerialState),
         VMSTATE_UINT32(ubrc, IMXSerialState),
         VMSTATE_UINT32(ucr3, IMXSerialState),
+        VMSTATE_UINT32(ucr4, IMXSerialState),
         VMSTATE_END_OF_LIST()
     },
 };
 
 static void imx_update(IMXSerialState *s)
 {
-    uint32_t flags;
+    uint32_t usr1;
+    uint32_t usr2;
+    uint32_t mask;
 
-    flags = (s->usr1 & s->ucr1) & (USR1_TRDY|USR1_RRDY);
-    if (s->ucr1 & UCR1_TXMPTYEN) {
-        flags |= (s->uts1 & UTS1_TXEMPTY);
-    } else {
-        flags &= ~USR1_TRDY;
-    }
+    /*
+     * Lucky for us TRDY and RRDY has the same offset in both USR1 and
+     * UCR1, so we can get away with something as simple as the
+     * following:
+     */
+    usr1 = s->usr1 & s->ucr1 & (USR1_TRDY | USR1_RRDY);
+    /*
+     * Bits that we want in USR2 are not as conveniently laid out,
+     * unfortunately.
+     */
+    mask = (s->ucr1 & UCR1_TXMPTYEN) ? USR2_TXFE : 0;
+    /*
+     * TCEN and TXDC are both bit 3
+     * RDR and DREN are both bit 0
+     */
+    mask |= s->ucr4 & (UCR4_TCEN | UCR4_DREN);
 
-    qemu_set_irq(s->irq, !!flags);
+    usr2 = s->usr2 & mask;
+
+    qemu_set_irq(s->irq, usr1 || usr2);
 }
 
 static void imx_serial_reset(IMXSerialState *s)
@@ -119,9 +135,7 @@ static uint64_t imx_serial_read(void *opaque, hwaddr offset,
             s->usr2 &= ~USR2_RDR;
             s->uts1 |= UTS1_RXEMPTY;
             imx_update(s);
-            if (s->chr) {
-                qemu_chr_accept_input(s->chr);
-            }
+            qemu_chr_fe_accept_input(&s->chr);
         }
         return c;
 
@@ -156,6 +170,8 @@ static uint64_t imx_serial_read(void *opaque, hwaddr offset,
         return s->ucr3;
 
     case 0x23: /* UCR4 */
+        return s->ucr4;
+
     case 0x29: /* BRM Incremental */
         return 0x0; /* TODO */
 
@@ -170,21 +186,24 @@ static void imx_serial_write(void *opaque, hwaddr offset,
                              uint64_t value, unsigned size)
 {
     IMXSerialState *s = (IMXSerialState *)opaque;
+    Chardev *chr = qemu_chr_fe_get_driver(&s->chr);
     unsigned char ch;
 
     DPRINTF("write(offset=0x%" HWADDR_PRIx ", value = 0x%x) to %s\n",
-            offset, (unsigned int)value, s->chr ? s->chr->label : "NODEV");
+            offset, (unsigned int)value, chr ? chr->label : "NODEV");
 
     switch (offset >> 2) {
     case 0x10: /* UTXD */
         ch = value;
         if (s->ucr2 & UCR2_TXEN) {
-            if (s->chr) {
-                qemu_chr_fe_write(s->chr, &ch, 1);
-            }
+            /* XXX this blocks entire thread. Rewrite to use
+             * qemu_chr_fe_write and background I/O callbacks */
+            qemu_chr_fe_write_all(&s->chr, &ch, 1);
             s->usr1 &= ~USR1_TRDY;
+            s->usr2 &= ~USR2_TXDC;
             imx_update(s);
             s->usr1 |= USR1_TRDY;
+            s->usr2 |= USR2_TXDC;
             imx_update(s);
         }
         break;
@@ -210,9 +229,7 @@ static void imx_serial_write(void *opaque, hwaddr offset,
         }
         if (value & UCR2_RXEN) {
             if (!(s->ucr2 & UCR2_RXEN)) {
-                if (s->chr) {
-                    qemu_chr_accept_input(s->chr);
-                }
+                qemu_chr_fe_accept_input(&s->chr);
             }
         }
         s->ucr2 = value & 0xffff;
@@ -259,8 +276,12 @@ static void imx_serial_write(void *opaque, hwaddr offset,
         s->ucr3 = value & 0xffff;
         break;
 
-    case 0x2d: /* UTS1 */
     case 0x23: /* UCR4 */
+        s->ucr4 = value & 0xffff;
+        imx_update(s);
+        break;
+
+    case 0x2d: /* UTS1 */
         qemu_log_mask(LOG_UNIMP, "[%s]%s: Unimplemented reg 0x%"
                       HWADDR_PRIx "\n", TYPE_IMX_SERIAL, __func__, offset);
         /* TODO */
@@ -288,6 +309,9 @@ static void imx_put_data(void *opaque, uint32_t value)
     s->usr2 |= USR2_RDR;
     s->uts1 &= ~UTS1_RXEMPTY;
     s->readbuff = value;
+    if (value & URXD_BRK) {
+        s->usr2 |= USR2_BRCD;
+    }
     imx_update(s);
 }
 
@@ -299,7 +323,7 @@ static void imx_receive(void *opaque, const uint8_t *buf, int size)
 static void imx_event(void *opaque, int event)
 {
     if (event == CHR_EVENT_BREAK) {
-        imx_put_data(opaque, URXD_BRK);
+        imx_put_data(opaque, URXD_BRK | URXD_FRMERR | URXD_ERR);
     }
 }
 
@@ -314,12 +338,10 @@ static void imx_serial_realize(DeviceState *dev, Error **errp)
 {
     IMXSerialState *s = IMX_SERIAL(dev);
 
-    if (s->chr) {
-        qemu_chr_add_handlers(s->chr, imx_can_receive, imx_receive,
-                              imx_event, s);
-    } else {
-        DPRINTF("No char dev for uart\n");
-    }
+    DPRINTF("char dev for uart: %p\n", qemu_chr_fe_get_driver(&s->chr));
+
+    qemu_chr_fe_set_handlers(&s->chr, imx_can_receive, imx_receive,
+                             imx_event, NULL, s, NULL, true);
 }
 
 static void imx_serial_init(Object *obj)

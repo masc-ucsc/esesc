@@ -10,10 +10,14 @@
  * See the COPYING file in the top-level directory.
  */
 
-#include <glib.h>
-#include "qga/guest-agent-core.h"
-#include "qga-qmp-commands.h"
+#include "qemu/osdep.h"
+#include "guest-agent-core.h"
+#include "qga-qapi-commands.h"
+#include "qapi/error.h"
 #include "qapi/qmp/qerror.h"
+#include "qemu/base64.h"
+#include "qemu/cutils.h"
+#include "qemu/atomic.h"
 
 /* Maximum captured guest-exec out_data/err_data - 16MB */
 #define GUEST_EXEC_MAX_OUTPUT (16*1024*1024)
@@ -72,7 +76,7 @@ struct GuestAgentInfo *qmp_guest_info(Error **errp)
     GuestAgentInfo *info = g_new0(GuestAgentInfo, 1);
 
     info->version = g_strdup(QEMU_VERSION);
-    qmp_for_each_command(qmp_command_info, info);
+    qmp_for_each_command(&ga_commands, qmp_command_info, info);
     return info;
 }
 
@@ -80,7 +84,7 @@ struct GuestExecIOData {
     guchar *data;
     gsize size;
     gsize length;
-    gint closed;
+    bool closed;
     bool truncated;
     const char *name;
 };
@@ -91,7 +95,7 @@ struct GuestExecInfo {
     int64_t pid_numeric;
     gint status;
     bool has_output;
-    gint finished;
+    bool finished;
     GuestExecIOData in;
     GuestExecIOData out;
     GuestExecIOData err;
@@ -154,13 +158,13 @@ GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **err)
 
     ges = g_new0(GuestExecStatus, 1);
 
-    bool finished = g_atomic_int_get(&gei->finished);
+    bool finished = atomic_mb_read(&gei->finished);
 
     /* need to wait till output channels are closed
      * to be sure we captured all output at this point */
     if (gei->has_output) {
-        finished = finished && g_atomic_int_get(&gei->out.closed);
-        finished = finished && g_atomic_int_get(&gei->err.closed);
+        finished = finished && atomic_mb_read(&gei->out.closed);
+        finished = finished && atomic_mb_read(&gei->err.closed);
     }
 
     ges->exited = finished;
@@ -179,8 +183,8 @@ GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **err)
          */
 #ifdef G_OS_WIN32
         /* Additionally WIN32 does not provide any additional information
-         * on whetherthe child exited or terminated via signal.
-         * We use this simple range check to distingish application exit code
+         * on whether the child exited or terminated via signal.
+         * We use this simple range check to distinguish application exit code
          * (usually value less then 256) and unhandled exception code with
          * ntstatus (always value greater then 0xC0000005). */
         if ((uint32_t)gei->status < 0xC0000000U) {
@@ -262,7 +266,7 @@ static void guest_exec_child_watch(GPid pid, gint status, gpointer data)
             (int32_t)gpid_to_int64(pid), (uint32_t)status);
 
     gei->status = status;
-    gei->finished = true;
+    atomic_mb_set(&gei->finished, true);
 
     g_spawn_close_pid(pid);
 }
@@ -318,7 +322,7 @@ static gboolean guest_exec_input_watch(GIOChannel *ch,
 done:
     g_io_channel_shutdown(ch, true, NULL);
     g_io_channel_unref(ch);
-    g_atomic_int_set(&p->closed, 1);
+    atomic_mb_set(&p->closed, true);
     g_free(p->data);
 
     return false;
@@ -370,8 +374,9 @@ static gboolean guest_exec_output_watch(GIOChannel *ch,
     return true;
 
 close:
+    g_io_channel_shutdown(ch, true, NULL);
     g_io_channel_unref(ch);
-    g_atomic_int_set(&p->closed, 1);
+    atomic_mb_set(&p->closed, true);
     return false;
 }
 
@@ -393,17 +398,24 @@ GuestExec *qmp_guest_exec(const char *path,
     GIOChannel *in_ch, *out_ch, *err_ch;
     GSpawnFlags flags;
     bool has_output = (has_capture_output && capture_output);
+    uint8_t *input = NULL;
+    size_t ninput = 0;
 
     arglist.value = (char *)path;
     arglist.next = has_arg ? arg : NULL;
 
+    if (has_input_data) {
+        input = qbase64_decode(input_data, -1, &ninput, err);
+        if (!input) {
+            return NULL;
+        }
+    }
+
     argv = guest_exec_get_args(&arglist, true);
     envp = has_env ? guest_exec_get_args(env, false) : NULL;
 
-    flags = G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD;
-#if GLIB_CHECK_VERSION(2, 33, 2)
-    flags |= G_SPAWN_SEARCH_PATH_FROM_ENVP;
-#endif
+    flags = G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD |
+        G_SPAWN_SEARCH_PATH_FROM_ENVP;
     if (!has_output) {
         flags |= G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL;
     }
@@ -425,7 +437,8 @@ GuestExec *qmp_guest_exec(const char *path,
     g_child_watch_add(pid, guest_exec_child_watch, gei);
 
     if (has_input_data) {
-        gei->in.data = g_base64_decode(input_data, &gei->in.size);
+        gei->in.data = input;
+        gei->in.size = ninput;
 #ifdef G_OS_WIN32
         in_ch = g_io_channel_win32_new_fd(in_fd);
 #else
@@ -434,6 +447,7 @@ GuestExec *qmp_guest_exec(const char *path,
         g_io_channel_set_encoding(in_ch, NULL, NULL);
         g_io_channel_set_buffered(in_ch, false);
         g_io_channel_set_flags(in_ch, G_IO_FLAG_NONBLOCK, NULL);
+        g_io_channel_set_close_on_unref(in_ch, true);
         g_io_add_watch(in_ch, G_IO_OUT, guest_exec_input_watch, &gei->in);
     }
 
@@ -449,6 +463,8 @@ GuestExec *qmp_guest_exec(const char *path,
         g_io_channel_set_encoding(err_ch, NULL, NULL);
         g_io_channel_set_buffered(out_ch, false);
         g_io_channel_set_buffered(err_ch, false);
+        g_io_channel_set_close_on_unref(out_ch, true);
+        g_io_channel_set_close_on_unref(err_ch, true);
         g_io_add_watch(out_ch, G_IO_IN | G_IO_HUP,
                 guest_exec_output_watch, &gei->out);
         g_io_add_watch(err_ch, G_IO_IN | G_IO_HUP,
@@ -460,4 +476,69 @@ done:
     g_free(envp);
 
     return ge;
+}
+
+/* Convert GuestFileWhence (either a raw integer or an enum value) into
+ * the guest's SEEK_ constants.  */
+int ga_parse_whence(GuestFileWhence *whence, Error **errp)
+{
+    /* Exploit the fact that we picked values to match QGA_SEEK_*. */
+    if (whence->type == QTYPE_QSTRING) {
+        whence->type = QTYPE_QNUM;
+        whence->u.value = whence->u.name;
+    }
+    switch (whence->u.value) {
+    case QGA_SEEK_SET:
+        return SEEK_SET;
+    case QGA_SEEK_CUR:
+        return SEEK_CUR;
+    case QGA_SEEK_END:
+        return SEEK_END;
+    }
+    error_setg(errp, "invalid whence code %"PRId64, whence->u.value);
+    return -1;
+}
+
+GuestHostName *qmp_guest_get_host_name(Error **err)
+{
+    GuestHostName *result = NULL;
+    gchar const *hostname = g_get_host_name();
+    if (hostname != NULL) {
+        result = g_new0(GuestHostName, 1);
+        result->host_name = g_strdup(hostname);
+    }
+    return result;
+}
+
+GuestTimezone *qmp_guest_get_timezone(Error **errp)
+{
+    GuestTimezone *info = NULL;
+    GTimeZone *tz = NULL;
+    gint64 now = 0;
+    gint32 intv = 0;
+    gchar const *name = NULL;
+
+    info = g_new0(GuestTimezone, 1);
+    tz = g_time_zone_new_local();
+    if (tz == NULL) {
+        error_setg(errp, QERR_QGA_COMMAND_FAILED,
+                   "Couldn't retrieve local timezone");
+        goto error;
+    }
+
+    now = g_get_real_time() / G_USEC_PER_SEC;
+    intv = g_time_zone_find_interval(tz, G_TIME_TYPE_UNIVERSAL, now);
+    info->offset = g_time_zone_get_offset(tz, intv);
+    name = g_time_zone_get_abbreviation(tz, intv);
+    if (name != NULL) {
+        info->has_zone = true;
+        info->zone = g_strdup(name);
+    }
+    g_time_zone_unref(tz);
+
+    return info;
+
+error:
+    g_free(info);
+    return NULL;
 }

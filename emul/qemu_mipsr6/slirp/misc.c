@@ -5,9 +5,9 @@
  * terms and conditions of the copyright.
  */
 
-#include <slirp.h>
-#include <libslirp.h>
-
+#include "qemu/osdep.h"
+#include "slirp.h"
+#include "libslirp.h"
 #include "monitor/monitor.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
@@ -15,11 +15,6 @@
 #ifdef DEBUG
 int slirp_debug = DBG_CALL|DBG_MISC|DBG_ERROR;
 #endif
-
-struct quehead {
-	struct quehead *qh_link;
-	struct quehead *qh_rlink;
-};
 
 inline void
 insque(void *a, void *b)
@@ -64,27 +59,6 @@ int add_exec(struct ex_list **ex_ptr, int do_pty, char *exec,
 	return 0;
 }
 
-#ifndef HAVE_STRERROR
-
-/*
- * For systems with no strerror
- */
-
-extern int sys_nerr;
-extern char *sys_errlist[];
-
-char *
-strerror(error)
-	int error;
-{
-	if (error < sys_nerr)
-	   return sys_errlist[error];
-	else
-	   return "Unknown error.";
-}
-
-#endif
-
 
 #ifdef _WIN32
 
@@ -111,9 +85,10 @@ fork_exec(struct socket *so, const char *ex, int do_pty)
 int
 fork_exec(struct socket *so, const char *ex, int do_pty)
 {
-	int s;
-	struct sockaddr_in addr;
+        int s, cs;
+        struct sockaddr_in addr, csaddr;
 	socklen_t addrlen = sizeof(addr);
+        socklen_t csaddrlen = sizeof(csaddr);
 	int opt;
 	const char *argv[256];
 	/* don't want to clobber the original */
@@ -138,16 +113,43 @@ fork_exec(struct socket *so, const char *ex, int do_pty)
 		    bind(s, (struct sockaddr *)&addr, addrlen) < 0 ||
 		    listen(s, 1) < 0) {
 			error_report("Error: inet socket: %s", strerror(errno));
-			closesocket(s);
+			if (s >= 0) {
+			    closesocket(s);
+			}
 
 			return 0;
 		}
 	}
 
+        if (getsockname(s, (struct sockaddr *)&csaddr, &csaddrlen) < 0) {
+            closesocket(s);
+            return 0;
+        }
+        cs = qemu_socket(AF_INET, SOCK_STREAM, 0);
+        if (cs < 0) {
+            closesocket(s);
+            return 0;
+        }
+        csaddr.sin_addr = loopback_addr;
+        /*
+         * This connect won't block because we've already listen()ed on
+         * the server end (even though we won't accept() the connection
+         * until later on).
+         */
+        do {
+            ret = connect(cs, (struct sockaddr *)&csaddr, csaddrlen);
+        } while (ret < 0 && errno == EINTR);
+        if (ret < 0) {
+            closesocket(s);
+            closesocket(cs);
+            return 0;
+        }
+
 	pid = fork();
 	switch(pid) {
 	 case -1:
 		error_report("Error: fork failed: %s", strerror(errno));
+                closesocket(cs);
 		close(s);
 		return 0;
 
@@ -155,21 +157,10 @@ fork_exec(struct socket *so, const char *ex, int do_pty)
                 setsid();
 
 		/* Set the DISPLAY */
-                getsockname(s, (struct sockaddr *)&addr, &addrlen);
                 close(s);
-                /*
-                 * Connect to the socket
-                 * XXX If any of these fail, we're in trouble!
-                 */
-                s = qemu_socket(AF_INET, SOCK_STREAM, 0);
-                addr.sin_addr = loopback_addr;
-                do {
-                    ret = connect(s, (struct sockaddr *)&addr, addrlen);
-                } while (ret < 0 && errno == EINTR);
-
-		dup2(s, 0);
-		dup2(s, 1);
-		dup2(s, 2);
+                dup2(cs, 0);
+                dup2(cs, 1);
+                dup2(cs, 2);
 		for (s = getdtablesize() - 1; s >= 3; s--)
 		   close(s);
 
@@ -202,12 +193,10 @@ fork_exec(struct socket *so, const char *ex, int do_pty)
 
 	 default:
 		qemu_add_child_watch(pid);
+                closesocket(cs);
                 /*
-                 * XXX this could block us...
-                 * XXX Should set a timer here, and if accept() doesn't
-                 * return after X seconds, declare it a failure
-                 * The only reason this will block forever is if socket()
-                 * of connect() fail in the child process
+                 * This should never block, because we already connect()ed
+                 * on the child end before we forked.
                  */
                 do {
                     so->s = accept(s, (struct sockaddr *)&addr, &addrlen);

@@ -9,9 +9,9 @@
 #ifndef QEMU_NET_FILTER_H
 #define QEMU_NET_FILTER_H
 
+#include "qapi/qapi-types-net.h"
 #include "qom/object.h"
 #include "qemu-common.h"
-#include "qemu/typedefs.h"
 #include "net/queue.h"
 
 #define TYPE_NETFILTER "netfilter"
@@ -36,12 +36,18 @@ typedef ssize_t (FilterReceiveIOV)(NetFilterState *nc,
                                    int iovcnt,
                                    NetPacketSent *sent_cb);
 
+typedef void (FilterStatusChanged) (NetFilterState *nf, Error **errp);
+
+typedef void (FilterHandleEvent) (NetFilterState *nf, int event, Error **errp);
+
 typedef struct NetFilterClass {
     ObjectClass parent_class;
 
     /* optional */
     FilterSetup *setup;
     FilterCleanup *cleanup;
+    FilterStatusChanged *status_changed;
+    FilterHandleEvent *handle_event;
     /* mandatory */
     FilterReceiveIOV *receive_iov;
 } NetFilterClass;
@@ -55,7 +61,7 @@ struct NetFilterState {
     char *netdev_id;
     NetClientState *netdev;
     NetFilterDirection direction;
-    char info_str[256];
+    bool on;
     QTAILQ_ENTRY(NetFilterState) next;
 };
 
@@ -73,5 +79,7 @@ ssize_t qemu_netfilter_pass_to_next(NetClientState *sender,
                                     const struct iovec *iov,
                                     int iovcnt,
                                     void *opaque);
+
+void colo_notify_filters_event(int event, Error **errp);
 
 #endif /* QEMU_NET_FILTER_H */

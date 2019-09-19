@@ -6,8 +6,8 @@
  * top-level directory.
  */
 
-#ifndef _IVSHMEM_SERVER_H_
-#define _IVSHMEM_SERVER_H_
+#ifndef IVSHMEM_SERVER_H
+#define IVSHMEM_SERVER_H
 
 /**
  * The ivshmem server is a daemon that creates a unix socket in listen
@@ -15,7 +15,7 @@
  * unix socket. For each client, the server will create some eventfd
  * (see EVENTFD(2)), one per vector. These fd are transmitted to all
  * clients using the SCM_RIGHTS cmsg message. Therefore, each client is
- * able to send a notification to another client without beeing
+ * able to send a notification to another client without being
  * "profixied" by the server.
  *
  * We use this mechanism to send interruptions between guests.
@@ -26,10 +26,7 @@
  * associated to the ivshmem shared memory.
  */
 
-#include <limits.h>
 #include <sys/select.h>
-#include <stdint.h>
-#include <stdbool.h>
 
 #include "qemu/event_notifier.h"
 #include "qemu/queue.h"
@@ -69,6 +66,7 @@ typedef struct IvshmemServer {
     char unix_sock_path[PATH_MAX];   /**< path to unix socket */
     int sock_fd;                     /**< unix sock file descriptor */
     char shm_path[PATH_MAX];         /**< path to shm */
+    bool use_shm_open;
     size_t shm_size;                 /**< size of shm */
     int shm_fd;                      /**< shm file descriptor */
     unsigned n_vectors;              /**< number of vectors */
@@ -92,7 +90,8 @@ typedef struct IvshmemServer {
  */
 int
 ivshmem_server_init(IvshmemServer *server, const char *unix_sock_path,
-                    const char *shm_path, size_t shm_size, unsigned n_vectors,
+                    const char *shm_path, bool use_shm_open,
+                    size_t shm_size, unsigned n_vectors,
                     bool verbose);
 
 /**
@@ -164,4 +163,4 @@ ivshmem_server_search_peer(IvshmemServer *server, int64_t peer_id);
  */
 void ivshmem_server_dump(const IvshmemServer *server);
 
-#endif /* _IVSHMEM_SERVER_H_ */
+#endif /* IVSHMEM_SERVER_H */

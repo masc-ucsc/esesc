@@ -21,8 +21,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "net/checksum.h"
-
+#include "qemu/log.h"
 #include "etsec.h"
 #include "registers.h"
 
@@ -151,17 +152,7 @@ static void ievent_set(eTSEC    *etsec,
 {
     etsec->regs[IEVENT].value |= flags;
 
-    if ((flags & IEVENT_TXB && etsec->regs[IMASK].value & IMASK_TXBEN)
-        || (flags & IEVENT_TXF && etsec->regs[IMASK].value & IMASK_TXFEN)) {
-        qemu_irq_raise(etsec->tx_irq);
-        RING_DEBUG("%s Raise Tx IRQ\n", __func__);
-    }
-
-    if ((flags & IEVENT_RXB && etsec->regs[IMASK].value & IMASK_RXBEN)
-        || (flags & IEVENT_RXF && etsec->regs[IMASK].value & IMASK_RXFEN)) {
-        qemu_irq_raise(etsec->rx_irq);
-        RING_DEBUG("%s Raise Rx IRQ\n", __func__);
-    }
+    etsec_update_irq(etsec);
 }
 
 static void tx_padding_and_crc(eTSEC *etsec, uint32_t min_frame_len)
@@ -357,12 +348,13 @@ void etsec_walk_tx_ring(eTSEC *etsec, int ring_nbr)
         /* Save flags before BD update */
         bd_flags = bd.flags;
 
-        if (bd_flags & BD_TX_READY) {
-            process_tx_bd(etsec, &bd);
-
-            /* Write back BD after update */
-            write_buffer_descriptor(etsec, bd_addr, &bd);
+        if (!(bd_flags & BD_TX_READY)) {
+            break;
         }
+
+        process_tx_bd(etsec, &bd);
+        /* Write back BD after update */
+        write_buffer_descriptor(etsec, bd_addr, &bd);
 
         /* Wrap or next BD */
         if (bd_flags & BD_WRAP) {
@@ -370,12 +362,10 @@ void etsec_walk_tx_ring(eTSEC *etsec, int ring_nbr)
         } else {
             bd_addr += sizeof(eTSEC_rxtx_bd);
         }
+    } while (TRUE);
 
-    } while (bd_addr != ring_base);
-
-    bd_addr = ring_base;
-
-    /* Save the Buffer Descriptor Pointers to current bd */
+    /* Save the Buffer Descriptor Pointers to last bd that was not
+     * succesfully closed */
     etsec->regs[TBPTR0 + ring_nbr].value = bd_addr;
 
     /* Set transmit halt THLTx */
@@ -472,6 +462,14 @@ static void rx_init_frame(eTSEC *etsec, const uint8_t *buf, size_t size)
 
     /* CRC padding (We don't have to compute the CRC) */
     etsec->rx_padding = 4;
+
+    /*
+     * Ensure that payload length + CRC length is at least 802.3
+     * minimum MTU size bytes long (64)
+     */
+    if (etsec->rx_buffer_len < 60) {
+        etsec->rx_padding += 60 - etsec->rx_buffer_len;
+    }
 
     etsec->rx_first_in_frame = 1;
     etsec->rx_remaining_data = etsec->rx_buffer_len;

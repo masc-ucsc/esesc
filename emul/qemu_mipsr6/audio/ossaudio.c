@@ -21,9 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/types.h>
+#include "qemu/osdep.h"
 #include <sys/ioctl.h>
 #include <sys/soundcard.h>
 #include "qemu-common.h"
@@ -584,11 +582,9 @@ static int oss_init_out(HWVoiceOut *hw, struct audsettings *as,
     }
 
     if (!oss->mmapped) {
-        oss->pcm_buf = audio_calloc (
-            AUDIO_FUNC,
-            hw->samples,
-            1 << hw->info.shift
-            );
+        oss->pcm_buf = audio_calloc(__func__,
+                                    hw->samples,
+                                    1 << hw->info.shift);
         if (!oss->pcm_buf) {
             dolog (
                 "Could not allocate DAC buffer (%d samples, each %d bytes)\n",
@@ -707,7 +703,7 @@ static int oss_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
     }
 
     hw->samples = (obt.nfrags * obt.fragsize) >> hw->info.shift;
-    oss->pcm_buf = audio_calloc (AUDIO_FUNC, hw->samples, 1 << hw->info.shift);
+    oss->pcm_buf = audio_calloc(__func__, hw->samples, 1 << hw->info.shift);
     if (!oss->pcm_buf) {
         dolog ("Could not allocate ADC buffer (%d samples, each %d bytes)\n",
                hw->samples, 1 << hw->info.shift);
@@ -899,7 +895,7 @@ static struct audio_option oss_options[] = {
         .name  = "EXCLUSIVE",
         .tag   = AUD_OPT_BOOL,
         .valp  = &glob_conf.exclusive,
-        .descr = "Open device in exclusive mode (vmix wont work)"
+        .descr = "Open device in exclusive mode (vmix won't work)"
     },
 #ifdef USE_DSP_POLICY
     {
@@ -926,7 +922,7 @@ static struct audio_pcm_ops oss_pcm_ops = {
     .ctl_in   = oss_ctl_in
 };
 
-struct audio_driver oss_audio_driver = {
+static struct audio_driver oss_audio_driver = {
     .name           = "oss",
     .descr          = "OSS http://www.opensound.com",
     .options        = oss_options,
@@ -939,3 +935,9 @@ struct audio_driver oss_audio_driver = {
     .voice_size_out = sizeof (OSSVoiceOut),
     .voice_size_in  = sizeof (OSSVoiceIn)
 };
+
+static void register_audio_oss(void)
+{
+    audio_driver_register(&oss_audio_driver);
+}
+type_init(register_audio_oss);

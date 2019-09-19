@@ -24,11 +24,10 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "sysemu/char.h"
 #include "qemu/log.h"
 #include "net/net.h"
-#include "net/checksum.h"
 
 #ifdef DEBUG_XGMAC
 #define DEBUGF_BRK(message, args...) do { \
@@ -370,14 +369,14 @@ out:
 }
 
 static NetClientInfo net_xgmac_enet_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = eth_rx,
 };
 
-static int xgmac_enet_init(SysBusDevice *sbd)
+static void xgmac_enet_realize(DeviceState *dev, Error **errp)
 {
-    DeviceState *dev = DEVICE(sbd);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     XgmacState *s = XGMAC(dev);
 
     memory_region_init_io(&s->iomem, OBJECT(s), &enet_mem_ops, s,
@@ -398,8 +397,6 @@ static int xgmac_enet_init(SysBusDevice *sbd)
                                  (s->conf.macaddr.a[2] << 16) |
                                  (s->conf.macaddr.a[1] << 8) |
                                   s->conf.macaddr.a[0];
-
-    return 0;
 }
 
 static Property xgmac_properties[] = {
@@ -409,10 +406,9 @@ static Property xgmac_properties[] = {
 
 static void xgmac_enet_class_init(ObjectClass *klass, void *data)
 {
-    SysBusDeviceClass *sbc = SYS_BUS_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    sbc->init = xgmac_enet_init;
+    dc->realize = xgmac_enet_realize;
     dc->vmsd = &vmstate_xgmac;
     dc->props = xgmac_properties;
 }

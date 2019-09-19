@@ -6,16 +6,22 @@
  * that we need to emulate as well.
  */
 
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "elf.h"
 #include "hw/loader.h"
 #include "hw/boards.h"
 #include "alpha_sys.h"
+#include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "hw/timer/mc146818rtc.h"
 #include "hw/ide.h"
 #include "hw/timer/i8254.h"
-#include "hw/char/serial.h"
+#include "hw/isa/superio.h"
+#include "hw/dma/i8257.h"
+#include "qemu/cutils.h"
 
 #define MAX_IDE_BUS 2
 
@@ -46,7 +52,6 @@ static int clipper_pci_map_irq(PCIDevice *d, int irq_num)
 static void clipper_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
-    const char *cpu_model = machine->cpu_model;
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
@@ -62,7 +67,7 @@ static void clipper_init(MachineState *machine)
     /* Create up to 4 cpus.  */
     memset(cpus, 0, sizeof(cpus));
     for (i = 0; i < smp_cpus; ++i) {
-        cpus[i] = cpu_alpha_init(cpu_model ? cpu_model : "ev67");
+        cpus[i] = ALPHA_CPU(cpu_create(machine->cpu_type));
     }
 
     cpus[0]->env.trap_arg0 = ram_size;
@@ -74,21 +79,23 @@ static void clipper_init(MachineState *machine)
                            clipper_pci_map_irq);
 
     /* Since we have an SRM-compatible PALcode, use the SRM epoch.  */
-    rtc_init(isa_bus, 1900, rtc_irq);
+    mc146818_rtc_init(isa_bus, 1900, rtc_irq);
 
-    pit_init(isa_bus, 0x40, 0, NULL);
-    isa_create_simple(isa_bus, "i8042");
+    i8254_pit_init(isa_bus, 0x40, 0, NULL);
 
     /* VGA setup.  Don't bother loading the bios.  */
     pci_vga_init(pci_bus);
-
-    /* Serial code setup.  */
-    serial_hds_isa_init(isa_bus, MAX_SERIAL_PORTS);
 
     /* Network setup.  e1000 is good enough, failing Tulip support.  */
     for (i = 0; i < nb_nics; i++) {
         pci_nic_init_nofail(&nd_table[i], pci_bus, "e1000", NULL);
     }
+
+    /* 2 82C37 (dma) */
+    isa_create_simple(isa_bus, "i82374");
+
+    /* Super I/O */
+    isa_create_simple(isa_bus, TYPE_SMC37C669_SUPERIO);
 
     /* IDE disk setup.  */
     {
@@ -104,21 +111,20 @@ static void clipper_init(MachineState *machine)
     palcode_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS,
                                 bios_name ? bios_name : "palcode-clipper");
     if (palcode_filename == NULL) {
-        hw_error("no palcode provided\n");
+        error_report("no palcode provided");
         exit(1);
     }
     size = load_elf(palcode_filename, cpu_alpha_superpage_to_phys,
                     NULL, &palcode_entry, &palcode_low, &palcode_high,
-                    0, EM_ALPHA, 0);
+                    0, EM_ALPHA, 0, 0);
     if (size < 0) {
-        hw_error("could not load palcode '%s'\n", palcode_filename);
+        error_report("could not load palcode '%s'", palcode_filename);
         exit(1);
     }
     g_free(palcode_filename);
 
     /* Start all cpus at the PALcode RESET entry point.  */
     for (i = 0; i < smp_cpus; ++i) {
-        cpus[i]->env.pal_mode = 1;
         cpus[i]->env.pc = palcode_entry;
         cpus[i]->env.palbr = palcode_entry;
     }
@@ -129,9 +135,9 @@ static void clipper_init(MachineState *machine)
 
         size = load_elf(kernel_filename, cpu_alpha_superpage_to_phys,
                         NULL, &kernel_entry, &kernel_low, &kernel_high,
-                        0, EM_ALPHA, 0);
+                        0, EM_ALPHA, 0, 0);
         if (size < 0) {
-            hw_error("could not load kernel '%s'\n", kernel_filename);
+            error_report("could not load kernel '%s'", kernel_filename);
             exit(1);
         }
 
@@ -144,12 +150,13 @@ static void clipper_init(MachineState *machine)
         }
 
         if (initrd_filename) {
-            long initrd_base, initrd_size;
+            long initrd_base;
+            int64_t initrd_size;
 
             initrd_size = get_image_size(initrd_filename);
             if (initrd_size < 0) {
-                hw_error("could not load initial ram disk '%s'\n",
-                         initrd_filename);
+                error_report("could not load initial ram disk '%s'",
+                             initrd_filename);
                 exit(1);
             }
 
@@ -172,8 +179,10 @@ static void clipper_machine_init(MachineClass *mc)
 {
     mc->desc = "Alpha DP264/CLIPPER";
     mc->init = clipper_init;
+    mc->block_default_type = IF_IDE;
     mc->max_cpus = 4;
     mc->is_default = 1;
+    mc->default_cpu_type = ALPHA_CPU_TYPE_NAME("ev67");
 }
 
 DEFINE_MACHINE("clipper", clipper_machine_init)

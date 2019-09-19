@@ -19,6 +19,8 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "cpu.h"
+#include "qemu/log.h"
 #include "hw/sysbus.h"
 
 #include "hw/misc/mips_cpc.h"
@@ -40,7 +42,7 @@ static void cpc_run_vp(MIPSCPCState *cpc, uint64_t vp_run)
         uint64_t i = 1ULL << cs->cpu_index;
         if (i & vp_run & ~cpc->vp_running) {
 #ifdef CONFIG_ESESC
-          QEMUReader_cpu_start(cs->cpu_index);
+            QEMUReader_cpu_start(cs->cpu_index);
 #endif
             cpu_reset(cs);
             cpc->vp_running |= i;
@@ -55,11 +57,10 @@ static void cpc_stop_vp(MIPSCPCState *cpc, uint64_t vp_stop)
     CPU_FOREACH(cs) {
         uint64_t i = 1ULL << cs->cpu_index;
         if (i & vp_stop & cpc->vp_running) {
-            cs->halted = 1;
 #ifdef CONFIG_ESESC
             QEMUReader_cpu_stop(cs->cpu_index);
 #endif
-            cpu_reset_interrupt(cs, CPU_INTERRUPT_WAKE);
+            cpu_interrupt(cs, CPU_INTERRUPT_HALT);
             cpc->vp_running &= ~i;
         }
     }
@@ -144,10 +145,10 @@ static void mips_cpc_reset(DeviceState *dev)
     /* Put selected VPs into run state */
 #ifdef CONFIG_ESESC
     {
-      CPUState *cs = first_cpu;
-      CPU_FOREACH(cs) {
-        cs->fid = cs->cpu_index;
-      }
+        CPUState *cs = first_cpu;
+        CPU_FOREACH(cs) {
+            cs->fid = cs->cpu_index;
+        }
     }
     cpc_run_vp(s, 0x1);
 #else

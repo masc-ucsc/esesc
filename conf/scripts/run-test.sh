@@ -4,6 +4,7 @@
 : ${ESESC_SRC:=${HOME}/projs/esesc}
 : ${ESESC_BUILD_DIR:=${HOME}/build}
 : ${ESESC_BUILD_TYPE:=Debug}
+: ${ESESC_TARGET:riscv64}
 : ${ESESC_ENABLE_LIVE:=0}
 
 BENCH_DIR=/bench
@@ -23,10 +24,10 @@ fi
 mkdir -p ${RUN_DIR}
 cd ${RUN_DIR}
 cp ${ESESC_SRC}/conf/*conf* .
-cp ${ESESC_SRC}/bins/riscv64/* .
+cp ${ESESC_SRC}/bins/${ESESC_TARGET}/* .
 cp ${ESESC_SRC}/bins/inputs/* .
 
-export ESESC_BenchName="spec00_crafty.riscv64"
+export ESESC_BenchName="spec00_crafty.${ESESC_TARGET}"
 export ESESC_TASS_nInstSkip=1e8
 export ESESC_TASS_nInstMax=2e8
 export ESESC_samplerSel="TASS"

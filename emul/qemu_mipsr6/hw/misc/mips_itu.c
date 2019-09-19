@@ -18,10 +18,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
+#include "qemu/log.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
-#include "hw/sysbus.h"
-#include "sysemu/sysemu.h"
+#include "cpu.h"
+#include "exec/exec-all.h"
 #include "hw/misc/mips_itu.h"
 
 #ifdef CONFIG_ESESC
@@ -84,7 +85,7 @@ static void itc_reconfigure(MIPSITUState *tag)
     uint64_t *am = &tag->ITCAddressMap[0];
     MemoryRegion *mr = &tag->storage_io;
     hwaddr address = am[0] & ITC_AM0_BASE_ADDRESS_MASK;
-    uint64_t size = (1 << 10) + (am[1] & ITC_AM1_ADDR_MASK_MASK);
+    uint64_t size = (1 * KiB) + (am[1] & ITC_AM1_ADDR_MASK_MASK);
     bool is_enabled = (am[0] & ITC_AM0_EN_MASK) != 0;
 
     memory_region_transaction_begin();
@@ -178,13 +179,12 @@ static void wake_blocked_threads(ITCStorageCell *c)
 static void QEMU_NORETURN block_thread_and_exit(ITCStorageCell *c)
 {
     c->blocked_threads |= 1ULL << current_cpu->cpu_index;
-    cpu_restore_state(current_cpu, current_cpu->mem_io_pc);
     current_cpu->halted = 1;
 #ifdef CONFIG_ESESC
     QEMUReader_cpu_stop(current_cpu->cpu_index);
 #endif
     current_cpu->exception_index = EXCP_HLT;
-    cpu_loop_exit(current_cpu);
+    cpu_loop_exit_restore(current_cpu, current_cpu->mem_io_pc);
 }
 
 /* ITC Bypass View */

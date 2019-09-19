@@ -1,5 +1,8 @@
-object :empty
-object :obj-fooA-arg
+object q_empty
+enum QType ['none', 'qnull', 'qnum', 'qstring', 'qdict', 'qlist', 'qbool']
+    prefix QTYPE
+module ident-with-escape.json
+object q_obj_fooA-arg
     member bar1: str optional=False
-command fooA :obj-fooA-arg -> None
-   gen=True success_response=True
+command fooA q_obj_fooA-arg -> None
+   gen=True success_response=True boxed=False oob=False preconfig=False

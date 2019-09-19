@@ -4,7 +4,10 @@
  * top-level directory.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu/iov.h"
+#include "trace.h"
 
 #include "hw/qdev.h"
 #include "hw/virtio/virtio.h"
@@ -12,12 +15,13 @@
 
 #include "standard-headers/linux/input.h"
 
+#define VIRTIO_INPUT_VM_VERSION 1
+
 /* ----------------------------------------------------------------- */
 
 void virtio_input_send(VirtIOInput *vinput, virtio_input_event *event)
 {
-    VirtQueueElement elem;
-    unsigned have, need;
+    VirtQueueElement *elem;
     int i, len;
 
     if (!vinput->active) {
@@ -27,10 +31,10 @@ void virtio_input_send(VirtIOInput *vinput, virtio_input_event *event)
     /* queue up events ... */
     if (vinput->qindex == vinput->qsize) {
         vinput->qsize++;
-        vinput->queue = realloc(vinput->queue, vinput->qsize *
-                                sizeof(virtio_input_event));
+        vinput->queue = g_realloc(vinput->queue, vinput->qsize *
+                                  sizeof(vinput->queue[0]));
     }
-    vinput->queue[vinput->qindex++] = *event;
+    vinput->queue[vinput->qindex++].event = *event;
 
     /* ... until we see a report sync ... */
     if (event->type != cpu_to_le16(EV_SYN) ||
@@ -39,24 +43,26 @@ void virtio_input_send(VirtIOInput *vinput, virtio_input_event *event)
     }
 
     /* ... then check available space ... */
-    need = sizeof(virtio_input_event) * vinput->qindex;
-    virtqueue_get_avail_bytes(vinput->evt, &have, NULL, need, 0);
-    if (have < need) {
-        vinput->qindex = 0;
-        fprintf(stderr, "%s: ENOSPC in vq, dropping events\n", __func__);
-        return;
+    for (i = 0; i < vinput->qindex; i++) {
+        elem = virtqueue_pop(vinput->evt, sizeof(VirtQueueElement));
+        if (!elem) {
+            while (--i >= 0) {
+                virtqueue_unpop(vinput->evt, vinput->queue[i].elem, 0);
+            }
+            vinput->qindex = 0;
+            trace_virtio_input_queue_full();
+            return;
+        }
+        vinput->queue[i].elem = elem;
     }
 
     /* ... and finally pass them to the guest */
     for (i = 0; i < vinput->qindex; i++) {
-        if (!virtqueue_pop(vinput->evt, &elem)) {
-            /* should not happen, we've checked for space beforehand */
-            fprintf(stderr, "%s: Huh?  No vq elem available ...\n", __func__);
-            return;
-        }
-        len = iov_from_buf(elem.in_sg, elem.in_num,
-                           0, vinput->queue+i, sizeof(virtio_input_event));
-        virtqueue_push(vinput->evt, &elem, len);
+        elem = vinput->queue[i].elem;
+        len = iov_from_buf(elem->in_sg, elem->in_num,
+                           0, &vinput->queue[i].event, sizeof(virtio_input_event));
+        virtqueue_push(vinput->evt, elem, len);
+        g_free(elem);
     }
     virtio_notify(VIRTIO_DEVICE(vinput), vinput->evt);
     vinput->qindex = 0;
@@ -72,24 +78,30 @@ static void virtio_input_handle_sts(VirtIODevice *vdev, VirtQueue *vq)
     VirtIOInputClass *vic = VIRTIO_INPUT_GET_CLASS(vdev);
     VirtIOInput *vinput = VIRTIO_INPUT(vdev);
     virtio_input_event event;
-    VirtQueueElement elem;
+    VirtQueueElement *elem;
     int len;
 
-    while (virtqueue_pop(vinput->sts, &elem)) {
+    for (;;) {
+        elem = virtqueue_pop(vinput->sts, sizeof(VirtQueueElement));
+        if (!elem) {
+            break;
+        }
+
         memset(&event, 0, sizeof(event));
-        len = iov_to_buf(elem.out_sg, elem.out_num,
+        len = iov_to_buf(elem->out_sg, elem->out_num,
                          0, &event, sizeof(event));
         if (vic->handle_status) {
             vic->handle_status(vinput, &event);
         }
-        virtqueue_push(vinput->sts, &elem, len);
+        virtqueue_push(vinput->sts, elem, len);
+        g_free(elem);
     }
     virtio_notify(vdev, vinput->sts);
 }
 
-static virtio_input_config *virtio_input_find_config(VirtIOInput *vinput,
-                                                     uint8_t select,
-                                                     uint8_t subsel)
+virtio_input_config *virtio_input_find_config(VirtIOInput *vinput,
+                                              uint8_t select,
+                                              uint8_t subsel)
 {
     VirtIOInputConfig *cfg;
 
@@ -204,6 +216,19 @@ static void virtio_input_reset(VirtIODevice *vdev)
     }
 }
 
+static int virtio_input_post_load(void *opaque, int version_id)
+{
+    VirtIOInput *vinput = opaque;
+    VirtIOInputClass *vic = VIRTIO_INPUT_GET_CLASS(vinput);
+    VirtIODevice *vdev = VIRTIO_DEVICE(vinput);
+
+    vinput->active = vdev->status & VIRTIO_CONFIG_S_DRIVER_OK;
+    if (vic->change_active) {
+        vic->change_active(vinput);
+    }
+    return 0;
+}
+
 static void virtio_input_device_realize(DeviceState *dev, Error **errp)
 {
     VirtIOInputClass *vic = VIRTIO_INPUT_GET_CLASS(dev);
@@ -237,6 +262,18 @@ static void virtio_input_device_realize(DeviceState *dev, Error **errp)
     vinput->sts = virtio_add_queue(vdev, 64, virtio_input_handle_sts);
 }
 
+static void virtio_input_finalize(Object *obj)
+{
+    VirtIOInput *vinput = VIRTIO_INPUT(obj);
+    VirtIOInputConfig *cfg, *next;
+
+    QTAILQ_FOREACH_SAFE(cfg, &vinput->cfg_list, node, next) {
+        QTAILQ_REMOVE(&vinput->cfg_list, cfg, node);
+        g_free(cfg);
+    }
+
+    g_free(vinput->queue);
+}
 static void virtio_input_device_unrealize(DeviceState *dev, Error **errp)
 {
     VirtIOInputClass *vic = VIRTIO_INPUT_GET_CLASS(dev);
@@ -253,6 +290,17 @@ static void virtio_input_device_unrealize(DeviceState *dev, Error **errp)
     virtio_cleanup(vdev);
 }
 
+static const VMStateDescription vmstate_virtio_input = {
+    .name = "virtio-input",
+    .minimum_version_id = VIRTIO_INPUT_VM_VERSION,
+    .version_id = VIRTIO_INPUT_VM_VERSION,
+    .fields = (VMStateField[]) {
+        VMSTATE_VIRTIO_DEVICE,
+        VMSTATE_END_OF_LIST()
+    },
+    .post_load = virtio_input_post_load,
+};
+
 static Property virtio_input_properties[] = {
     DEFINE_PROP_STRING("serial", VirtIOInput, serial),
     DEFINE_PROP_END_OF_LIST(),
@@ -264,6 +312,7 @@ static void virtio_input_class_init(ObjectClass *klass, void *data)
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
 
     dc->props          = virtio_input_properties;
+    dc->vmsd           = &vmstate_virtio_input;
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     vdc->realize      = virtio_input_device_realize;
     vdc->unrealize    = virtio_input_device_unrealize;
@@ -281,6 +330,7 @@ static const TypeInfo virtio_input_info = {
     .class_size    = sizeof(VirtIOInputClass),
     .class_init    = virtio_input_class_init,
     .abstract      = true,
+    .instance_finalize = virtio_input_finalize,
 };
 
 /* ----------------------------------------------------------------- */

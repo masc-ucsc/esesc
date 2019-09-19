@@ -22,9 +22,7 @@
 #ifdef _FORTIFY_SOURCE
 #undef _FORTIFY_SOURCE
 #endif
-#include <stdlib.h>
-#include <setjmp.h>
-#include <stdint.h>
+#include "qemu/osdep.h"
 #include <ucontext.h>
 #include "qemu-common.h"
 #include "qemu/coroutine_int.h"
@@ -33,9 +31,17 @@
 #include <valgrind/valgrind.h>
 #endif
 
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+#ifdef CONFIG_ASAN_IFACE_FIBER
+#define CONFIG_ASAN 1
+#include <sanitizer/asan_interface.h>
+#endif
+#endif
+
 typedef struct {
     Coroutine base;
     void *stack;
+    size_t stack_size;
     sigjmp_buf env;
 
 #ifdef CONFIG_VALGRIND_H
@@ -60,11 +66,37 @@ union cc_arg {
     int i[2];
 };
 
+static void finish_switch_fiber(void *fake_stack_save)
+{
+#ifdef CONFIG_ASAN
+    const void *bottom_old;
+    size_t size_old;
+
+    __sanitizer_finish_switch_fiber(fake_stack_save, &bottom_old, &size_old);
+
+    if (!leader.stack) {
+        leader.stack = (void *)bottom_old;
+        leader.stack_size = size_old;
+    }
+#endif
+}
+
+static void start_switch_fiber(void **fake_stack_save,
+                               const void *bottom, size_t size)
+{
+#ifdef CONFIG_ASAN
+    __sanitizer_start_switch_fiber(fake_stack_save, bottom, size);
+#endif
+}
+
 static void coroutine_trampoline(int i0, int i1)
 {
     union cc_arg arg;
     CoroutineUContext *self;
     Coroutine *co;
+    void *fake_stack_save = NULL;
+
+    finish_switch_fiber(NULL);
 
     arg.i[0] = i0;
     arg.i[1] = i1;
@@ -73,8 +105,12 @@ static void coroutine_trampoline(int i0, int i1)
 
     /* Initialize longjmp environment and switch back the caller */
     if (!sigsetjmp(self->env, 0)) {
+        start_switch_fiber(&fake_stack_save,
+                           leader.stack, leader.stack_size);
         siglongjmp(*(sigjmp_buf *)co->entry_arg, 1);
     }
+
+    finish_switch_fiber(fake_stack_save);
 
     while (true) {
         co->entry(co->entry_arg);
@@ -84,11 +120,11 @@ static void coroutine_trampoline(int i0, int i1)
 
 Coroutine *qemu_coroutine_new(void)
 {
-    const size_t stack_size = 1 << 20;
     CoroutineUContext *co;
     ucontext_t old_uc, uc;
     sigjmp_buf old_env;
     union cc_arg arg = {0};
+    void *fake_stack_save = NULL;
 
     /* The ucontext functions preserve signal masks which incurs a
      * system call overhead.  sigsetjmp(buf, 0)/siglongjmp() does not
@@ -103,17 +139,18 @@ Coroutine *qemu_coroutine_new(void)
     }
 
     co = g_malloc0(sizeof(*co));
-    co->stack = g_malloc(stack_size);
+    co->stack_size = COROUTINE_STACK_SIZE;
+    co->stack = qemu_alloc_stack(&co->stack_size);
     co->base.entry_arg = &old_env; /* stash away our jmp_buf */
 
     uc.uc_link = &old_uc;
     uc.uc_stack.ss_sp = co->stack;
-    uc.uc_stack.ss_size = stack_size;
+    uc.uc_stack.ss_size = co->stack_size;
     uc.uc_stack.ss_flags = 0;
 
 #ifdef CONFIG_VALGRIND_H
     co->valgrind_stack_id =
-        VALGRIND_STACK_REGISTER(co->stack, co->stack + stack_size);
+        VALGRIND_STACK_REGISTER(co->stack, co->stack + co->stack_size);
 #endif
 
     arg.p = co;
@@ -123,13 +160,17 @@ Coroutine *qemu_coroutine_new(void)
 
     /* swapcontext() in, siglongjmp() back out */
     if (!sigsetjmp(old_env, 0)) {
+        start_switch_fiber(&fake_stack_save, co->stack, co->stack_size);
         swapcontext(&old_uc, &uc);
     }
+
+    finish_switch_fiber(fake_stack_save);
+
     return &co->base;
 }
 
 #ifdef CONFIG_VALGRIND_H
-#ifdef CONFIG_PRAGMA_DIAGNOSTIC_AVAILABLE
+#if defined(CONFIG_PRAGMA_DIAGNOSTIC_AVAILABLE) && !defined(__clang__)
 /* Work around an unused variable in the valgrind.h macro... */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
@@ -138,7 +179,7 @@ static inline void valgrind_stack_deregister(CoroutineUContext *co)
 {
     VALGRIND_STACK_DEREGISTER(co->valgrind_stack_id);
 }
-#ifdef CONFIG_PRAGMA_DIAGNOSTIC_AVAILABLE
+#if defined(CONFIG_PRAGMA_DIAGNOSTIC_AVAILABLE) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
 #endif
@@ -151,7 +192,7 @@ void qemu_coroutine_delete(Coroutine *co_)
     valgrind_stack_deregister(co);
 #endif
 
-    g_free(co->stack);
+    qemu_free_stack(co->stack, co->stack_size);
     g_free(co);
 }
 
@@ -170,13 +211,19 @@ qemu_coroutine_switch(Coroutine *from_, Coroutine *to_,
     CoroutineUContext *from = DO_UPCAST(CoroutineUContext, base, from_);
     CoroutineUContext *to = DO_UPCAST(CoroutineUContext, base, to_);
     int ret;
+    void *fake_stack_save = NULL;
 
     current = to_;
 
     ret = sigsetjmp(from->env, 0);
     if (ret == 0) {
+        start_switch_fiber(action == COROUTINE_TERMINATE ?
+                           NULL : &fake_stack_save, to->stack, to->stack_size);
         siglongjmp(to->env, action);
     }
+
+    finish_switch_fiber(fake_stack_save);
+
     return ret;
 }
 

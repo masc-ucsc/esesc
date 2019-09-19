@@ -38,7 +38,8 @@
  * terms and conditions of the copyright.
  */
 
-#include <slirp.h>
+#include "qemu/osdep.h"
+#include "slirp.h"
 
 /* Number of packets queued before we start sending
  * (to prevent allocing too many mbufs) */

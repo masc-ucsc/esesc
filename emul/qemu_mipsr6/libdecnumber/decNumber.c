@@ -166,10 +166,7 @@
 /*	**  -- raise to the power				      */
 /* ------------------------------------------------------------------ */
 
-#include <stdlib.h>		   /* for malloc, free, etc. */
-#include <stdio.h>		   /* for printf [if needed] */
-#include <string.h>		   /* for strcpy */
-#include <ctype.h>		   /* for lower */
+#include "qemu/osdep.h"
 #include "libdecnumber/dconfig.h"
 #include "libdecnumber/decNumber.h"
 #include "libdecnumber/decNumberLocal.h"
@@ -4778,7 +4775,7 @@ static decNumber * decDivideOp(decNumber *res,
 	    half=*up & 0x01;
 	    *up/=2;		   /* [shift] */
 	    if (!half) continue;
-	    *(up-1)+=(DECDPUNMAX+1)/2;
+	    *(up-1)+=DIV_ROUND_UP(DECDPUNMAX, 2);
 	    }
 	  /* [accunits still describes the original remainder length] */
 

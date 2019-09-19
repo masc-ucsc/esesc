@@ -12,9 +12,10 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "hw/timer/imx_gpt.h"
-#include "hw/misc/imx_ccm.h"
 #include "qemu/main-loop.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_GPT
 #define DEBUG_IMX_GPT 0
@@ -28,7 +29,7 @@
         } \
     } while (0)
 
-static char const *imx_gpt_reg_name(uint32_t reg)
+static const char *imx_gpt_reg_name(uint32_t reg)
 {
     switch (reg) {
     case 0:
@@ -79,28 +80,61 @@ static const VMStateDescription vmstate_imx_timer_gpt = {
     }
 };
 
-static const IMXClk imx_gpt_clocks[] = {
-    NOCLK,    /* 000 No clock source */
-    IPG,      /* 001 ipg_clk, 532MHz*/
-    IPG,      /* 010 ipg_clk_highfreq */
-    NOCLK,    /* 011 not defined */
-    CLK_32k,  /* 100 ipg_clk_32k */
-    NOCLK,    /* 101 not defined */
-    NOCLK,    /* 110 not defined */
-    NOCLK,    /* 111 not defined */
+static const IMXClk imx25_gpt_clocks[] = {
+    CLK_NONE,      /* 000 No clock source */
+    CLK_IPG,       /* 001 ipg_clk, 532MHz*/
+    CLK_IPG_HIGH,  /* 010 ipg_clk_highfreq */
+    CLK_NONE,      /* 011 not defined */
+    CLK_32k,       /* 100 ipg_clk_32k */
+    CLK_32k,       /* 101 ipg_clk_32k */
+    CLK_32k,       /* 110 ipg_clk_32k */
+    CLK_32k,       /* 111 ipg_clk_32k */
+};
+
+static const IMXClk imx31_gpt_clocks[] = {
+    CLK_NONE,      /* 000 No clock source */
+    CLK_IPG,       /* 001 ipg_clk, 532MHz*/
+    CLK_IPG_HIGH,  /* 010 ipg_clk_highfreq */
+    CLK_NONE,      /* 011 not defined */
+    CLK_32k,       /* 100 ipg_clk_32k */
+    CLK_NONE,      /* 101 not defined */
+    CLK_NONE,      /* 110 not defined */
+    CLK_NONE,      /* 111 not defined */
+};
+
+static const IMXClk imx6_gpt_clocks[] = {
+    CLK_NONE,      /* 000 No clock source */
+    CLK_IPG,       /* 001 ipg_clk, 532MHz*/
+    CLK_IPG_HIGH,  /* 010 ipg_clk_highfreq */
+    CLK_EXT,       /* 011 External clock */
+    CLK_32k,       /* 100 ipg_clk_32k */
+    CLK_HIGH_DIV,  /* 101 reference clock / 8 */
+    CLK_NONE,      /* 110 not defined */
+    CLK_HIGH,      /* 111 reference clock */
+};
+
+static const IMXClk imx7_gpt_clocks[] = {
+    CLK_NONE,      /* 000 No clock source */
+    CLK_IPG,       /* 001 ipg_clk, 532MHz*/
+    CLK_IPG_HIGH,  /* 010 ipg_clk_highfreq */
+    CLK_EXT,       /* 011 External clock */
+    CLK_32k,       /* 100 ipg_clk_32k */
+    CLK_HIGH,      /* 101 reference clock */
+    CLK_NONE,      /* 110 not defined */
+    CLK_NONE,      /* 111 not defined */
 };
 
 static void imx_gpt_set_freq(IMXGPTState *s)
 {
     uint32_t clksrc = extract32(s->cr, GPT_CR_CLKSRC_SHIFT, 3);
-    uint32_t freq = imx_clock_frequency(s->ccm, imx_gpt_clocks[clksrc])
-                    / (1 + s->pr);
-    s->freq = freq;
 
-    DPRINTF("Setting clksrc %d to frequency %d\n", clksrc, freq);
+    s->freq = imx_ccm_get_clock_frequency(s->ccm,
+                                          s->clocks[clksrc]) / (1 + s->pr);
 
-    if (freq) {
-        ptimer_set_freq(s->timer, freq);
+    DPRINTF("Setting clksrc %d to frequency %d\n", clksrc, s->freq);
+
+    if (s->freq) {
+        ptimer_set_freq(s->timer, s->freq);
     }
 }
 
@@ -133,7 +167,7 @@ static inline uint32_t imx_gpt_find_limit(uint32_t count, uint32_t reg,
 static void imx_gpt_compute_next_timeout(IMXGPTState *s, bool event)
 {
     uint32_t timeout = GPT_TIMER_MAX;
-    uint32_t count = 0;
+    uint32_t count;
     long long limit;
 
     if (!(s->cr & GPT_CR_EN)) {
@@ -141,20 +175,23 @@ static void imx_gpt_compute_next_timeout(IMXGPTState *s, bool event)
         return;
     }
 
+    /* update the count */
+    count = imx_gpt_update_count(s);
+
     if (event) {
-        /* This is a timer event  */
-
-        if ((s->cr & GPT_CR_FRR)  && (s->next_timeout != GPT_TIMER_MAX)) {
-            /*
-             * if we are in free running mode and we have not reached
-             * the GPT_TIMER_MAX limit, then update the count
+        /*
+         * This is an event (the ptimer reached 0 and stopped), and the
+         * timer counter is now equal to s->next_timeout.
+         */
+        if (!(s->cr & GPT_CR_FRR) && (count == s->ocr1)) {
+            /* We are in restart mode and we crossed the compare channel 1
+             * value. We need to reset the counter to 0.
              */
-            count = imx_gpt_update_count(s);
+            count = s->cnt = s->next_timeout = 0;
+        } else if (count == GPT_TIMER_MAX) {
+            /* We reached GPT_TIMER_MAX so we need to rollover */
+            count = s->cnt = s->next_timeout = 0;
         }
-    } else {
-        /* not a timer event, then just update the count */
-
-        count = imx_gpt_update_count(s);
     }
 
     /* now, find the next timeout related to count */
@@ -270,18 +307,23 @@ static uint64_t imx_gpt_read(void *opaque, hwaddr offset, unsigned size)
     return reg_value;
 }
 
-static void imx_gpt_reset(DeviceState *dev)
-{
-    IMXGPTState *s = IMX_GPT(dev);
 
+static void imx_gpt_reset_common(IMXGPTState *s, bool is_soft_reset)
+{
     /* stop timer */
     ptimer_stop(s->timer);
 
-    /*
-     * Soft reset doesn't touch some bits; hard reset clears them
+    /* Soft reset and hard reset differ only in their handling of the CR
+     * register -- soft reset preserves the values of some bits there.
      */
-    s->cr &= ~(GPT_CR_EN|GPT_CR_ENMOD|GPT_CR_STOPEN|GPT_CR_DOZEN|
-               GPT_CR_WAITEN|GPT_CR_DBGEN);
+    if (is_soft_reset) {
+        /* Clear all CR bits except those that are preserved by soft reset. */
+        s->cr &= GPT_CR_EN | GPT_CR_ENMOD | GPT_CR_STOPEN | GPT_CR_DOZEN |
+            GPT_CR_WAITEN | GPT_CR_DBGEN |
+            (GPT_CR_CLKSRC_MASK << GPT_CR_CLKSRC_SHIFT);
+    } else {
+        s->cr = 0;
+    }
     s->sr = 0;
     s->pr = 0;
     s->ir = 0;
@@ -307,6 +349,18 @@ static void imx_gpt_reset(DeviceState *dev)
     }
 }
 
+static void imx_gpt_soft_reset(DeviceState *dev)
+{
+    IMXGPTState *s = IMX_GPT(dev);
+    imx_gpt_reset_common(s, true);
+}
+
+static void imx_gpt_reset(DeviceState *dev)
+{
+    IMXGPTState *s = IMX_GPT(dev);
+    imx_gpt_reset_common(s, false);
+}
+
 static void imx_gpt_write(void *opaque, hwaddr offset, uint64_t value,
                           unsigned size)
 {
@@ -322,7 +376,7 @@ static void imx_gpt_write(void *opaque, hwaddr offset, uint64_t value,
         s->cr = value & ~0x7c14;
         if (s->cr & GPT_CR_SWR) { /* force reset */
             /* handle the reset */
-            imx_gpt_reset(DEVICE(s));
+            imx_gpt_soft_reset(DEVICE(s));
         } else {
             /* set our freq, as the source might have changed */
             imx_gpt_set_freq(s);
@@ -435,7 +489,7 @@ static void imx_gpt_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->iomem);
 
     bh = qemu_bh_new(imx_gpt_timeout, s);
-    s->timer = ptimer_init(bh);
+    s->timer = ptimer_init(bh, PTIMER_POLICY_DEFAULT);
 }
 
 static void imx_gpt_class_init(ObjectClass *klass, void *data)
@@ -448,16 +502,66 @@ static void imx_gpt_class_init(ObjectClass *klass, void *data)
     dc->desc = "i.MX general timer";
 }
 
-static const TypeInfo imx_gpt_info = {
-    .name = TYPE_IMX_GPT,
+static void imx25_gpt_init(Object *obj)
+{
+    IMXGPTState *s = IMX_GPT(obj);
+
+    s->clocks = imx25_gpt_clocks;
+}
+
+static void imx31_gpt_init(Object *obj)
+{
+    IMXGPTState *s = IMX_GPT(obj);
+
+    s->clocks = imx31_gpt_clocks;
+}
+
+static void imx6_gpt_init(Object *obj)
+{
+    IMXGPTState *s = IMX_GPT(obj);
+
+    s->clocks = imx6_gpt_clocks;
+}
+
+static void imx7_gpt_init(Object *obj)
+{
+    IMXGPTState *s = IMX_GPT(obj);
+
+    s->clocks = imx7_gpt_clocks;
+}
+
+static const TypeInfo imx25_gpt_info = {
+    .name = TYPE_IMX25_GPT,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(IMXGPTState),
+    .instance_init = imx25_gpt_init,
     .class_init = imx_gpt_class_init,
+};
+
+static const TypeInfo imx31_gpt_info = {
+    .name = TYPE_IMX31_GPT,
+    .parent = TYPE_IMX25_GPT,
+    .instance_init = imx31_gpt_init,
+};
+
+static const TypeInfo imx6_gpt_info = {
+    .name = TYPE_IMX6_GPT,
+    .parent = TYPE_IMX25_GPT,
+    .instance_init = imx6_gpt_init,
+};
+
+static const TypeInfo imx7_gpt_info = {
+    .name = TYPE_IMX7_GPT,
+    .parent = TYPE_IMX25_GPT,
+    .instance_init = imx7_gpt_init,
 };
 
 static void imx_gpt_register_types(void)
 {
-    type_register_static(&imx_gpt_info);
+    type_register_static(&imx25_gpt_info);
+    type_register_static(&imx31_gpt_info);
+    type_register_static(&imx6_gpt_info);
+    type_register_static(&imx7_gpt_info);
 }
 
 type_init(imx_gpt_register_types)
