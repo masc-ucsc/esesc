@@ -300,6 +300,43 @@ public:
     return keepStats;
   }
 
+  static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
+    DInst *i = dInstPool.out();
+
+    I(inst);
+
+    i->fid  = fid;
+    i->inst = *inst;
+    i->pc   = pc;
+    i->addr = address;
+#ifdef ESESC_TRACE_DATA
+    i->data      = 0;
+    i->data2     = 0;
+    i->br_data1  = 0;
+    i->br_data2  = 0;
+    i->ld_br_type = 0;
+    i->dep_depth = 0;
+    i->ldpc      = 0;
+    i->ld_addr   = 0;
+    i->base_pref_addr   = 0;
+    i->data_sign = DS_NoData;
+    i->chained   = 0;
+    //BR stats
+    i->brpc = 0;
+    i->inflight = 0;
+    i->delta = 0;
+    i->br_ld_chain = false;
+    i->br_op_type = -1;
+#endif
+    i->fetched   = 0;
+    i->keepStats = keepStats;
+
+    i->setup();
+    I(i->getInst()->getOpcode());
+
+    return i;
+  }
+#ifdef ESESC_TRACE_DATA
   uint64_t getDelta() const{
     return delta;
   }
@@ -340,43 +377,6 @@ public:
     br_ld_chain_predictable = true;
   }
 
-  static DInst *create(const Instruction *inst, AddrType pc, AddrType address, FlowID fid, bool keepStats) {
-    DInst *i = dInstPool.out();
-
-    I(inst);
-
-    i->fid  = fid;
-    i->inst = *inst;
-    i->pc   = pc;
-    i->addr = address;
-#ifdef ESESC_TRACE_DATA
-    i->data      = 0;
-    i->data2     = 0;
-    i->br_data1  = 0;
-    i->br_data2  = 0;
-    i->ld_br_type = 0;
-    i->dep_depth = 0;
-    i->ldpc      = 0;
-    i->ld_addr   = 0;
-    i->base_pref_addr   = 0;
-    i->data_sign = DS_NoData;
-    i->chained   = 0;
-    //BR stats
-    i->brpc = 0;
-    i->inflight = 0;
-    i->delta = 0;
-    i->br_ld_chain = false;
-    i->br_op_type = -1;
-#endif
-    i->fetched   = 0;
-    i->keepStats = keepStats;
-
-    i->setup();
-    I(i->getInst()->getOpcode());
-
-    return i;
-  }
-#ifdef ESESC_TRACE_DATA
   AddrType getBasePrefAddr() const {
     return base_pref_addr;
   }
@@ -442,23 +442,23 @@ public:
   // DataSign getDataSign() const { return data_sign; }
   void setDataSign(int64_t _data, AddrType ldpc);
   void addDataSign(int ds, int64_t _data, AddrType ldpc);
-  
+
   void setBrData1(DataType _data) {
     br_data1 = _data;
   }
-  
+
   void setBrData2(DataType _data) {
     br_data2 = _data;
   }
-  
+
   void setData(uint64_t _data) {
     data = _data;
   }
-  
+
   void setData2(uint64_t _data) {
     data2 = _data;
   }
-  
+
   AddrType getLDPC() const {
     return ldpc;
   }
@@ -492,6 +492,26 @@ public:
   void setChain(FetchEngine *fe, int c) {
   }
   int getChained() const {
+    return 0;
+  }
+
+  int getDepDepth() const {
+    return 0;
+  }
+
+  int getLBType() {
+    return 0;
+  }
+
+  DataType getBrData1() const {
+    return 0;
+  }
+
+  DataType getBrData2() const {
+    return 0;
+  }
+
+  DataType getData2() const {
     return 0;
   }
 #endif
