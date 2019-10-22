@@ -31,8 +31,12 @@ static int csr_esesc_toggle_roi(CPURISCVState *env, int csrno, target_ulong *val
 {
     CPUState *cpu       = ENV_GET_CPU(env);
 
-    icount = 0;
-    QEMUReader_start_roi(cpu->fid);
+    int roi_skip = QEMUReader_toggle_roi(cpu->fid);
+    if (roi_skip) {
+      icount = 1ULL<<40; // BIG number
+    }else{
+      icount = 0;
+    }
     return *val = 0;
 }
 
@@ -878,6 +882,11 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 #endif
 #endif
 
+#ifdef CONFIG_ESESC
+    [CSR_ESESC_TOGGLE_ROI] =    { ctr,  csr_esesc_toggle_roi                },
+    [CSR_ESESC_FINISH] =        { ctr,  csr_esesc_finish                    },
+#endif
+
 #if !defined(CONFIG_USER_ONLY)
     /* Machine Timers and Counters */
     [CSR_MCYCLE] =              { any,  read_instret                        },
@@ -892,11 +901,6 @@ static riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_MARCHID] =             { any,  read_zero                           },
     [CSR_MIMPID] =              { any,  read_zero                           },
     [CSR_MHARTID] =             { any,  read_mhartid                        },
-
-#ifdef CONFIG_ESESC
-    [CSR_ESESC_TOGGLE_ROI] =    { any,  csr_esesc_toggle_roi                },
-    [CSR_ESESC_FINISH] =        { any,  csr_esesc_finish                    },
-#endif
 
     /* Machine Trap Setup */
     [CSR_MSTATUS] =             { any,  read_mstatus,     write_mstatus     },

@@ -163,8 +163,8 @@ extern "C" void QEMUReader_finish_thread(uint32_t fid) {
   qsamplerlist[0]->freeFid(fid);
 }
 
-extern "C" void QEMUReader_start_roi(uint32_t fid) {
-  qsamplerlist[fid]->start_roi();
+extern "C" int QEMUReader_toggle_roi(uint32_t fid) {
+  return qsamplerlist[fid]->toggle_roi()?1:0;
 }
 
 extern "C" void QEMUReader_syscall(uint32_t num, uint64_t usecs, uint32_t fid) {

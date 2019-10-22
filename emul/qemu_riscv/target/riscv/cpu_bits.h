@@ -124,8 +124,8 @@
 #define CSR_MHARTID         0xf14
 
 #ifdef CONFIG_ESESC
-#define CSR_ESESC_TOGGLE_ROI 0x214
-#define CSR_ESESC_FINISH     0x215
+#define CSR_ESESC_TOGGLE_ROI 0xf15
+#define CSR_ESESC_FINISH     0xf16
 #endif
 
 /* Machine Trap Setup */

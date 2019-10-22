@@ -169,7 +169,7 @@ void helper_esesc0(CPURISCVState *env)
     CPUState *cs = CPU(riscv_env_get_cpu(env));
 
     icount = 0;
-    QEMUReader_start_roi(cs->fid);
+    QEMUReader_toggle_roi(cs->fid);
 }
 #endif
 
@@ -222,7 +222,11 @@ target_ulong helper_csrrc(CPURISCVState *env, target_ulong src,
 {
     target_ulong val = 0;
     if (riscv_csrrw(env, csr, &val, 0, rs1_pass ? src : 0) < 0) {
+#ifdef CONFIG_ESESC
+        val = 0;
+#else
         riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+#endif
     }
     return val;
 }

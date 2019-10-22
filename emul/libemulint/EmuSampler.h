@@ -127,7 +127,7 @@ public:
     return mode;
   }
 
-  void start_roi();
+  bool toggle_roi();
 
   void setModeNativeRabbit() {
     restartRabbit = true; // This flag is only set by the sampler

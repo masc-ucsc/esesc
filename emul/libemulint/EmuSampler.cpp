@@ -52,6 +52,7 @@ uint64_t *        EmuSampler::clockPrev;
 uint64_t *        EmuSampler::fticksPrev;
 
 float EmuSampler::turboRatio = 1.0;
+extern long long int icount;
 
 EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
     /* EmuSampler constructor  */
@@ -71,6 +72,10 @@ EmuSampler::EmuSampler(const char *iname, EmulInterface *emu, FlowID fid)
     nInstSkip = static_cast<uint64_t>(SescConf->getDouble(samp_sec, "nInstSkipThreads"));
   }
   roi_skip = SescConf->getBool(samp_sec, "ROIOnly");
+
+  if (roi_skip) {
+    icount = 1ULL<<40; // start skipping fast
+  }
 
   const char *sys_sec = SescConf->getCharPtr(emu->getSection(), "syscall");
   syscall_enable      = SescConf->getBool(sys_sec, "enable");
@@ -157,23 +162,25 @@ void EmuSampler::setNextSwitch(uint64_t instNum) {
   }
 }
 
-void EmuSampler::start_roi() {
+bool EmuSampler::toggle_roi() {
   roi_skip       = !roi_skip;
   stopJustCalled = false;
 
   if(roi_skip) {
-    MSG("### SamplerBase::start_roi() called: STOP Simulation");
+    MSG("### SamplerBase::toggle_roi() called: STOP Simulation");
     syncTime();
     setNextSwitch(nInstSkip);
     startRabbit(0);
   } else {
-    MSG("### SamplerBase::start_roi() called: START Simulation");
+    MSG("### SamplerBase::toggle_roi() called: START Simulation");
 
     totalnInst = 0; // reset
     setNextSwitch(nInstSkip);
     if(nInstSkip)
       startRabbit(0);
   }
+
+  return roi_skip;
 }
 
 EmuSampler::~EmuSampler()
