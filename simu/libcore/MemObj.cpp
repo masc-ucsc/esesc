@@ -146,6 +146,37 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 /* }}} */
 
 #ifdef ENABLE_LDBP
+void MemObj::fill_li_at_retire(AddrType brpc, int ldbr, bool d1_valid, bool d2_valid, int depth1, int depth2, DataType d1, DataType d2) {
+  int i = hit_on_bot(brpc);
+  if(i != -1) {
+    cir_queue[i].ldbr = ldbr;
+    if(d1_valid && !d2_valid) {
+      cir_queue[i].ldbr_type[0] = ldbr;
+      cir_queue[i].set_flag[0] = 0;
+      cir_queue[i].dep_depth[0] = depth1;
+      cir_queue[i].li_data_valid = true;
+      cir_queue[i].li_data = d1;
+    }else if(!d1_valid && d2_valid) {
+      cir_queue[i].ldbr_type2[0] = ldbr;
+      cir_queue[i].set_flag2[0] = 0;
+      cir_queue[i].dep_depth2[0] = depth1;
+      cir_queue[i].li_data2_valid = true;
+      cir_queue[i].li_data2 = d2;
+    }else if(d1_valid && d2_valid) {
+      cir_queue[i].ldbr_type[0] = ldbr;
+      cir_queue[i].set_flag[0] = 0;
+      cir_queue[i].dep_depth[0] = depth1;
+      cir_queue[i].li_data_valid = true;
+      cir_queue[i].li_data = d1;
+
+      cir_queue[i].ldbr_type2[0] = ldbr;
+      cir_queue[i].set_flag2[0] = 0;
+      cir_queue[i].dep_depth2[0] = depth2;
+      cir_queue[i].li_data2_valid = true;
+      cir_queue[i].li_data2 = d2;
+    }
+  }
+}
 
 int MemObj::hit_on_ldbuff(AddrType pc) {
   //hit on ld_buff is start addr and end addr matches
@@ -164,12 +195,17 @@ int MemObj::hit_on_bot(AddrType pc) {
   return -1; //miss
 }
 
-void MemObj::fill_mv_stats(AddrType pc, DataType d1, DataType d2, int mv_out) {
+void MemObj::fill_mv_stats(AddrType pc, int ldbr, DataType d1, DataType d2, bool swap, int mv_out) {
   int idx = hit_on_bot(pc);
-  if(idx != -1 && cir_queue[idx].br_mv_outcome == 0) { //hit on bot
+  //if(idx != -1 && cir_queue[idx].br_mv_outcome == 0) { //hit on bot
+  if(idx != -1 && swap) { //hit on bot && swap
     cir_queue[idx].br_mv_outcome = mv_out;
-    cir_queue[idx].br_data1      = d1;
-    cir_queue[idx].br_data2      = d2;
+    cir_queue[idx].ldbr      = ldbr;
+    if(ldbr == 22) {
+      cir_queue[idx].br_data1      = d2;
+    }else if(ldbr == 21) {
+      cir_queue[idx].br_data2      = d1;
+    }
     return;
   }
 }
@@ -249,7 +285,6 @@ void MemObj::fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, int64_t del,
   }
 }
 
-#if 1
 void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int lb_type, int tl_type) {
 /*
  * fill ret count, saddr, eaddr ,delta @retire and move entry to LRU; send trig_load req
@@ -279,7 +314,6 @@ void MemObj::fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrTyp
     }
   }
 }
-#endif
 
 void MemObj::find_cir_queue_index(MemRequest *mreq) {
   int64_t delta      = mreq->getDelta();
@@ -378,6 +412,9 @@ void MemObj::flush_bot_mem(int idx) {
   cir_queue[idx].req_addr2 = 0;
   cir_queue[idx].ldpc2     = 0;
 
+  cir_queue[idx].ldbr           = 0;
+  cir_queue[idx].li_data_valid  = false;
+  cir_queue[idx].li_data2_valid = false;
   //cir_queue.erase(cir_queue.begin() + idx);
   //cir_queue.push_back(bot_entry());
 }

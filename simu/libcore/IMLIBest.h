@@ -32,7 +32,12 @@
 #ifndef _PREDICTOR_H_
 #define _PREDICTOR_H_
 
-#define MEDIUM_TAGE 1
+//#define MEDIUM_TAGE 1
+//#define MEGA_IMLI 1
+
+#if defined(MEGA_IMLI) && defined(MEDIUM_TAGE)
+#error "Pick one"
+#endif
 
 #define SIMPLER_DOLC_PATH
 
@@ -44,8 +49,20 @@
 //#define IMLIOH		//use IMLI-OH
 #define LOGG 10  /* logsize of the  tagged TAGE tables*/
 #define TBITS 13 /* minimum tag width*/
-#define USE_DOLC 1
+//#define USE_DOLC 1
+#elif MEGA_IMLI
+// use 20 tables (nhist = 20)
+#define LOOPPREDICTOR //  use loop  predictor
+#define LOCALH        // use local histories
+#define IMLI          // using IMLI component
+#define IMLISIC       // use IMLI-SIC
+#define IMLIOH        // use IMLI-OH
+#define LOGG 13       // logsize of the  tagged TAGE tables
+#define TBITS 14      // minimum tag width
+#define MAXHIST 400
+#define MINHIST 5
 #else
+// nhist = 7, glength
 #define LOOPPREDICTOR //  use loop  predictor
 #define LOCALH        // use local histories
 #define IMLI          // using IMLI component
@@ -53,9 +70,24 @@
 #define IMLIOH        // use IMLI-OH
 #define LOGG 12       /* logsize of the  tagged TAGE tables*/
 #define TBITS 13      /* minimum tag width*/
-//#define USE_DOLC 1
+#define MAXHIST 200
+#define MINHIST 5
 #endif
 
+/*
+#ifdef MEGA_IMLI
+// use 20 tables (nhist = 20)
+#define LOOPPREDICTOR //  use loop  predictor
+#define LOCALH        // use local histories
+#define IMLI          // using IMLI component
+#define IMLISIC       // use IMLI-SIC
+#define IMLIOH        // use IMLI-OH
+#define LOGG 13       // logsize of the  tagged TAGE tables
+#define TBITS 14      // minimum tag width
+#define MAXHIST 400
+#define MINHIST 5
+#endif
+*/
 // To get the predictor storage budget on stderr  uncomment the next line
 #include <assert.h>
 #include <inttypes.h>
@@ -72,9 +104,8 @@
 #define CWIDTH 3
 
 // use geometric history length
+#ifndef MAXHIST
 #ifdef USE_DOLC
-//#define MAXHIST 192 // (128+32)
-//#define MAXHIST 27 // (128+32)
 #define MAXHIST 71
 #define MINHIST 5
 #else
@@ -82,6 +113,7 @@
 //#define MAXHIST 1000
 #define MINHIST 1
 #define MAXHIST 71
+#endif
 #endif
 // probably not the best history length, but nice
 

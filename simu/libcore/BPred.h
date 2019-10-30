@@ -64,6 +64,7 @@
 #include "SCTable.h"
 
 #define RAP_T_NT_ONLY 1
+//#define ENABLE_LDBP
 //#define DOC_SIZE 512 //128
 enum PredType { CorrectPrediction = 0, NoPrediction, NoBTBPrediction, MissPrediction };
 enum BrOpType { BEQ = 0, BNE = 1, BLT = 4, BGE = 5, BLTU = 6, BGEU = 7, ILLEGAL_BR = 8};
@@ -556,6 +557,15 @@ class BPLdbp : public BPred {
         int med = (taken == (2*ntaken + 1)) || (ntaken == (2*taken + 1));
         int low = (taken < (2*ntaken + 1)) && (ntaken < (2*taken + 1));
         int m = 2 * low + med;
+#if 0
+        if(taken == 7) {
+          return 1;
+        }else if(ntaken == 7) {
+          return 2;
+        }else {
+          return 0;
+        }
+#endif
         if(m < 1) {
           if(taken > ntaken)
             return 1;

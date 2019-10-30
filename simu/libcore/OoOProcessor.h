@@ -52,6 +52,7 @@
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
 //#define LGT_SIZE 512 //128
+#define DEP_LIST_SIZE 64
 //#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
@@ -147,68 +148,110 @@ public:
 #ifdef ENABLE_LDBP
 
   const int LGT_SIZE;
+
   void classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag);
   void classify_ld_br_double_chain(DInst *dinst, RegType br_src1, RegType br_src2, int reg_flag);
   void ct_br_hit_double(DInst *dinst, RegType b1, RegType b2, int reg_flag);
   void lgt_br_miss_double(DInst *dinst, RegType b1, RegType b2);
   void lgt_br_hit_double(DInst *dinst, RegType b1, RegType b2, int idx);
+  DataType extract_load_immediate(AddrType li_pc);
   void generate_trigger_load(DInst *dinst, RegType reg, int lgt_index, int tl_type);
+  int hit_on_lgt(DInst *dinst, int reg_flag, RegType reg1, RegType reg2 = LREG_R0);
 
   struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
     classify_table_entry(){
       dest_reg   = LREG_R0;
       ldpc       = 0;
+      lipc       = 0;
       ld_addr    = 0;
       dep_depth  = 0;
       ldbr_type  = 0;
       ld_used    = false;
       simple     = false;
-      is_li      = false;
+      is_li      = 0;
       valid      = false;
-      complex_br_set = false;
       mv_src    = LREG_R0;
       mv_active = false;
+      is_tl_r1   = false; // TL by R1
+      is_tl_r2   = false; // TL by R2
+      is_tl_r1r2 = false; // TL by both R1 and R2
+      is_li_r1   = false; // R1 uses Li
+      is_li_r2   = false; // R2 uses Li
+      is_li_r1r2 = false;   // R1 and R2 uses Li
+      for(int i = 0; i < DEP_LIST_SIZE; i++)
+        dep_list[i] = 0;
     }
 
     RegType dest_reg;
     AddrType ldpc;
+    AddrType lipc; // Load Immediate PC
     AddrType ld_addr;
     int dep_depth;
+    AddrType dep_list[DEP_LIST_SIZE]; //list of dependent instruction between LD and BR //FIXME - not static size
     int ldbr_type;
-    // 1->simple & trivial & R1           -> src1 => LD && src2 == 0 && dep == 1
-    // 2->simple & trivial & R2           -> src2 => LD && src1 == 0 && dep == 1
-    // 3->simple & direct & R1 = ALU      -> src1 => LD->ALU && src2 == 0 && dep > 1
-    // 4->simple & direct & R2 = ALU      -> src2 => LD->ALU && src1 == 0 && dep > 1
-    // 5->simple & direct & R1 = Li       -> src1 => Li && src2 == 0 && dep > 1
-    // 6->simple & direct & R2 = L1       -> src2 => Li && src1 == 0 && dep > 1
-    // 7->complex & 1 Li + 1 ALU & R1=Li  -> dep > 1 && R1 == is_li, R2 == LD->ALU
-    // 8->complex & 1 Li + 1 ALU & R2=Li  -> dep > 1 && R2 == is_li, R1 == LD->ALU
-    // 9->complex & 1 Li + 1 LD & R1=Li   -> dep == 1 && R1 == is_li, R2 == LD
-    // 10->complex & 1 Li + 1 LD & R2=Li  -> dep == 1 && R2 == is_li, R1 == LD
-    // 11->double & 2 LDs                 -> dep == 1 && R1 == R2 == LD  // use outcome calc
-    // 12->double & 1 LD + 1 ALU          -> src1 == LD, src2 == LD->ALU // similar to type 7
-    // 13->double & 1 ALU + 1 LD          -> src1 == LD->ALU, src2 == LD //similar to type 8
-    // 14->Any type + mv to src2(src1->src2) -> if a mv instn swaps data(similar to qsort) Br src2 data = mv data
-    // 15->Any type + mv to src1(src2->src1) -> if a mv instn swaps data(similar to qsort) Br src1 data = mv data
+
+    // 1->simple -> R1 => LD->BR && R2 => 0 && dep == 1
+    // 2->simple -> R2 => LD->BR && R1 => 0 && dep == 1
+    // 3->simple -> R1 => LD->ALU+->BR           && R2 => 0 && dep > 1
+    // 4->simple -> R1 => LD->ALU*->Li->ALU+->BR && R2 => 0 && dep > 1
+    // 5->simple -> R2 => LD->ALU+->BR           && R1 => 0 && dep > 1
+    // 6->simple -> R2 => LD->ALU*->Li->ALU+->BR && R1 => 0 && dep > 1
+    // 7->simple -> R1 => LD->ALU*->Li->BR && R2 => 0 && dep > 1
+    // 8->simple -> R2 => LD->ALU*->Li->BR && R1 => 0 && dep > 1
+    // 9->complex  -> R1 => LD->ALU*->Li->BR && R2 => LD->ALU+->BR && dep > 1
+    // 10->complex -> R1 => LD->ALU*->Li->BR && R2 => LD->ALU*->Li->BR && dep > 1
+    // 11->complex -> R1 => LD->ALU*->Li->BR && R2 => LD->ALU*->Li->ALU+->BR && dep > 1
+    // 12->complex -> R2 => LD->ALU*->Li->BR && R1 => LD->ALU+->BR && dep > 1
+    // 13->complex -> R2 => LD->ALU*->Li->BR && R1 => LD->ALU*->Li->ALU+->BR && dep > 1
+    // 14->double  -> R1 == R2 == LD->BR && dep == 1
+    // 15->double  -> R1 => LD->BR && R2 => LD->ALU+->BR && dep > 1
+    // 16->double  -> R1 => LD->BR && R2 => LD->ALU*->Li->ALU+->BR && dep > 1
+    // 17->double  -> R1 => LD->BR && R2 => LD->ALU*->Li->BR && dep > 1
+    // 18->double  -> R2 => LD->BR && R1 => LD->ALU+->BR && dep > 1
+    // 19->double  -> R2 => LD->BR && R1 => LD->ALU*->Li->ALU+->BR && dep > 1
+    // 20->double  -> R2 => LD->BR && R1 => LD->ALU*->Li->BR && dep > 1
+    // 21->Any type + mv to src2(src1->src2) -> if a mv instn swaps data(similar to qsort) Br src2 data = mv data
+    // 22->Any type + mv to src1(src2->src1) -> if a mv instn swaps data(similar to qsort) Br src1 data = mv data
+
+    //OUTCOME_CALC => 1, 2, 7, 8, 10, 14, 17, 20
+    //DOC          => 3, 4, 5, 6, 9, 11, 12, 13, 15, 16, 18, 19
+
     bool ld_used; //is ld inst executed before the current dependent branch inst?
     bool simple; //does BR have only one Src operand
-    bool is_li; //is one Br data dependent on a Li or Lui instruction
+    DataType li_data;
+    int is_li; //is one Br data dependent on a Li or Lui instruction
+    // 0=>LD->ALU+->BR or LD->BR; 1=>LD->ALU*->Li->BR; 2=>LD->ALU*->Li->ALU+->BR
     bool valid;
-    bool complex_br_set;
     //parameters to track move instructions
     RegType mv_src; //source Reg of mv instruction
     bool mv_active; //
+    //parameters below help with LD-BR classification
+    bool is_tl_r1;  // TL by R1
+    bool is_tl_r2;  // TL by R2
+    bool is_tl_r1r2; // TL by both R1 and R2
+    bool is_li_r1;   // R1 uses Li
+    bool is_li_r2;   // R2 uses Li
+    bool is_li_r1r2; // R1 and R2 uses Li
 
     void ct_load_hit(DInst *dinst) { //add/reset entry on CT
       classify_table_entry(); // reset entries
       dest_reg  = dinst->getInst()->getDst1();
       ldpc      = dinst->getPC();
+      lipc      = 0;
       ld_addr   = dinst->getAddr();
       dep_depth = 1;
+      is_li = 0;
       ldbr_type = 0;
       valid     = true;
       ld_used   = true;
-      complex_br_set = false;
+      is_tl_r1   = false; // TL by R1
+      is_tl_r2   = false; // TL by R2
+      is_tl_r1r2 = false; // TL by both R1 and R2
+      is_li_r1   = false; // R1 uses Li
+      is_li_r2   = false; // R2 uses Li
+      is_li_r1r2 = false;   // R1 and R2 uses Li
+      for(int i = 0; i < DEP_LIST_SIZE; i++)
+        dep_list[i] = 0;
     }
 
     void ct_br_hit(DInst *dinst, int reg_flag) {
@@ -224,44 +267,75 @@ public:
             ldbr_type = 2;
         }else if(dep_depth > 1) {
           ldbr_type = 3;
-          if(is_li) {
-            ldbr_type = 5;
+          if(is_li == 1) {
+            ldbr_type = 7;
+          }else if(is_li == 2) {
+            ldbr_type = 0; //4; FIXME
           }
           if(reg_flag == 2) {
-            ldbr_type = 4;
-            if(is_li)
-              ldbr_type = 6;
+            ldbr_type = 5;
+            if(is_li == 1) {
+              ldbr_type = 8;
+            }else if(is_li == 2) {
+              ldbr_type = 0; //6; FIXME
+            }
           }
         }
       }else {
-        if(reg_flag == 3) {
-          if(dep_depth > 1 && is_li) {
-            //ldbr_type      = 0;
-            complex_br_set = false;
-            return;
+        if(reg_flag == 3) { //Br's R1 gets LD/ALU data and R2->Li
+          if(dep_depth == 1) {
+            if(is_li == 0) {
+              ldbr_type = 17; // R1=>LD; R2=>Li
+            }
+          }else if(dep_depth > 1) {
+            if(is_li == 0) {
+              ldbr_type = 0; //12;        // R1=>LD->ALU+->BR; R2=>Li
+            }else if(is_li == 2) {
+              ldbr_type = 0; //13;        // R1=>LD->ALU*->Li->ALU+->BR; R2=>Li
+            }
           }
+        }else if(reg_flag == 4) { //Br's R2 gets LD/ALU data and R1->Li
+          if(dep_depth == 1 && is_li == 0) {
+            ldbr_type = 20; // R1=>Li; R2=>LD
+          }else if(dep_depth > 1) {
+            if(is_li == 0) {
+              ldbr_type = 0; //9;         // R1=>Li; R2=>LD->ALU+->BR
+            }else if(is_li == 1) {
+              ldbr_type = 10;        // R1=>Li; R2=>Li
+            }else if(is_li == 2) {
+              ldbr_type = 0; //11;        // R1=>Li; R2=>LD->ALU*->Li->ALU+->BR
+            }
+          }
+        }else if(reg_flag == 6) { // Br's R1 get LD/ALU data and R2=>Li->ALU+
+          if(dep_depth == 1 && is_li == 0)
+            ldbr_type = 0; //16; //R1=>LD; R2=>Li->ALU+->BR
+        }else if(reg_flag == 7) { // Br's R2 get LD/ALU data and R1=>Li->ALU+
+          if(dep_depth == 1 && is_li == 0)
+            ldbr_type = 0; //19; //R2=>LD; R1=>Li->ALU+->BR
+        }
+#if 0
+        if(reg_flag == 3) {
           if(dep_depth == 1 && !is_li) {
             ldbr_type = 10;
-            complex_br_set = true;
           }else if(dep_depth > 1 && !is_li) {
             ldbr_type = 8;
-            complex_br_set = true;
           }
         }else if(reg_flag == 4) {
           //ldbr_type = 0;
-          complex_br_set = false;
           if(dep_depth == 1 && !is_li) {
             ldbr_type = 9;
           }else if(dep_depth > 1 && !is_li) {
             ldbr_type = 7;
           }
         }
+#endif
       }
     }
 
     void ct_alu_hit(DInst *dinst) {
       //FIXME - check if alu is Li or Lui
       dep_depth++;
+      dep_list[dep_depth] = dinst->getPC();
     }
 
 
@@ -336,23 +410,46 @@ public:
     uint64_t ld_conf2;
     int dep_depth2;
 
-    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr, int depth) {
-      prev_delta = ld_delta;
-      ld_delta   = ld_addr - start_addr;
-      start_addr = ld_addr;
-      if(ld_delta == prev_delta) {
-        ld_conf++;
-      }else {
-        ld_conf = ld_conf / 2;
-      }
+    void lgt_br_hit_li(DInst *dinst, int ldbr, int depth) {
       ldbr_type  = ldbr;
       dep_depth  = depth;
       lgt_update_br_fields(dinst);
     }
 
-    void lgt_br_miss(DInst *dinst, AddrType _ldpc, AddrType ld_addr, int ldbr) {
-      ldpc         = _ldpc;
-      start_addr   = ld_addr;
+    void lgt_br_hit(DInst *dinst, AddrType ld_addr, int ldbr, int depth, bool is_r1) {
+      if(is_r1) {
+        prev_delta = ld_delta;
+        ld_delta   = ld_addr - start_addr;
+        start_addr = ld_addr;
+        if(ld_delta == prev_delta) {
+          ld_conf++;
+        }else {
+          ld_conf = ld_conf / 2;
+        }
+        dep_depth  = depth;
+      }else {
+        prev_delta2 = ld_delta2;
+        ld_delta2   = ld_addr - start_addr2;
+        start_addr2 = ld_addr;
+        if(ld_delta2 == prev_delta2) {
+          ld_conf2++;
+        }else {
+          ld_conf2 = ld_conf2 / 2;
+        }
+        dep_depth2  = depth;
+      }
+      ldbr_type  = ldbr;
+      lgt_update_br_fields(dinst);
+    }
+
+    void lgt_br_miss(DInst *dinst, int ldbr, AddrType _ldpc, AddrType ld_addr, bool is_r1) {
+      if(is_r1) {
+        ldpc         = _ldpc;
+        start_addr   = ld_addr;
+      }else {
+        ldpc2         = _ldpc;
+        start_addr2   = ld_addr;
+      }
       ldbr_type    = ldbr;
       lgt_update_br_fields(dinst);
       //MSG("LGT_BR_MISS clk=%u ldpc=%llx ld_addr=%u del=%u prev_del=%u conf=%u brpc=%llx ldbr=%d", globalClock, ldpc, start_addr, ld_delta, prev_delta, ld_conf, brpc, ldbr_type);
@@ -362,7 +459,7 @@ public:
       brpc            = dinst->getPC();
       inf_branch      = dinst->getInflight(); //FIXME use dinst->getInflight() instead of variable
       if(br_mv_outcome == 0) {
-        if(ldbr_type > 13) {
+        if(ldbr_type > 20) {
           br_mv_outcome = 1; //swap data on BR not taken
           if(br_outcome)
             br_mv_outcome = 2; //swap data on BR taken
@@ -412,6 +509,14 @@ public:
   int num_mem_lat;
   std::vector<Time_t> mem_lat_vec = std::vector<Time_t>(10);
 
+#if 0
+  bool is_tl_r1;
+  bool is_tl_r2;
+  bool is_tl_r1r2;
+  bool is_li_r1;
+  bool is_li_r2;
+  bool is_li_r1r2;
+#endif
 
 #endif
 

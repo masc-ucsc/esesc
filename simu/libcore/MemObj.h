@@ -114,6 +114,8 @@ public:
       br_mv_init    = true;
       ldbr  = 0;
       ldbr2 = 0;
+      li_data_valid = false;
+      li_data2_valid = false;
       for(int i = 0; i < CIR_QUEUE_WINDOW; i++) {
         set_flag[i]  = 0;
         ld_used[i]   = false;
@@ -170,6 +172,12 @@ public:
     std::vector<int> ldbr_type2 = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<int> dep_depth2 = std::vector<int>(CIR_QUEUE_WINDOW);
     std::vector<AddrType> trig_addr2 = std::vector<AddrType>(CIR_QUEUE_WINDOW);
+
+    //Li Fields
+    DataType li_data;
+    bool li_data_valid;
+    DataType li_data2;
+    bool li_data2_valid;
 
   };
 
@@ -239,7 +247,8 @@ public:
   void fill_retire_count_bot(AddrType pc);
   void fill_bpred_use_count_bot(AddrType pc, int _hit2_miss3, int _hit3_miss2);
   void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int lbtype, int tl_type);
-  void fill_mv_stats(AddrType pc, DataType d1, DataType d2, int mv_out);
+  void fill_mv_stats(AddrType pc, int ldbr, DataType d1, DataType d2, bool swap, int mv_out);
+  void fill_li_at_retire(AddrType brpc, int ldbr, bool d1_valid, bool d2_valid, int depth1, int depth2, DataType li1, DataType li2 = 0);
 
   int getQSize() {
     return CIR_QUEUE_WINDOW;

@@ -456,11 +456,58 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   AddrType t_tag = dinst->getLDPC() ^ (br_pc << 2); //  ^ (dinst->getDataSign() << 10);
   BrOpType br_op = branch_type(br_pc);
   uint64_t raw_op = esesc_mem_read(br_pc);
+  int ldbr_use_oc[] = {1, 2, 7, 8, 10, 14, 17, 20, 21, 22};
+  int ldbr_use_doc[] = {3, 4, 5, 6, 9, 11, 12, 13, 15, 16, 18, 19};
+  int ldbr_use_doc_src1_const[] = {5, 6, 9, 11, 15, 16};
 
   if(dinst->getLBType() == 0){
     return NoPrediction;
   }
 
+  if(std::find(std::begin(ldbr_use_oc), std::end(ldbr_use_oc), dinst->getLBType()) != std::end(ldbr_use_oc)) {
+    ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
+    if((dinst->getData() == dinst->getBrData1()) && (dinst->getData2() == dinst->getBrData2()) && (ptaken != taken)) {
+      ptaken = taken;
+    }
+#ifdef ENABLE_LDBP
+    int idx = DL1->hit_on_bot(dinst->getPC());
+    if(dinst->getLBType() > 20) {
+      if((DL1->cir_queue[idx].br_mv_outcome - 1) == taken) {
+        //if taken == flip_outcome, then don't predict until flip data is updated
+        DL1->cir_queue[idx].br_mv_outcome = 0;
+#if 1 //updating MV swap at fetch. IS THIS OKAY? FIXME
+        if(dinst->getLBType() == 21) {
+          DL1->cir_queue[idx].br_data2 = dinst->getData();
+        }else if(dinst->getLBType() == 22) {
+          DL1->cir_queue[idx].br_data1 = dinst->getData2();
+        }
+#endif
+      }
+      if(ptaken == (DL1->cir_queue[idx].br_mv_outcome - 1)) {
+        return NoPrediction; //avoids mispredicting at swaps
+      }
+    }
+#endif
+  }else if(0 && std::find(std::begin(ldbr_use_doc), std::end(ldbr_use_doc), dinst->getLBType()) != std::end(ldbr_use_doc)) { //disabled DOC for now. FIXME
+    DataType reg2 = dinst->getData2();
+    int dep_depth = dinst->getDepDepth();
+    if(std::find(std::begin(ldbr_use_doc_src1_const), std::end(ldbr_use_doc_src1_const), dinst->getLBType()) != std::end(ldbr_use_doc_src1_const)) {
+      reg2 = dinst->getData(); //FIXME: src reg2 or data2???
+    }
+    //doc_table has n entries - pick a log2(n) bit tag+index
+    AddrType tt = ((DOC_SIZE - 1) << (int)log2(DOC_SIZE) | (DOC_SIZE - 1));
+    AddrType doc_tag = (dinst->getPC() ^ dinst->getDataSign() ^ reg2/* ^ dep_depth*/) & tt; //FIXME - tag must be hash(brpc, datasign(BrData1))
+    int conf = outcome_doc(dinst, doc_tag, taken);
+    if(conf == 2)
+      ptaken = false;
+    else if(conf == 1)
+      ptaken = true;
+    else
+      return NoPrediction;
+  }else {
+    return NoPrediction;
+  }
+#if 0
   if(dinst->getLBType() == 1 || dinst->getLBType() == 5 || dinst->getLBType() == 10 || dinst->getLBType() == 11) {
     //MSG("TYPE%d@br",dinst->getLBType());
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
@@ -533,6 +580,8 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   }else{
     return NoPrediction;
   }
+
+#endif
 
 #if 0
   if(taken == ptaken) {
