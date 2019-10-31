@@ -444,8 +444,10 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return NoPrediction;
 #endif
 
+#if 1
   if(dinst->getInst()->getOpcode() != iBALU_LBRANCH) //don't bother about jumps and calls
     return NoPrediction;
+#endif
   //Not even faster branch
   //if(dinst->getInst()->isJump())
   //  return btb.predict(dinst, doUpdate, doStats);
@@ -460,9 +462,11 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   int ldbr_use_doc[] = {3, 4, 5, 6, 9, 11, 12, 13, 15, 16, 18, 19};
   int ldbr_use_doc_src1_const[] = {5, 6, 9, 11, 15, 16};
 
+#if 0
   if(dinst->getLBType() == 0){
     return NoPrediction;
   }
+#endif
 
   if(std::find(std::begin(ldbr_use_oc), std::end(ldbr_use_oc), dinst->getLBType()) != std::end(ldbr_use_oc)) {
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
@@ -585,12 +589,14 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
 #if 0
   if(taken == ptaken) {
+    if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
     MSG("TRIGGER@correct_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d dep_dep=%d br1=%d br2=%d d1=%d d2=%d ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getDepDepth(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
   }
 #endif
 
   if(taken != ptaken) {
 #if 0
+    //if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
     MSG("TRIGGER@mis_pred clk=%u brpc=%llx id=%u br_opcode=%d br_op=%d ldbr=%d br1=%d br2=%d d1=%d d2=%d ds=%d d1_match=%d correct_pred?=%d ptaken=%d", (int)globalClock, dinst->getPC(), dinst->getID(), (int)(raw_op & 3), br_op, dinst->getLBType(), dinst->getBrData1(), dinst->getBrData2(), dinst->getData(), dinst->getData2(), dinst->getDataSign(), dinst->getData()==dinst->getBrData1(), ptaken==taken, ptaken);
 #endif
     if(doUpdate)
@@ -1910,6 +1916,29 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     // std::cout<<" Resetting the Bool variableto ...  "<<get_prediction_type()<<std::endl;
   }
 
+#if 1
+  if(outcome1 != CorrectPrediction) {
+    dinst->setBranchMiss_level1();
+  }else {
+    dinst->setBranchHit_level1();
+  }
+
+  if(outcome2 != CorrectPrediction) {
+    dinst->setBranchMiss_level2();
+  }else {
+    dinst->setBranchHit_level2();
+    if(outcome3 == MissPrediction || outcome3 == NoBTBPrediction)
+      dinst->setBranch_hit2_miss3();
+  }
+
+  if(outcome3 == MissPrediction || outcome3 == NoBTBPrediction) {
+    dinst->setBranchMiss_level3();
+  }else if(outcome3 == CorrectPrediction) {
+    dinst->setBranchHit_level3();
+    if(outcome2 != CorrectPrediction)
+      dinst->setBranch_hit3_miss2();
+  }
+#endif
 
   if(outcome1 == CorrectPrediction && outcome2 == CorrectPrediction && outcome3 == CorrectPrediction) {
 
@@ -1940,29 +1969,6 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
 
   int32_t bpred_total_delay = bpredDelay1 - 1;
 
-#if 1
-  if(outcome1 != CorrectPrediction) {
-    dinst->setBranchMiss_level1();
-  }else {
-    dinst->setBranchHit_level1();
-  }
-
-  if(outcome2 != CorrectPrediction) {
-    dinst->setBranchMiss_level2();
-  }else {
-    dinst->setBranchHit_level2();
-    if(outcome3 == MissPrediction || outcome3 == NoBTBPrediction)
-      dinst->setBranch_hit2_miss3();
-  }
-
-  if(outcome3 == MissPrediction || outcome3 == NoBTBPrediction) {
-    dinst->setBranchMiss_level3();
-  }else if(outcome3 == CorrectPrediction) {
-    dinst->setBranchHit_level3();
-    if(outcome2 != CorrectPrediction)
-      dinst->setBranch_hit3_miss2();
-  }
-#endif
 
 #if 1
   if(outcome1 == CorrectPrediction && (outcome2 == CorrectPrediction || outcome2 == NoPrediction || outcome2 == NoBTBPrediction) && (outcome3 == CorrectPrediction || outcome3 == NoPrediction || outcome3 == NoBTBPrediction)) {

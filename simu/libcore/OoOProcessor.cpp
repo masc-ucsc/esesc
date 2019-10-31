@@ -580,10 +580,6 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
 
   int lb_type = lgt_table[lgt_index].ldbr_type;
   AddrType end_addr  = ldbp_curr_addr + ldbp_delta * (DL1->getQSize() - 1);
-#if 0
-  if(dinst->getPC() == 0x19744)
-    MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%d conf=%u brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, dinst->getPC());
-#endif
 
 #if 0
   if(!ct_table[reg].ld_used) {
@@ -598,6 +594,11 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
   DL1->fill_bot_retire(dinst->getPC(), ldbp_ldpc, ldbp_curr_addr, end_addr, ldbp_delta, lb_type, tl_type);
   trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2);
 
+#if 0
+  if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
+  MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%d conf=%u brpc=%llx ldbr=%d", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, dinst->getPC(), lb_type);
+#endif
+
 #if 1
   //if(ldbp_delta != 0)
   MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
@@ -607,8 +608,8 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
     for(int i = 1; i <= diff_mem_lat; i++) {
       trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2 + i);
 #if 0
-      if(dinst->getPC() == 0x19744)
-        MSG("TRIG_LD@2 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%u brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, dinst->getPC());
+      if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
+      MSG("TRIG_LD@2 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%u brpc=%llx ldbr=%d", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, dinst->getPC(), lb_type);
 #endif
       MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
     }
@@ -617,8 +618,8 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
     for(int i = diff_mem_lat; i > 0; i--) {
       trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2 - i);
 #if 0
-      if(dinst->getPC() == 0x19744)
-        MSG("TRIG_LD@3 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%u brpc=%llx", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, dinst->getPC());
+      if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
+      MSG("TRIG_LD@3 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%u brpc=%llx ldbr=%d", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, dinst->getPC(), lb_type);
 #endif
       MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
     }

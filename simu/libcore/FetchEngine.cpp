@@ -615,6 +615,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                   trig_addr   = DL1->cir_queue[bot_idx].trig_addr[bot_q_idx];
                   ldbuff_addr = DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx];
                   valid       = DL1->load_data_buffer[ldbuff_idx].valid[bot_q_idx];
+                  //if(dinst->getPC() == 0x1044e)
+                  //MSG("FETCH1 clk=%u brpc=%llx id=%u ldbr=%d taddr=%d laddr=%d match=%d", globalClock, dinst->getPC(), dinst->getID(), q_ldbr, trig_addr, ldbuff_addr, trig_addr==ldbuff_addr);
                   if(trig_addr == ldbuff_addr) {
                     bool c_hit = !DL1->Invalid(trig_addr); //check if cache line with trig_addr is present in L1
 #if 0
@@ -651,6 +653,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                   trig_addr2   = DL1->cir_queue[bot_idx].trig_addr2[bot_q_idx];
                   ldbuff_addr2 = DL1->load_data_buffer[ldbuff_idx].req_addr2[bot_q_idx];
                   valid2       = DL1->load_data_buffer[ldbuff_idx].valid2[bot_q_idx];
+                  if(q_ldbr == 14)
+                    //if(dinst->getPC() == 0x112e2)
+                    //MSG("FETCH2 clk=%u brpc=%llx id=%u ldbr=%d taddr2=%d laddr2=%d match1=%d taddr2=%d laddr2=%d match2=%d", globalClock, dinst->getPC(), dinst->getID(), q_ldbr, trig_addr, ldbuff_addr, trig_addr==ldbuff_addr, trig_addr2, ldbuff_addr2, trig_addr2==ldbuff_addr2);
                   if(trig_addr == ldbuff_addr && trig_addr2 == ldbuff_addr2) {
                     bool c_hit  = !DL1->Invalid(trig_addr); //check if cache line with trig_addr is present in L1
                     bool c_hit2 = !DL1->Invalid(trig_addr2); //check if cache line with trig_addr is present in L1
