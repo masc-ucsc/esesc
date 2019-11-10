@@ -966,7 +966,12 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         n2Fetch -= 2; // NOP still consumes delay slot
       }
 #else
-        n2Fetch--;
+      maxBB--;
+      if(maxBB < 1) {
+        nDelayInst2.add(n2Fetch, dinst->getStatsFlag());
+        break;
+      }
+      n2Fetch--;
 #endif
       if(FetchOneLine) {
         if((lastpc >> LineSizeBits) != (dinst->getPC() >> LineSizeBits)) {
