@@ -1,0 +1,33 @@
+diff --git a/Makefile b/Makefile
+index 1ddf802..1931fd6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,7 +1,8 @@
+ # See LICENSE.txt for license details.
+ 
+-CXX_FLAGS += -std=c++11 -O3 -Wall
+-PAR_FLAG = -fopenmp
++#CXX_FLAGS += -std=c++11 -O3 -g -Wall -static -DESESC_ROI
++CXX_FLAGS += -std=c++11 -O3 -g -Wall 
++#PAR_FLAG = -fopenmp
+ 
+ ifneq (,$(findstring icpc,$(CXX)))
+ 	PAR_FLAG = -openmp
+diff --git a/src/benchmark.h b/src/benchmark.h
+index 410ec13..a9df850 100644
+--- a/src/benchmark.h
++++ b/src/benchmark.h
+@@ -105,7 +105,13 @@ void BenchmarkKernel(const CLApp &cli, const GraphT_ &g,
+   Timer trial_timer;
+   for (int iter=0; iter < cli.num_trials(); iter++) {
+     trial_timer.Start();
++#ifdef ESESC_ROI
++    { int __tmp; asm volatile ("csrrs %0, 0xf15, %1" : "=r"(__tmp) : "i"(0)); }
++#endif
+     auto result = kernel(g);
++#ifdef ESESC_ROI
++    { int __tmp; asm volatile ("csrrs %0, 0xf15, %1" : "=r"(__tmp) : "i"(0)); }
++#endif
+     trial_timer.Stop();
+     PrintTime("Trial Time", trial_timer.Seconds());
+     total_seconds += trial_timer.Seconds();
