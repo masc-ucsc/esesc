@@ -40,6 +40,7 @@
 #include <math.h>
 #include <algorithm>
 #include <iterator>
+#include <numeric>
 
 #include "SescConf.h"
 
@@ -130,9 +131,11 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
   inflight_branch     = 0;
   ldbp_brpc           = 0;
   ldbp_ldpc           = 0;
+#if 0
   num_mem_lat         = 0;
   last_mem_lat        = 0;
   diff_mem_lat        = 0;
+#endif
 #endif
   if(SescConf->checkBool("cpusimu", "scooreMemory", gm->getCoreId()))
     scooreMemory = SescConf->getBool("cpusimu", "scooreMemory", gm->getCoreId());
@@ -557,16 +560,19 @@ DataType OoOProcessor::extract_load_immediate(AddrType pc) {
 void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_index, int tl_type) {
 
   uint64_t constant  = 0; //4; //8; //32;
-  int64_t delta2    = max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
+  int64_t delta2    = ct_table[reg].max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
   //AddrType load_addr = 0;
   AddrType trigger_addr = 0;
 
+  constant = inflight_branch;
+#if 1
   if(inflight_branch > 1 && inflight_branch <= 4)
     constant = inflight_branch + 8;
   else if(inflight_branch > 4 && inflight_branch <= 7)
     constant = inflight_branch + 12;
   else if(inflight_branch > 7)
     constant = inflight_branch + 16;
+#endif
 
   if(tl_type == 1) {
     ldbp_ldpc          = lgt_table[lgt_index].ldpc;
@@ -592,41 +598,83 @@ void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_inde
 
   DL1->shift_cir_queue(dinst->getPC(), tl_type);
   DL1->fill_bot_retire(dinst->getPC(), ldbp_ldpc, ldbp_curr_addr, end_addr, ldbp_delta, lb_type, tl_type);
-  trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2);
+  ct_table[reg].goal_addr = constant + delta2;
+  lgt_table[lgt_index].constant = constant + delta2;
+  //trigger_addr = constant + delta2;
+  //trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2);
+  //trigger_addr       = ldbp_curr_addr + ldbp_delta * lgt_table[lgt_index].constant;
+  //trigger_addr       = ldbp_curr_addr + ldbp_delta * ct_table[reg].goal_addr;
+  //
+#if 1
+  trigger_addr = ldbp_curr_addr + ldbp_delta * TRIG_LD_JUMP;
+  MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
+  if(ldbp_delta != 0) {
+    for(int i = 1; i <= TRIG_LD_BURST; i++) {
+      AddrType tmp_addr = trigger_addr + (ldbp_delta * i);
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), tmp_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
+    }
+  }
+#endif
 
 #if 0
-  if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
+  if(dinst->getPC() == 0x1044e)
   MSG("TRIG_LD@1 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%d conf=%u brpc=%llx ldbr=%d", globalClock, ldbp_curr_addr, trigger_addr, ldbp_ldpc, ldbp_delta, delta2, inflight_branch, lgt_table[lgt_index].ld_conf, dinst->getPC(), lb_type);
 #endif
 
-#if 1
-  //if(ldbp_delta != 0)
-  MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
-#if 1
-  if(ldbp_delta != 0 && (last_mem_lat > max_mem_lat)) {
-    diff_mem_lat = last_mem_lat - max_mem_lat + 6;
-    for(int i = 1; i <= diff_mem_lat; i++) {
-      trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2 + i);
 #if 0
-      if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
+  trigger_addr       = ldbp_curr_addr + ldbp_delta * ct_table[reg].goal_addr;
+  MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
+  //if(ldbp_delta != 0 && (last_mem_lat > max_mem_lat)) {
+  if(ldbp_delta != 0 && (ct_table[reg].prev_goal_addr != -1) && (ct_table[reg].goal_addr > ct_table[reg].prev_goal_addr)) {
+    int diff_mem_lat = (ct_table[reg].goal_addr - ct_table[reg].prev_goal_addr);
+    diff_mem_lat = (diff_mem_lat > 8) ? 8 : diff_mem_lat;
+    for(int i = 1; i <= diff_mem_lat; i++) {
+      trigger_addr       = ldbp_curr_addr + ldbp_delta*(ct_table[reg].prev_goal_addr + i);
+#if 0
+      if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x11010)
       MSG("TRIG_LD@2 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%u brpc=%llx ldbr=%d", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, dinst->getPC(), lb_type);
 #endif
       MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
     }
-  }else if(ldbp_delta != 0 && (last_mem_lat < max_mem_lat)) {
-    diff_mem_lat = max_mem_lat - last_mem_lat + 6;
-    for(int i = diff_mem_lat; i > 0; i--) {
-      trigger_addr       = ldbp_curr_addr + ldbp_delta*(constant + delta2 - i);
+  }else if(ldbp_delta != 0 && (ct_table[reg].goal_addr < ct_table[reg].prev_goal_addr)) {
+    int diff_mem_lat = (ct_table[reg].prev_goal_addr - ct_table[reg].goal_addr);
+    diff_mem_lat = (diff_mem_lat > 8) ? 8 : diff_mem_lat;
+    for(int i = 1; i <= diff_mem_lat; i++) {
+      trigger_addr       = ldbp_curr_addr + ldbp_delta*(ct_table[reg].prev_goal_addr - i);
 #if 0
-      if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x112e2)
+      if(dinst->getPC() == 0x1044e || dinst->getPC() == 0x11010)
       MSG("TRIG_LD@3 clk=%u curr_addr=%u trig_addr=%u ldpc=%llx delta=%d max_lat=%u inf=%u brpc=%llx ldbr=%d", globalClock, ldbp_curr_addr, trigger_addr, lgt_table[lgt_index].ldpc, ldbp_delta, delta2, inflight_branch, dinst->getPC(), lb_type);
 #endif
       MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
     }
   }
 #endif
+
+#if 0
+  trigger_addr       = ldbp_curr_addr + ldbp_delta * lgt_table[lgt_index].constant;
+  if(ldbp_delta != 0) {
+    if(lgt_table[lgt_index].last_trig_addr == 0) {
+      lgt_table[lgt_index].last_trig_addr = trigger_addr;
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
+    }else {
+      if(1 || trigger_addr > lgt_table[lgt_index].last_trig_addr) {
+        AddrType tmp_addr = 0;
+        for(int i = 1; i <= TRIG_LD_BURST; i++) {
+          tmp_addr = lgt_table[lgt_index].last_trig_addr + (ldbp_delta * i);
+          if(tmp_addr <= trigger_addr) {
+            MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), tmp_addr, ldbp_ldpc, dinst->getPC(), ldbp_curr_addr, end_addr, ldbp_delta, inflight_branch, lb_type, lgt_table[lgt_index].dep_depth, tl_type, ct_table[reg].ld_used);
+          }
+        }
+        lgt_table[lgt_index].last_trig_addr = tmp_addr > trigger_addr ? trigger_addr : tmp_addr;
+        //lgt_table[lgt_index].last_trig_addr = tmp_addr;
+      }
+    }
+  }
 #endif
-  last_mem_lat = max_mem_lat;
+
+  //last_mem_lat = max_mem_lat;
+  ct_table[reg].prev_goal_addr = ct_table[reg].goal_addr;
+  lgt_table[lgt_index].prev_constant = lgt_table[lgt_index].constant;
   ct_table[reg].ld_used = false;
 }
 
@@ -1065,6 +1113,7 @@ void OoOProcessor::retire()
     }
 #endif
     if(dinst->getInst()->isLoad()) {
+#if 0
       num_mem_lat++;
       //use max mem latency of last 10 loads to calculate trigger load address
       if(num_mem_lat >= 10) {
@@ -1076,9 +1125,27 @@ void OoOProcessor::retire()
       if(max_mem_lat > 8) {
         max_mem_lat = 8;
       }
+#endif
 
       RegType ld_dst = dinst->getInst()->getDst1();
-      ct_table[ld_dst].ct_load_hit(dinst);
+      if(ld_dst <= LREG_R31) {
+        ct_table[ld_dst].ct_load_hit(dinst);
+#if 1
+        ct_table[ld_dst].num_mem_lat++;
+        //use max mem latency of last 10 loads to calculate trigger load address
+        if(ct_table[ld_dst].num_mem_lat >= 10) {
+          ct_table[ld_dst].num_mem_lat   = 0;
+          //ct_table[ld_dst].mem_lat_vec.clear();
+        }
+        //ct_table[ld_dst].mem_lat_vec.push_back((globalClock - dinst->getExecutingTime()));
+        ct_table[ld_dst].mem_lat_vec[ct_table[ld_dst].num_mem_lat] = (globalClock - dinst->getExecutingTime());
+        ct_table[ld_dst].max_mem_lat = *std::max_element(ct_table[ld_dst].mem_lat_vec.begin(), ct_table[ld_dst].mem_lat_vec.end());
+        //ct_table[ld_dst].max_mem_lat = std::accumulate(ct_table[ld_dst].mem_lat_vec.begin(), ct_table[ld_dst].mem_lat_vec.end(), 0.0) / ct_table[ld_dst].mem_lat_vec.size();
+        if(ct_table[ld_dst].max_mem_lat > 16) {
+          //ct_table[ld_dst].max_mem_lat = 16;
+        }
+      }
+#endif
     }
 
     if(dinst->getInst()->getOpcode() == iAALU) { //if ALU hit on ldbp_retire_table

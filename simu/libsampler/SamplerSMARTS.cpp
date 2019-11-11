@@ -54,9 +54,9 @@ SamplerSMARTS::SamplerSMARTS(const char *iname, const char *section, EmulInterfa
 
   nInstForcedDetail = nInstDetail == 0 ? nInstTiming / 2 : nInstDetail;
 
-  setNextSwitch(nInstSkip);
-  if(nInstSkip)
-    startRabbit(fid);
+  if (nInstSkip)
+    setNextSwitch(nInstSkip);
+  startRabbit(fid);
 
   std::cout << "Sampler: inst, R:" << nInstRabbit << ", W:" << nInstWarmup << ", D:" << nInstDetail << ", T:" << nInstTiming
             << std::endl;

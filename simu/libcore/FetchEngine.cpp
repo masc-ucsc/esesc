@@ -603,6 +603,14 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
             bool valid  = false;
             bool valid2 = false;
 
+#if 0
+            if(dinst->getPC() == 0x1044e && (bot_idx != -1 && ldbuff_idx != -1)) {
+              AddrType t = DL1->cir_queue[bot_idx].trig_addr[bot_q_idx];
+              AddrType l = DL1->load_data_buffer[ldbuff_idx].req_addr[bot_q_idx];
+              int q = DL1->cir_queue[bot_idx].set_flag[bot_q_idx];
+              MSG("FETCH0 clk=%u brpc=%llx qhit=%d id=%u ldbr=%d taddr=%d laddr=%d match=%d", globalClock, dinst->getPC(), q, dinst->getID(), q_ldbr, t, l, t==l);
+            }
+#endif
             if(q_ldbr == 1 || q_ldbr == 2 || q_ldbr == 3 || q_ldbr == 5) { // TL by R1 or R2
               if(DL1->cir_queue[bot_idx].delta == 0) {
                 bot_q_idx       = 0;

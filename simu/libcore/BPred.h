@@ -64,7 +64,7 @@
 #include "SCTable.h"
 
 #define RAP_T_NT_ONLY 1
-//#define ENABLE_LDBP
+#define ENABLE_LDBP
 //#define DOC_SIZE 512 //128
 enum PredType { CorrectPrediction = 0, NoPrediction, NoBTBPrediction, MissPrediction };
 enum BrOpType { BEQ = 0, BNE = 1, BLT = 4, BGE = 5, BLTU = 6, BGEU = 7, ILLEGAL_BR = 8};

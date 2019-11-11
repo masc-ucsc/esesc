@@ -169,15 +169,16 @@ bool EmuSampler::toggle_roi() {
   if(roi_skip) {
     MSG("### SamplerBase::toggle_roi() called: STOP Simulation");
     syncTime();
+    //setNextSwitch(nInstSkip);
+    //startRabbit(0);
+  } else if(nInstSkip) {
+    MSG("### SamplerBase::toggle_roi() called: START Simulation (nInstSkip!=0 -> restart Rabbit)");
+
+    // totalnInst = 0; // reset
     setNextSwitch(nInstSkip);
     startRabbit(0);
-  } else {
-    MSG("### SamplerBase::toggle_roi() called: START Simulation");
-
-    totalnInst = 0; // reset
-    setNextSwitch(nInstSkip);
-    if(nInstSkip)
-      startRabbit(0);
+  }else{
+    MSG("### SamplerBase::toggle_roi() called: START Simulation (nInstSkip==0 -> restart last mode)");
   }
 
   return roi_skip;

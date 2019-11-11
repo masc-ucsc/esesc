@@ -53,7 +53,9 @@
 #define TRACK_TIMELEAK 1
 //#define LGT_SIZE 512 //128
 #define DEP_LIST_SIZE 64
-//#define ENABLE_LDBP
+#define TRIG_LD_BURST 1
+#define TRIG_LD_JUMP 24
+#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
 private:
@@ -232,9 +234,20 @@ public:
     bool is_li_r1;   // R1 uses Li
     bool is_li_r2;   // R2 uses Li
     bool is_li_r1r2; // R1 and R2 uses Li
+    std::vector<Time_t> mem_lat_vec = std::vector<Time_t>(10);
+    Time_t max_mem_lat;
+    int num_mem_lat;
+    AddrType goal_addr;
+    AddrType prev_goal_addr;
 
     void ct_load_hit(DInst *dinst) { //add/reset entry on CT
       classify_table_entry(); // reset entries
+      if(dinst->getPC() != ldpc) {
+        mem_lat_vec.clear();
+        max_mem_lat = 0;
+        num_mem_lat = 0;
+        prev_goal_addr = -1;
+      }
       dest_reg  = dinst->getInst()->getDst1();
       ldpc      = dinst->getPC();
       lipc      = 0;
@@ -347,6 +360,9 @@ public:
       ldpc            = 0;
       start_addr      = 0;
       end_addr        = 0;
+      constant        = 0;
+      prev_constant   = 0;
+      last_trig_addr  = 0;
       //ld_delta        = 0;
       //prev_delta      = 0;
       ld_conf         = 0;
@@ -369,6 +385,9 @@ public:
       end_addr2        = 0;
       ld_conf2         = 0;
       dep_depth2       = 0;
+      //constant2        = 0;
+      //prev_constant2   = 0;
+      //last_trig_addr2  = 0;
 
       //mv stats
       mv_type = 0;
@@ -381,6 +400,9 @@ public:
     int64_t ld_delta;
     int64_t prev_delta;
     uint64_t ld_conf;
+    AddrType constant;
+    AddrType prev_constant;
+    AddrType last_trig_addr;
     //mv stats
     DataType mv_data; // data from a mv inst
     int mv_type; //0-> mv inactive, 1 = src1->Src2, 2 = src2->src1
@@ -409,6 +431,9 @@ public:
     int64_t prev_delta2;
     uint64_t ld_conf2;
     int dep_depth2;
+    //AddrType constant2;
+    //AddrType prev_constant2;
+    //AddrType last_trig_addr2;
 
     void lgt_br_hit_li(DInst *dinst, int ldbr, int depth) {
       ldbr_type  = ldbr;
@@ -503,11 +528,13 @@ public:
   AddrType ldbp_curr_addr;
   int64_t ldbp_delta;
   int64_t inflight_branch;
+#if 0
   Time_t max_mem_lat;
   Time_t last_mem_lat;
   Time_t diff_mem_lat;
   int num_mem_lat;
   std::vector<Time_t> mem_lat_vec = std::vector<Time_t>(10);
+#endif
 
 #if 0
   bool is_tl_r1;
