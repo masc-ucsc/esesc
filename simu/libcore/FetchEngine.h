@@ -45,7 +45,7 @@
 
 #include "BPred.h"
 #include "GStats.h"
-#define ENABLE_LDBP
+//#define ENABLE_LDBP
 
 class GMemorySystem;
 class IBucket;

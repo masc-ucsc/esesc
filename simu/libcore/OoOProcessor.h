@@ -55,7 +55,7 @@
 #define DEP_LIST_SIZE 64
 #define TRIG_LD_BURST 1
 #define TRIG_LD_JUMP 24
-#define ENABLE_LDBP
+//#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
 private:

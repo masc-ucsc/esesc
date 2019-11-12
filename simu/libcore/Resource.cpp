@@ -476,6 +476,28 @@ FUStore::FUStore(uint8_t type, Cluster *cls, PortGeneric *aGen, LSQ *_lsq, Store
 StallCause FUStore::canIssue(DInst *dinst) {
   /* canIssue {{{1 */
 
+  if(dinst->getInst()->isStoreAddress())
+    return NoStall;
+
+  if(freeEntries <= 0) {
+    I(freeEntries == 0); // Can't be negative
+    return OutsStoresStall;
+  }
+  if(!lsq->hasFreeEntries())
+    return OutsStoresStall;
+
+  if(inorder)
+    if(lsq->hasPendingResolution())
+      return OutsStoresStall;
+
+  if(!lsq->insert(dinst))
+    return OutsStoresStall;
+
+  storeset->insert(dinst);
+
+  lsq->decFreeEntries();
+  freeEntries--;
+
 #ifdef ENABLE_LDBP
     //update load data buffer if there is any older store for the same address
     if(dinst->getInst()->getOpcode() == iSALU_ST) {
@@ -512,29 +534,6 @@ StallCause FUStore::canIssue(DInst *dinst) {
       }
     }
 #endif
-
-  if(dinst->getInst()->isStoreAddress())
-    return NoStall;
-
-  if(freeEntries <= 0) {
-    I(freeEntries == 0); // Can't be negative
-    return OutsStoresStall;
-  }
-  if(!lsq->hasFreeEntries())
-    return OutsStoresStall;
-
-  if(inorder)
-    if(lsq->hasPendingResolution())
-      return OutsStoresStall;
-
-  if(!lsq->insert(dinst))
-    return OutsStoresStall;
-
-  storeset->insert(dinst);
-
-  lsq->decFreeEntries();
-  freeEntries--;
-
   return NoStall;
 }
 /* }}} */
@@ -596,7 +595,7 @@ bool FUStore::preretire(DInst *dinst, bool flushing) {
   if(scbEntries <= 0)
     return false;
 
-#if 1
+#if 0
   if(firstLevelMemObj->isBusy(dinst->getAddr())) {
     return false;
   }

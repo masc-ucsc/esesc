@@ -59,7 +59,7 @@ class MemRequest;
 #define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
 //#define BOT_SIZE 512 //32
 #define LDBUFF_SIZE 512
-#define ENABLE_LDBP
+//#define ENABLE_LDBP
 
 class MemObj {
 private:

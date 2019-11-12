@@ -966,7 +966,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
         n2Fetch -= 2; // NOP still consumes delay slot
       }
 #else
-      if((lastpc+8) > dinst->getPC() && lastpc < dinst->getPC()) {
+      if(((lastpc+8) > dinst->getPC()) && (lastpc < dinst->getPC())) {
         // >= because compressed 2, default 4, expanded 6. Skip 1-2 does not count as taken
         maxBB--;
         if(maxBB < 1) {
