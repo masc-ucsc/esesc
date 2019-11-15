@@ -183,6 +183,10 @@ private:
   bool branchMiss_level1;
   bool branchMiss_level2;
   bool branchMiss_level3;
+  bool trig_ld1_pred;
+  bool trig_ld1_unpred;
+  bool trig_ld2_pred;
+  bool trig_ld2_unpred;
 
   bool performed;
 
@@ -251,6 +255,10 @@ private:
     fetch           = 0;
     branchMiss      = false;
     use_level3 = false;
+    trig_ld1_pred = false;
+    trig_ld1_unpred = false;
+    trig_ld2_pred = false;
+    trig_ld2_unpred = false;
     branch_hit2_miss3 = false;
     branch_hit3_miss2 = false;
     branchHit_level1 = false;
@@ -608,6 +616,38 @@ public:
 
   bool isUseLevel3() const {
     return use_level3;
+  }
+
+  void setTrig_ld1_pred() {
+    trig_ld1_pred = true;
+  }
+
+  bool isTrig_ld1_pred() const {
+    return trig_ld1_pred;
+  }
+
+  void setTrig_ld1_unpred() {
+    trig_ld1_unpred = true;
+  }
+
+  bool isTrig_ld1_unpred() const {
+    return trig_ld1_unpred;
+  }
+
+  void setTrig_ld2_pred() {
+    trig_ld2_pred = true;
+  }
+
+  bool isTrig_ld2_pred() const {
+    return trig_ld2_pred;
+  }
+
+  void setTrig_ld2_unpred() {
+    trig_ld2_unpred = true;
+  }
+
+  bool isTrig_ld2_unpred() const {
+    return trig_ld2_unpred;
   }
 
   void setBranch_hit2_miss3() {

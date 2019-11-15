@@ -278,19 +278,19 @@ public:
           ldbr_type = 1;
           if(reg_flag == 2)
             ldbr_type = 2;
-        }else if(dep_depth > 1) {
+        }else if(dep_depth > 1 && dep_depth < 4) {
           ldbr_type = 3;
           if(is_li == 1) {
             ldbr_type = 7;
           }else if(is_li == 2) {
-            ldbr_type = 0; //4; FIXME
+            ldbr_type = 0;//4; //FIXME
           }
           if(reg_flag == 2) {
             ldbr_type = 5;
             if(is_li == 1) {
               ldbr_type = 8;
             }else if(is_li == 2) {
-              ldbr_type = 0; //6; FIXME
+              ldbr_type = 0;//6; //FIXME
             }
           }
         }
@@ -300,31 +300,31 @@ public:
             if(is_li == 0) {
               ldbr_type = 17; // R1=>LD; R2=>Li
             }
-          }else if(dep_depth > 1) {
+          }else if(dep_depth > 1 && dep_depth < 4) {
             if(is_li == 0) {
-              ldbr_type = 0; //12;        // R1=>LD->ALU+->BR; R2=>Li
+              ldbr_type = 0;//12;        // R1=>LD->ALU+->BR; R2=>Li
             }else if(is_li == 2) {
-              ldbr_type = 0; //13;        // R1=>LD->ALU*->Li->ALU+->BR; R2=>Li
+              ldbr_type = 0;//13;        // R1=>LD->ALU*->Li->ALU+->BR; R2=>Li
             }
           }
         }else if(reg_flag == 4) { //Br's R2 gets LD/ALU data and R1->Li
           if(dep_depth == 1 && is_li == 0) {
             ldbr_type = 20; // R1=>Li; R2=>LD
-          }else if(dep_depth > 1) {
+          }else if(dep_depth > 1 && dep_depth < 4) {
             if(is_li == 0) {
-              ldbr_type = 0; //9;         // R1=>Li; R2=>LD->ALU+->BR
+              ldbr_type = 0;//9;         // R1=>Li; R2=>LD->ALU+->BR
             }else if(is_li == 1) {
               ldbr_type = 10;        // R1=>Li; R2=>Li
             }else if(is_li == 2) {
-              ldbr_type = 0; //11;        // R1=>Li; R2=>LD->ALU*->Li->ALU+->BR
+              ldbr_type = 0;//11;        // R1=>Li; R2=>LD->ALU*->Li->ALU+->BR
             }
           }
         }else if(reg_flag == 6) { // Br's R1 get LD/ALU data and R2=>Li->ALU+
           if(dep_depth == 1 && is_li == 0)
-            ldbr_type = 0; //16; //R1=>LD; R2=>Li->ALU+->BR
+            ldbr_type = 0;//16; //R1=>LD; R2=>Li->ALU+->BR
         }else if(reg_flag == 7) { // Br's R2 get LD/ALU data and R1=>Li->ALU+
           if(dep_depth == 1 && is_li == 0)
-            ldbr_type = 0; //19; //R2=>LD; R1=>Li->ALU+->BR
+            ldbr_type = 0;//19; //R2=>LD; R1=>Li->ALU+->BR
         }
 #if 0
         if(reg_flag == 3) {

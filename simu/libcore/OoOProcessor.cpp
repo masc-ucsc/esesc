@@ -777,11 +777,12 @@ void OoOProcessor::classify_ld_br_double_chain(DInst *dinst, RegType b1, RegType
     //fill CT table
     ct_br_hit_double(dinst, b1, b2, reg_flag);
 #if 0
-    if(dinst->getPC() == 0x19744)
+    //if(dinst->getPC() == 0x19744)
     MSG("CT_BR_DOUBLE clk=%u brpc=%llx id=%u reg_flag=%d reg1=%d reg2=%d ldpc1=%llx ldpc2=%llx ldbr=%d d1=%d d2=%d", globalClock, dinst->getPC(), dinst->getID(), reg_flag, dinst->getInst()->getSrc1(), dinst->getInst()->getSrc2(), ct_table[b1].ldpc, ct_table[b2].ldpc, ct_table[b1].ldbr_type, dinst->getData(), dinst->getData2());
 #endif
     //fill LGT table
     bool lgt_hit = false;
+    dinst->setLBType(ct_table[b1].ldbr_type);
     int i = hit_on_lgt(dinst, reg_flag, b1, b2);
     /*LGT HIT CRITERIA
      * ct_ldpc == lgt_ldpc && dinst->getPC == lgt_brpc => for TL
@@ -800,13 +801,20 @@ void OoOProcessor::classify_ld_br_double_chain(DInst *dinst, RegType b1, RegType
         if(lgt_table[i].ld_conf > 7) { //if LD1 addr is conf, then TL
           if(ldbr != 22) {
             generate_trigger_load(dinst, b1, i, 1);
+            dinst->setTrig_ld1_pred();
           }
+        }else {
+          dinst->setTrig_ld1_unpred();
         }
         if(lgt_table[i].ld_conf2 > 7) { //if LD2 addr is conf, then TL
           if(ldbr != 21) {
             generate_trigger_load(dinst, b2, i, 2);
+            dinst->setTrig_ld2_pred();
           }
+        }else {
+          dinst->setTrig_ld2_unpred();
         }
+
       }else if(ct_table[b1].is_li_r1r2 && ct_table[b2].is_li_r1r2) {
         DL1->fill_retire_count_bot(dinst->getPC());
         DL1->fill_bpred_use_count_bot(dinst->getPC(), lgt_table[i].hit2_miss3, lgt_table[i].hit3_miss2);
@@ -900,6 +908,7 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
 #endif
 
     bool lgt_hit = false;
+    dinst->setLBType(ct_table[br_src1].ldbr_type);
     int i = hit_on_lgt(dinst, reg_flag, br_src1);
     /*LGT HIT CRITERIA
      * ct_ldpc == lgt_ldpc && dinst->getPC == lgt_brpc => for TL
@@ -931,6 +940,9 @@ void OoOProcessor::classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_f
         MSG("LGT_BR_HIT1 clk=%u ldpc=%llx ld_addr=%u del=%d prev_del=%d conf=%u brpc=%llx d1=%d d2=%d ldbr=%d", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].prev_delta, lgt_table[i].ld_conf, lgt_table[i].brpc, dinst->getData(), dinst->getData2(), lgt_table[i].ldbr_type);
 #endif
           generate_trigger_load(dinst, br_src1, i, 1);
+          dinst->setTrig_ld1_pred();
+        }else {
+          dinst->setTrig_ld1_unpred();
         }
       }else if(ct_table[br_src1].is_li_r1 || ct_table[br_src1].is_li_r2) {
         //Use Li
@@ -1321,7 +1333,7 @@ void OoOProcessor::retire()
 
 #ifdef ESESC_BRANCHPROFILE
     if(dinst->getInst()->isBranch() && dinst->getStatsFlag()) {
-      codeProfile.sample(dinst->getPC(), dinst->getID(), 0, dinst->isBiasBranch() ? 1.0 : 0, 0, dinst->isBranchMiss(), dinst->isPrefetch(), dinst->getLBType(), dinst->isBranchMiss_level1(), dinst->isBranchMiss_level2(), dinst->isBranchMiss_level3(), dinst->isBranchHit_level1(), dinst->isBranchHit_level2(), dinst->isBranchHit_level3(), dinst->isBranch_hit2_miss3(), dinst->isBranch_hit3_miss2());
+      codeProfile.sample(dinst->getPC(), dinst->getID(), 0, dinst->isBiasBranch() ? 1.0 : 0, 0, dinst->isBranchMiss(), dinst->isPrefetch(), dinst->getLBType(), dinst->isBranchMiss_level1(), dinst->isBranchMiss_level2(), dinst->isBranchMiss_level3(), dinst->isBranchHit_level1(), dinst->isBranchHit_level2(), dinst->isBranchHit_level3(), dinst->isBranch_hit2_miss3(), dinst->isBranch_hit3_miss2(), dinst->isTrig_ld1_pred(), dinst->isTrig_ld1_unpred(), dinst->isTrig_ld2_pred(), dinst->isTrig_ld2_unpred());
       AddrType p = dinst->getPC();
       //MSG("BR_PROFILE clk=%u brpc=%llx br_miss=%d\n", globalClock, dinst->getPC(), dinst->isBranchMiss());
     }
