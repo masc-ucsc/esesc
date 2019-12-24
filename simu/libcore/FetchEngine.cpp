@@ -585,7 +585,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
                 int valid     = DL1->lot_vec[lor_idx].valid[q_idx];
                 AddrType q_addr = DL1->lot_vec[lor_idx].tl_addr[q_idx];
-                MSG("LDBP@F clk=%d br_id=%d brpc=%llx curr_addr=%d q_addr=%d valid=%d", globalClock, dinst->getID(), dinst->getPC(), curr_addr, q_addr, valid);
+                //MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d valid=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, valid);
                 if(!DL1->lot_vec[lor_idx].valid[q_idx]) {
                   all_data_valid = false;
                 }
@@ -1059,7 +1059,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           int bot_idx = DL1->return_bot_index(dinst->getPC());
           if(bot_idx != -1) {
             //int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr) % DL1->getLotQueueSize();
-            DL1->bot_vec[bot_idx].valid.clear();
+            DL1->bot_vec[bot_idx].reset_valid();
             DL1->bot_vec[bot_idx].outcome_ptr = 1;
             for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
               AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
@@ -1067,8 +1067,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
               if(lor_idx != -1) {
                 //reset lor.data_pos
                 DL1->lor_vec[lor_idx].data_pos = 1;
-                DL1->lot_vec[lor_idx].valid.clear();
-                DL1->lot_vec[lor_idx].tl_addr.clear();
+                DL1->lot_vec[lor_idx].reset_valid();
               }
             }
           }

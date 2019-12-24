@@ -177,6 +177,13 @@ public:
     std::vector<DataType> data = std::vector<DataType>(LOT_QUEUE_SIZE);
     std::vector<AddrType> tl_addr = std::vector<AddrType>(LOT_QUEUE_SIZE);
     std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
+
+    void reset_valid() {
+      for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
+        tl_addr[i] = 0;
+        valid[i] = 0;
+      }
+    }
   };
 
   std::vector<load_outcome_table> lot_vec = std::vector<load_outcome_table>(LOR_SIZE);
@@ -193,8 +200,14 @@ public:
 
     AddrType brpc;
     int outcome_ptr; //position in cir_queue to use for prediction
-    std::vector<AddrType> load_ptr = std::vector<AddrType>(4);
+    std::vector<AddrType> load_ptr = std::vector<AddrType>(16);
     std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
+
+    void reset_valid() {
+      for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
+        valid[i] = 0;
+      }
+    }
   };
 
   std::vector<branch_outcome_table> bot_vec = std::vector<branch_outcome_table>(BOT_SIZE);
