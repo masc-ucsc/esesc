@@ -194,6 +194,7 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
   bool        fastfix;
   TimeDelta_t delay = bpred->predict(dinst, &fastfix);
 
+#if 0
 #ifdef ENABLE_LDBP
   //update TYPE14 and TYPE15 Br's data after a flip outcome
   int idx = DL1->hit_on_bot(dinst->getPC());
@@ -206,6 +207,7 @@ bool FetchEngine::processBranch(DInst *dinst, uint16_t n2Fetch) {
       }
     }
   }
+#endif
 #endif
 
 #ifdef ESESC_TRACE_DATA
@@ -565,12 +567,47 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 #endif
 #endif
           AddrType x = dinst->getPC() - ldpc;
+
+#ifdef ENABLE_LDBP
+          //NEW INTERFACE  !!!!!!
+
+          //check if BR PC is present in BOT
+          int bot_idx = DL1->return_bot_index(dinst->getPC());
+          bool all_data_valid = true;
+          if(bot_idx != -1) {
+            int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr++) % DL1->getLotQueueSize();
+            for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
+              AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
+              int lor_idx   = DL1->return_lor_index(ldpc);
+              if(lor_idx != -1) {
+                //increment lor.data_pos too
+                DL1->lor_vec[lor_idx].data_pos++;
+                AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
+                int valid     = DL1->lot_vec[lor_idx].valid[q_idx];
+                AddrType q_addr = DL1->lot_vec[lor_idx].tl_addr[q_idx];
+                MSG("LDBP@F clk=%d br_id=%d brpc=%llx curr_addr=%d q_addr=%d valid=%d", globalClock, dinst->getID(), dinst->getPC(), curr_addr, q_addr, valid);
+                if(!DL1->lot_vec[lor_idx].valid[q_idx]) {
+                  all_data_valid = false;
+                }
+              }else {
+                all_data_valid = false;
+              }
+            }
+          }
+          if(all_data_valid) {
+            //USE LDBP
+            dinst->setUseLevel3(); //enable use_ldbp FLAG
+          }
+#endif
+
           if(d < 4) {
             int dep_reg = -1;
             dinst->setDataSign(data, ldpc);
             dinst->setLdAddr(addr);  //addr or lastPredictable_addr???
 
+
 #ifdef ENABLE_LDBP
+#if 0
             dinst->set_br_ld_chain();
 
             //fill fetch count on BOT
@@ -842,6 +879,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
             }
 
 #endif
+#endif
 
 #if 1
             if(ldpc2) {
@@ -1014,6 +1052,28 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     if(dinst->getInst()->isControl()) {
       bool stall_fetch = processBranch(dinst, n2Fetch);
       if(stall_fetch) {
+
+#ifdef ENABLE_LDBP
+        //reset/handle LDBP counters and queues
+        if(dinst->isBranchMiss_level2() && dinst->isLevel3_NoPrediction()) {
+          int bot_idx = DL1->return_bot_index(dinst->getPC());
+          if(bot_idx != -1) {
+            //int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr) % DL1->getLotQueueSize();
+            DL1->bot_vec[bot_idx].valid.clear();
+            DL1->bot_vec[bot_idx].outcome_ptr = 1;
+            for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
+              AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
+              int lor_idx   = DL1->return_lor_index(ldpc);
+              if(lor_idx != -1) {
+                //reset lor.data_pos
+                DL1->lor_vec[lor_idx].data_pos = 1;
+                DL1->lot_vec[lor_idx].valid.clear();
+                DL1->lot_vec[lor_idx].tl_addr.clear();
+              }
+            }
+          }
+        }
+#endif
         DInst *dinstn = eint->peekHead(fid);
         if(dinstn == 0) {
           zeroDinst.inc(true);

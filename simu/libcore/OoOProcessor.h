@@ -53,8 +53,15 @@
 #define TRACK_TIMELEAK 1
 //#define LGT_SIZE 512 //128
 #define DEP_LIST_SIZE 64
+#define LOAD_TABLE_SIZE 512
+#define BTT_SIZE 512
+#define PLQ_SIZE 512
+#define NUM_LOADS 16 // maximum number of loads trackable by LDBP framework
+#define NUM_OPS 16 // maximum number of operations between LD and BR in code snippet
 #define TRIG_LD_BURST 1
 #define TRIG_LD_JUMP 24
+#define BTT_MAX_ACCURACY 7
+//#define NEW_LDBP_INTERFACE
 //#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
@@ -159,6 +166,146 @@ public:
   DataType extract_load_immediate(AddrType li_pc);
   void generate_trigger_load(DInst *dinst, RegType reg, int lgt_index, int tl_type);
   int hit_on_lgt(DInst *dinst, int reg_flag, RegType reg1, RegType reg2 = LREG_R0);
+
+
+  //new interface !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  void hit_on_load_table(DInst *dinst, bool is_li);
+  int return_load_table_index(AddrType pc);
+  //RTT
+  void rtt_load_hit(DInst *dinst);
+  void rtt_alu_hit(DInst *dinst);
+  void rtt_br_hit(DInst *dinst);
+  //BTT
+  int return_btt_index(AddrType pc);
+  void btt_br_miss(DInst *dinst);
+  void btt_br_hit(DInst *dinst, int btt_index);
+  void btt_trigger_load(DInst *dinst, AddrType ld_ptr);
+  int btt_pointer_check(DInst *dinst, int btt_index);
+  // 1 -> btt_ptr == plq_ptr && all tracking set => trigger_loads
+  // 2 -> btt_ptr == plq_ptr but all tracking not set => do nothing
+  // 3 -> if x in BTT.ptr but not in PLQ.ptr => sp.track++
+  // 4 -> if x in PLQ but not in BTT => sp..track = 0
+  //PLQ
+  int return_plq_index(AddrType pc);
+
+  struct load_table { //store stride pref info
+    // fields: LDPC, last_addr, delta, conf
+    load_table() {
+      ldpc         = 0;
+      ld_addr      = 0;
+      prev_ld_addr = 0;
+      delta        = 0;
+      prev_delta   = 0;
+      conf         = 0;
+      tracking     = 0;
+      is_li = false;
+    }
+    AddrType ldpc;
+    AddrType ld_addr;
+    AddrType prev_ld_addr;
+    int64_t delta;
+    int64_t prev_delta;
+    int conf;
+    bool is_li;
+    int tracking; //0 to 3 -> useful counter
+
+    void lt_load_miss(DInst *dinst) {
+      load_table();
+      ldpc         = dinst->getPC();
+      ld_addr      = dinst->getAddr();
+    }
+
+    void lt_load_hit(DInst *dinst) {
+      ldpc         = dinst->getPC();
+      prev_delta   = delta;
+      prev_ld_addr = ld_addr;
+      ld_addr      = dinst->getAddr();
+      delta        = ld_addr - prev_ld_addr;
+      if(delta == prev_delta) {
+        conf++;
+      }else {
+        conf = conf / 2;
+      }
+      //MSG("LT clk=%d ldpc=%llx addr=%d del=%d conf=%d", globalClock, ldpc, ld_addr, delta, conf);
+    }
+
+    void lt_load_imm(DInst *dinst) {
+      ldpc  = dinst->getPC();
+      is_li = true;
+      conf = 4096;
+    }
+
+    void lt_update_tracking(bool inc) {
+      if(inc && tracking < 3) {
+        tracking++;
+      }else if(!inc && tracking > 0) {
+        tracking --;
+      }
+    }
+  };
+
+  std::vector<load_table> load_table_vec = std::vector<load_table>(LOAD_TABLE_SIZE);
+
+  struct rename_tracking_table {
+    //tracks number of ops between LD and BR in a snippet
+    //fields: num_ops and load_table_pointer
+    //indexed by DST_REG
+    rename_tracking_table() {
+      num_ops = 0;
+      is_li = 0;
+      load_table_pointer.clear();
+    }
+    int num_ops; //num of operations between load and branch in a snippet
+    std::vector<AddrType> load_table_pointer = std::vector<AddrType>(NUM_LOADS); // pointer from Load Table to refer loads
+    int is_li;
+  };
+
+  std::vector<rename_tracking_table> rtt_vec = std::vector<rename_tracking_table>(LREG_MAX);
+
+  struct branch_trigger_table { //BTT
+    //Fields: brpc(index), br_pred accuracy, stride pointers
+    branch_trigger_table() {
+      brpc = 0;
+      accuracy = 0;
+      load_table_pointer.clear();
+    }
+    AddrType brpc;
+    int accuracy; // MAX 0 to 7
+    std::vector<AddrType> load_table_pointer = std::vector<AddrType>(NUM_LOADS); // pointer from Load Table to refer loads
+
+    void btt_update_accuracy(DInst *dinst, int id) {
+      if(dinst->isBranch_hit2_miss3()) {
+        if(accuracy > 0)
+          accuracy--;
+      }else if(dinst->isBranch_hit3_miss2()) {
+        if(accuracy < 7)
+          accuracy++;
+      }
+    }
+  };
+
+  std::vector<branch_trigger_table> btt_vec = std::vector<branch_trigger_table>(BTT_SIZE);
+
+  struct pending_load_queue { //queue of LOADS
+    //fields: stride_ptr and tracking
+    pending_load_queue() {
+      tracking = 0;
+      load_pointer = 0;
+    }
+    AddrType load_pointer;
+    int tracking; // 0 to 3 - just like tracking in load_table_vec
+
+    void plq_update_tracking(bool inc) {
+      if(inc && tracking < 3) {
+        tracking++;
+      }else if(!inc && tracking > 0) {
+        tracking --;
+      }
+    }
+
+  };
+
+  std::vector<pending_load_queue> plq_vec = std::vector<pending_load_queue>(PLQ_SIZE);
 
   struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
     classify_table_entry(){

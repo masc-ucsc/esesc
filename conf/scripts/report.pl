@@ -1704,13 +1704,8 @@ sub branchStats {
 
       my $nBranches2  = $cf->getResultField("P(${i})_BPred","nBranches2");
       my $nMiss2      = $cf->getResultField("P(${i})_BPred","nMiss2");
-      my $nNoPredict2 = $cf->getResultField("P(${i})_BPred","nNopredict2");
-      my $nNoPredict_miss2 = $cf->getResultField("P(${i})_BPred","nNopredict_miss2");
 
-      printf "%7.2f%% :",100*(1-($nMiss2+$nNoPredict_miss2)/($nBranches+1));
-      #if ($nNoPredict2 > 0) {
-        #printf " of %7.2f%% :",100*(1-($nNoPredict2/$nBranches2));
-        #}
+      printf "%7.2f%% :",100*(1-($nMiss2)/($nBranches+1));
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
       my $predHit2  = $cf->getResultField("P(${i})_BPred2_${type2}","nHit");
@@ -1726,7 +1721,7 @@ sub branchStats {
 
       my $btbRatio2 = ($btbMiss2+$btbHit2) <= 0 ? 0 : ($btbHit2/($btbMiss2+$btbHit2+1));
 
-      printf " %6.2f%% of %5.2f%% :",100*$btbRatio2 ,100*($btbHit2+$btbMiss2)/($nBranches2-$nNoPredict2+1);
+      printf " %6.2f%% of %5.2f%% :",100*$btbRatio2 ,100*($btbHit2+$btbMiss2)/($nBranches2+1);
 
       my $btbHitLabel2  = $cf->getResultField("P(${i})_BPred2_BTB","nHitLabel");
       printf " %6.2f%% :",100*($btbHitLabel2)/($nBranches-$nNoPredict);

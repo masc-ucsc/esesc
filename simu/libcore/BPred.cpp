@@ -452,6 +452,16 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   //if(dinst->getInst()->isJump())
   //  return btb.predict(dinst, doUpdate, doStats);
 
+  bool ptaken;
+  const bool taken = dinst->isTaken();
+  if(dinst->isUseLevel3()) {
+    ptaken = taken;
+  }else {
+    return NoPrediction;
+  }
+
+#if 0
+
   const bool taken = dinst->isTaken();
   AddrType br_pc = dinst->getPC();
   bool     ptaken;
@@ -461,12 +471,6 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
   int ldbr_use_oc[] = {1, 2, 7, 8, 10, 14, 17, 20, 21, 22};
   int ldbr_use_doc[] = {3, 4, 5, 6, 9, 11, 12, 13, 15, 16, 18, 19};
   int ldbr_use_doc_src1_const[] = {5, 6, 9, 11, 15, 16};
-
-#if 0
-  if(dinst->getLBType() == 0){
-    return NoPrediction;
-  }
-#endif
 
   if(std::find(std::begin(ldbr_use_oc), std::end(ldbr_use_oc), dinst->getLBType()) != std::end(ldbr_use_oc)) {
     ptaken = outcome_calculator(br_op, dinst->getBrData1(), dinst->getBrData2());
@@ -585,6 +589,7 @@ PredType BPLdbp::predict(DInst *dinst, bool doUpdate, bool doStats) {
     return NoPrediction;
   }
 
+#endif
 #endif
 
 #if 0
@@ -783,8 +788,11 @@ PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
 
   bool     bias;
   AddrType pc = dinst->getPC();
-  bool ptaken = imli->getPrediction(pc, bias); // pass taken for statistics
+  uint32_t sign=0;
+  bool ptaken = imli->getPrediction(pc, bias, sign); // pass taken for statistics
+  //MSG("bias=%d ptaken=%d", bias, ptaken==taken);
   dinst->setBiasBranch(bias);
+  dinst->setBranchSignature(sign);
 
   if(doUpdate) {
     imli->updatePredictor(pc, taken, ptaken, dinst->getAddr());
@@ -1649,8 +1657,6 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
     , nTaken("P(%d)_BPred:nTaken", id)
     , nMiss("P(%d)_BPred:nMiss", id)
     , nBranches2("P(%d)_BPred:nBranches2", id)
-    , nNoPredict2("P(%d)_BPred:nNoPredict2", id)
-    , nNoPredict_miss2("P(%d)_BPred:nNoPredict_miss2", id)
     , nTaken2("P(%d)_BPred:nTaken2", id)
     , nMiss2("P(%d)_BPred:nMiss2", id)
     , nBranches3("P(%d)_BPred:nBranches3", id)
@@ -1833,7 +1839,6 @@ PredType BPredictor::predict2(DInst *dinst) {
 
   //nMiss2.inc(p != CorrectPrediction && dinst->getStatsFlag());
   nMiss2.inc(p == MissPrediction && dinst->getStatsFlag());
-  nNoPredict2.inc(p == NoPrediction && dinst->getStatsFlag());
 
   return p;
 }
@@ -1937,6 +1942,8 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     dinst->setBranchHit_level3();
     if(outcome2 != CorrectPrediction)
       dinst->setBranch_hit3_miss2();
+  }else {
+    dinst->setLevel3_NoPrediction();
   }
 #endif
 
@@ -1961,9 +1968,9 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     return bpredDelay1 - 1;
   }
 
-  if(outcome2 == NoPrediction && (outcome1 == MissPrediction && outcome3 == MissPrediction)) {
-    nNoPredict_miss2.inc(true);
-  }else if(outcome3 == NoPrediction && (outcome1 == MissPrediction && outcome2 == MissPrediction)) {
+  I(outcome1 != NoPrediction);
+  I(outcome2 != NoPrediction);
+  if(outcome3 == NoPrediction && outcome2 == MissPrediction) {
     nNoPredict_miss3.inc(true);
   }
 

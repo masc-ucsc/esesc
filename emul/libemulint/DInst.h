@@ -183,6 +183,7 @@ private:
   bool branchMiss_level1;
   bool branchMiss_level2;
   bool branchMiss_level3;
+  bool level3_NoPrediction;
   bool trig_ld1_pred;
   bool trig_ld1_unpred;
   bool trig_ld2_pred;
@@ -193,6 +194,9 @@ private:
   bool interCluster;
   bool keepStats;
   bool biasBranch;
+  uint32_t branch_signature;
+  bool imli_highconf;
+
   bool prefetch;
   bool dispatched;
   bool fullMiss; // Only for DL1
@@ -267,6 +271,8 @@ private:
     branchMiss_level1 = false;
     branchMiss_level2 = false;
     branchMiss_level3 = false;
+    level3_NoPrediction = false;
+    imli_highconf = false;
     gproc           = 0;
     SSID            = -1;
     conflictStorePC = 0;
@@ -286,6 +292,7 @@ private:
     prefetch     = false;
     dispatched   = false;
     fullMiss     = false;
+
 
 #ifdef DINST_PARENT
     pend[0].setParentDInst(0);
@@ -714,6 +721,14 @@ public:
     return branchMiss_level3;
   }
 
+  void setLevel3_NoPrediction() {
+    level3_NoPrediction = true;
+  }
+
+  bool isLevel3_NoPrediction() const {
+    return level3_NoPrediction;
+  }
+
   bool isBranchMiss() const {
     return branchMiss;
   }
@@ -930,6 +945,21 @@ public:
   }
   bool isBiasBranch() const {
     return biasBranch;
+  }
+
+  void setImliHighConf() {
+    imli_highconf = true;
+  }
+
+  bool getImliHighconf() const {
+    return imli_highconf;
+  }
+
+  void setBranchSignature(uint32_t s) {
+    branch_signature = s;
+  }
+  uint32_t getBranchSignature() const {
+    return branch_signature;
   }
 
   bool isTaken() const {

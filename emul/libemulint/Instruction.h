@@ -131,6 +131,9 @@ public:
   bool isStore() const {
     return opcode == iSALU_ST || opcode == iSALU_SC || opcode == iSALU_LL;
   }
+  bool isComplex() const {
+    return opcode >= iCALU_FPMULT && opcode <= iCALU_DIV;
+  }
   bool isStoreAddress() const {
     return opcode == iSALU_ADDR;
   }

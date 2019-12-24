@@ -146,6 +146,95 @@ DummyMemObj::DummyMemObj(const char *section, const char *sName)
 /* }}} */
 
 #ifdef ENABLE_LDBP
+//NEW INTERFACE !!!!!
+void MemObj::lor_find_index(MemRequest *mreq) {
+  AddrType tl_addr = mreq->getAddr();
+  for(int i = 0; i < lor_vec.size(); i++) {
+    AddrType lor_start  = lor_vec[i].ld_start;
+    AddrType lor_delta  = lor_vec[i].ld_delta;
+    int idx = 0;
+    if(lor_delta != 0) {
+      idx             = (tl_addr - lor_start) / lor_delta;
+    }
+    AddrType lor_end_addr = lor_start + ((LOT_QUEUE_SIZE - 1) * lor_delta);
+    AddrType check_addr = lor_start + (idx * lor_delta);
+    if((tl_addr == check_addr) && (tl_addr <= lor_end_addr)) {
+      //hit on LOR for returning TL
+      lot_fill_data(i, idx, tl_addr);
+    }
+  }
+
+}
+
+void MemObj::lot_fill_data(int lot_id, int lot_queue_id, AddrType tl_addr) {
+  //data_pos updated @F -> use ld_ptr info from BOT @Br fetch; ++ data_pos when we ++ outcome_ptr
+  //lot_queue_pos => [curr_br_count + lor_id(based on mreq_addr)] % lot_q_size
+  int lot_queue_entry = (lor_vec[lot_id].data_pos + lot_queue_id) % getLotQueueSize();
+  //MSG("TL_RETURN clk=%d tl_addr=%d q_id=%d", globalClock, tl_addr, lot_queue_entry);
+  lot_vec[lot_id].tl_addr[lot_queue_entry] = tl_addr;
+  lot_vec[lot_id].valid[lot_queue_entry] = 1;
+}
+
+void MemObj::bot_allocate(AddrType brpc, AddrType ld_ptr, int outcome_ptr) {
+  int bot_id = return_bot_index(brpc);
+  if(bot_id != -1) {
+    bot_vec[bot_id].brpc = brpc;
+    bot_vec[bot_id].outcome_ptr = 1;
+    bot_vec[bot_id].load_ptr.push_back(ld_ptr);
+    branch_outcome_table b = bot_vec[bot_id];
+    bot_vec.erase(bot_vec.begin() + bot_id);
+    bot_vec.push_back(branch_outcome_table());
+    bot_vec[LOR_SIZE - 1] = b;
+    return;
+  }
+  bot_vec.erase(bot_vec.begin());
+  bot_vec.push_back(branch_outcome_table());
+  bot_vec[LOR_SIZE - 1].brpc = brpc;
+  bot_vec[LOR_SIZE - 1].outcome_ptr = 1;
+  bot_vec[LOR_SIZE - 1].load_ptr.push_back(ld_ptr);
+}
+
+void MemObj::lor_allocate(AddrType ld_ptr, AddrType ld_start_addr, int64_t ld_del, int data_pos, bool is_li) {
+  int lor_id = return_lor_index(ld_ptr);
+  if(lor_id != -1) {
+    lor_vec[lor_id].ld_pointer = ld_ptr;
+    lor_vec[lor_id].ld_start = ld_start_addr;
+    lor_vec[lor_id].ld_delta = ld_del;
+    lor_vec[lor_id].data_pos = 1;
+    lor_vec[lor_id].is_li = is_li;
+    load_outcome_reg l = lor_vec[lor_id];
+    lor_vec.erase(lor_vec.begin() + lor_id);
+    lor_vec.push_back(load_outcome_reg());
+    lor_vec[LOR_SIZE - 1] = l;
+    return;
+  }
+  lor_vec.erase(lor_vec.begin());
+  lor_vec.push_back(load_outcome_reg());
+  lor_vec[LOR_SIZE - 1].ld_pointer = ld_ptr;
+  lor_vec[LOR_SIZE - 1].ld_start = ld_start_addr;
+  lor_vec[LOR_SIZE - 1].ld_delta = ld_del;
+  lor_vec[LOR_SIZE - 1].data_pos = 1;
+  lor_vec[LOR_SIZE - 1].is_li = is_li;
+}
+
+int MemObj::return_bot_index(AddrType brpc) {
+  for(int i = 0; i < bot_vec.size(); i++) {
+    if(brpc == bot_vec[i].brpc) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int MemObj::return_lor_index(AddrType ld_ptr) {
+  for(int i = 0; i < lor_vec.size(); i++) {
+    if(ld_ptr == lor_vec[i].ld_pointer) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 void MemObj::fill_li_at_retire(AddrType brpc, int ldbr, bool d1_valid, bool d2_valid, int depth1, int depth2, DataType d1, DataType d2) {
   int i = hit_on_bot(brpc);
   if(i != -1) {

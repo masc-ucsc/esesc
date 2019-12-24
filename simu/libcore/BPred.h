@@ -622,8 +622,6 @@ private:
   GStatsCntr nMiss; // hits == nBranches - nMiss
 
   GStatsCntr nBranches2;
-  GStatsCntr nNoPredict2;
-  GStatsCntr nNoPredict_miss2; // NoPred by bpred 2 and no correct pred by other bpreds
   GStatsCntr nTaken2;
   GStatsCntr nMiss2; // hits == nBranches - nMiss
 

@@ -59,6 +59,8 @@ class MemRequest;
 #define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
 //#define BOT_SIZE 512 //32
 #define LDBUFF_SIZE 512
+#define LOR_SIZE 512
+#define LOT_QUEUE_SIZE 512 //FIXME: need to change this to a conf variable
 //#define ENABLE_LDBP
 
 class MemObj {
@@ -89,6 +91,113 @@ public:
 
 #ifdef ENABLE_LDBP
   const int BOT_SIZE;
+  //Load data buffer interface functions
+  int hit_on_ldbuff(AddrType pc);
+  void fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, int64_t del, AddrType raddr, int q_idx, int tl_type);
+  void shift_load_data_buffer(AddrType pc, int tl_type);
+  void flush_ldbuff_mem(AddrType pc);
+
+  //BOT interface functions
+  void find_cir_queue_index(MemRequest *mreq);
+  int hit_on_bot(AddrType pc);
+  void flush_bot_mem(int idx);
+  void shift_cir_queue(AddrType pc, int tl_type);
+  void fill_fetch_count_bot(AddrType pc);
+  void fill_retire_count_bot(AddrType pc);
+  void fill_bpred_use_count_bot(AddrType pc, int _hit2_miss3, int _hit3_miss2);
+  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int lbtype, int tl_type);
+  void fill_mv_stats(AddrType pc, int ldbr, DataType d1, DataType d2, bool swap, int mv_out);
+  void fill_li_at_retire(AddrType brpc, int ldbr, bool d1_valid, bool d2_valid, int depth1, int depth2, DataType li1, DataType li2 = 0);
+
+  int getQSize() {
+    return CIR_QUEUE_WINDOW;
+  }
+
+  int getLotQueueSize() const {
+    return LOT_QUEUE_SIZE;
+  }
+
+  int getBotSize() {
+    return BOT_SIZE;
+  }
+
+  int getLdBuffSize() {
+    return LDBUFF_SIZE;
+  }
+
+  void setRetBrCount(int cnt) {
+    ret_br_count = cnt;
+  }
+
+  int getRetBrCount() const {
+    return ret_br_count;
+  }
+
+  //NEW INTERFACE !!!!!! Nov 20, 2019
+  //LOR
+  void lor_allocate(AddrType ld_ptr, AddrType ld_start, int64_t ld_del, int data_pos, bool is_li);
+  void lor_find_index(MemRequest *mreq);
+  int return_lor_index(AddrType ld_ptr);
+  //LOT
+  void lot_fill_data(int lot_index, int lot_queue_index, AddrType tl_addr);
+  //BOT
+  int return_bot_index(AddrType brpc);
+  void bot_allocate(AddrType brpc, AddrType ld_ptr, int outcome_ptr);
+
+  struct load_outcome_reg {
+    //tracks trigger load info as each TL completes execution
+    //fields: load start, delta, index(or n data), stride pointer, data position
+
+    load_outcome_reg() {
+      ld_start = 0;
+      ld_delta = 0;
+      index    = 0;
+      ld_pointer = 0;
+      data_pos = 0; // ++ @Fetch and 0 @flush
+      is_li = false;
+    }
+    AddrType ld_start; //load start addr
+    int64_t ld_delta;
+    int index; //set to 1 @alloc
+    AddrType ld_pointer; //load pointer from stride pref table
+    int data_pos; //similar purpose as bot.outcome_ptr
+    bool is_li; //ESESC flag to not trigger load if Li
+  };
+
+  std::vector<load_outcome_reg> lor_vec = std::vector<load_outcome_reg>(LOR_SIZE);
+
+  struct load_outcome_table { //same number of entries as LOR
+    //stores trigger load data
+    load_outcome_table() {
+      for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
+        tl_addr[i] = 0;
+        valid[i] = 0;
+      }
+    }
+    std::vector<DataType> data = std::vector<DataType>(LOT_QUEUE_SIZE);
+    std::vector<AddrType> tl_addr = std::vector<AddrType>(LOT_QUEUE_SIZE);
+    std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
+  };
+
+  std::vector<load_outcome_table> lot_vec = std::vector<load_outcome_table>(LOR_SIZE);
+
+  struct branch_outcome_table {
+    branch_outcome_table() {
+      brpc      = 0;
+      outcome_ptr = 0;
+      load_ptr.clear();
+      for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
+        valid[i] = 0;
+      }
+    }
+
+    AddrType brpc;
+    int outcome_ptr; //position in cir_queue to use for prediction
+    std::vector<AddrType> load_ptr = std::vector<AddrType>(4);
+    std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
+  };
+
+  std::vector<branch_outcome_table> bot_vec = std::vector<branch_outcome_table>(BOT_SIZE);
 
   struct bot_entry {
     bot_entry() {
@@ -232,43 +341,6 @@ public:
   std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(LDBUFF_SIZE);
   //std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);
 
-  //Load data buffer interface functions
-  int hit_on_ldbuff(AddrType pc);
-  void fill_ldbuff_mem(AddrType pc, AddrType sa, AddrType ea, int64_t del, AddrType raddr, int q_idx, int tl_type);
-  void shift_load_data_buffer(AddrType pc, int tl_type);
-  void flush_ldbuff_mem(AddrType pc);
-
-  //BOT interface functions
-  void find_cir_queue_index(MemRequest *mreq);
-  int hit_on_bot(AddrType pc);
-  void flush_bot_mem(int idx);
-  void shift_cir_queue(AddrType pc, int tl_type);
-  void fill_fetch_count_bot(AddrType pc);
-  void fill_retire_count_bot(AddrType pc);
-  void fill_bpred_use_count_bot(AddrType pc, int _hit2_miss3, int _hit3_miss2);
-  void fill_bot_retire(AddrType pc, AddrType ldpc, AddrType saddr, AddrType eaddr, int64_t del, int lbtype, int tl_type);
-  void fill_mv_stats(AddrType pc, int ldbr, DataType d1, DataType d2, bool swap, int mv_out);
-  void fill_li_at_retire(AddrType brpc, int ldbr, bool d1_valid, bool d2_valid, int depth1, int depth2, DataType li1, DataType li2 = 0);
-
-  int getQSize() {
-    return CIR_QUEUE_WINDOW;
-  }
-
-  int getBotSize() {
-    return BOT_SIZE;
-  }
-
-  int getLdBuffSize() {
-    return LDBUFF_SIZE;
-  }
-
-  void setRetBrCount(int cnt) {
-    ret_br_count = cnt;
-  }
-
-  int getRetBrCount() const {
-    return ret_br_count;
-  }
 
 
 #endif

@@ -52,6 +52,8 @@
 #include "FastQueue.h"
 #include "MemRequest.h"
 
+//#define ESESC_TRACE
+
 /* }}} */
 
 //#define ESESC_CODEPROFILE
@@ -547,6 +549,314 @@ void OoOProcessor::retire_lock_check()
 /* }}} */
 
 #ifdef ENABLE_LDBP
+void OoOProcessor::hit_on_load_table(DInst *dinst, bool is_li) {
+  //if hit on load_table, update and move entry to LRU position
+  for(int i = LOAD_TABLE_SIZE - 1; i >= 0; i--) {
+    if(dinst->getPC() == load_table_vec[i].ldpc) {
+      if(is_li) {
+        load_table_vec[i].lt_load_imm(dinst);
+      }else {
+        load_table_vec[i].lt_load_hit(dinst);
+      }
+      load_table l = load_table_vec[i];
+      load_table_vec.erase(load_table_vec.begin() + i);
+      load_table_vec.push_back(load_table());
+      load_table_vec[LOAD_TABLE_SIZE - 1] = l;
+      if(load_table_vec[LOAD_TABLE_SIZE - 1].tracking > 0) {
+        //append ld_ptr to PLQ
+        int plq_idx = return_plq_index(load_table_vec[LOAD_TABLE_SIZE - 1].ldpc);
+        if(plq_idx != - 1) {
+          pending_load_queue p = plq_vec[plq_idx];
+          plq_vec.erase(plq_vec.begin() + plq_idx);
+        }else {
+          plq_vec.erase(plq_vec.begin());
+        }
+        plq_idx = PLQ_SIZE - 1;
+        plq_vec.push_back(pending_load_queue());
+        plq_vec[plq_idx].load_pointer = load_table_vec[LOAD_TABLE_SIZE - 1].ldpc;
+        if(load_table_vec[LOAD_TABLE_SIZE - 1].delta == load_table_vec[LOAD_TABLE_SIZE - 1].prev_delta) {
+          plq_vec[plq_idx].plq_update_tracking(true);
+        }else {
+          plq_vec[plq_idx].plq_update_tracking(false);
+        }
+      }
+      return;
+    }
+  }
+  //if load_table miss
+  load_table_vec.erase(load_table_vec.begin());
+  load_table_vec.push_back(load_table());
+  if(is_li) {
+    load_table_vec[LOAD_TABLE_SIZE - 1].lt_load_imm(dinst);
+  }else {
+    load_table_vec[LOAD_TABLE_SIZE - 1].lt_load_miss(dinst);
+  }
+}
+
+int OoOProcessor::return_load_table_index(AddrType pc) {
+  //if hit on load_table, update and move entry to LRU position
+  for(int i = LOAD_TABLE_SIZE - 1; i >= 0; i--) {
+    if(pc == load_table_vec[i].ldpc) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void OoOProcessor::rtt_load_hit(DInst *dinst) {
+  //reset entry on hit and update fields
+  RegType dst          = dinst->getInst()->getDst1();
+  int lt_idx = return_load_table_index(dinst->getPC());
+  if(load_table_vec[lt_idx].conf > 63) {
+    rtt_vec[dst] = rename_tracking_table();
+    rtt_vec[dst].num_ops = 0;
+    if(!load_table_vec[lt_idx].is_li) {
+      rtt_vec[dst].load_table_pointer.push_back(dinst->getPC());
+    }else {
+      // FIXME - use PC for Li or some random number????????
+      //rtt_vec[dst].load_table_pointer.push_back(1);
+      rtt_vec[dst].load_table_pointer.push_back(dinst->getPC());
+    }
+  }else {
+    rtt_vec[dst].num_ops = NUM_OPS + 1;
+  }
+}
+
+void OoOProcessor::rtt_alu_hit(DInst *dinst) {
+  //update fields using information from RTT and LT
+  //num_ops = src1(nops) + src2(nops) + 1
+  //ld_ptr = ptr of src1 and src2
+  RegType dst  = dinst->getInst()->getDst1();
+  RegType src1 = dinst->getInst()->getSrc1();
+  RegType src2 = dinst->getInst()->getSrc2();
+
+  int nops1 = rtt_vec[src1].num_ops;
+  int nops2 = rtt_vec[src2].num_ops;
+  int nops = nops1 + nops2 + 1;
+  //concatenate ptr list of 2 srcs into dst
+  std::vector<AddrType> tmp;
+  tmp.clear();
+  tmp.insert(tmp.begin(), rtt_vec[src1].load_table_pointer.begin(), rtt_vec[src1].load_table_pointer.end());
+  tmp.insert(tmp.end(), rtt_vec[src2].load_table_pointer.begin(), rtt_vec[src2].load_table_pointer.end());
+  std::sort(tmp.begin(), tmp.end());
+  tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
+  rtt_vec[dst].num_ops = nops;
+  rtt_vec[dst].load_table_pointer = tmp;
+}
+
+void OoOProcessor::rtt_br_hit(DInst *dinst) {
+  //read num ops and stride ptr fields on hit
+  //use stride ptr to figure out if the LD(s) are predictable
+  if(!dinst->isBiasBranch()) {
+    //Index RTT with BR only when tage is not high-conf
+    return;
+  }
+  RegType src1 = dinst->getInst()->getSrc1();
+  RegType src2 = dinst->getInst()->getSrc2();
+  int all_ld_conf1 = 0; //invalid
+  int all_ld_conf2 = 0; //invalid
+  int nops1 = rtt_vec[src1].num_ops;
+  int nops2 = rtt_vec[src2].num_ops;
+#if 1
+  for(int i = 0; i < rtt_vec[src1].load_table_pointer.size(); i++) {
+    int lt_index = return_load_table_index(rtt_vec[src1].load_table_pointer[i]);
+    //Above line can cause SEG_FAULT if index of Li is checked
+    if(load_table_vec[lt_index].conf > 63) {
+      all_ld_conf1 = 1;
+    }else {
+      all_ld_conf1 = 0;
+      break;
+    }
+  }
+  for(int i = 0; i < rtt_vec[src2].load_table_pointer.size(); i++) {
+    int lt_index = return_load_table_index(rtt_vec[src2].load_table_pointer[i]);
+    //Above line can cause SEG_FAULT if index of Li is checked
+    if(load_table_vec[lt_index].conf > 63) {
+      all_ld_conf2 = 1;
+    }else {
+      all_ld_conf2 = 0;
+      break;
+    }
+  }
+#endif
+  if(src2 == LREG_R0) {
+    all_ld_conf2 = 1;
+  }
+  int nops     = nops1 + nops2;
+  int nlds     = rtt_vec[src1].load_table_pointer.size() + rtt_vec[src2].load_table_pointer.size();
+  bool all_conf = all_ld_conf1 && all_ld_conf2;
+#if 0
+  if(dinst->isBranchMiss_level2() && (nops < NUM_LOADS && nlds < NUM_LOADS))
+    MSG("RTT brpc=%llx nops=%d nloads=%d all_conf=%d", dinst->getPC(), nops, nlds, all_conf);
+#endif
+
+  //if all_conf && nops < num_ops && nlds < num_loads
+  //fill BTT with brpc and str ptrs; acc = 4; sp.tracking = true for all str ptrs
+  int btt_id = return_btt_index(dinst->getPC());
+  if(all_conf && (nops < NUM_OPS) && (nlds < NUM_LOADS)) {
+    //if BTT miss and TAGE low conf
+    if(btt_id == -1)
+      btt_br_miss(dinst);
+  }
+}
+
+int OoOProcessor::return_btt_index(AddrType pc) {
+  //if hit on BTT, update and move entry to LRU position
+  for(int i = BTT_SIZE - 1; i >= 0; i--) {
+    if(pc == btt_vec[i].brpc) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void OoOProcessor::btt_br_miss(DInst *dinst) {
+  RegType src1 = dinst->getInst()->getSrc1();
+  RegType src2 = dinst->getInst()->getSrc2();
+  btt_vec.erase(btt_vec.begin());
+  btt_vec.push_back(branch_trigger_table());
+  //merge LD ptr list from src1 and src2 entries in RTT
+  std::vector<AddrType> tmp;
+  tmp.clear();
+  tmp.insert(tmp.begin(), rtt_vec[src1].load_table_pointer.begin(), rtt_vec[src1].load_table_pointer.end());
+  tmp.insert(tmp.end(), rtt_vec[src2].load_table_pointer.begin(), rtt_vec[src2].load_table_pointer.end());
+  std::sort(tmp.begin(), tmp.end());
+  tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
+  btt_vec[BTT_SIZE - 1].load_table_pointer = tmp;
+  btt_vec[BTT_SIZE - 1].brpc = dinst->getPC();
+  btt_vec[BTT_SIZE - 1].accuracy = BTT_MAX_ACCURACY / 2; //bpred accuracy set to intermediate value
+  for(int i = 0; i < tmp.size(); i++) { //update sp.tracking for all ld_ptr in BTT
+    int id = return_load_table_index(tmp[i]);
+    if(id != -1) {
+      load_table_vec[id].lt_update_tracking(true);
+      //allocate entries at LOR and LOT
+      // set LOR_START to next LD-BR chain's ld_addr
+      // When current BR retires, there maybe other BRs inflight
+      // set ld_start considering these inflight BRs
+      //AddrType lor_start_addr = load_table_vec[id].ld_addr + (load_table_vec[id].delta * TRIG_LD_JUMP);
+      //int look_ahead = dinst->getInflight() + 1;
+      int look_ahead = 0;
+      //lor.start -> lor.start + lor.delta
+      //(as this allocate is done on Br miss, there will be no inflight Br. So lor.start should be updated to next LD-BR's addr)
+      AddrType lor_start_addr = load_table_vec[id].ld_addr + load_table_vec[id].delta;
+      bool is_li     = false;
+      if(load_table_vec[id].ld_addr == 0) {
+        lor_start_addr = 0;
+        is_li          = true;
+      }
+      DL1->lor_allocate(load_table_vec[id].ldpc, lor_start_addr, load_table_vec[id].delta, look_ahead, is_li);
+      //FIXME -> is 3rd param in next line correct???????
+      DL1->bot_allocate(dinst->getPC(), load_table_vec[id].ldpc, look_ahead);
+    }
+  }
+
+}
+
+void OoOProcessor::btt_br_hit(DInst *dinst, int btt_id) {
+  btt_vec[btt_id].btt_update_accuracy(dinst, btt_id); //update BTT accuracy
+  if(btt_vec[btt_id].accuracy == 0) { //clear sp.tracking if acc == 0 and reset BTT entry
+    for(int i = 0; i < btt_vec[btt_id].load_table_pointer.size(); i++) {
+      int lt_idx = return_load_table_index(btt_vec[btt_id].load_table_pointer[i]);
+      if(lt_idx != -1) {
+        load_table_vec[lt_idx].tracking = 0;
+      }
+    }
+    //clear entry
+    btt_vec.erase(btt_vec.begin() + btt_id);
+    btt_vec.push_back(branch_trigger_table());
+    return;
+  }
+  //check if btt_strptr == plq_strptr and tracking bits are set
+  //if yes and associated LOR are tracking the str_ptr, then trigger loads
+  int tl_flag = btt_pointer_check(dinst, btt_id);
+  if(tl_flag == 1) { //trigger loads
+    //trigger loads
+    //MSG("LOAD_PTR pc=%llx size=%d", dinst->getPC(), btt_vec[btt_id].load_table_pointer.size());
+    for(int i = 0; i < btt_vec[btt_id].load_table_pointer.size(); i++) {
+      btt_trigger_load(dinst, btt_vec[btt_id].load_table_pointer[i]);
+    }
+  }
+}
+
+void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
+  int lor_id = DL1->return_lor_index(ld_ptr);
+  int lt_idx = return_load_table_index(ld_ptr);
+  if(lor_id != -1) {
+    AddrType lor_start_addr = DL1->lor_vec[lor_id].ld_start;
+    //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, load_table_vec[lt_idx].conf);
+    int64_t lor_delta = DL1->lor_vec[lor_id].ld_delta;
+    for(int i = 1; i <= 1; i++) {
+      AddrType trigger_addr = lor_start_addr + (lor_delta * (24 + i)); //trigger few delta ahead of current ld_addr
+      //MSG("TL clk=%d br_id=%d brpc=%llx ldpc=%llx ld_addr=%d trig_addr=%d conf=%d", globalClock, dinst->getID(), dinst->getPC(), ld_ptr, lor_start_addr, trigger_addr, load_table_vec[lt_idx].conf);
+      MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ld_ptr, dinst->getPC(), lor_start_addr, 0, lor_delta, inflight_branch, 0, 0, 0, 0);
+    }
+    //update lor_start by delta so that next TL doesnt trigger redundant loads
+    DL1->lor_vec[lor_id].ld_start = DL1->lor_vec[lor_id].ld_start + DL1->lor_vec[lor_id].ld_delta;
+  }
+}
+
+int OoOProcessor::btt_pointer_check(DInst *dinst, int btt_id) {
+  //returns 1 if all ptrs are found; else 0
+  bool all_ptr_found = true;
+  bool all_ptr_track = true;
+  std::vector<AddrType> tmp_plq;
+
+  for(int i = 0; i < plq_vec.size(); i++) {
+    tmp_plq.push_back(plq_vec[i].load_pointer);
+  }
+
+  for(int i = 0; i < btt_vec[btt_id].load_table_pointer.size(); i++) {
+    auto it = std::find(tmp_plq.begin(), tmp_plq.end(), btt_vec[btt_id].load_table_pointer[i]);
+    if(it != tmp_plq.end()) {
+      //element in BTT found in PLQ
+      int plq_id = return_plq_index(*it);
+      if(plq_vec[plq_id].tracking == 0) {
+        //Delta changed for ld_ptr "i"; don't trigger load
+        all_ptr_track = false;
+      }
+    }else {
+      //element in BRR not found in PLQ
+      all_ptr_found = false;
+      //start tracking this ld_ptr "i" as its part of the current LD-BR slice
+      int lt_idx = return_load_table_index(btt_vec[btt_id].load_table_pointer[i]);
+      if(lt_idx != -1) {
+        //load_table_vec[lt_idx].tracking++;
+        load_table_vec[lt_idx].lt_update_tracking(true);
+      }
+    }
+  }
+  if(all_ptr_found) {
+    for(int i = 0; i < plq_vec.size(); i++) {
+      //clears sp.track and PLQ entry if x is present in PLQ but not in BTT
+      auto it = std::find(btt_vec[btt_id].load_table_pointer.begin(), btt_vec[btt_id].load_table_pointer.end(), plq_vec[i].load_pointer);
+      if(it != btt_vec[btt_id].load_table_pointer.end()) {
+        //element in PLQ is found in BTT
+      }else {
+        //No need to track ld-ptr in ld_table and plq if this ld-ptr is not part of current LD-BR slice
+        int lt_idx = return_load_table_index(plq_vec[i].load_pointer);
+        if(lt_idx != -1) {
+          load_table_vec[lt_idx].tracking = 0;
+        }
+        plq_vec.erase(plq_vec.begin() + i);
+        plq_vec.push_back(pending_load_queue());
+      }
+    }
+    if(all_ptr_track)
+      return 1;
+  }
+
+  return 0;
+}
+
+int OoOProcessor::return_plq_index(AddrType pc) {
+  //if hit on load_table, update and move entry to LRU position
+  for(int i = PLQ_SIZE - 1; i >= 0; i--) {
+    if(pc == plq_vec[i].load_pointer) {
+      return i;
+    }
+  }
+  return -1;
+}
 
 DataType OoOProcessor::extract_load_immediate(AddrType pc) {
   AddrType raw_op = esesc_mem_read(pc);
@@ -557,8 +867,8 @@ DataType OoOProcessor::extract_load_immediate(AddrType pc) {
   return d;
 }
 
+#if 0
 void OoOProcessor::generate_trigger_load(DInst *dinst, RegType reg, int lgt_index, int tl_type) {
-
   uint64_t constant  = 0; //4; //8; //32;
   int64_t delta2    = ct_table[reg].max_mem_lat;                   // max_mem_lat of last 10 dependent LDs
   //AddrType load_addr = 0;
@@ -767,7 +1077,11 @@ void OoOProcessor::lgt_br_hit_double(DInst *dinst , RegType b1, RegType b2, int 
     lgt_table[i].ld_conf2 = lgt_table[i].ld_conf2 / 2;
   }
   lgt_table[i].dep_depth2       = ct_table[b2].dep_depth;
-
+#if 0
+  if(dinst->getPC() == 0x11f32) {
+    MSG("LD_CHECK clk=%d ld1=%llx addr1=%d del1=%d conf1=%d ld2=%llx addr2=%d del2=%d conf2=%d", globalClock, lgt_table[i].ldpc, lgt_table[i].start_addr, lgt_table[i].ld_delta, lgt_table[i].ld_conf, lgt_table[i].ldpc2, lgt_table[i].start_addr2, lgt_table[i].ld_delta2, lgt_table[i].ld_conf2);
+  }
+#endif
   lgt_table[i].lgt_update_br_fields(dinst);
 }
 
@@ -1097,6 +1411,8 @@ int OoOProcessor::hit_on_lgt(DInst *dinst, int reg_flag, RegType reg1, RegType r
 
 #endif
 
+#endif
+
 void OoOProcessor::retire()
 /* Try to retire instructions {{{1 */
 {
@@ -1139,6 +1455,12 @@ void OoOProcessor::retire()
       }
 #endif
 
+#ifdef NEW_LDBP_INTERFACE
+      hit_on_load_table(dinst, false);
+      //int lt_idx = return_load_table_index(dinst->getPC());
+      rtt_load_hit(dinst);
+#endif
+
       RegType ld_dst = dinst->getInst()->getDst1();
       if(ld_dst <= LREG_R31) {
         ct_table[ld_dst].ct_load_hit(dinst);
@@ -1160,10 +1482,28 @@ void OoOProcessor::retire()
 #endif
     }
 
-    if(dinst->getInst()->getOpcode() == iAALU) { //if ALU hit on ldbp_retire_table
+#ifdef NEW_LDBP_INTERFACE
+    //handle complex ALU in RTT
+    if(dinst->getInst()->isComplex()) {
+      RegType dst  = dinst->getInst()->getDst1();
+      rtt_vec[dst].num_ops = NUM_OPS + 1;
+    }
+#endif
+
+    if(dinst->getInst()->isALU()) { //if ALU hit on ldbp_retire_table
       RegType alu_dst = dinst->getInst()->getDst1();
       RegType alu_src1 = dinst->getInst()->getSrc1();
       RegType alu_src2 = dinst->getInst()->getSrc2();
+#ifdef NEW_LDBP_INTERFACE
+      if(alu_src1 == LREG_R0 && alu_src2 == LREG_R0) { //Load Immediate
+        hit_on_load_table(dinst, true);
+        rtt_load_hit(dinst); //load_table_vec index is always 0 for Li; index 1 to LOAD_TABLE_SIZE is for other LDs
+      }else { // other ALUs
+        rtt_alu_hit(dinst);
+      }
+#endif
+
+#if 0
       if(ct_table[alu_dst].valid) {
         ct_table[alu_dst].mv_active = false;
         ct_table[alu_dst].mv_src    = LREG_R0;
@@ -1179,18 +1519,26 @@ void OoOProcessor::retire()
           ct_table[alu_dst].is_li = 2;
         }
       }
+#endif
+
     }
 
 #if 1
     // condition to find a MV instruction
     if(dinst->getInst()->getOpcode() == iRALU && (dinst->getInst()->getSrc1() != LREG_R0 && dinst->getInst()->getSrc2() == LREG_R0)) {
       RegType alu_dst = dinst->getInst()->getDst1();
+#ifdef NEW_LDBP_INTERFACE
+      rtt_alu_hit(dinst);
+#endif
       if(ct_table[alu_dst].valid) {
         ct_table[alu_dst].mv_active = true;
         ct_table[alu_dst].mv_src    = dinst->getInst()->getSrc1();
       }
     }else if(dinst->getInst()->getOpcode() == iRALU && (dinst->getInst()->getSrc1() == LREG_R0 && dinst->getInst()->getSrc2() != LREG_R0)) {
       RegType alu_dst = dinst->getInst()->getDst1();
+#ifdef NEW_LDBP_INTERFACE
+      rtt_alu_hit(dinst);
+#endif
       if(ct_table[alu_dst].valid) {
         ct_table[alu_dst].mv_active = true;
         ct_table[alu_dst].mv_src    = dinst->getInst()->getSrc2();
@@ -1208,7 +1556,15 @@ void OoOProcessor::retire()
       }
       inflight_branch = num_inflight_branches;
       dinst->setInflight(inflight_branch);
+#ifdef NEW_LDBP_INTERFACE
+      rtt_br_hit(dinst);
+      int btt_id = return_btt_index(dinst->getPC());
+      if(btt_id != -1) {
+        btt_br_hit(dinst, btt_id);
+      }
+#endif
 
+#if 0
       //classify Br
       RegType br_src1 = dinst->getInst()->getSrc1();
       RegType br_src2 = dinst->getInst()->getSrc2();
@@ -1231,6 +1587,7 @@ void OoOProcessor::retire()
           }
         }
       }
+#endif
 
     }
 

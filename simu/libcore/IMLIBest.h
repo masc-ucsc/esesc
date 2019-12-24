@@ -1405,7 +1405,7 @@ public:
     }
   }
 
-  bool getPrediction(AddrType PC, bool &bias) {
+  bool getPrediction(AddrType PC, bool &bias, uint32_t &sign) {
 
     fetchBoundaryOffsetBranch(PC);
     setTAGEPred();
@@ -1417,6 +1417,7 @@ public:
 #else
     bias     = HighConf;
 #endif
+    sign = GI[1];
 
 #ifdef LOOPPREDICTOR
     predloop   = getloop(PC); // loop prediction
