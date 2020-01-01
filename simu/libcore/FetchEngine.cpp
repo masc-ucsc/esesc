@@ -579,13 +579,19 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
             for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
               AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
               int lor_idx   = DL1->return_lor_index(ldpc);
+              int lt_idx   = DL1->return_load_table_index(ldpc);
               if(lor_idx != -1) {
                 //increment lor.data_pos too
-                DL1->lor_vec[lor_idx].data_pos++;
-                AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
+                //DL1->lor_vec[lor_idx].data_pos++;
+                //AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
+                AddrType curr_addr = DL1->bot_vec[bot_idx].curr_br_addr[i];
+                DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
+                //AddrType curr_addr = DL1->load_table_vec[lt_idx].ld_addr + DL1->load_table_vec[lt_idx].delta;
                 int valid     = DL1->lot_vec[lor_idx].valid[q_idx];
                 AddrType q_addr = DL1->lot_vec[lor_idx].tl_addr[q_idx];
-                //MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d valid=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, valid);
+#if 0
+                MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d ld_start=%d valid=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, DL1->lor_vec[lor_idx].ld_start, valid);
+#endif
                 if(!DL1->lot_vec[lor_idx].valid[q_idx]) {
                   all_data_valid = false;
                 }
@@ -593,6 +599,8 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 all_data_valid = false;
               }
             }
+          }else { //if Br not in BOT, do not use LDBP
+            all_data_valid = false;
           }
           if(all_data_valid) {
             //USE LDBP
@@ -1059,19 +1067,50 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           int bot_idx = DL1->return_bot_index(dinst->getPC());
           if(bot_idx != -1) {
             //int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr) % DL1->getLotQueueSize();
-            DL1->bot_vec[bot_idx].reset_valid();
-            DL1->bot_vec[bot_idx].outcome_ptr = 1;
+            //DL1->bot_vec[bot_idx].outcome_ptr = 1;
             for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
               AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
               int lor_idx   = DL1->return_lor_index(ldpc);
+              int load_table_idx   = DL1->return_load_table_index(ldpc);
+              int64_t curr_delta = DL1->load_table_vec[load_table_idx].delta;
+              int64_t prev_delta = DL1->load_table_vec[load_table_idx].prev_delta;
+              if(curr_delta != prev_delta) { //FIXME ?? verify
+#if 0
+                MSG("MISPRED@F clk=%d br_id=%d brpc=%llx ldpc=%llx", globalClock, dinst->getID(), dinst->getPC(), ldpc);
+#endif
+                DL1->bot_vec[bot_idx].reset_valid();
+                if(lor_idx != -1) {
+                  //reset lor.data_pos
+                  //DL1->lor_vec[lor_idx].data_pos = 1;
+                  DL1->lor_vec[lor_idx].data_pos = 0;
+                  DL1->lot_vec[lor_idx].reset_valid();
+                }
+              }
+            }
+          }
+        }
+#if 0
+        //reset/handle LDBP counters and queues
+        if(dinst->isBranchMiss_level2() && dinst->isLevel3_NoPrediction()) {
+          int bot_idx = DL1->return_bot_index(dinst->getPC());
+          if(bot_idx != -1) {
+            //int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr) % DL1->getLotQueueSize();
+            DL1->bot_vec[bot_idx].reset_valid();
+            //DL1->bot_vec[bot_idx].outcome_ptr = 1;
+            for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
+              AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
+              int lor_idx   = DL1->return_lor_index(ldpc);
+              MSG("MISPRED@F clk=%d br_id=%d brpc=%llx ldpc=%llx", globalClock, dinst->getID(), dinst->getPC(), ldpc);
               if(lor_idx != -1) {
                 //reset lor.data_pos
-                DL1->lor_vec[lor_idx].data_pos = 1;
+                //DL1->lor_vec[lor_idx].data_pos = 1;
+                DL1->lor_vec[lor_idx].data_pos = 0;
                 DL1->lot_vec[lor_idx].reset_valid();
               }
             }
           }
         }
+#endif
 #endif
         DInst *dinstn = eint->peekHead(fid);
         if(dinstn == 0) {

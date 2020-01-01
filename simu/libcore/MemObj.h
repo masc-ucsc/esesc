@@ -61,6 +61,9 @@ class MemRequest;
 #define LDBUFF_SIZE 512
 #define LOR_SIZE 512
 #define LOT_QUEUE_SIZE 512 //FIXME: need to change this to a conf variable
+#define LOAD_TABLE_SIZE 512
+#define LOAD_TABLE_CONF 63
+#define PLQ_SIZE 512
 //#define ENABLE_LDBP
 
 class MemObj {
@@ -134,6 +137,11 @@ public:
   }
 
   //NEW INTERFACE !!!!!! Nov 20, 2019
+  ////Load Table
+  void hit_on_load_table(DInst *dinst, bool is_li);
+  int return_load_table_index(AddrType pc);
+  //PLQ
+  int return_plq_index(AddrType pc);
   //LOR
   void lor_allocate(AddrType ld_ptr, AddrType ld_start, int64_t ld_del, int data_pos, bool is_li);
   void lor_find_index(MemRequest *mreq);
@@ -142,7 +150,88 @@ public:
   void lot_fill_data(int lot_index, int lot_queue_index, AddrType tl_addr);
   //BOT
   int return_bot_index(AddrType brpc);
-  void bot_allocate(AddrType brpc, AddrType ld_ptr, int outcome_ptr);
+  void bot_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_ptr_addr);
+
+
+  struct load_table { //store stride pref info
+    // fields: LDPC, last_addr, delta, conf
+    load_table() {
+      ldpc         = 0;
+      ld_addr      = 0;
+      prev_ld_addr = 0;
+      delta        = 0;
+      prev_delta   = 0;
+      conf         = 0;
+      tracking     = 0;
+      is_li = false;
+    }
+    AddrType ldpc;
+    AddrType ld_addr;
+    AddrType prev_ld_addr;
+    int64_t delta;
+    int64_t prev_delta;
+    int conf;
+    bool is_li;
+    int tracking; //0 to 3 -> useful counter
+
+    void lt_load_miss(DInst *dinst) {
+      load_table();
+      ldpc         = dinst->getPC();
+      ld_addr      = dinst->getAddr();
+    }
+
+    void lt_load_hit(DInst *dinst) {
+      ldpc         = dinst->getPC();
+      prev_delta   = delta;
+      prev_ld_addr = ld_addr;
+      ld_addr      = dinst->getAddr();
+      delta        = ld_addr - prev_ld_addr;
+      if(delta == prev_delta) {
+        if(conf < (LOAD_TABLE_CONF + 1))
+          conf++;
+      }else {
+        conf = conf / 2;
+      }
+      //MSG("LT clk=%d ldpc=%llx addr=%d del=%d conf=%d", globalClock, ldpc, ld_addr, delta, conf);
+    }
+
+    void lt_load_imm(DInst *dinst) {
+      ldpc  = dinst->getPC();
+      is_li = true;
+      conf = 4096;
+    }
+
+    void lt_update_tracking(bool inc) {
+      if(inc && tracking < 3) {
+        tracking++;
+      }else if(!inc && tracking > 0) {
+        tracking --;
+      }
+    }
+  };
+
+  std::vector<load_table> load_table_vec = std::vector<load_table>(LOAD_TABLE_SIZE);
+
+  struct pending_load_queue { //queue of LOADS
+    //fields: stride_ptr and tracking
+    pending_load_queue() {
+      tracking = 0;
+      load_pointer = 0;
+    }
+    AddrType load_pointer;
+    int tracking; // 0 to 3 - just like tracking in load_table_vec
+
+    void plq_update_tracking(bool inc) {
+      if(inc && tracking < 3) {
+        tracking++;
+      }else if(!inc && tracking > 0) {
+        tracking --;
+      }
+    }
+
+  };
+
+  std::vector<pending_load_queue> plq_vec = std::vector<pending_load_queue>(PLQ_SIZE);
 
   struct load_outcome_reg {
     //tracks trigger load info as each TL completes execution
@@ -160,7 +249,8 @@ public:
     int64_t ld_delta;
     int index; //set to 1 @alloc
     AddrType ld_pointer; //load pointer from stride pref table
-    int data_pos; //similar purpose as bot.outcome_ptr
+    int data_pos; //
+    //tracks data position in LOT queue; used to index lot queue when TL returns
     bool is_li; //ESESC flag to not trigger load if Li
   };
 
@@ -193,17 +283,20 @@ public:
       brpc      = 0;
       outcome_ptr = 0;
       load_ptr.clear();
+      curr_br_addr.clear();
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
         valid[i] = 0;
       }
     }
 
     AddrType brpc;
-    int outcome_ptr; //position in cir_queue to use for prediction
+    int outcome_ptr; //Br count at fetch; used to index BOT queue at fetch
     std::vector<AddrType> load_ptr = std::vector<AddrType>(16);
+    std::vector<AddrType> curr_br_addr = std::vector<AddrType>(16); //current ld addr used by Br (ESESC only param - for debugging)
     std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
 
     void reset_valid() {
+      outcome_ptr = 0;
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
         valid[i] = 0;
       }

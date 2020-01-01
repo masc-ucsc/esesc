@@ -53,15 +53,15 @@
 #define TRACK_TIMELEAK 1
 //#define LGT_SIZE 512 //128
 #define DEP_LIST_SIZE 64
-#define LOAD_TABLE_SIZE 512
+//#define LOAD_TABLE_SIZE 512
+//#define PLQ_SIZE 512
 #define BTT_SIZE 512
-#define PLQ_SIZE 512
 #define NUM_LOADS 16 // maximum number of loads trackable by LDBP framework
 #define NUM_OPS 16 // maximum number of operations between LD and BR in code snippet
 #define TRIG_LD_BURST 1
 #define TRIG_LD_JUMP 24
 #define BTT_MAX_ACCURACY 7
-//#define NEW_LDBP_INTERFACE
+#define NEW_LDBP_INTERFACE
 //#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
@@ -169,8 +169,11 @@ public:
 
 
   //new interface !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#if 0
+  //LOAD TABLE
   void hit_on_load_table(DInst *dinst, bool is_li);
   int return_load_table_index(AddrType pc);
+#endif
   //RTT
   void rtt_load_hit(DInst *dinst);
   void rtt_alu_hit(DInst *dinst);
@@ -185,9 +188,12 @@ public:
   // 2 -> btt_ptr == plq_ptr but all tracking not set => do nothing
   // 3 -> if x in BTT.ptr but not in PLQ.ptr => sp.track++
   // 4 -> if x in PLQ but not in BTT => sp..track = 0
+#if 0
   //PLQ
   int return_plq_index(AddrType pc);
+#endif
 
+#if 0
   struct load_table { //store stride pref info
     // fields: LDPC, last_addr, delta, conf
     load_table() {
@@ -245,6 +251,7 @@ public:
   };
 
   std::vector<load_table> load_table_vec = std::vector<load_table>(LOAD_TABLE_SIZE);
+#endif
 
   struct rename_tracking_table {
     //tracks number of ops between LD and BR in a snippet
@@ -277,7 +284,8 @@ public:
       if(dinst->isBranch_hit2_miss3()) {
         if(accuracy > 0)
           accuracy--;
-      }else if(dinst->isBranch_hit3_miss2()) {
+      //}else if(dinst->isBranch_hit3_miss2()) {
+      }else if(dinst->isBranchHit_level3()) {
         if(accuracy < 7)
           accuracy++;
       }
@@ -286,6 +294,7 @@ public:
 
   std::vector<branch_trigger_table> btt_vec = std::vector<branch_trigger_table>(BTT_SIZE);
 
+#if 0
   struct pending_load_queue { //queue of LOADS
     //fields: stride_ptr and tracking
     pending_load_queue() {
@@ -306,6 +315,7 @@ public:
   };
 
   std::vector<pending_load_queue> plq_vec = std::vector<pending_load_queue>(PLQ_SIZE);
+#endif
 
   struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
     classify_table_entry(){
