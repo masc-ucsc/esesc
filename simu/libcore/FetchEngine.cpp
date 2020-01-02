@@ -1061,9 +1061,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
       bool stall_fetch = processBranch(dinst, n2Fetch);
       if(stall_fetch) {
 
-#ifdef ENABLE_LDBP
+#if 0
         //reset/handle LDBP counters and queues
-        if(dinst->isBranchMiss_level2() && dinst->isLevel3_NoPrediction()) {
+        if(0 && dinst->isBranchMiss_level2() && dinst->isLevel3_NoPrediction()) {
           int bot_idx = DL1->return_bot_index(dinst->getPC());
           if(bot_idx != -1) {
             //int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr) % DL1->getLotQueueSize();

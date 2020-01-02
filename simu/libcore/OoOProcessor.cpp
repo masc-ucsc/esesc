@@ -711,6 +711,44 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
     }else {
       btt_br_hit(dinst, btt_id);
     }
+  }else {
+    // something wrong with Br (either delta changed, or LD-BR slice changed)
+    // remove BTT entry if it already exists for this Br pc
+    // clear corresponding PLQ and LT tracking fields
+    // clear BOT, LOR and LOT entries
+    if(btt_id != -1) {
+      for(int i = 0; i < btt_vec[btt_id].load_table_pointer.size(); i++) {
+        int load_table_id = DL1->return_load_table_index(btt_vec[btt_id].load_table_pointer[i]);
+        int plq_id = DL1->return_plq_index(btt_vec[btt_id].load_table_pointer[i]);
+        int lor_id = DL1->return_lor_index(btt_vec[btt_id].load_table_pointer[i]);
+        int bot_id = DL1->return_bot_index(dinst->getPC());
+
+        if(load_table_id != -1) {
+          DL1->load_table_vec[load_table_id].tracking = 0;
+        }
+
+        if(plq_id != -1) {
+          DL1->plq_vec[plq_id].tracking = 0;
+        }
+
+        if(lor_id != -1) {
+          //clear LOR entry
+          DL1->lor_vec.erase(DL1->lor_vec.begin() + lor_id);
+          DL1->lor_vec.push_back(MemObj::load_outcome_reg());
+          //clear corresponding LOT entry
+          DL1->lot_vec.erase(DL1->lot_vec.begin() + lor_id);
+          DL1->lot_vec.push_back(MemObj::load_outcome_table());
+        }
+
+        if(bot_id != -1) {
+          DL1->bot_vec.erase(DL1->bot_vec.begin() + bot_id);
+          DL1->bot_vec.push_back(MemObj::branch_outcome_table());
+        }
+      }
+      //clear BTT entry
+      btt_vec.erase(btt_vec.begin() + btt_id);
+      btt_vec.push_back(branch_trigger_table());
+    }
   }
 }
 
@@ -810,7 +848,7 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
     //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, DL1->load_table_vec[lt_idx].conf);
     int64_t lor_delta = DL1->lor_vec[lor_id].ld_delta;
     for(int i = 1; i <= 1; i++) {
-      AddrType trigger_addr = lor_start_addr + (lor_delta * 31); //trigger few delta ahead of current ld_addr
+      AddrType trigger_addr = lor_start_addr + (lor_delta * (31 + i)); //trigger few delta ahead of current ld_addr
 #if 0
       MSG("TL clk=%d br_id=%d brpc=%llx ldpc=%llx ld_addr=%d lor_start=%d trig_addr=%d conf=%d", globalClock, dinst->getID(), dinst->getPC(), ld_ptr, lt_load_addr, lor_start_addr, trigger_addr, DL1->load_table_vec[lt_idx].conf);
 #endif
