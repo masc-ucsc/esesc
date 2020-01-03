@@ -736,8 +736,9 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
           DL1->lor_vec.erase(DL1->lor_vec.begin() + lor_id);
           DL1->lor_vec.push_back(MemObj::load_outcome_reg());
           //clear corresponding LOT entry
-          DL1->lot_vec.erase(DL1->lot_vec.begin() + lor_id);
-          DL1->lot_vec.push_back(MemObj::load_outcome_table());
+          DL1->lot_vec[lor_id].reset_valid();
+          //DL1->lot_vec.erase(DL1->lot_vec.begin() + lor_id);
+          //DL1->lot_vec.push_back(MemObj::load_outcome_table());
         }
 
         if(bot_id != -1) {

@@ -271,10 +271,12 @@ void MemObj::lor_allocate(AddrType ld_ptr, AddrType ld_start_addr, int64_t ld_de
     lor_vec[lor_id].is_li = is_li;
     //reset corresponding LOT entry too
     lot_vec[lor_id].reset_valid();
+#if 0
     load_outcome_table lot = lot_vec[lor_id];
     lot_vec.erase(lot_vec.begin() + lor_id);
     lot_vec.push_back(load_outcome_table());
     lot_vec[LOR_SIZE - 1] = lot;
+#endif
 
     //move LOR entry to LRU position
     load_outcome_reg l = lor_vec[lor_id];
@@ -291,8 +293,11 @@ void MemObj::lor_allocate(AddrType ld_ptr, AddrType ld_start_addr, int64_t ld_de
   lor_vec[LOR_SIZE - 1].data_pos = 0;
   lor_vec[LOR_SIZE - 1].is_li = is_li;
   //update corresponding LOT entry as well
+  lot_vec[LOR_SIZE - 1].reset_valid();
+#if 0
   lot_vec.erase(lot_vec.begin());
   lot_vec.push_back(load_outcome_table());
+#endif
 }
 
 int MemObj::return_bot_index(AddrType brpc) {

@@ -265,7 +265,7 @@ public:
         valid[i] = 0;
       }
     }
-    std::vector<DataType> data = std::vector<DataType>(LOT_QUEUE_SIZE);
+    //std::vector<DataType> data = std::vector<DataType>(LOT_QUEUE_SIZE);
     std::vector<AddrType> tl_addr = std::vector<AddrType>(LOT_QUEUE_SIZE);
     std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
 
