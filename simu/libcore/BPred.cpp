@@ -1942,8 +1942,8 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     dinst->setBranchHit_level3();
     if(outcome2 != CorrectPrediction)
       dinst->setBranch_hit3_miss2();
-  }else {
-    dinst->setLevel3_NoPrediction();
+  //}else {
+  //  dinst->setLevel3_NoPrediction();
   }
 #endif
 
