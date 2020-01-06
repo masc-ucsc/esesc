@@ -665,12 +665,14 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
   }
   RegType src1 = dinst->getInst()->getSrc1();
   RegType src2 = dinst->getInst()->getSrc2();
-  int all_ld_conf1 = 0; //invalid
-  int all_ld_conf2 = 0; //invalid
+  int all_ld_conf1 = 1; //valid
+  int all_ld_conf2 = 1; //valid
   int nops1 = rtt_vec[src1].num_ops;
   int nops2 = rtt_vec[src2].num_ops;
 #if 1
   for(int i = 0; i < rtt_vec[src1].load_table_pointer.size(); i++) {
+    //if(0 && (dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6))
+    //  MSG("RTT_BR_HIT1 clk=%d brpc=%llx ldpc=%llx", globalClock, dinst->getPC(), rtt_vec[src1].load_table_pointer[i]);
     int lt_index = DL1->return_load_table_index(rtt_vec[src1].load_table_pointer[i]);
     //Above line can cause SEG_FAULT if index of Li is checked
     if(DL1->load_table_vec[lt_index].conf > 63) {
@@ -681,6 +683,8 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
     }
   }
   for(int i = 0; i < rtt_vec[src2].load_table_pointer.size(); i++) {
+    //if(0 && (dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6))
+    //  MSG("RTT_BR_HIT2 clk=%d brpc=%llx ldpc=%llx", globalClock, dinst->getPC(), rtt_vec[src2].load_table_pointer[i]);
     int lt_index = DL1->return_load_table_index(rtt_vec[src2].load_table_pointer[i]);
     //Above line can cause SEG_FAULT if index of Li is checked
     if(DL1->load_table_vec[lt_index].conf > 63) {

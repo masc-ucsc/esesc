@@ -191,9 +191,15 @@ public:
           conf++;
       }else {
         conf = conf / 2;
+#if 0
+        if(conf > 32)
+          conf = conf - 4;
+        else
+          conf = conf / 2;
+#endif
       }
-      //if(dinst->getPC() == 0x1044c)
-      //  MSG("LT clk=%d ldpc=%llx addr=%d del=%d conf=%d", globalClock, ldpc, ld_addr, delta, conf);
+      //if(0 && (dinst->getPC() == 0x11d2c || dinst->getPC() == 0x11d1a))
+      //  MSG("LT clk=%d ldpc=%llx addr=%d del=%d conf=%d data=%d", globalClock, ldpc, ld_addr, delta, conf, dinst->getData());
     }
 
     void lt_load_imm(DInst *dinst) {
