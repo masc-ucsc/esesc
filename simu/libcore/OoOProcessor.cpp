@@ -724,7 +724,8 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
       for(int i = 0; i < btt_vec[btt_id].load_table_pointer.size(); i++) {
         int load_table_id = DL1->return_load_table_index(btt_vec[btt_id].load_table_pointer[i]);
         int plq_id = DL1->return_plq_index(btt_vec[btt_id].load_table_pointer[i]);
-        int lor_id = DL1->return_lor_index(btt_vec[btt_id].load_table_pointer[i]);
+        //int lor_id = DL1->return_lor_index(btt_vec[btt_id].load_table_pointer[i]);
+        int lor_id = DL1->compute_lor_index(dinst->getPC(), btt_vec[btt_id].load_table_pointer[i]);
         int bot_id = DL1->return_bot_index(dinst->getPC());
 
         if(load_table_id != -1) {
@@ -735,15 +736,18 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
           DL1->plq_vec[plq_id].tracking = 0;
         }
 
-        if(lor_id != -1) {
+        //clear LOR entry and corresponding LOT entry
+        DL1->lor_vec[lor_id].reset_entry();
+        DL1->lot_vec[lor_id].reset_valid();
+#if 0
           //clear LOR entry
           DL1->lor_vec.erase(DL1->lor_vec.begin() + lor_id);
           DL1->lor_vec.push_back(MemObj::load_outcome_reg());
           //clear corresponding LOT entry
-          DL1->lot_vec[lor_id].reset_valid();
-          //DL1->lot_vec.erase(DL1->lot_vec.begin() + lor_id);
-          //DL1->lot_vec.push_back(MemObj::load_outcome_table());
-        }
+          //DL1->lot_vec[lor_id].reset_valid();
+          DL1->lot_vec.erase(DL1->lot_vec.begin() + lor_id);
+          DL1->lot_vec.push_back(MemObj::load_outcome_table());
+#endif
 
         if(bot_id != -1) {
           DL1->bot_vec.erase(DL1->bot_vec.begin() + bot_id);
@@ -804,7 +808,7 @@ void OoOProcessor::btt_br_miss(DInst *dinst) {
         lor_start_addr = 0;
         is_li          = true;
       }
-      DL1->lor_allocate(DL1->load_table_vec[id].ldpc, lor_start_addr, DL1->load_table_vec[id].delta, look_ahead, is_li);
+      DL1->lor_allocate(dinst->getPC(), DL1->load_table_vec[id].ldpc, lor_start_addr, DL1->load_table_vec[id].delta, look_ahead, is_li);
       //FIXME -> is 3rd param in next line correct???????
       DL1->bot_allocate(dinst->getPC(), DL1->load_table_vec[id].ldpc, DL1->load_table_vec[id].ld_addr);
 #if 0
@@ -845,9 +849,10 @@ void OoOProcessor::btt_br_hit(DInst *dinst, int btt_id) {
 }
 
 void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
-  int lor_id = DL1->return_lor_index(ld_ptr);
+  //int lor_id = DL1->return_lor_index(ld_ptr);
+  int lor_id = DL1->compute_lor_index(dinst->getPC(), ld_ptr);
   int lt_idx = DL1->return_load_table_index(ld_ptr);
-  if(lor_id != -1) {
+  if((DL1->lor_vec[lor_id].brpc == dinst->getPC()) && (DL1->lor_vec[lor_id].ld_pointer == ld_ptr)) {
     AddrType lor_start_addr = DL1->lor_vec[lor_id].ld_start;
     AddrType lt_load_addr = DL1->load_table_vec[lt_idx].ld_addr;
     //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, DL1->load_table_vec[lt_idx].conf);

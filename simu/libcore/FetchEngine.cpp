@@ -578,9 +578,11 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
             int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr++) % DL1->getLotQueueSize();
             for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
               AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
-              int lor_idx   = DL1->return_lor_index(ldpc);
+              //int lor_idx   = DL1->return_lor_index(ldpc);
+              int lor_idx   = DL1->compute_lor_index(dinst->getPC(), ldpc);
               int lt_idx   = DL1->return_load_table_index(ldpc);
-              if(lor_idx != -1) {
+              //if(lor_idx != -1) {
+              if((DL1->lor_vec[lor_idx].brpc == dinst->getPC()) && (DL1->lor_vec[lor_idx].ld_pointer == ldpc)) {
                 //increment lor.data_pos too
                 //DL1->lor_vec[lor_idx].data_pos++;
                 //AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;

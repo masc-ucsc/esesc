@@ -143,9 +143,10 @@ public:
   //PLQ
   int return_plq_index(AddrType pc);
   //LOR
-  void lor_allocate(AddrType ld_ptr, AddrType ld_start, int64_t ld_del, int data_pos, bool is_li);
+  void lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start, int64_t ld_del, int data_pos, bool is_li);
   void lor_find_index(MemRequest *mreq);
   int return_lor_index(AddrType ld_ptr);
+  int compute_lor_index(AddrType brpc, AddrType ld_ptr);
   //LOT
   void lot_fill_data(int lot_index, int lot_queue_index, AddrType tl_addr);
   //BOT
@@ -190,8 +191,8 @@ public:
         if(conf < (LOAD_TABLE_CONF + 1))
           conf++;
       }else {
-        conf = conf / 2;
-#if 0
+        //conf = conf / 2;
+#if 1
         if(conf > 32)
           conf = conf - 4;
         else
@@ -245,20 +246,29 @@ public:
     //fields: load start, delta, index(or n data), stride pointer, data position
 
     load_outcome_reg() {
+      brpc = 0;
+      ld_pointer = 0;
       ld_start = 0;
       ld_delta = 0;
-      index    = 0;
-      ld_pointer = 0;
       data_pos = 0; // ++ @Fetch and 0 @flush
       is_li = false;
     }
     AddrType ld_start; //load start addr
     int64_t ld_delta;
-    int index; //set to 1 @alloc
     AddrType ld_pointer; //load pointer from stride pref table
+    AddrType brpc; //helps differentiate LOR entries when 2 Brs use same LD pair
     int data_pos; //
     //tracks data position in LOT queue; used to index lot queue when TL returns
     bool is_li; //ESESC flag to not trigger load if Li
+
+    void reset_entry() {
+      brpc = 0;
+      ld_pointer = 0;
+      ld_start = 0;
+      ld_delta = 0;
+      data_pos = 0;
+      is_li = false;
+    }
   };
 
   std::vector<load_outcome_reg> lor_vec = std::vector<load_outcome_reg>(LOR_SIZE);
