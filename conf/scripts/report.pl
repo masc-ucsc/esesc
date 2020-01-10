@@ -1746,11 +1746,13 @@ sub branchStats {
       my $nNoPredict3      = $cf->getResultField("P(${i})_BPred","nNopredict3");
       my $nNoPredict_miss3 = $cf->getResultField("P(${i})_BPred","nNopredict_miss3");
 
-      printf "%7.2f%% :",100*(1-($nMiss3+$nNoPredict_miss3)/($nBranches+1));
-      printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
-
       my $predHit3  = $cf->getResultField("P(${i})_BPred3_${type3}","nHit");
       my $predMiss3 = $cf->getResultField("P(${i})_BPred3_${type3}","nMiss");
+
+      printf "%7.2f%% :",100*(1-($nMiss3+$nNoPredict_miss3)/($nBranches+1));
+      #printf "%7.2f%% :",100*(($predHit3)/($nBranches+1));
+      printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
+
 
       my $predRatio3 = ($predMiss3+$predHit3) <= 0 ? 0 : ($predHit3/(1+$predMiss3+$predHit3)); # also the 1st level hits
 

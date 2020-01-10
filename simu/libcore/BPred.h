@@ -628,6 +628,7 @@ private:
   GStatsCntr nBranches3;
   GStatsCntr nNoPredict3;
   GStatsCntr nNoPredict_miss3; // NoPred by bpred 3 and no correct pred by other bpreds
+  GStatsCntr nHit3_miss2; // Mispred of Level 2 which are fixed by level 3 BPred
   GStatsCntr nTaken3;
   GStatsCntr nMiss3; // hits == nBranches - nMiss
 

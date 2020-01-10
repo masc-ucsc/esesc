@@ -1662,6 +1662,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
     , nBranches3("P(%d)_BPred:nBranches3", id)
     , nNoPredict3("P(%d)_BPred:nNoPredict3", id)
     , nNoPredict_miss3("P(%d)_BPred:nNoPredict_miss3", id)
+    , nHit3_miss2("P(%d)_BPred:nHit3_miss2", id)
     , nTaken3("P(%d)_BPred:nTaken3", id)
     , nMiss3("P(%d)_BPred:nMiss3", id)
     , nFixes1("P(%d)_BPred:nFixes1", id)
@@ -1940,8 +1941,10 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     dinst->setBranchMiss_level3();
   }else if(outcome3 == CorrectPrediction) {
     dinst->setBranchHit_level3();
-    if(outcome2 != CorrectPrediction)
+    if(outcome2 != CorrectPrediction) {
       dinst->setBranch_hit3_miss2();
+      nHit3_miss2.inc(true);
+    }
   //}else {
   //  dinst->setLevel3_NoPrediction();
   }
