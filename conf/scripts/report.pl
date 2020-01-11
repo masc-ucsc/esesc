@@ -1588,7 +1588,7 @@ sub instStats {
 sub branchStats {
   my $file = shift;
 
-  print "Proc : Delay : Avg.Time :  BPType           :  Total  :        RAS        :       BPred       :        BTB        :  iBTB    :  BTAC   : WasteRatio";
+  print "Proc : Delay : Avg.Time :  BPType           :  Total  :        RAS        :       BPred       :        BTB        :  iBTB    :  BTAC   : WasteRatio  : MPKI ";
   my $preType = $cf->getConfigEntry(key=>"preType");
   if( $preType > 0 ) {
     print "         " . $preType;
@@ -1690,6 +1690,8 @@ sub branchStats {
 
       printf "%6.2f%% of %6.2f%% ",100*$rapRatio ,100*($rapHit+$rapMiss)/($nBranches-$nNoPredict);
     }
+    my $mpki1 = ($nMiss/$committed)*1000;
+    printf "%13.2f",$mpki1;
 
     print "\n";
     my $branchSect2 = $cf->getConfigEntry(key=>"bpred2", section=>$cpuType);
@@ -1729,6 +1731,8 @@ sub branchStats {
       my $nFixes2  = $cf->getResultField("P(${i})_BPred","nFixes2");
       printf " (%6.2f%% fixed) :",100*($nFixes2)/($nBranches-$nNoPredict);
 
+      my $mpki2 = ($nMiss2/$committed)*1000;
+      printf "%14.2f",$mpki2;
       printf "\n";
     }
     my $branchSect3 = $cf->getConfigEntry(key=>"bpred3", section=>$cpuType);
@@ -1743,13 +1747,16 @@ sub branchStats {
 
       my $nBranches3       = $cf->getResultField("P(${i})_BPred","nBranches3");
       my $nMiss3           = $cf->getResultField("P(${i})_BPred","nMiss3");
+      my $nMiss2           = $cf->getResultField("P(${i})_BPred","nMiss2");
       my $nNoPredict3      = $cf->getResultField("P(${i})_BPred","nNopredict3");
       my $nNoPredict_miss3 = $cf->getResultField("P(${i})_BPred","nNopredict_miss3");
+      my $nHit3_miss2      = $cf->getResultField("P(${i})_BPred","nHit3_miss2");
 
       my $predHit3  = $cf->getResultField("P(${i})_BPred3_${type3}","nHit");
       my $predMiss3 = $cf->getResultField("P(${i})_BPred3_${type3}","nMiss");
 
-      printf "%7.2f%% :",100*(1-($nMiss3+$nNoPredict_miss3)/($nBranches+1));
+      printf "%7.2f%% :",100*(1-($nMiss2-$nHit3_miss2)/($nBranches+1));
+      #printf "%7.2f%% :",100*(1-($nMiss3+$nNoPredict_miss3)/($nBranches+1));
       #printf "%7.2f%% :",100*(($predHit3)/($nBranches+1));
       printf " %6.2f%% of %5.2f%% :",100*0 ,100*0;  # No RAS in L2
 
@@ -1772,6 +1779,8 @@ sub branchStats {
       my $nUnFixes3  = $cf->getResultField("P(${i})_BPred","nUnFixes3");
       printf " (%6.2f%%-%6.2f%% fixed) :",100*($nFixes3)/($nBranches-$nNoPredict), 100*($nUnFixes3)/($nBranches-$nNoPredict);
 
+      my $mpki3 = (($nMiss2 - $nHit3_miss2)/$committed)*1000;
+      printf "%6.2f",$mpki3;
       printf "\n";
     }
 
