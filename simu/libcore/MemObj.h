@@ -163,6 +163,7 @@ public:
       delta        = 0;
       prev_delta   = 0;
       conf         = 0;
+      use_slice    = 0;
       tracking     = 0;
       is_li = false;
     }
@@ -173,6 +174,8 @@ public:
     int64_t prev_delta;
     int conf;
     bool is_li;
+    int use_slice; // set to 1 when Ld retires, reset to 0 when Br retires
+    //-> if 1, indicates Br went through Ld else Br didn't use LD(and we don't have to trigger LD)
     int tracking; //0 to 3 -> useful counter
 
     void lt_load_miss(DInst *dinst) {
@@ -183,6 +186,7 @@ public:
 
     void lt_load_hit(DInst *dinst) {
       ldpc         = dinst->getPC();
+      use_slice    = 1;
       prev_delta   = delta;
       prev_ld_addr = ld_addr;
       ld_addr      = dinst->getAddr();
@@ -199,8 +203,10 @@ public:
           conf = conf / 2;
 #endif
       }
-      //if(0 && (dinst->getPC() == 0x11d2c || dinst->getPC() == 0x11d1a))
-      //  MSG("LT clk=%d ldpc=%llx addr=%d del=%d conf=%d data=%d", globalClock, ldpc, ld_addr, delta, conf, dinst->getData());
+#if 0
+      if((dinst->getPC() == 0x119c0 || dinst->getPC() == 0x119be))
+        MSG("LT clk=%d ldpc=%llx addr=%d del=%d conf=%d data=%d", globalClock, ldpc, ld_addr, delta, conf, dinst->getData());
+#endif
     }
 
     void lt_load_imm(DInst *dinst) {

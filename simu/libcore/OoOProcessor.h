@@ -258,7 +258,8 @@ public:
     //fields: num_ops and load_table_pointer
     //indexed by DST_REG
     rename_tracking_table() {
-      num_ops = 0;
+      num_ops = NUM_OPS + 1; //indicates that RTT entry is reset
+      //num_ops = 0; //indicates that RTT entry is reset
       is_li = 0;
       load_table_pointer.clear();
     }

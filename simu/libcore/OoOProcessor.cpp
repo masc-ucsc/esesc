@@ -671,8 +671,10 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
   int nops2 = rtt_vec[src2].num_ops;
 #if 1
   for(int i = 0; i < rtt_vec[src1].load_table_pointer.size(); i++) {
-    //if(0 && (dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6))
-    //  MSG("RTT_BR_HIT1 clk=%d brpc=%llx ldpc=%llx", globalClock, dinst->getPC(), rtt_vec[src1].load_table_pointer[i]);
+#if 0
+    if((dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6))
+      MSG("RTT_BR_HIT1 clk=%d brpc=%llx ldpc=%llx", globalClock, dinst->getPC(), rtt_vec[src1].load_table_pointer[i]);
+#endif
     int lt_index = DL1->return_load_table_index(rtt_vec[src1].load_table_pointer[i]);
     //Above line can cause SEG_FAULT if index of Li is checked
     if(DL1->load_table_vec[lt_index].conf > 63) {
@@ -683,8 +685,10 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
     }
   }
   for(int i = 0; i < rtt_vec[src2].load_table_pointer.size(); i++) {
-    //if(0 && (dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6))
-    //  MSG("RTT_BR_HIT2 clk=%d brpc=%llx ldpc=%llx", globalClock, dinst->getPC(), rtt_vec[src2].load_table_pointer[i]);
+#if 0
+    if((dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6))
+      MSG("RTT_BR_HIT2 clk=%d brpc=%llx ldpc=%llx", globalClock, dinst->getPC(), rtt_vec[src2].load_table_pointer[i]);
+#endif
     int lt_index = DL1->return_load_table_index(rtt_vec[src2].load_table_pointer[i]);
     //Above line can cause SEG_FAULT if index of Li is checked
     if(DL1->load_table_vec[lt_index].conf > 63) {
@@ -697,6 +701,7 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
 #endif
   if(src2 == LREG_R0) {
     all_ld_conf2 = 1;
+    nops2 = 0;
   }
   int nops     = nops1 + nops2;
   int nlds     = rtt_vec[src1].load_table_pointer.size() + rtt_vec[src2].load_table_pointer.size();
@@ -852,7 +857,8 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
   //int lor_id = DL1->return_lor_index(ld_ptr);
   int lor_id = DL1->compute_lor_index(dinst->getPC(), ld_ptr);
   int lt_idx = DL1->return_load_table_index(ld_ptr);
-  if((DL1->lor_vec[lor_id].brpc == dinst->getPC()) && (DL1->lor_vec[lor_id].ld_pointer == ld_ptr)) {
+  int use_slice = DL1->load_table_vec[lt_idx].use_slice;
+  if(use_slice && (DL1->lor_vec[lor_id].brpc == dinst->getPC()) && (DL1->lor_vec[lor_id].ld_pointer == ld_ptr)) {
     AddrType lor_start_addr = DL1->lor_vec[lor_id].ld_start;
     AddrType lt_load_addr = DL1->load_table_vec[lt_idx].ld_addr;
     //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, DL1->load_table_vec[lt_idx].conf);
@@ -860,13 +866,16 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
     for(int i = 1; i <= 1; i++) {
       AddrType trigger_addr = lor_start_addr + (lor_delta * (31 + i)); //trigger few delta ahead of current ld_addr
 #if 0
-      MSG("TL clk=%d br_id=%d brpc=%llx ldpc=%llx ld_addr=%d lor_start=%d trig_addr=%d conf=%d", globalClock, dinst->getID(), dinst->getPC(), ld_ptr, lt_load_addr, lor_start_addr, trigger_addr, DL1->load_table_vec[lt_idx].conf);
+      if(dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6)
+      MSG("TL clk=%d br_id=%d brpc=%llx ldpc=%llx ld_addr=%d curr_lor_start=%d trig_addr=%d del=%d lor_id=%d", globalClock, dinst->getID(), dinst->getPC(), ld_ptr, lt_load_addr, lor_start_addr, trigger_addr, lor_delta, lor_id);
 #endif
       MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ld_ptr, dinst->getPC(), lor_start_addr, 0, lor_delta, inflight_branch, 0, 0, 0, 0);
     }
     //update lor_start by delta so that next TL doesnt trigger redundant loads
     DL1->lor_vec[lor_id].ld_start = DL1->lor_vec[lor_id].ld_start + DL1->lor_vec[lor_id].ld_delta;
     DL1->lor_vec[lor_id].data_pos++;
+    //set LT.use_slice to 0; ensures that next time TL is triggered only when LD is needed by BR
+    DL1->load_table_vec[lt_idx].use_slice = 0;
   }
 }
 

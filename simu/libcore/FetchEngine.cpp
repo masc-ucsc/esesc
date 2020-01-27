@@ -586,13 +586,14 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                 //increment lor.data_pos too
                 //DL1->lor_vec[lor_idx].data_pos++;
                 //AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
-                AddrType curr_addr = DL1->bot_vec[bot_idx].curr_br_addr[i];
                 DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
+                AddrType curr_addr = DL1->bot_vec[bot_idx].curr_br_addr[i];
+                //DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
                 //AddrType curr_addr = DL1->load_table_vec[lt_idx].ld_addr + DL1->load_table_vec[lt_idx].delta;
                 int valid     = DL1->lot_vec[lor_idx].valid[q_idx];
                 AddrType q_addr = DL1->lot_vec[lor_idx].tl_addr[q_idx];
 #if 0
-                MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d ld_start=%d valid=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, DL1->lor_vec[lor_idx].ld_start, valid);
+                MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d ld_start=%d valid=%d lor_id=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, DL1->lor_vec[lor_idx].ld_start, valid, lor_idx);
 #endif
                 if(!DL1->lot_vec[lor_idx].valid[q_idx]) {
                   all_data_valid = false;
