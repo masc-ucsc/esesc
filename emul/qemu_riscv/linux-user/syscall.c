@@ -257,7 +257,7 @@ static type name (type1 arg1,type2 arg2,type3 arg3,type4 arg4,type5 arg5,	\
 #endif
 
 #ifdef __NR_gettid
-//_syscall0(int, gettid)
+_syscall0(int, gettid)
 #else
 /* This is a replacement for the host gettid() and must return a host
    errno. */
