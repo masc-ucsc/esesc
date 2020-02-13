@@ -33,6 +33,7 @@
 #define _PREDICTOR_H_
 
 //#define MEDIUM_TAGE 1
+#define IMLI_256K 1
 //#define MEGA_IMLI 1
 
 #if defined(MEGA_IMLI) && defined(MEDIUM_TAGE)
@@ -50,16 +51,29 @@
 #define LOGG 10  /* logsize of the  tagged TAGE tables*/
 #define TBITS 13 /* minimum tag width*/
 //#define USE_DOLC 1
-#elif MEGA_IMLI
-// use 20 tables (nhist = 20)
+
+#elif MEGA_IMLI // 1M IMLI
+//nhist = 9
 #define LOOPPREDICTOR //  use loop  predictor
 #define LOCALH        // use local histories
 #define IMLI          // using IMLI component
 #define IMLISIC       // use IMLI-SIC
 #define IMLIOH        // use IMLI-OH
-#define LOGG 13       // logsize of the  tagged TAGE tables
-#define TBITS 14      // minimum tag width
+#define LOGG 12       // logsize of the  tagged TAGE tables
+#define TBITS 22      // minimum tag width
 #define MAXHIST 400
+#define MINHIST 5
+
+#elif IMLI_256K
+//nhist = 6
+#define LOOPPREDICTOR //  use loop  predictor
+#define LOCALH        // use local histories
+#define IMLI          // using IMLI component
+#define IMLISIC       // use IMLI-SIC
+#define IMLIOH        // use IMLI-OH
+#define LOGG 11       // logsize of the  tagged TAGE tables
+#define TBITS 16      // minimum tag width
+#define MAXHIST 200
 #define MINHIST 5
 #else
 // nhist = 7, glength
@@ -70,7 +84,7 @@
 #define IMLIOH        // use IMLI-OH
 #define LOGG 12       /* logsize of the  tagged TAGE tables*/
 #define TBITS 13      /* minimum tag width*/
-#define MAXHIST 200
+#define MAXHIST 200 //200
 #define MINHIST 5
 #endif
 
@@ -1604,7 +1618,7 @@ public:
 
   // PREDICTOR UPDATE
 
-  void updatePredictor(AddrType PC, bool resolveDir, bool predDir, AddrType branchTarget) {
+  void updatePredictor(AddrType PC, bool resolveDir, bool predDir, AddrType branchTarget, bool no_alloc) {
 
     //MSG("pc:%x t:%d p:%d ghr:%lx",PC, resolveDir, predDir, GI[nhist]);
 
@@ -1723,7 +1737,8 @@ public:
         }
       }
 
-      // ALLOC = ALLOC & noAlloc; //flag to alloc and noAlloc
+      bool noAlloc = no_alloc;
+      ALLOC = ALLOC & noAlloc; //flag to alloc and noAlloc
 
       if(ALLOC) {
 

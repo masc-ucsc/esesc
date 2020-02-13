@@ -74,7 +74,7 @@ void CodeProfile::reportValue() const {
     // if (e.n/nTotal<0.001)
     // continue; // Just print things over 1%
 
-    Report::field("%s_%llx:n=%4.3f:cpi=%f:wt=%f:et=%f:flush=%lld:prefetch=%lld:ldbr=%d:bp1_hit=%lld:bp1_miss=%lld:bp2_hit=%lld:bp2_miss=%lld:bp3_hit=%lld:bp3_miss=%lld:bp_hit2_miss3=%lld:bp_hit3_miss2=%lld:tl1_pred=%lld:tl1_unpred=%lld:tl2_pred=%lld:tl2_unpred=%lld", name, it->first, e.n / nTotal, e.sum_cpi / e.n, e.sum_wt / e.n, e.sum_et / e.n, e.sum_flush, e.sum_prefetch, e.ldbr, e.sum_bp1_hit, e.sum_bp1_miss, e.sum_bp2_hit, e.sum_bp2_miss, e.sum_bp3_hit, e.sum_bp3_miss, e.sum_hit2_miss3, e.sum_hit3_miss2, e.sum_trig_ld1_pred, e.sum_trig_ld1_unpred, e.sum_trig_ld2_pred, e.sum_trig_ld2_unpred);
+    Report::field("%s_%llx:n=%4.3f:cpi=%f:wt=%f:et=%f:flush=%lld:prefetch=%lld:ldbr=%d:bp1_hit=%lld:bp1_miss=%lld:bp2_hit=%lld:bp2_miss=%lld:bp3_hit=%lld:bp3_miss=%lld:bp_hit2_miss3=%lld:bp_hit3_miss2=%lld:no_tl=%lld:on_time_tl=%lld:late_tl=%lld", name, it->first, e.n / nTotal, e.sum_cpi / e.n, e.sum_wt / e.n, e.sum_et / e.n, e.sum_flush, e.sum_prefetch, e.ldbr, e.sum_bp1_hit, e.sum_bp1_miss, e.sum_bp2_hit, e.sum_bp2_miss, e.sum_bp3_hit, e.sum_bp3_miss, e.sum_hit2_miss3, e.sum_hit3_miss2, e.sum_no_tl, e.sum_on_time_tl, e.sum_late_tl);
   }
 }
 
@@ -86,7 +86,7 @@ void CodeProfile::flushValue() {
   prof.clear();
 }
 
-void CodeProfile::sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch, int ldbr, bool bp1_miss, bool bp2_miss, bool bp3_miss, bool bp1_hit, bool bp2_hit, bool bp3_hit, bool hit2_miss3, bool hit3_miss2, bool tl1_pred, bool tl1_unpred, bool tl2_pred, bool tl2_unpred) {
+void CodeProfile::sample(const uint64_t pc, const double nCommitted, const double clockTicks, double wt, double et, bool flush, bool prefetch, int ldbr, bool bp1_miss, bool bp2_miss, bool bp3_miss, bool bp1_hit, bool bp2_hit, bool bp3_hit, bool hit2_miss3, bool hit3_miss2, bool tl1_pred, bool tl1_unpred, bool tl2_pred, bool tl2_unpred, int trig_ld_status) {
 
   double delta_nCommitted = nCommitted - last_nCommitted;
   double delta_clockTicks = clockTicks - last_clockTicks;
@@ -126,6 +126,9 @@ void CodeProfile::sample(const uint64_t pc, const double nCommitted, const doubl
     e.sum_bp3_miss = bp3_miss ? 1 : 0;
     e.sum_hit2_miss3 = hit2_miss3 ? 1 : 0;
     e.sum_hit3_miss2 = hit3_miss2 ? 1 : 0;
+    e.sum_no_tl = (trig_ld_status == -1) ? 1 : 0;
+    e.sum_late_tl = (trig_ld_status > 0) ? 1 : 0;
+    e.sum_on_time_tl = (trig_ld_status == 0) ? 1 : 0;
     e.sum_prefetch = prefetch ? 1 : 0;
     prof[pc]       = e;
   } else {
@@ -143,6 +146,9 @@ void CodeProfile::sample(const uint64_t pc, const double nCommitted, const doubl
     prof[pc].sum_bp3_miss += bp3_miss ? 1 : 0;
     prof[pc].sum_hit2_miss3 += hit2_miss3 ? 1 : 0;
     prof[pc].sum_hit3_miss2 += hit3_miss2 ? 1 : 0;
+    prof[pc].sum_no_tl += (trig_ld_status == -1) ? 1 : 0;
+    prof[pc].sum_late_tl += (trig_ld_status > 0) ? 1 : 0;
+    prof[pc].sum_on_time_tl += (trig_ld_status == 0) ? 1 : 0;
     if(bp2_miss) {
       prof[pc].sum_trig_ld1_pred += tl1_pred ? 1 : 0;
       prof[pc].sum_trig_ld1_unpred += tl1_unpred ? 1 : 0;

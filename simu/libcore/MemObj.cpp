@@ -63,7 +63,7 @@ MemObj::MemObj(const char *sSection, const char *sName)
     : section(sSection)
     , name(sName)
 #ifdef ENABLE_LDBP
-    , BOT_SIZE(SescConf->getInt(section, "bot_size"))
+//    , BOT_SIZE(SescConf->getInt(section, "bot_size"))
 #endif
     , id(id_counter++) {
   deviceType = SescConf->getCharPtr(section, "deviceType");
@@ -211,8 +211,29 @@ int MemObj::return_plq_index(AddrType pc) {
   return -1;
 }
 
-void MemObj::lor_find_index(MemRequest *mreq) {
-  AddrType tl_addr = mreq->getAddr();
+void MemObj::lor_find_index(AddrType tl_addr) {
+  lor_trigger_load_completeCB::schedule(1, this, tl_addr);
+#if 0
+  for(int i = 0; i < lor_vec.size(); i++) {
+    AddrType lor_start  = lor_vec[i].ld_start;
+    AddrType lor_delta  = lor_vec[i].ld_delta;
+    int idx = 0;
+    if(lor_delta != 0) {
+      idx             = (tl_addr - lor_start) / lor_delta;
+    }
+    AddrType lor_end_addr = lor_start + ((LOT_QUEUE_SIZE - 1) * lor_delta);
+    AddrType check_addr = lor_start + (idx * lor_delta);
+    if((tl_addr == check_addr) && (tl_addr <= lor_end_addr)) {
+      //hit on LOR for returning TL
+      lot_fill_data(i, idx, tl_addr);
+    }
+  }
+#endif
+
+}
+
+void MemObj::lor_trigger_load_complete(AddrType tl_addr) {
+  //AddrType tl_addr = mreq->getAddr();
   for(int i = 0; i < lor_vec.size(); i++) {
     AddrType lor_start  = lor_vec[i].ld_start;
     AddrType lor_delta  = lor_vec[i].ld_delta;
@@ -250,14 +271,14 @@ void MemObj::bot_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_ptr_addr) 
     branch_outcome_table b = bot_vec[bot_id];
     bot_vec.erase(bot_vec.begin() + bot_id);
     bot_vec.push_back(branch_outcome_table());
-    bot_vec[LOR_SIZE - 1] = b;
+    bot_vec[BOT_SIZE - 1] = b;
     return;
   }
   bot_vec.erase(bot_vec.begin());
   bot_vec.push_back(branch_outcome_table());
-  bot_vec[LOR_SIZE - 1].brpc = brpc;
+  bot_vec[BOT_SIZE - 1].brpc = brpc;
   //bot_vec[LOR_SIZE - 1].outcome_ptr = 1;
-  bot_vec[LOR_SIZE - 1].outcome_ptr = 0;
+  bot_vec[BOT_SIZE - 1].outcome_ptr = 0;
   //bot_vec[LOR_SIZE - 1].load_ptr.push_back(ld_ptr);
 }
 
@@ -340,6 +361,7 @@ int MemObj::compute_lor_index(AddrType brpc, AddrType ld_ptr) {
   return lor_idx;
 }
 
+#if 0
 void MemObj::fill_li_at_retire(AddrType brpc, int ldbr, bool d1_valid, bool d2_valid, int depth1, int depth2, DataType d1, DataType d2) {
   int i = hit_on_bot(brpc);
   if(i != -1) {
@@ -662,7 +684,7 @@ void MemObj::shift_load_data_buffer(AddrType pc, int tl_type) {
     }
   }
 }
-
+#endif
 #endif
 void DummyMemObj::doReq(MemRequest *req)
 /* req {{{1 */

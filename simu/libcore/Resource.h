@@ -47,7 +47,6 @@
 #include "Prefetcher.h"
 #include "StoreSet.h"
 #include "nanassert.h"
-//#define ENABLE_LDBP
 
 class PortGeneric;
 class DInst;

@@ -51,15 +51,11 @@
 
 //#define TRACK_FORWARDING 1
 #define TRACK_TIMELEAK 1
-//#define LGT_SIZE 512 //128
 #define DEP_LIST_SIZE 64
-//#define LOAD_TABLE_SIZE 512
-//#define PLQ_SIZE 512
+
 #define BTT_SIZE 512
 #define NUM_LOADS 16 // maximum number of loads trackable by LDBP framework
 #define NUM_OPS 16 // maximum number of operations between LD and BR in code snippet
-#define TRIG_LD_BURST 1
-#define TRIG_LD_JUMP 24
 #define BTT_MAX_ACCURACY 7
 #define NEW_LDBP_INTERFACE
 //#define ENABLE_LDBP
@@ -316,7 +312,6 @@ public:
   };
 
   std::vector<pending_load_queue> plq_vec = std::vector<pending_load_queue>(PLQ_SIZE);
-#endif
 
   struct classify_table_entry { //classifies LD-BR chain(32 entries; index -> Dest register)
     classify_table_entry(){
@@ -679,6 +674,7 @@ public:
 
   std::vector<classify_table_entry> ct_table = std::vector<classify_table_entry>(32);
   std::vector<load_gen_table_entry> lgt_table = std::vector<load_gen_table_entry>(LGT_SIZE);
+#endif
 
   MemObj *DL1;
   AddrType ldbp_brpc;

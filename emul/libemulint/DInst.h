@@ -184,6 +184,7 @@ private:
   bool branchMiss_level2;
   bool branchMiss_level3;
   bool level3_NoPrediction;
+  int trig_ld_status; //TL timeliness, (-1)->no LDBP; 0->on time; 1->late
   bool trig_ld1_pred;
   bool trig_ld1_unpred;
   bool trig_ld2_pred;
@@ -208,6 +209,7 @@ private:
   Instruction inst;
   AddrType    pc;   // PC for the dinst
   AddrType    addr; // Either load/store address or jump/branch address
+  uint64_t inflight;
 #ifdef ESESC_TRACE_DATA
   AddrType ldpc;
   AddrType ld_addr;
@@ -222,7 +224,6 @@ private:
   int      chained;
   //BR stats
   AddrType brpc;
-  uint64_t inflight;
   uint64_t delta;
   uint64_t br_op_type;
   int ret_br_count;
@@ -272,6 +273,7 @@ private:
     branchMiss_level2 = false;
     branchMiss_level3 = false;
     level3_NoPrediction = false;
+    trig_ld_status = -1;
     imli_highconf = false;
     gproc           = 0;
     SSID            = -1;
@@ -324,6 +326,7 @@ public:
     i->inst = *inst;
     i->pc   = pc;
     i->addr = address;
+    i->inflight = 0;
 #ifdef ESESC_TRACE_DATA
     i->data      = 0;
     i->data2     = 0;
@@ -338,7 +341,6 @@ public:
     i->chained   = 0;
     //BR stats
     i->brpc = 0;
-    i->inflight = 0;
     i->delta = 0;
     i->br_ld_chain = false;
     i->br_op_type = -1;
@@ -366,14 +368,6 @@ public:
 
   void setRetireBrCount(int _cnt){
     ret_br_count = _cnt;
-  }
-
-  uint64_t getInflight() const{
-    return inflight;
-  }
-
-  void setInflight(uint64_t _inf){
-    inflight = _inf;
   }
 
   bool is_br_ld_chain() const{
@@ -617,6 +611,14 @@ public:
     fetched = globalClock;
   }
 
+  uint64_t getInflight() const{
+    return inflight;
+  }
+
+  void setInflight(uint64_t _inf){
+    inflight = _inf;
+  }
+
   void setUseLevel3() {
     use_level3 = true;
   }
@@ -719,6 +721,20 @@ public:
 
   bool isBranchMiss_level3() const {
     return branchMiss_level3;
+  }
+
+  void set_trig_ld_status() { //set to 0
+    if(trig_ld_status == -1)
+      trig_ld_status = 0;
+  }
+
+  void inc_trig_ld_status() { //inc on late TL
+    if(trig_ld_status == 0)
+      trig_ld_status = 1;
+  }
+
+  int get_trig_ld_status() const {
+    return trig_ld_status;
   }
 
   void setLevel3_NoPrediction() {

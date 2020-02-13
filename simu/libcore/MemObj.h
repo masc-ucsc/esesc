@@ -56,14 +56,15 @@ class MemRequest;
 #define PSIGN_INDIRECT 5
 #define PSIGN_CHASE 6
 #define PSIGN_MEGA 7
-#define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
-//#define BOT_SIZE 512 //32
 #define LDBUFF_SIZE 512
-#define LOR_SIZE 512
+#define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
+
 #define LOT_QUEUE_SIZE 512 //FIXME: need to change this to a conf variable
+#define BOT_SIZE 512
+#define LOR_SIZE 512
 #define LOAD_TABLE_SIZE 512
-#define LOAD_TABLE_CONF 63
 #define PLQ_SIZE 512
+#define LOAD_TABLE_CONF 63
 //#define ENABLE_LDBP
 
 class MemObj {
@@ -93,6 +94,8 @@ public:
   virtual ~MemObj();
 
 #ifdef ENABLE_LDBP
+
+#if 0
   const int BOT_SIZE;
   //Load data buffer interface functions
   int hit_on_ldbuff(AddrType pc);
@@ -116,9 +119,6 @@ public:
     return CIR_QUEUE_WINDOW;
   }
 
-  int getLotQueueSize() const {
-    return LOT_QUEUE_SIZE;
-  }
 
   int getBotSize() {
     return BOT_SIZE;
@@ -135,6 +135,7 @@ public:
   int getRetBrCount() const {
     return ret_br_count;
   }
+#endif
 
   //NEW INTERFACE !!!!!! Nov 20, 2019
   ////Load Table
@@ -144,11 +145,17 @@ public:
   int return_plq_index(AddrType pc);
   //LOR
   void lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start, int64_t ld_del, int data_pos, bool is_li);
-  void lor_find_index(MemRequest *mreq);
+  //void lor_find_index(MemRequest *mreq);
+  void lor_find_index(AddrType mreq_addr);
+  void lor_trigger_load_complete(AddrType mreq_addr);
+  typedef CallbackMember1<MemObj, AddrType, &MemObj::lor_trigger_load_complete> lor_trigger_load_completeCB;
   int return_lor_index(AddrType ld_ptr);
   int compute_lor_index(AddrType brpc, AddrType ld_ptr);
   //LOT
   void lot_fill_data(int lot_index, int lot_queue_index, AddrType tl_addr);
+  int getLotQueueSize() const {
+    return LOT_QUEUE_SIZE;
+  }
   //BOT
   int return_bot_index(AddrType brpc);
   void bot_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_ptr_addr);
@@ -257,6 +264,7 @@ public:
       ld_start = 0;
       ld_delta = 0;
       data_pos = 0; // ++ @Fetch and 0 @flush
+      use_slice = 0;
       is_li = false;
     }
     AddrType ld_start; //load start addr
@@ -265,6 +273,8 @@ public:
     AddrType brpc; //helps differentiate LOR entries when 2 Brs use same LD pair
     int data_pos; //
     //tracks data position in LOT queue; used to index lot queue when TL returns
+    int use_slice; //LOR's use_slice variable
+    // init to 0, LOR accessed at fetch only when use_slice == 1
     bool is_li; //ESESC flag to not trigger load if Li
 
     void reset_entry() {
@@ -273,6 +283,7 @@ public:
       ld_start = 0;
       ld_delta = 0;
       data_pos = 0;
+      use_slice = 0;
       is_li = false;
     }
   };
@@ -305,6 +316,7 @@ public:
     branch_outcome_table() {
       brpc      = 0;
       outcome_ptr = 0;
+      br_flip = -1;
       load_ptr.clear();
       curr_br_addr.clear();
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
@@ -314,6 +326,8 @@ public:
 
     AddrType brpc;
     int outcome_ptr; //Br count at fetch; used to index BOT queue at fetch
+    int br_flip; // stop LOT update when br-flips
+    // init to -1; 0 -> flip on NT; 1 -> flip on T
     std::vector<AddrType> load_ptr = std::vector<AddrType>(16);
     std::vector<AddrType> curr_br_addr = std::vector<AddrType>(16); //current ld addr used by Br (ESESC only param - for debugging)
     std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
@@ -328,6 +342,7 @@ public:
 
   std::vector<branch_outcome_table> bot_vec = std::vector<branch_outcome_table>(BOT_SIZE);
 
+#if 0
   struct bot_entry {
     bot_entry() {
       seq_start_addr = 0;
@@ -469,7 +484,7 @@ public:
   std::vector<bot_entry> cir_queue = std::vector<bot_entry>(BOT_SIZE);
   std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(LDBUFF_SIZE);
   //std::vector<load_data_buffer_entry> load_data_buffer = std::vector<load_data_buffer_entry>(CIR_QUEUE_WINDOW);
-
+#endif
 
 
 #endif

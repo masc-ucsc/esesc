@@ -337,7 +337,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
     }//control
 #endif
 
-#ifdef ENABLE_LDBP
+#if 0
     //update load data buffer if there is any older store for the same address
     if(dinst->getInst()->getOpcode() == iSALU_ST) {
       AddrType st_addr = dinst->getAddr();
@@ -378,7 +378,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 
       bool ld_tracking = false;
 
-#ifdef ENABLE_LDBP
+#if 0
       //insert load into load data buff table if load's address is a hit on table
       AddrType ld_addr = dinst->getAddr();
       for(int i = 0; i < DL1->getLdBuffSize(); i++) {
@@ -583,22 +583,42 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
               int lt_idx   = DL1->return_load_table_index(ldpc);
               //if(lor_idx != -1) {
               if((DL1->lor_vec[lor_idx].brpc == dinst->getPC()) && (DL1->lor_vec[lor_idx].ld_pointer == ldpc)) {
-                //increment lor.data_pos too
-                //DL1->lor_vec[lor_idx].data_pos++;
-                //AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
-                DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
-                AddrType curr_addr = DL1->bot_vec[bot_idx].curr_br_addr[i];
-                //DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
-                //AddrType curr_addr = DL1->load_table_vec[lt_idx].ld_addr + DL1->load_table_vec[lt_idx].delta;
-                int valid     = DL1->lot_vec[lor_idx].valid[q_idx];
-                AddrType q_addr = DL1->lot_vec[lor_idx].tl_addr[q_idx];
+                if(DL1->lor_vec[lor_idx].use_slice) { //when LD-BR slice goes through LD (use_slice == 1)
+                  dinst->set_trig_ld_status();
+                  //increment lor.data_pos too
+                  //DL1->lor_vec[lor_idx].data_pos++;
+                  //AddrType curr_addr = DL1->lor_vec[lor_idx].ld_start + q_idx * DL1->lor_vec[lor_idx].ld_delta;
+                  DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
+                  AddrType curr_addr = DL1->bot_vec[bot_idx].curr_br_addr[i];
+                  //DL1->bot_vec[bot_idx].curr_br_addr[i] += DL1->lor_vec[lor_idx].ld_delta;
+                  //AddrType curr_addr = DL1->load_table_vec[lt_idx].ld_addr + DL1->load_table_vec[lt_idx].delta;
+                  int valid     = DL1->lot_vec[lor_idx].valid[q_idx];
+                  AddrType q_addr = DL1->lot_vec[lor_idx].tl_addr[q_idx];
 #if 0
-                MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d ld_start=%d valid=%d lor_id=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, DL1->lor_vec[lor_idx].ld_start, valid, lor_idx);
+                  MSG("LDBP@F clk=%d br_id=%d brpc=%llx ldpc=%llx curr_addr=%d q_addr=%d q_id=%d ld_start=%d valid=%d lor_id=%d", globalClock, dinst->getID(), dinst->getPC(), ldpc, curr_addr, q_addr, q_idx, DL1->lor_vec[lor_idx].ld_start, valid, lor_idx);
 #endif
-                if(!DL1->lot_vec[lor_idx].valid[q_idx]) {
-                  all_data_valid = false;
+                  if(!DL1->lot_vec[lor_idx].valid[q_idx]) {
+                    all_data_valid = false;
+                    dinst->inc_trig_ld_status();
+                  }else {
+                  }
+                }else {
+                  //when use_slice == 0
+#if 1
+                  int curr_br_outcome = dinst->isTaken();
+                  if(DL1->bot_vec[bot_idx].br_flip == curr_br_outcome) {
+                    all_data_valid = false;
+                    break;
+                  }
+                  if(DL1->lot_vec[lor_idx].valid[q_idx] && all_data_valid) {
+                    int lot_qidx = (q_idx + 1) % DL1->getLotQueueSize();
+                    DL1->lot_vec[lor_idx].valid[lot_qidx] = 1;
+                  }else {
+                    all_data_valid = false;
+                  }
+#endif
                 }
-              }else {
+              }else { // if not the correct LD-BR pair; no match in LOR and BOT stride-pointers
                 all_data_valid = false;
               }
             }
@@ -1200,6 +1220,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
 }
 
 #ifdef ENABLE_LDBP
+#if 0
 DInst* FetchEngine::init_ldbp(DInst *dinst, DataType dd, AddrType ldpc) {
   if(dinst->getLBType() == 1) {  //R1 -> LD->BR, R2 -> 0
     dinst->setBrData1(dinst->getData());
@@ -1282,6 +1303,7 @@ DInst* FetchEngine::init_ldbp(DInst *dinst, DataType dd, AddrType ldpc) {
   }
   return dinst;
 }
+#endif
 #endif
 
 void FetchEngine::fetch(IBucket *bucket, EmulInterface *eint, FlowID fid) {

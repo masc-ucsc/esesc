@@ -794,8 +794,13 @@ PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
   dinst->setBiasBranch(bias);
   dinst->setBranchSignature(sign);
 
+  bool no_alloc = true;
+  if(dinst->isUseLevel3()) {
+    no_alloc = false;
+  }
+
   if(doUpdate) {
-    imli->updatePredictor(pc, taken, ptaken, dinst->getAddr());
+    imli->updatePredictor(pc, taken, ptaken, dinst->getAddr(), no_alloc);
   }
 
   if(!FetchPredict)

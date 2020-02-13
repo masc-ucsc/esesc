@@ -964,8 +964,9 @@ void CCache::doReq(MemRequest *mreq)
     I(!mreq->isPrefetch());
 #ifdef ENABLE_LDBP
     if(mreq->isTriggerLoad() && mreq->isHomeNode()) {
-      mreq->getHomeNode()->find_cir_queue_index(mreq);
-      mreq->getHomeNode()->lor_find_index(mreq);
+      //mreq->getHomeNode()->find_cir_queue_index(mreq);
+      //mreq->getHomeNode()->lor_find_index(mreq);
+      mreq->getHomeNode()->lor_find_index(mreq->getAddr());
     }
 #endif
     double lat = mreq->getTimeDelay() + (when - globalClock);
@@ -1137,8 +1138,9 @@ void CCache::doReqAck(MemRequest *mreq)
     I(!mreq->isPrefetch());
 #ifdef ENABLE_LDBP
     if(mreq->isTriggerLoad() && mreq->isHomeNode()) {
-      mreq->getHomeNode()->find_cir_queue_index(mreq);
-      mreq->getHomeNode()->lor_find_index(mreq);
+      //mreq->getHomeNode()->find_cir_queue_index(mreq);
+      //mreq->getHomeNode()->lor_find_index(mreq);
+      mreq->getHomeNode()->lor_find_index(mreq->getAddr());
     }
 #endif
     double lat = mreq->getTimeDelay(when);

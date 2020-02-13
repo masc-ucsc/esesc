@@ -498,7 +498,7 @@ StallCause FUStore::canIssue(DInst *dinst) {
   lsq->decFreeEntries();
   freeEntries--;
 
-#ifdef ENABLE_LDBP
+#if 0
     //update load data buffer if there is any older store for the same address
     if(dinst->getInst()->getOpcode() == iSALU_ST) {
       AddrType st_addr = dinst->getAddr();
