@@ -53,7 +53,7 @@
 #define TRACK_TIMELEAK 1
 #define DEP_LIST_SIZE 64
 
-#define BTT_SIZE 512 //64 //512
+#define BTT_SIZE 512 //16 //512
 #define NUM_LOADS 16 // maximum number of loads trackable by LDBP framework
 #define NUM_OPS 16 // maximum number of operations between LD and BR in code snippet
 #define BTT_MAX_ACCURACY 7

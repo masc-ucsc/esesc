@@ -217,15 +217,18 @@ void MemObj::lor_find_index(AddrType tl_addr) {
 #if 0
   for(int i = 0; i < lor_vec.size(); i++) {
     AddrType lor_start  = lor_vec[i].ld_start;
-    AddrType lor_delta  = lor_vec[i].ld_delta;
+    int64_t lor_delta  = lor_vec[i].ld_delta;
     int idx = 0;
     if(lor_delta != 0) {
       idx             = (tl_addr - lor_start) / lor_delta;
     }
     AddrType lor_end_addr = lor_start + ((LOT_QUEUE_SIZE - 1) * lor_delta);
     AddrType check_addr = lor_start + (idx * lor_delta);
-    if((tl_addr == check_addr) && (tl_addr <= lor_end_addr)) {
+    bool tl_addr_check = lot_tl_addr_range(check_addr, lor_start, lor_end_addr, lor_delta);
+    if(tl_addr_check && (tl_addr == check_addr)) {
       //hit on LOR for returning TL
+      //get absolute value of queue index
+      idx = abs(idx);
       lot_fill_data(i, idx, tl_addr);
     }
   }
@@ -334,26 +337,59 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
     lor_vec[lor_id].trig_ld_dist = 4;
     lor_vec[lor_id].is_li = is_li;
     //move LOR entry to LRU position
+#if 0
     load_outcome_reg l = lor_vec[lor_id];
     lor_vec.erase(lor_vec.begin() + lor_id);
     lor_vec.push_back(load_outcome_reg());
     lor_vec[LOR_SIZE - 1] = l;
+#endif
+    std::vector<load_outcome_reg> lor;
+    for(int i = 0; i < lor_vec.size(); i++) {
+      if(i != lor_id) {
+        lor.push_back(lor_vec[i]);
+      }
+    }
+    lor_vec.clear();
+    lor_vec = lor;
+    lor_vec.push_back(load_outcome_reg());
+
 
     //reset corresponding LOT entry too
-#if 1
+#if 0
     //lot_vec[lor_id].reset_valid();
     load_outcome_table lot = lot_vec[lor_id];
     lot_vec.erase(lot_vec.begin() + lor_id);
     lot_vec.push_back(load_outcome_table());
     //lot_vec[LOR_SIZE - 1] = lot;
 #endif
+    std::vector<load_outcome_table> lot;
+    for(int i = 0; i < lot_vec.size(); i++) {
+      if(i != lor_id) {
+        lot.push_back(lot_vec[i]);
+      }
+    }
+    lot_vec.clear();
+    lot_vec = lot;
+    lot_vec.push_back(load_outcome_table());
 
     return;
   }
 
   //if miss on LOR table
+#if 0
   lor_vec.erase(lor_vec.begin());
   lor_vec.push_back(load_outcome_reg());
+#endif
+  std::vector<load_outcome_reg> lor;
+  for(int i = 0; i < lor_vec.size(); i++) {
+    if(i != 0) {
+      lor.push_back(lor_vec[i]);
+    }
+  }
+  lor_vec.clear();
+  lor_vec = lor;
+  lor_vec.push_back(load_outcome_reg());
+
   lor_vec[LOR_SIZE - 1].ld_pointer = ld_ptr;
   lor_vec[LOR_SIZE - 1].brpc = brpc;
   lor_vec[LOR_SIZE - 1].ld_start = ld_start_addr;
@@ -361,13 +397,23 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
   lor_vec[LOR_SIZE - 1].data_pos = 0;
   lor_vec[LOR_SIZE - 1].trig_ld_dist = 4;
   lor_vec[LOR_SIZE - 1].is_li = is_li;
+
   //update corresponding LOT entry as well
-#if 1
+#if 0
   lot_vec.erase(lot_vec.begin());
   lot_vec.push_back(load_outcome_table());
   //lot_vec[LOR_SIZE - 1].reset_valid();
 #endif
 
+  std::vector<load_outcome_table> lot;
+  for(int i = 0; i < lot_vec.size(); i++) {
+    if(i != 0) {
+      lot.push_back(lot_vec[i]);
+    }
+  }
+  lot_vec.clear();
+  lot_vec = lot;
+  lot_vec.push_back(load_outcome_table());
 
 #endif
 }

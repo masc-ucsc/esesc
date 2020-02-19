@@ -61,7 +61,7 @@ class MemRequest;
 
 #define LOT_QUEUE_SIZE 512 //64 //512 //FIXME: need to change this to a conf variable
 #define BOT_SIZE 512 //16 //512
-#define LOR_SIZE 512 //64 //512
+#define LOR_SIZE 512 //512
 #define LOAD_TABLE_SIZE 512 //64 //512
 #define PLQ_SIZE 512 //64 //512
 #define LOAD_TABLE_CONF 63
@@ -311,10 +311,14 @@ public:
     std::vector<int> valid = std::vector<int>(LOT_QUEUE_SIZE);
 
     void reset_valid() {
+      std::fill(tl_addr.begin(), tl_addr.end(), 0);
+      std::fill(valid.begin(), valid.end(), 0);
+#if 0
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
         tl_addr[i] = 0;
         valid[i] = 0;
       }
+#endif
     }
   };
 
@@ -327,9 +331,12 @@ public:
       br_flip = -1;
       load_ptr.clear();
       curr_br_addr.clear();
+      std::fill(valid.begin(), valid.end(), 0);
+#if 0
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
         valid[i] = 0;
       }
+#endif
     }
 
     AddrType brpc;
