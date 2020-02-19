@@ -59,11 +59,11 @@ class MemRequest;
 #define LDBUFF_SIZE 512
 #define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
 
-#define LOT_QUEUE_SIZE 512 //FIXME: need to change this to a conf variable
-#define BOT_SIZE 512
-#define LOR_SIZE 512
-#define LOAD_TABLE_SIZE 512
-#define PLQ_SIZE 512
+#define LOT_QUEUE_SIZE 512 //64 //512 //FIXME: need to change this to a conf variable
+#define BOT_SIZE 512 //16 //512
+#define LOR_SIZE 512 //64 //512
+#define LOAD_TABLE_SIZE 512 //64 //512
+#define PLQ_SIZE 512 //64 //512
 #define LOAD_TABLE_CONF 63
 //#define ENABLE_LDBP
 
@@ -153,6 +153,7 @@ public:
   int compute_lor_index(AddrType brpc, AddrType ld_ptr);
   //LOT
   void lot_fill_data(int lot_index, int lot_queue_index, AddrType tl_addr);
+  bool lot_tl_addr_range(AddrType tl_addr, AddrType start_addr, AddrType end_addr, int64_t delta);
   int getLotQueueSize() const {
     return LOT_QUEUE_SIZE;
   }
@@ -265,6 +266,7 @@ public:
       ld_delta = 0;
       data_pos = 0; // ++ @Fetch and 0 @flush
       use_slice = 0;
+      trig_ld_dist = 4;
       is_li = false;
     }
     AddrType ld_start; //load start addr
@@ -276,6 +278,7 @@ public:
     int use_slice; //LOR's use_slice variable
     // init to 0, LOR accessed at fetch only when use_slice == 1
     bool is_li; //ESESC flag to not trigger load if Li
+    int64_t trig_ld_dist; //
 
     void reset_entry() {
       brpc = 0;
@@ -284,6 +287,7 @@ public:
       ld_delta = 0;
       data_pos = 0;
       use_slice = 0;
+      trig_ld_dist = 4;
       is_li = false;
     }
   };
@@ -293,10 +297,14 @@ public:
   struct load_outcome_table { //same number of entries as LOR
     //stores trigger load data
     load_outcome_table() {
+#if 0
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
         tl_addr[i] = 0;
         valid[i] = 0;
       }
+#endif
+      std::fill(tl_addr.begin(), tl_addr.end(), 0);
+      std::fill(valid.begin(), valid.end(), 0);
     }
     //std::vector<DataType> data = std::vector<DataType>(LOT_QUEUE_SIZE);
     std::vector<AddrType> tl_addr = std::vector<AddrType>(LOT_QUEUE_SIZE);

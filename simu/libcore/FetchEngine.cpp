@@ -582,7 +582,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
               int lor_idx   = DL1->compute_lor_index(dinst->getPC(), ldpc);
               int lt_idx   = DL1->return_load_table_index(ldpc);
               //if(lor_idx != -1) {
-              if((DL1->lor_vec[lor_idx].brpc == dinst->getPC()) && (DL1->lor_vec[lor_idx].ld_pointer == ldpc)) {
+              if(lor_idx != -1 && (DL1->lor_vec[lor_idx].brpc == dinst->getPC()) && (DL1->lor_vec[lor_idx].ld_pointer == ldpc)) {
                 if(DL1->lor_vec[lor_idx].use_slice) { //when LD-BR slice goes through LD (use_slice == 1)
                   dinst->set_trig_ld_status();
                   //increment lor.data_pos too

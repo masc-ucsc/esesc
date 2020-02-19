@@ -768,8 +768,10 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
         }
 
         //clear LOR entry and corresponding LOT entry
-        DL1->lor_vec[lor_id].reset_entry();
-        DL1->lot_vec[lor_id].reset_valid();
+        if(lor_id != -1) {
+          DL1->lor_vec[lor_id].reset_entry();
+          DL1->lot_vec[lor_id].reset_valid();
+        }
 #if 0
           //clear LOR entry
           DL1->lor_vec.erase(DL1->lor_vec.begin() + lor_id);
@@ -884,19 +886,34 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
   int lor_id = DL1->compute_lor_index(dinst->getPC(), ld_ptr);
   int lt_idx = DL1->return_load_table_index(ld_ptr);
   int use_slice = DL1->load_table_vec[lt_idx].use_slice;
-  if((DL1->lor_vec[lor_id].brpc == dinst->getPC()) && (DL1->lor_vec[lor_id].ld_pointer == ld_ptr)) {
+  if(lor_id != -1 && (DL1->lor_vec[lor_id].brpc == dinst->getPC()) && (DL1->lor_vec[lor_id].ld_pointer == ld_ptr)) {
     AddrType lor_start_addr = DL1->lor_vec[lor_id].ld_start;
     AddrType lt_load_addr = DL1->load_table_vec[lt_idx].ld_addr;
-    //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, DL1->load_table_vec[lt_idx].conf);
+    AddrType trig_ld_dist = DL1->lor_vec[lor_id].trig_ld_dist;
     int64_t lor_delta = DL1->lor_vec[lor_id].ld_delta;
+    int num_trig_ld = 0;
+    //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, DL1->load_table_vec[lt_idx].conf);
     if(use_slice > 0) {
-      for(int i = 1; i <= 1; i++) {
-        AddrType trigger_addr = lor_start_addr + (lor_delta * (31 + i)); //trigger few delta ahead of current ld_addr
+      if(trig_ld_dist <= 32) {
+        num_trig_ld = 4;
+      }else if(trig_ld_dist > 32 && trig_ld_dist < 64) {
+        num_trig_ld = 2;
+      }else {
+        num_trig_ld  = 1;
+        trig_ld_dist = 64;
+      }
+
+      //for(int i = 1; i <= 1; i++) {
+      for(int i = 0; i < num_trig_ld; i++) {
+        //AddrType trigger_addr = lor_start_addr + (lor_delta * (31 + i)); //trigger few delta ahead of current ld_addr
+        AddrType trigger_addr = lor_start_addr + (lor_delta * (trig_ld_dist + i)); //trigger few delta ahead of current ld_addr
 #if 0
         if(dinst->getPC() == 0x119da || dinst->getPC() == 0x119c6)
         MSG("TL clk=%d br_id=%d brpc=%llx ldpc=%llx ld_addr=%d curr_lor_start=%d trig_addr=%d del=%d lor_id=%d", globalClock, dinst->getID(), dinst->getPC(), ld_ptr, lt_load_addr, lor_start_addr, trigger_addr, lor_delta, lor_id);
 #endif
         MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ld_ptr, dinst->getPC(), lor_start_addr, 0, lor_delta, inflight_branch, 0, 0, 0, 0);
+        if(trig_ld_dist < 64)
+          DL1->lor_vec[lor_id].trig_ld_dist++;
       }
       //update lor_start by delta so that next TL doesnt trigger redundant loads
       DL1->lor_vec[lor_id].ld_start = DL1->lor_vec[lor_id].ld_start + DL1->lor_vec[lor_id].ld_delta;
