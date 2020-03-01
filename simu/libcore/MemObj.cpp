@@ -64,6 +64,10 @@ MemObj::MemObj(const char *sSection, const char *sName)
     , name(sName)
 #ifdef ENABLE_LDBP
       //, BOT_SIZE(SescConf->getInt(section, "bot_size"))
+      //, LOR_SIZE(SescConf->getInt(section, "lor_size"))
+      //, LOT_QUEUE_SIZE(SescConf->getInt(section, "lotq_size"))
+      //, LOAD_TABLE_SIZE(SescConf->getInt(section, "pref_size"))
+      //, PLQ_SIZE(SescConf->getInt(section, "pref_size"))
       //, lor_index_track(0)
 #endif
     , id(id_counter++) {
@@ -76,7 +80,6 @@ MemObj::MemObj(const char *sSection, const char *sName)
   router = new MRouter(this);
   /*if(strcmp(section, "DL1_core") == 0){
   }*/
-
 
 #ifdef DEBUG
   static std::set<const char *, Setltstr> usedNames;
@@ -157,18 +160,49 @@ void MemObj::hit_on_load_table(DInst *dinst, bool is_li) {
       }else {
         load_table_vec[i].lt_load_hit(dinst);
       }
+#if 0
       load_table l = load_table_vec[i];
       load_table_vec.erase(load_table_vec.begin() + i);
       load_table_vec.push_back(load_table());
       load_table_vec[LOAD_TABLE_SIZE - 1] = l;
+#endif
+      std::vector<load_table> lt;
+      load_table l = load_table_vec[i];
+      for(int j = 0; j < LOAD_TABLE_SIZE; j++) {
+        if(j != i) {
+          lt.push_back(load_table_vec[j]);
+        }
+      }
+      load_table_vec.clear();
+      load_table_vec = lt;
+      //load_table_vec.push_back(load_table());
+      load_table_vec.push_back(l);
+
       if(load_table_vec[LOAD_TABLE_SIZE - 1].tracking > 0) {
         //append ld_ptr to PLQ
         int plq_idx = return_plq_index(load_table_vec[LOAD_TABLE_SIZE - 1].ldpc);
         if(plq_idx != - 1) {
-          pending_load_queue p = plq_vec[plq_idx];
-          plq_vec.erase(plq_vec.begin() + plq_idx);
+          //pending_load_queue p = plq_vec[plq_idx];
+          //plq_vec.erase(plq_vec.begin() + plq_idx);
+          std::vector<pending_load_queue> plq;
+          for(int x = 0; x < PLQ_SIZE; x++) {
+            if(x != plq_idx) {
+              plq.push_back(plq_vec[x]);
+            }
+          }
+          plq_vec.clear();
+          plq_vec = plq;
+          //plq_vec.push_back(pending_load_queue());
+
         }else {
-          plq_vec.erase(plq_vec.begin());
+          //plq_vec.erase(plq_vec.begin());
+          std::vector<pending_load_queue> plq;
+          for(int x = 1; x < PLQ_SIZE; x++) {
+            plq.push_back(plq_vec[x]);
+          }
+          plq_vec.clear();
+          plq_vec = plq;
+          //plq_vec.push_back(pending_load_queue());
         }
         plq_idx = PLQ_SIZE - 1;
         plq_vec.push_back(pending_load_queue());
@@ -183,7 +217,19 @@ void MemObj::hit_on_load_table(DInst *dinst, bool is_li) {
     }
   }
   //if load_table miss
+#if 0
   load_table_vec.erase(load_table_vec.begin());
+  load_table_vec.push_back(load_table());
+#endif
+  std::vector<load_table> lt;
+  //load_table l = load_table_vec[i];
+  for(int j = 0; j < LOAD_TABLE_SIZE; j++) {
+    if(j != 0) {
+      lt.push_back(load_table_vec[j]);
+    }
+  }
+  load_table_vec.clear();
+  load_table_vec = lt;
   load_table_vec.push_back(load_table());
   if(is_li) {
     load_table_vec[LOAD_TABLE_SIZE - 1].lt_load_imm(dinst);
@@ -195,6 +241,7 @@ void MemObj::hit_on_load_table(DInst *dinst, bool is_li) {
 int MemObj::return_load_table_index(AddrType pc) {
   //if hit on load_table, update and move entry to LRU position
   for(int i = LOAD_TABLE_SIZE - 1; i >= 0; i--) {
+  //for(int i = 0; i < LOAD_TABLE_SIZE; i++) {
     if(pc == load_table_vec[i].ldpc) {
       return i;
     }
@@ -205,6 +252,7 @@ int MemObj::return_load_table_index(AddrType pc) {
 int MemObj::return_plq_index(AddrType pc) {
   //if hit on load_table, update and move entry to LRU position
   for(int i = PLQ_SIZE - 1; i >= 0; i--) {
+  //for(int i = 0; i < PLQ_SIZE; i++) {
     if(pc == plq_vec[i].load_pointer) {
       return i;
     }
@@ -238,14 +286,15 @@ void MemObj::lor_find_index(AddrType tl_addr) {
 
 void MemObj::lor_trigger_load_complete(AddrType tl_addr) {
   //AddrType tl_addr = mreq->getAddr();
-  for(int i = 0; i < lor_vec.size(); i++) {
+  for(int i = 0; i < LOR_SIZE; i++) {
     AddrType lor_start  = lor_vec[i].ld_start;
     int64_t lor_delta  = lor_vec[i].ld_delta;
     int idx = 0;
     if(lor_delta != 0) {
       idx             = (tl_addr - lor_start) / lor_delta;
     }
-    AddrType lor_end_addr = lor_start + ((LOT_QUEUE_SIZE - 1) * lor_delta);
+    //AddrType lor_end_addr = lor_start + ((LOT_QUEUE_SIZE - 1) * lor_delta);
+    AddrType lor_end_addr = lor_start + ((getLotQueueSize() - 1) * lor_delta);
     AddrType check_addr = lor_start + (idx * lor_delta);
     bool tl_addr_check = lot_tl_addr_range(check_addr, lor_start, lor_end_addr, lor_delta);
     if(tl_addr_check && (tl_addr == check_addr)) {
@@ -290,15 +339,35 @@ void MemObj::bot_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_ptr_addr) 
     //bot_vec[bot_id].load_ptr.push_back(ld_ptr);
     //bot_vec[bot_id].curr_br_addr.push_back(ld_ptr_addr);
     branch_outcome_table b = bot_vec[bot_id];
+#if 0
     bot_vec.erase(bot_vec.begin() + bot_id);
     bot_vec.push_back(branch_outcome_table());
     bot_vec[BOT_SIZE - 1] = b;
+#endif
+    std::vector<branch_outcome_table> bot;
+    for(int i = 0; i < BOT_SIZE; i++) {
+      if(i != bot_id) {
+        bot.push_back(bot_vec[i]);
+      }
+    }
+    bot_vec.clear();
+    bot_vec = bot;
+    bot_vec.push_back(branch_outcome_table());
+    bot_vec[BOT_SIZE - 1].brpc = brpc;
+    bot_vec[BOT_SIZE - 1].outcome_ptr = 0;
     return;
   }
-  bot_vec.erase(bot_vec.begin());
+  //bot_vec.erase(bot_vec.begin());
+  std::vector<branch_outcome_table> bot;
+  for(int i = 0; i < BOT_SIZE; i++) {
+    if(i != 0) {
+      bot.push_back(bot_vec[i]);
+    }
+  }
+  bot_vec.clear();
+  bot_vec = bot;
   bot_vec.push_back(branch_outcome_table());
   bot_vec[BOT_SIZE - 1].brpc = brpc;
-  //bot_vec[LOR_SIZE - 1].outcome_ptr = 1;
   bot_vec[BOT_SIZE - 1].outcome_ptr = 0;
   //bot_vec[LOR_SIZE - 1].load_ptr.push_back(ld_ptr);
 }
@@ -329,6 +398,7 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
   //int lor_id = return_lor_index(ld_ptr);
   int lor_id = compute_lor_index(brpc, ld_ptr);
   if(lor_id != -1) {
+#if 0
     lor_vec[lor_id].ld_pointer = ld_ptr;
     lor_vec[lor_id].brpc = brpc;
     lor_vec[lor_id].ld_start = ld_start_addr;
@@ -336,15 +406,15 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
     lor_vec[lor_id].data_pos = 0;
     lor_vec[lor_id].trig_ld_dist = 4;
     lor_vec[lor_id].is_li = is_li;
-    //move LOR entry to LRU position
-#if 0
+
     load_outcome_reg l = lor_vec[lor_id];
     lor_vec.erase(lor_vec.begin() + lor_id);
     lor_vec.push_back(load_outcome_reg());
     lor_vec[LOR_SIZE - 1] = l;
 #endif
+    //move LOR entry to LRU position
     std::vector<load_outcome_reg> lor;
-    for(int i = 0; i < lor_vec.size(); i++) {
+    for(int i = 0; i < LOR_SIZE; i++) {
       if(i != lor_id) {
         lor.push_back(lor_vec[i]);
       }
@@ -352,6 +422,14 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
     lor_vec.clear();
     lor_vec = lor;
     lor_vec.push_back(load_outcome_reg());
+
+    lor_vec[LOR_SIZE - 1].ld_pointer = ld_ptr;
+    lor_vec[LOR_SIZE - 1].brpc = brpc;
+    lor_vec[LOR_SIZE - 1].ld_start = ld_start_addr;
+    lor_vec[LOR_SIZE - 1].ld_delta = ld_del;
+    lor_vec[LOR_SIZE - 1].data_pos = 0;
+    lor_vec[LOR_SIZE - 1].trig_ld_dist = 4;
+    lor_vec[LOR_SIZE - 1].is_li = is_li;
 
 
     //reset corresponding LOT entry too
@@ -363,7 +441,7 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
     //lot_vec[LOR_SIZE - 1] = lot;
 #endif
     std::vector<load_outcome_table> lot;
-    for(int i = 0; i < lot_vec.size(); i++) {
+    for(int i = 0; i < LOR_SIZE; i++) {
       if(i != lor_id) {
         lot.push_back(lot_vec[i]);
       }
@@ -371,6 +449,7 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
     lot_vec.clear();
     lot_vec = lot;
     lot_vec.push_back(load_outcome_table());
+    //lot_vec[LOR_SIZE - 1].reset_valid();
 
     return;
   }
@@ -381,10 +460,11 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
   lor_vec.push_back(load_outcome_reg());
 #endif
   std::vector<load_outcome_reg> lor;
-  for(int i = 0; i < lor_vec.size(); i++) {
-    if(i != 0) {
-      lor.push_back(lor_vec[i]);
-    }
+  for(int i = 1; i < LOR_SIZE; i++) {
+    lor.push_back(lor_vec[i]);
+    //if(i != 0) {
+    //  lor.push_back(lor_vec[i]);
+    //}
   }
   lor_vec.clear();
   lor_vec = lor;
@@ -406,10 +486,11 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
 #endif
 
   std::vector<load_outcome_table> lot;
-  for(int i = 0; i < lot_vec.size(); i++) {
-    if(i != 0) {
-      lot.push_back(lot_vec[i]);
-    }
+  for(int i = 1; i < LOR_SIZE; i++) {
+    lot.push_back(lot_vec[i]);
+    //if(i != 0) {
+    //  lot.push_back(lot_vec[i]);
+    //}
   }
   lot_vec.clear();
   lot_vec = lot;
@@ -419,7 +500,8 @@ void MemObj::lor_allocate(AddrType brpc, AddrType ld_ptr, AddrType ld_start_addr
 }
 
 int MemObj::return_bot_index(AddrType brpc) {
-  for(int i = 0; i < bot_vec.size(); i++) {
+  //for(int i = 0; i < BOT_SIZE; i++) {
+  for(int i = BOT_SIZE - 1; i >= 0; i--) {
     if(brpc == bot_vec[i].brpc) {
       return i;
     }
@@ -428,7 +510,8 @@ int MemObj::return_bot_index(AddrType brpc) {
 }
 
 int MemObj::return_lor_index(AddrType ld_ptr) {
-  for(int i = 0; i < lor_vec.size(); i++) {
+  //for(int i = 0; i < LOR_SIZE; i++) {
+  for(int i = LOR_SIZE - 1; i >= 0; i--) {
     if(ld_ptr == lor_vec[i].ld_pointer) {
       return i;
     }
@@ -443,7 +526,8 @@ int MemObj::compute_lor_index(AddrType brpc, AddrType ld_ptr) {
 #endif
 
 #if 1
-  for(int i = 0; i < lor_vec.size(); i++) {
+  //for(int i = 0; i < LOR_SIZE; i++) {
+  for(int i = LOR_SIZE - 1; i >= 0; i--) {
     if((lor_vec[i].brpc == brpc) && (lor_vec[i].ld_pointer == ld_ptr)) {
       return i;
     }

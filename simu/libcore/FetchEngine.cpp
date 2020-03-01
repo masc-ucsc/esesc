@@ -575,6 +575,9 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
           int bot_idx = DL1->return_bot_index(dinst->getPC());
           bool all_data_valid = true;
           if(bot_idx != -1) {
+            if(DL1->bot_vec[bot_idx].outcome_ptr >= DL1->getLotQueueSize()) {
+              DL1->bot_vec[bot_idx].outcome_ptr = 0;
+            }
             int q_idx = (DL1->bot_vec[bot_idx].outcome_ptr++) % DL1->getLotQueueSize();
             for(int i = 0; i < DL1->bot_vec[bot_idx].load_ptr.size(); i++) {
               AddrType ldpc = DL1->bot_vec[bot_idx].load_ptr[i];
@@ -601,6 +604,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                     all_data_valid = false;
                     dinst->inc_trig_ld_status();
                   }else {
+                    DL1->lot_vec[lor_idx].valid[q_idx] = 0;
                   }
                 }else {
                   //when use_slice == 0
@@ -613,6 +617,7 @@ void FetchEngine::realfetch(IBucket *bucket, EmulInterface *eint, FlowID fid, in
                   if(DL1->lot_vec[lor_idx].valid[q_idx] && all_data_valid) {
                     int lot_qidx = (q_idx + 1) % DL1->getLotQueueSize();
                     DL1->lot_vec[lor_idx].valid[lot_qidx] = 1;
+                    DL1->lot_vec[lor_idx].valid[q_idx] = 0;
                   }else {
                     all_data_valid = false;
                   }

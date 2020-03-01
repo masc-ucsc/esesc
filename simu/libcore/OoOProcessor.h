@@ -152,7 +152,7 @@ public:
 
 #ifdef ENABLE_LDBP
 
-  const int LGT_SIZE;
+  //const int BTT_SIZE;
 
   void classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag);
   void classify_ld_br_double_chain(DInst *dinst, RegType br_src1, RegType br_src2, int reg_flag);
@@ -262,6 +262,12 @@ public:
     int num_ops; //num of operations between load and branch in a snippet
     std::vector<AddrType> load_table_pointer = std::vector<AddrType>(NUM_LOADS); // pointer from Load Table to refer loads
     int is_li;
+
+    void reset_rtt() {
+      num_ops = NUM_OPS + 1; //indicates that RTT entry is reset
+      is_li = 0;
+      load_table_pointer.clear();
+    }
   };
 
   std::vector<rename_tracking_table> rtt_vec = std::vector<rename_tracking_table>(LREG_MAX);

@@ -787,6 +787,7 @@ PredType BPIMLI::predict(DInst *dinst, bool doUpdate, bool doStats) {
     imli->fetchBoundaryBegin(dinst->getPC());
 
   bool     bias;
+  //bool     bias = false;
   AddrType pc = dinst->getPC();
   uint32_t sign=0;
   bool ptaken = imli->getPrediction(pc, bias, sign); // pass taken for statistics
@@ -1976,8 +1977,10 @@ TimeDelta_t BPredictor::predict(DInst *dinst, bool *fastfix) {
     return bpredDelay1 - 1;
   }
 
-  I(outcome1 != NoPrediction);
-  I(outcome2 != NoPrediction);
+  if(dinst->getInst()->isBranch()) {
+    I(outcome1 != NoPrediction);
+    I(outcome2 != NoPrediction);
+  }
   if(outcome3 == NoPrediction && outcome2 == MissPrediction) {
     nNoPredict_miss3.inc(true);
   }

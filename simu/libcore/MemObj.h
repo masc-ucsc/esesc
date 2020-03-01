@@ -59,11 +59,11 @@ class MemRequest;
 #define LDBUFF_SIZE 512
 #define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
 
-#define LOT_QUEUE_SIZE 512 //64 //512 //FIXME: need to change this to a conf variable
+#define LOT_QUEUE_SIZE 512 //FIXME: need to change this to a conf variable
 #define BOT_SIZE 512 //16 //512
-#define LOR_SIZE 512 //512
+#define LOR_SIZE 512
 #define LOAD_TABLE_SIZE 512 //64 //512
-#define PLQ_SIZE 512 //64 //512
+#define PLQ_SIZE 512 //512
 #define LOAD_TABLE_CONF 63
 //#define ENABLE_LDBP
 
@@ -154,6 +154,9 @@ public:
   //LOT
   void lot_fill_data(int lot_index, int lot_queue_index, AddrType tl_addr);
   bool lot_tl_addr_range(AddrType tl_addr, AddrType start_addr, AddrType end_addr, int64_t delta);
+  int getBotSize() const {
+    return BOT_SIZE;
+  }
   int getLotQueueSize() const {
     return LOT_QUEUE_SIZE;
   }
@@ -273,6 +276,7 @@ public:
     int64_t ld_delta;
     AddrType ld_pointer; //load pointer from stride pref table
     AddrType brpc; //helps differentiate LOR entries when 2 Brs use same LD pair
+    //int64_t data_pos; //
     int data_pos; //
     //tracks data position in LOT queue; used to index lot queue when TL returns
     int use_slice; //LOR's use_slice variable
@@ -340,6 +344,7 @@ public:
     }
 
     AddrType brpc;
+    //int64_t outcome_ptr; //Br count at fetch; used to index BOT queue at fetch
     int outcome_ptr; //Br count at fetch; used to index BOT queue at fetch
     int br_flip; // stop LOT update when br-flips
     // init to -1; 0 -> flip on NT; 1 -> flip on T
@@ -349,9 +354,12 @@ public:
 
     void reset_valid() {
       outcome_ptr = 0;
+      std::fill(valid.begin(), valid.end(), 0);
+#if 0
       for(int i = 0; i < LOT_QUEUE_SIZE; i++) {
         valid[i] = 0;
       }
+#endif
     }
   };
 
