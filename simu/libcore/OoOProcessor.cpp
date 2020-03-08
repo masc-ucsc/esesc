@@ -68,7 +68,7 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
     : GOoOProcessor(gm, i)
     , MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay", i))
 #ifdef ENABLE_LDBP
-    //, BTT_SIZE(SescConf->getInt("cpusimu", "btt_size", i))
+    , BTT_SIZE(SescConf->getInt("cpusimu", "btt_size", i))
 #endif
     , RetireDelay(SescConf->getInt("cpusimu", "RetireDelay", i))
     , IFID(i, gm)
@@ -599,7 +599,16 @@ int OoOProcessor::return_load_table_index(AddrType pc) {
 void OoOProcessor::rtt_load_hit(DInst *dinst) {
   //reset entry on hit and update fields
   RegType dst          = dinst->getInst()->getDst1();
+  RegType src1          = dinst->getInst()->getSrc1();
+  RegType src2          = dinst->getInst()->getSrc2();
   int lt_idx = DL1->return_load_table_index(dinst->getPC());
+  if((src1 == LREG_R0) && (src2 == LREG_R0)) { //if Li
+    rtt_vec[dst] = rename_tracking_table();
+    rtt_vec[dst].num_ops = 0;
+    rtt_vec[dst].load_table_pointer.clear();
+    return;
+    //no need to add anything to RTT's load pointer queue
+  }
   if(lt_idx == -1) { //if load not in load table, no point checking RTT
     return;
   }
@@ -927,7 +936,8 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
   if(lt_idx == -1) {
     return;
   }
-  int use_slice = DL1->load_table_vec[lt_idx].use_slice;
+  //int use_slice = DL1->load_table_vec[lt_idx].use_slice;
+  int use_slice = 1;
   if(lor_id != -1 && (DL1->lor_vec[lor_id].brpc == dinst->getPC()) && (DL1->lor_vec[lor_id].ld_pointer == ld_ptr)) {
     AddrType lor_start_addr = DL1->lor_vec[lor_id].ld_start;
     AddrType lt_load_addr = DL1->load_table_vec[lt_idx].ld_addr;
@@ -945,7 +955,6 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
         trig_ld_dist = 64;
       }
 
-      //for(int i = 1; i <= 1; i++) {
       for(int i = 0; i < num_trig_ld; i++) {
         //AddrType trigger_addr = lor_start_addr + (lor_delta * (31 + i)); //trigger few delta ahead of current ld_addr
         AddrType trigger_addr = lor_start_addr + (lor_delta * (trig_ld_dist + i)); //trigger few delta ahead of current ld_addr
@@ -968,6 +977,7 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
       DL1->load_table_vec[lt_idx].use_slice = 0;
       DL1->lor_vec[lor_id].use_slice = 1;
     }else {
+      //use_slice == 0
       DL1->lor_vec[lor_id].use_slice = 0;
 #if 1
       int bot_id = DL1->return_bot_index(dinst->getPC());
@@ -990,9 +1000,11 @@ int OoOProcessor::btt_pointer_check(DInst *dinst, int btt_id) {
   bool all_ptr_track = true;
   std::vector<AddrType> tmp_plq;
 
+#if 1
   for(int i = 0; i < DL1->plq_vec.size(); i++) {
     tmp_plq.push_back(DL1->plq_vec[i].load_pointer);
   }
+#endif
 
   for(int i = 0; i < btt_vec[btt_id].load_table_pointer.size(); i++) {
     auto it = std::find(tmp_plq.begin(), tmp_plq.end(), btt_vec[btt_id].load_table_pointer[i]);
@@ -1099,69 +1111,30 @@ void OoOProcessor::retire()
     }
 #endif
     if(dinst->getInst()->isLoad()) {
-#if 0
-      num_mem_lat++;
-      //use max mem latency of last 10 loads to calculate trigger load address
-      if(num_mem_lat >= 10) {
-        num_mem_lat   = 0;
-        mem_lat_vec.clear();
-      }
-      mem_lat_vec.push_back((globalClock - dinst->getExecutingTime()));
-      max_mem_lat = *std::max_element(mem_lat_vec.begin(), mem_lat_vec.end());
-      if(max_mem_lat > 8) {
-        max_mem_lat = 8;
-      }
-#endif
 
-#ifdef NEW_LDBP_INTERFACE
       DL1->hit_on_load_table(dinst, false);
       //int lt_idx = return_load_table_index(dinst->getPC());
       rtt_load_hit(dinst);
-#endif
-
-#if 0
-      RegType ld_dst = dinst->getInst()->getDst1();
-      if(ld_dst <= LREG_R31) {
-        ct_table[ld_dst].ct_load_hit(dinst);
-        ct_table[ld_dst].num_mem_lat++;
-        //use max mem latency of last 10 loads to calculate trigger load address
-        if(ct_table[ld_dst].num_mem_lat >= 10) {
-          ct_table[ld_dst].num_mem_lat   = 0;
-          //ct_table[ld_dst].mem_lat_vec.clear();
-        }
-        //ct_table[ld_dst].mem_lat_vec.push_back((globalClock - dinst->getExecutingTime()));
-        ct_table[ld_dst].mem_lat_vec[ct_table[ld_dst].num_mem_lat] = (globalClock - dinst->getExecutingTime());
-        ct_table[ld_dst].max_mem_lat = *std::max_element(ct_table[ld_dst].mem_lat_vec.begin(), ct_table[ld_dst].mem_lat_vec.end());
-        //ct_table[ld_dst].max_mem_lat = std::accumulate(ct_table[ld_dst].mem_lat_vec.begin(), ct_table[ld_dst].mem_lat_vec.end(), 0.0) / ct_table[ld_dst].mem_lat_vec.size();
-        if(ct_table[ld_dst].max_mem_lat > 16) {
-          //ct_table[ld_dst].max_mem_lat = 16;
-        }
-      }
-#endif
     }
 
-#ifdef NEW_LDBP_INTERFACE
     //handle complex ALU in RTT
     if(dinst->getInst()->isComplex()) {
       RegType dst  = dinst->getInst()->getDst1();
       rtt_vec[dst].num_ops = NUM_OPS + 1;
     }
-#endif
 
     if(dinst->getInst()->isALU()) { //if ALU hit on ldbp_retire_table
       RegType alu_dst = dinst->getInst()->getDst1();
       RegType alu_src1 = dinst->getInst()->getSrc1();
       RegType alu_src2 = dinst->getInst()->getSrc2();
-#ifdef NEW_LDBP_INTERFACE
       if(alu_src1 == LREG_R0 && alu_src2 == LREG_R0) { //Load Immediate
         //DL1->hit_on_load_table(dinst, true);
-        //rtt_load_hit(dinst); //load_table_vec index is always 0 for Li; index 1 to LOAD_TABLE_SIZE is for other LDs
+        rtt_load_hit(dinst); //load_table_vec index is always 0 for Li; index 1 to LOAD_TABLE_SIZE is for other LDs
         //Treat Li as ALU and not as LOAD (FIXME???????????)
-        rtt_alu_hit(dinst);
+        //rtt_alu_hit(dinst);
       }else { // other ALUs
         rtt_alu_hit(dinst);
       }
-#endif
 
     }
 

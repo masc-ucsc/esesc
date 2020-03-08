@@ -63,11 +63,10 @@ MemObj::MemObj(const char *sSection, const char *sName)
     : section(sSection)
     , name(sName)
 #ifdef ENABLE_LDBP
-      //, BOT_SIZE(SescConf->getInt(section, "bot_size"))
-      //, LOR_SIZE(SescConf->getInt(section, "lor_size"))
-      //, LOT_QUEUE_SIZE(SescConf->getInt(section, "lotq_size"))
-      //, LOAD_TABLE_SIZE(SescConf->getInt(section, "pref_size"))
-      //, PLQ_SIZE(SescConf->getInt(section, "pref_size"))
+      , BOT_SIZE(SescConf->getInt(section, "bot_size"))
+      , LOR_SIZE(SescConf->getInt(section, "lor_size"))
+      , LOAD_TABLE_SIZE(SescConf->getInt(section, "pref_size"))
+      , PLQ_SIZE(SescConf->getInt(section, "pref_size"))
       //, lor_index_track(0)
 #endif
     , id(id_counter++) {
