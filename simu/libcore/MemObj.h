@@ -64,7 +64,7 @@ class MemRequest;
 //#define LOR_SIZE 512
 //#define LOAD_TABLE_SIZE 512 //64 //512
 //#define PLQ_SIZE 512 //512
-#define LOAD_TABLE_CONF 63
+#define LOAD_TABLE_CONF 47 //63
 //#define ENABLE_LDBP
 
 class MemObj {
@@ -99,6 +99,7 @@ public:
   const int LOR_SIZE;
   const int LOAD_TABLE_SIZE;
   const int PLQ_SIZE;
+  const int CODE_SLICE_DELAY;
 #if 0
   const int BOT_SIZE;
   //Load data buffer interface functions
@@ -145,6 +146,9 @@ public:
   ////Load Table
   void hit_on_load_table(DInst *dinst, bool is_li);
   int return_load_table_index(AddrType pc);
+  int getLoadTableConf() const {
+    return LOAD_TABLE_CONF;
+  }
   //PLQ
   int return_plq_index(AddrType pc);
   //LOR
@@ -212,7 +216,7 @@ public:
       }else {
         //conf = conf / 2;
 #if 1
-        if(conf > 32)
+        if(conf > (LOAD_TABLE_CONF/2))
           conf = conf - 4;
         else
           conf = conf / 2;

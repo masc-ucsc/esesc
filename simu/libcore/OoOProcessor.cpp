@@ -69,6 +69,7 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
     , MemoryReplay(SescConf->getBool("cpusimu", "MemoryReplay", i))
 #ifdef ENABLE_LDBP
     , BTT_SIZE(SescConf->getInt("cpusimu", "btt_size", i))
+    , MAX_TRIG_DIST(SescConf->getInt("cpusimu", "max_trig_dist", i))
 #endif
     , RetireDelay(SescConf->getInt("cpusimu", "RetireDelay", i))
     , IFID(i, gm)
@@ -612,7 +613,7 @@ void OoOProcessor::rtt_load_hit(DInst *dinst) {
   if(lt_idx == -1) { //if load not in load table, no point checking RTT
     return;
   }
-  if(DL1->load_table_vec[lt_idx].conf > 63) {
+  if(DL1->load_table_vec[lt_idx].conf > DL1->getLoadTableConf()) {
     rtt_vec[dst] = rename_tracking_table();
     //rtt_vec[dst].reset_rtt();
     rtt_vec[dst].num_ops = 0;
@@ -704,6 +705,7 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
   int nops1 = rtt_vec[src1].num_ops;
   int nops2 = rtt_vec[src2].num_ops;
 #if 1
+  //for loop checks if Br's associated LDs are conf
   for(int i = 0; i < rtt_vec[src1].load_table_pointer.size(); i++) {
     int lt_index = DL1->return_load_table_index(rtt_vec[src1].load_table_pointer[i]);
     //Above line can cause SEG_FAULT if index of Li is checked
@@ -711,13 +713,14 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
     if((dinst->getPC() == 0x186a4) || (dinst->getPC() == 0x187b2) || (dinst->getPC() == 0x18736)|| (dinst->getPC() == 0x186fa) || (dinst->getPC() == 0x18686))
       MSG("RTT_BR_HIT1 clk=%d brpc=%llx ldpc=%llx nops=%d conf=%d", globalClock, dinst->getPC(), rtt_vec[src1].load_table_pointer[i], nops1, DL1->load_table_vec[lt_index].conf);
 #endif
-    if((lt_index != -1) && (DL1->load_table_vec[lt_index].conf > 63)) {
+    if((lt_index != -1) && (DL1->load_table_vec[lt_index].conf > DL1->getLoadTableConf())) {
       all_ld_conf1 = 1;
     }else {
       all_ld_conf1 = 0;
       break;
     }
   }
+  //for loop checks if Br's associated LDs are conf
   for(int i = 0; i < rtt_vec[src2].load_table_pointer.size(); i++) {
     int lt_index = DL1->return_load_table_index(rtt_vec[src2].load_table_pointer[i]);
     //Above line can cause SEG_FAULT if index of Li is checked
@@ -725,7 +728,7 @@ void OoOProcessor::rtt_br_hit(DInst *dinst) {
     if((dinst->getPC() == 0x186a4) || (dinst->getPC() == 0x187b2) || (dinst->getPC() == 0x18736)|| (dinst->getPC() == 0x186fa) || (dinst->getPC() == 0x18686))
       MSG("RTT_BR_HIT2 clk=%d brpc=%llx ldpc=%llx nops=%d conf=%d", globalClock, dinst->getPC(), rtt_vec[src2].load_table_pointer[i], nops2, DL1->load_table_vec[lt_index].conf);
 #endif
-    if((lt_index != -1) && (DL1->load_table_vec[lt_index].conf > 63)) {
+    if((lt_index != -1) && (DL1->load_table_vec[lt_index].conf > DL1->getLoadTableConf())) {
       all_ld_conf2 = 1;
     }else {
       all_ld_conf2 = 0;
@@ -946,13 +949,13 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
     int num_trig_ld = 0;
     //MSG("TL brpc=%llx ldpc=%llx ld_addr=%d conf=%d", dinst->getPC(), ld_ptr, lor_start_addr, DL1->load_table_vec[lt_idx].conf);
     if(use_slice > 0) {
-      if(trig_ld_dist <= 32) {
+      if(trig_ld_dist <= (MAX_TRIG_DIST/2)) {
         num_trig_ld = 4;
-      }else if(trig_ld_dist > 32 && trig_ld_dist < 64) {
+      }else if(trig_ld_dist > (MAX_TRIG_DIST/2) && trig_ld_dist < MAX_TRIG_DIST) {
         num_trig_ld = 2;
       }else {
         num_trig_ld  = 1;
-        trig_ld_dist = 64;
+        trig_ld_dist = MAX_TRIG_DIST;
       }
 
       for(int i = 0; i < num_trig_ld; i++) {
@@ -963,7 +966,8 @@ void OoOProcessor::btt_trigger_load(DInst *dinst, AddrType ld_ptr) {
         MSG("TL clk=%d br_id=%d brpc=%llx ldpc=%llx ld_addr=%d curr_lor_start=%d trig_addr=%d del=%d lor_id=%d", globalClock, dinst->getID(), dinst->getPC(), ld_ptr, lt_load_addr, lor_start_addr, trigger_addr, lor_delta, lor_id);
 #endif
         MemRequest::triggerReqRead(DL1, dinst->getStatsFlag(), trigger_addr, ld_ptr, dinst->getPC(), lor_start_addr, 0, lor_delta, inflight_branch, 0, 0, 0, 0);
-        if(trig_ld_dist < 64)
+        //if(trig_ld_dist < 64)
+        if(trig_ld_dist < MAX_TRIG_DIST)
           DL1->lor_vec[lor_id].trig_ld_dist++;
       }
       //update lor_start by delta so that next TL doesnt trigger redundant loads

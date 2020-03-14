@@ -55,7 +55,7 @@
 
 //#define BTT_SIZE 512 //16 //512
 #define NUM_LOADS 16 // maximum number of loads trackable by LDBP framework
-#define NUM_OPS 16 // maximum number of operations between LD and BR in code snippet
+#define NUM_OPS 8 //16 // maximum number of operations between LD and BR in code snippet
 #define BTT_MAX_ACCURACY 7
 //#define ENABLE_LDBP
 
@@ -152,6 +152,7 @@ public:
 #ifdef ENABLE_LDBP
 
   const int BTT_SIZE;
+  const int MAX_TRIG_DIST;
 
   void classify_ld_br_chain(DInst *dinst, RegType br_src1, int reg_flag);
   void classify_ld_br_double_chain(DInst *dinst, RegType br_src1, RegType br_src2, int reg_flag);

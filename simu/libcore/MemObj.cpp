@@ -67,6 +67,7 @@ MemObj::MemObj(const char *sSection, const char *sName)
       , LOR_SIZE(SescConf->getInt(section, "lor_size"))
       , LOAD_TABLE_SIZE(SescConf->getInt(section, "pref_size"))
       , PLQ_SIZE(SescConf->getInt(section, "pref_size"))
+      , CODE_SLICE_DELAY(SescConf->getInt(section, "cs_delay"))
       //, lor_index_track(0)
 #endif
     , id(id_counter++) {
@@ -260,7 +261,8 @@ int MemObj::return_plq_index(AddrType pc) {
 }
 
 void MemObj::lor_find_index(AddrType tl_addr) {
-  lor_trigger_load_completeCB::schedule(1, this, tl_addr);
+  //lor_trigger_load_completeCB::schedule(1, this, tl_addr);
+  lor_trigger_load_completeCB::schedule(CODE_SLICE_DELAY, this, tl_addr);
 #if 0
   for(int i = 0; i < lor_vec.size(); i++) {
     AddrType lor_start  = lor_vec[i].ld_start;
