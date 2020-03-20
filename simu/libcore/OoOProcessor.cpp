@@ -662,7 +662,7 @@ void OoOProcessor::rtt_alu_hit(DInst *dinst) {
   //tmp.insert(tmp.end(), rtt_vec[src2].load_table_pointer.begin(), rtt_vec[src2].load_table_pointer.begin() + rtt_vec[src2].load_table_pointer.size());
   std::sort(tmp.begin(), tmp.end());
   tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
-#if 1
+#if 0
   //don't increment NOPS if ALU part of LD-BR slice with use_slice == 0
   for(int i = 0; i < rtt_vec[src1].load_table_pointer.size(); i++) {
     int lt_id = DL1->return_load_table_index(rtt_vec[src1].load_table_pointer[i]);

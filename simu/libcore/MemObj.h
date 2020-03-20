@@ -59,12 +59,12 @@ class MemRequest;
 #define LDBUFF_SIZE 512
 #define CIR_QUEUE_WINDOW 512 //FIXME: need to change this to a conf variable
 
-#define LOT_QUEUE_SIZE 512 //FIXME: need to change this to a conf variable
+#define LOT_QUEUE_SIZE 64 //512 //FIXME: need to change this to a conf variable
 //#define BOT_SIZE 512 //16 //512
 //#define LOR_SIZE 512
 //#define LOAD_TABLE_SIZE 512 //64 //512
 //#define PLQ_SIZE 512 //512
-#define LOAD_TABLE_CONF 47 //63
+#define LOAD_TABLE_CONF 63
 //#define ENABLE_LDBP
 
 class MemObj {
