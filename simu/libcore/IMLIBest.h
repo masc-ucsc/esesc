@@ -33,6 +33,7 @@
 #define _PREDICTOR_H_
 
 //#define MEDIUM_TAGE 1
+//#define IMLI_128K 1
 #define IMLI_256K 1
 //#define MEGA_IMLI 1
 

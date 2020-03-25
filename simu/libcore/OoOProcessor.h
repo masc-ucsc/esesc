@@ -54,8 +54,8 @@
 #define DEP_LIST_SIZE 64
 
 //#define BTT_SIZE 512 //16 //512
-#define NUM_LOADS 16 // maximum number of loads trackable by LDBP framework
-#define NUM_OPS 8 //16 // maximum number of operations between LD and BR in code snippet
+#define NUM_LOADS 7 //16 // maximum number of loads trackable by LDBP framework
+#define NUM_OPS 4 //8 //16 // maximum number of operations between LD and BR in code snippet
 #define BTT_MAX_ACCURACY 7
 //#define ENABLE_LDBP
 
