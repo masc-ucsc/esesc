@@ -33,7 +33,7 @@
 #define _PREDICTOR_H_
 
 //#define MEDIUM_TAGE 1
-//#define IMLI_128K 1
+//#define IMLI_150K 1
 #define IMLI_256K 1
 //#define MEGA_IMLI 1
 
@@ -75,6 +75,18 @@
 #define LOGG 11       // logsize of the  tagged TAGE tables
 #define TBITS 16      // minimum tag width
 #define MAXHIST 200
+#define MINHIST 5
+
+#elif IMLI_150K
+//nhist = 4
+#define LOOPPREDICTOR //  use loop  predictor
+#define LOCALH        // use local histories
+#define IMLI          // using IMLI component
+#define IMLISIC       // use IMLI-SIC
+#define IMLIOH        // use IMLI-OH
+#define LOGG 11 //11       // logsize of the  tagged TAGE tables
+#define TBITS 13 //16      // minimum tag width
+#define MAXHIST 160
 #define MINHIST 5
 #else
 // nhist = 7, glength
