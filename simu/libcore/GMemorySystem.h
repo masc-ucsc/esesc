@@ -37,6 +37,10 @@
 #ifndef GMEMORYSYSTEM_H
 #define GMEMORYSYSTEM_H
 
+#include <strings.h>
+
+#include <vector>
+
 #include "estl.h"
 #include "nanassert.h"
 

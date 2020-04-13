@@ -67,14 +67,7 @@ public:
 
 class LSQFull : public LSQ {
 private:
-  class AddrTypeHashFunc {
-  public:
-    size_t operator()(const DataType p) const {
-      return ((uint64_t)p);
-    }
-  };
-
-  typedef HASH_MULTIMAP<AddrType, DInst *, AddrTypeHashFunc> AddrDInstQMap;
+  typedef HASH_MULTIMAP<AddrType, DInst *> AddrDInstQMap;
 
   GStatsCntr    stldForwarding;
   AddrDInstQMap instMap;

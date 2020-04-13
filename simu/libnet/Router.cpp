@@ -236,6 +236,6 @@ void Router::registerProtocol(ProtocolCBBase *pcb, PortID_t pID, int32_t id) {
   localPortProtocol[id] = pcb;
 }
 
-ushort Router::calcNumFlits(Message *msg) const {
-  return (ushort)ceil(msg->getSize() / net->getLinkBytes());
+unsigned short Router::calcNumFlits(Message *msg) const {
+  return (unsigned short)ceil(msg->getSize() / net->getLinkBytes());
 }

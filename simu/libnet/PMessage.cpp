@@ -4,13 +4,13 @@
 #include "PMessage.h"
 #include "ProtocolBase.h"
 
-ushort         PMessage::maxMsgSize;
+unsigned short PMessage::maxMsgSize;
 pool<PMessage> PMessage::msgPool;
 
 // For each message type there is an associated size and name
 typedef struct _SizeNameInfo {
-  ushort      size;
-  const char *name;
+  unsigned short size;
+  const char    *name;
 } SizeNameInfo;
 
 // assume 8 word line size..this is reasonable

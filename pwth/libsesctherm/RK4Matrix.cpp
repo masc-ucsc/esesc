@@ -31,7 +31,6 @@ Description:    This contains routines to link the model units to RK4-matrix
 ********************************************************************************/
 
 #include <assert.h>
-#include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -24,103 +24,12 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // Diferent compilers have slightly different calling conventions for
 // STL. This file has a cross-compiler implementation.
 
-#ifdef __INTEL_COMPILER
-#include <algorithm>
-#include <ext/hash_map>
-#include <ext/hash_set>
-#define HASH_MAP stlport::hash_map
-#define HASH_SET stlport::hash_set
-#define HASH_MULTIMAP stlport::hash_multimap
-#define HASH std::hash
-#elif USE_STL_PORT
-/* Sun Studio or Standard compiler -library=stlport5 */
-#include <stlport/algorithm>
-#include <stlport/hash_map>
-#include <stlport/hash_set>
-#define HASH_MAP std::hash_map
-#define HASH_SET std::hash_set
-#define HASH_MULTIMAP std::hash_multimap
-#define HASH std::hash
-
-#else
-/* GNU C Compiler */
-
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 6 && __cplusplus < 199711L
-#include <ext/hash_map>
-#include <ext/hash_set>
-#define HASH_MAP __gnu_cxx::hash_map
-#define HASH_SET __gnu_cxx::hash_set
-#define HASH_MULTIMAP __gnu_cxx::hash_multimap
-#define HASH __gnu_cxx::hash
-#else
-#include <boost/functional/hash.hpp>
-#include <boost/unordered_map.hpp>
-#include <boost/unordered_set.hpp>
-#include <boost/utility.hpp>
-#define HASH_MAP boost::unordered_map
-#define HASH_SET boost::unordered_set
-#define HASH_MULTIMAP boost::unordered_multimap
-#define HASH boost::hash
-namespace boost {
-template <> struct hash<const char *> {
-  std::size_t operator()(const char *__val) const {
-    std::string v = static_cast<std::string>(__val);
-    return hash_range(v.begin(), v.end());
-  }
-};
-
-template <> struct hash<char *> {
-  std::size_t operator()(char *__val) const {
-    std::string v = static_cast<std::string>(__val);
-    return hash_range(v.begin(), v.end());
-  }
-};
-}; // namespace boost
-#endif
-
-/* gcc 4.3 */
-//#elif __GNUC_MINOR__ == 4
-//#include <backward/hash_set>
-//#include <ext/hash_map>
-//#include <ext/hash_set>
-//#include <ext/algorithm>
-//#define HASH_MAP       __gnu_cxx::hash_map
-//#define HASH_SET       __gnu_cxx::hash_set
-//#define HASH_MULTIMAP  __gnu_cxx::hash_multimap
-//#define HASH           __gnu_cxx::hash
-
-/* gcc 4.4 and later */
-//#include <boost/functional/hash.hpp>
-//#include <boost/utility.hpp>
-//#include <boost/unordered_map.hpp>
-//#include <boost/unordered_set.hpp>
-//#include <ext/hash_map>
-//#define HASH_MAP       __gnu_cxx::hash_map
-////#define HASH_MAP       boost::unordered_map
-//#define HASH_SET       boost::unordered_set
-//#define HASH_MULTIMAP  boost::unordered_multimap
-//#define HASH           boost::hash
-// namespace boost {
-//  template <> struct hash<const char *> {
-//    std::size_t
-//    operator()(const char * __val) const {
-//      std::string v = static_cast<std::string>(__val);
-//      return hash_range(v.begin(),v.end());
-//    }
-//    };
-//
-//  template <> struct hash<char *> {
-//    std::size_t
-//    operator()(char * __val) const {
-//      std::string v = static_cast<std::string>(__val);
-//      return hash_range(v.begin(),v.end());
-//    }
-//    };
-//}
-//
-//#endif // GNUC_MINOR
-#endif // GNUC
-
-#include <boost/dynamic_bitset.hpp>
+#include <unordered_map>
+#include <set>
+#include <map>
+#define HASH_MAP std::unordered_map
+#define HASH_SET std::set
+#define HASH     std::hash
+#define HASH_MULTIMAP std::multimap
 
 #endif // ESTL_H

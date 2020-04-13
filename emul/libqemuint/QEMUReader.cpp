@@ -86,7 +86,7 @@ QEMUReader::QEMUReader(QEMUArgs *qargs, const char *section, EmulInterface *eint
     numAllFlows++;
   }
 
-  qemu_thread = -1;
+  // qemu_thread = -1;
   // started = false;
 }
 /* }}} */
@@ -367,12 +367,6 @@ void QEMUReader::syncHeadTail(FlowID fid) {
 void QEMUReader::drainFIFO(FlowID fid)
 /* Drain the tsfifo as much as possible due to a mode change {{{1 */
 {
-  I(0); // not needed for the moment
-  if(pthread_equal(qemu_thread, pthread_self()))
-    return;
-
-  while(!tsfifo[fid].empty() && !ruffer[fid].empty()) {
-    pthread_yield();
-  }
+  I(0); // not implemented
 }
 /* }}} */

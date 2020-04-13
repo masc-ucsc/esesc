@@ -40,6 +40,7 @@ Description:    Handles the reading and modeling of the chip floorplan
 ********************************************************************************/
 
 #include <iomanip>
+#include <algorithm>
 
 #include "sescthermMacro.h"
 

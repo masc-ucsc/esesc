@@ -54,9 +54,11 @@
 #include "router.h"
 #include <list>
 
+#if NEW_BOOST
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/access.hpp>
+#endif
 
 class min_values_t {
 #if NEW_BOOST

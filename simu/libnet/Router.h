@@ -36,10 +36,10 @@ private:
   // Begin Configuration parameters
   const TimeDelta_t crossLat; //!< Router crossing latency [0..32700)
 
-  const ushort      localNum;  //!< Number of addressable local ports [1..MAX_PORTS-LOCAL_PORT1)
-  const TimeDelta_t localLat;  //!< Local port latency [0..32700)
-  const TimeDelta_t localOcc;  //!< Local port occupancy [0..32700)
-  const ushort      localPort; //!< Number of ports for each addressable local port [0..32700)
+  const unsigned short localNum;  //!< Number of addressable local ports [1..MAX_PORTS-LOCAL_PORT1)
+  const TimeDelta_t    localLat;  //!< Local port latency [0..32700)
+  const TimeDelta_t    localOcc;  //!< Local port occupancy [0..32700)
+  const unsigned short localPort; //!< Number of ports for each addressable local port [0..32700)
 
   const bool        congestionFree; //!< Skip the router modeling (just local ports)
   const TimeDelta_t addFixDelay;    //!< fix delay to add to the network forwarding
@@ -60,7 +60,7 @@ private:
   std::vector<PortGeneric *> r2rPort; //!< ports from router to router (output)
 
 protected:
-  ushort calcNumFlits(Message *msg) const;
+  unsigned short calcNumFlits(Message *msg) const;
 
 public:
   Router(const char *section, RouterID_t id, InterConnection *n, RoutingTable *rt);

@@ -3,7 +3,7 @@
 
 #include "nanassert.h"
 
-typedef ushort RouterID_t;
+typedef unsigned short RouterID_t;
 
 enum PortID_t {
   DISABLED_PORT = 0,
@@ -36,7 +36,7 @@ inline PortID_t &operator--(PortID_t &p, int32_t i) {
 // (RouterID_t) and port (PortID_t). For each combination of
 // router:port there may be several "devices" attached. Protocols work
 // using NetDevice, while routers work with RouterID and PortID
-typedef ushort NetDevice_t;
+typedef unsigned short NetDevice_t;
 
 // const NetDevice_t BCastNID = (NetDevice_t)-1;
 

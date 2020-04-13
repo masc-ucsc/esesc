@@ -1,6 +1,9 @@
+
+#include <math.h>
+#include <climits>
+
 #include "RoutingPolicy.h"
 #include "SescConf.h"
-#include <math.h>
 
 /*******************************
        RoutingPolicy

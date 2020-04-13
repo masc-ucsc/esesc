@@ -49,6 +49,7 @@
  */
 
 #include <iostream>
+#include <deque>
 
 #include "estl.h"
 #include "nanassert.h"
@@ -74,8 +75,6 @@ public:
       return ((addr) ^ (addr >> 16));
     }
   };
-
-  typedef boost::dynamic_bitset<> LongHistoryType;
 
   HistoryType calcHist(AddrType pc) const {
     HistoryType cid = pc >> 2; // psudo-PC works, no need lower 2 bit
@@ -452,194 +451,6 @@ public:
   uint32_t getLoopIter(uint64_t key, uint64_t tag) const;
 };
 
-
-#if 1
-class BPSOgehl : public BPred {
-private:
-  BPBTB btb;
-
-  const int32_t mtables;
-  const int32_t glength;
-  const int32_t AddWidth;
-  int32_t       logtsize;
-
-  int32_t THETA;
-  int32_t MAXTHETA;
-  int32_t THETAUP;
-  int32_t PREDUP;
-
-  LongHistoryType ghr;
-  int32_t *       histLength;
-  int32_t *       usedHistLength;
-
-  int32_t *T;
-  int32_t  AC;
-  uint8_t  miniTag;
-  uint8_t *MINITAG;
-
-  uint8_t genMiniTag(const DInst *dinst) const {
-    AddrType t = dinst->getPC() >> 2;
-    return (uint8_t)((t ^ (t >> 3)) & 3);
-  }
-
-  char ** pred;
-  int32_t TC;
-
-protected:
-  uint32_t geoidx2(uint64_t Add, int32_t m);
-
-public:
-  BPSOgehl(int32_t i, const char *section, const char *sname);
-  ~BPSOgehl();
-
-  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
-};
-#endif
-
-class BPTage : public BPred {
-private:
-  BPBTB       btb;
-  HistoryType ghr;
-
-  const int32_t numberOfTaggedPredictors;
-  const int32_t numberOfBimodalEntries;
-  const int32_t taggedTableEntries;
-  const int32_t maxHistLength;
-  const int32_t minHistLength;
-  const int32_t glength;
-  const int32_t ctrCounterWidth;
-  unsigned      hystBits;
-  unsigned *    tagWidth;
-  int32_t *     histLength;
-  int32_t       logpred;
-  int32_t *     logOfNumberOfEntriesInTaggedTables;
-  char **       tageIndexSupport;
-  int32_t *     bimodalTableSize;
-  int32_t *     taggedTableSize;
-  uint64_t *    ghist;
-
-  unsigned        hashIndexForTaggedTable(DInst *dinst, unsigned bankID);
-  unsigned        F(unsigned pathHistory, unsigned numTables, unsigned currentTagBankID);
-  unsigned        tagCalculation(DInst *dinst, unsigned bankID);
-  bool            getBimodalPrediction(DInst *dinst, bool saturated);
-  void            bimodalUpdate(DInst *dinst, bool taken);
-  void            updatePredictorDirection(DInst *dinst, bool taken, void *bph);
-  inline unsigned bimodalIndexCalculation(AddrType branchAddr) {
-    return ((branchAddr >> instShiftAmount) & bimodalIdxMask);
-  }
-
-  void updateGlobalHistory(DInst *dinst, bool taken, void *&bph, bool save);
-
-public:
-  unsigned instShiftAmount;
-
-  unsigned  baseHystShift;
-  unsigned  BPHistoryCount;
-  unsigned  historyID;
-  unsigned  pathHistory;
-  unsigned  sinceBimodalMisprediction;
-  unsigned  randomSeed;
-  unsigned *globalHistory, *retireGlobalHistory;
-  unsigned  BPHistory_count;
-  int       useAltOnNA;
-  int       shiftAmount;
-  unsigned  counterResetControl, counterLog;
-
-  AddrType bimodalIdxMask, *taggedTableIdxMask, *taggedTableTagMask;
-  BPTage(int32_t i, const char *section, const char *sname);
-  ~BPTage();
-
-  inline unsigned randomGenerator() {
-    ++randomSeed;
-    return randomSeed & 3;
-  }
-  PredType predict(DInst *dinst, bool doUpdate, bool doStats);
-
-  bool       lookup(DInst *dinst, void *&bph);
-  void       unconditionalBranch(DInst *dinst, void *&bph);
-  void       recoverFromMisprediction(DInst *dinst, bool taken, void *bph);
-  void       updateBranchPredictor(DInst *dinst, bool taken, void *bph, bool squash);
-  void       fixGlobalHistory(DInst *dinst, void *bph, bool actTaken);
-  void       squashRecovery(void *bph);
-  unsigned * hyst, *pred;
-  unsigned **tageTableTagEntry;
-  unsigned **tageTableUsefulCounter;
-  int32_t ** ctrCounter, ctrMaxValue, ctrMinValue;
-  bool **    hConf;
-  int32_t *  numberOfEntriesInTaggedComponent;
-
-  struct historyOverhead {
-    unsigned direction, id;
-    uint64_t sequenceNumber;
-  };
-
-  struct BPHistory {
-
-    BPHistory(const bool init)
-        : highConfidence(false)
-        , mediumConfidence(false)
-        , lowConfidence(false)
-        , actuallyTaken(false)
-        , bimodalHighConfidence(false)
-        , bimodalMediumConfidence(false)
-        , bimodalLowConfidence(false)
-        , sTag(false)
-        , nsTag(false)
-        , wTag(false)
-        , nwTag(false)
-        , unconditional(false)
-        , usedBimodal(false)
-        , usedTagged(false)
-        , usedStandard(false)
-        , usedAlt(false) {
-    }
-
-    unsigned         pathHistoryBackup;
-    unsigned         historyID;
-    historyOverhead *directionPtr;
-    unsigned *       indexStore, *tagStore;
-    AddrType *       ch_i_comp;
-    AddrType *       ch_t0_comp;
-    AddrType *       ch_t1_comp;
-    bool             highConfidence, mediumConfidence, lowConfidence;
-    bool             predictTaken, altTaken;
-    bool             tagePrediction, hitBank, altBank;
-    bool             actuallyTaken;
-    bool             bimodalHighConfidence, bimodalMediumConfidence, bimodalLowConfidence;
-    bool             sTag, nsTag, wTag, nwTag;
-    bool             unconditional;
-    bool             usedBimodal, usedTagged, usedStandard, usedAlt;
-  };
-
-  class tageGlobalEntry {
-  public:
-    int32_t  counter, maxValue, minValue;
-    unsigned tag, u;
-    bool     hi;
-
-    tageGlobalEntry(unsigned counterWidth) {
-      counter  = 0;
-      maxValue = (1 << counterWidth) - 1;
-      minValue = 0;
-      tag      = 0;
-      u        = 0;
-      hi       = false;
-    }
-
-    inline void counterUpdate(bool taken, unsigned counterWidth) {
-      maxValue = (1 << counterWidth) - 1;
-      minValue = 0;
-
-      if(taken && (counter < maxValue))
-        ++counter;
-      else if(!taken && (counter > 0))
-        --counter;
-    }
-  };
-
-  std::deque<historyOverhead> globHist;
-  std::deque<historyOverhead> retire_globHist;
-};
 
 class BPTData : public BPred {
 private:

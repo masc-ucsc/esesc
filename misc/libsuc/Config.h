@@ -56,6 +56,12 @@ protected:
         return false;
       return (strcasecmp(a.s2.c_str(), s2.c_str()) == 0);
     }
+    bool operator<(const KeyIndex &a) const {
+      auto tmp = strcasecmp(a.s1.c_str(), s1.c_str());
+      if(tmp==0)
+        return strcasecmp(a.s2.c_str(), s2.c_str()) < 0;
+      return tmp<0;
+    }
   };
 
   // Class for each one of the fields stored in Config. It's similar
@@ -202,32 +208,7 @@ protected:
     void dump(const char *pre, const char *post);
   };
 
-  // Instead of using the default hash function I prefer to use this
-  // one. The reason is that STL use tables with prime number
-  // length. It's a pretty good one. I got it from Dr.Dobbs Journal
-  // December 1996. I use a slightly modified Colin Plumb hash
-  // function.
-  class HashColin {
-  private:
-    size_t hash(const char *s, size_t hval) const {
-      while(*s) {
-        hval += tolower(*s++);
-        hval += (hval << 10);
-        hval ^= (hval >> 6);
-      }
-      hval += (hval << 3);
-      hval ^= (hval >> 11);
-      hval += (hval << 15);
-      return hval;
-    };
-
-  public:
-    size_t operator()(const KeyIndex &k) const {
-      return hash(k.s2.c_str(), hash(k.s1.c_str(), 0));
-    }
-  };
-
-  typedef HASH_MULTIMAP<KeyIndex, Record *, HashColin> hashRecord_t;
+  typedef HASH_MULTIMAP<KeyIndex, Record *> hashRecord_t;
 
   const char *envstart; // Match to add for environment variables
 

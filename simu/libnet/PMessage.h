@@ -91,7 +91,7 @@ class ProtocolBase;
 
 class PMessage : public Message {
 private:
-  static ushort         maxMsgSize; //!< Maximum size that a message can have.
+  static unsigned short maxMsgSize; //!< Maximum size that a message can have.
   static pool<PMessage> msgPool;
 
 protected:
@@ -160,7 +160,7 @@ public:
 
   //! returns the maximum message size that can be sent in the network.
   //! Used for debugging and to decide the minimum size of several queues.
-  ushort getMaxMsgSize() const {
+  unsigned short getMaxMsgSize() const {
     return maxMsgSize;
   }
 

@@ -1,3 +1,6 @@
+
+#include <cmath>
+
 #include "wavesnap.h"
 
 wavesnap::wavesnap() {

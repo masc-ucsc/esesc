@@ -143,35 +143,3 @@ void InterConnection::updateAvgMsgLatency(Time_t launchTime) {
   // msgLatency.sample(globalClock - launchTime);
 }
 
-#if 0
-class TestMessage : public Message {
-  void garbageCollect();
-  void trace(const char *format,...) {};
-  int32_t getUniqueProtID() const {return 0;}
-};
-pool<TestMessage> tmpool;
-
-void TestMessage::garbageCollect()
-{
-    refCount--;
-    if (refCount == 0) {
-      LOG("destroying TestMessage");
-      tmpool.in(this);
-    }
-}
-
-void InterConnection::test()
-{
-  TestMessage* t;
-  for (ushort i = 0; i < rPolicy->getnRouters(); i++) {
-    t = tmpool.out();
-    t->init(i, PortID_t(100), 0, PortID_t(101), Message::RCV_AND_PASS);
-    t->setSize(100);
-    routers[i]->launchMsg(t);
-    t = tmpool.out();
-    t->init(i, PortID_t(100), 0, PortID_t(101), Message::RCV);
-    t->setSize(100);
-    routers[i]->launchMsg(t);
-  }
-}
-#endif

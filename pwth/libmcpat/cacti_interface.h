@@ -56,9 +56,11 @@
 #include <string>
 #include <vector>
 
+#if NEW_BOOST
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/access.hpp>
+#endif
 
 using namespace std;
 

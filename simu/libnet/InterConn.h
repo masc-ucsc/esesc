@@ -62,7 +62,7 @@ private:
   const char *descrSection;
   GStatsAvg   msgLatency;
 
-  ushort linkBits;  // link width in bits [1..32700)
+  unsigned short linkBits;  // link width in bits [1..32700)
   float  linkBytes; // linkBits / 8
 
   // stores how many routers were already attached to by type of
@@ -93,23 +93,23 @@ public:
   InterConnection(const char *section);
   ~InterConnection();
 
-  const char *getDescrSection() {
+  const char *getDescrSection() const {
     return descrSection;
   }
 
-  uint32_t getMaxRouters() {
+  uint32_t getMaxRouters() const {
     return (uint32_t)routers.size();
   }
 
   uint32_t getNextFreeRouter(const char *section);
 
-  ushort getLinkBits() {
+  unsigned short getLinkBits() const {
     return linkBits;
   }
 
   PortID_t getPort(const char *section);
 
-  float getLinkBytes() {
+  float getLinkBytes() const {
     return linkBytes;
   }
 
