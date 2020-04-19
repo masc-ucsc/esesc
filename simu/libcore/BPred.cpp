@@ -1640,8 +1640,6 @@ BPred *BPredictor::getBPred(int32_t id, const char *sec, const char *sname, MemO
     pred = new BPTData(id, sec, sname);
   } else if(strcasecmp(type, "ldbp") == 0) {
     pred = new BPLdbp(id, sec, sname, DL1);
-  } else if(strcasecmp(type, "sogehl") == 0) {
-    pred = new BPSOgehl(id, sec, sname);
   } else {
     MSG("BPredictor::BPredictor Invalid branch predictor type [%s] in section [%s]", type, sec);
     SescConf->notCorrect();
@@ -1674,7 +1672,7 @@ BPredictor::BPredictor(int32_t i, MemObj *iobj, MemObj *dobj, BPredictor *bpred)
     , nFixes1("P(%d)_BPred:nFixes1", id)
     , nFixes2("P(%d)_BPred:nFixes2", id)
     , nFixes3("P(%d)_BPred:nFixes3", id)
-    , nUnFixes("P(%d)_BPred:nUnFixes", id) 
+    , nUnFixes("P(%d)_BPred:nUnFixes", id)
     , nAgree3("P(%d)_BPred:nAgree3", id) {
   const char *bpredSection  = SescConf->getCharPtr("cpusimu", "bpred", id);
   const char *bpredSection2 = 0;

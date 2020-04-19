@@ -24578,7 +24578,7 @@ static void decode_opc_special(CPUMIPSState *env, DisasContext *ctx)
         break;
 #ifdef CONFIG_ESESC
     case OPC_SPECIAL28_RESERVED:
-        gen_helper_esesc0(cpu_env);
+        gen_helper_esesc0(cpu_env); // Toggle ROI for simulation
         break;
 #else
     case OPC_SPECIAL28_RESERVED:

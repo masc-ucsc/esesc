@@ -2740,7 +2740,7 @@ void helper_esesc0(CPUMIPSState *env)
     CPUState *cs = CPU(mips_env_get_cpu(env));
 
     icount = 0;
-    QEMUReader_start_roi(cs->fid);
+    QEMUReader_toggle_roi(cs->fid);
 }
 #endif
 

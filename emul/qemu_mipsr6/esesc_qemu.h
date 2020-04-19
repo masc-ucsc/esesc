@@ -15,7 +15,7 @@ void QEMUReader_finish(uint32_t fid);
 void QEMUReader_finish_thread(uint32_t fid);
 uint32_t QEMUReader_resumeThread(uint32_t fid, uint32_t last_fid);
 void QEMUReader_pauseThread(uint32_t fid);
-void QEMUReader_start_roi(uint32_t fid);
+void QEMUReader_toggle_roi(uint32_t fid);
 
 void esesc_set_rabbit(uint32_t fid);
 void esesc_set_warmup(uint32_t fid);

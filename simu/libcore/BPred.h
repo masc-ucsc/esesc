@@ -580,7 +580,7 @@ class BPLdbp : public BPred {
 
     int outcome_doc(DInst *dinst, AddrType _tag, bool outcome) {
       //tag is 2n bits
-      AddrType t         = (_tag >> (int)log2(DOC_SIZE)) & (DOC_SIZE - 1); //upper n bits for tag
+      AddrType t         = (_tag >> (int)log2i(DOC_SIZE)) & (DOC_SIZE - 1); //upper n bits for tag
       int index          = _tag & (DOC_SIZE - 1);  //lower n bits for index
       if(doc_table[index].tag == t) {
         //MSG("DOC_TABLE_HIT brpc=%llx index=%d tag=%u T=%d NT=%d conf=%d", dinst->getPC(), index, t, doc_table[index].taken, doc_table[index].ntaken, doc_table[index].doc_compute());

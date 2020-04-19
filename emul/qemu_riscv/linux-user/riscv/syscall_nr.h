@@ -283,8 +283,5 @@
 #define TARGET_NR_membarrier 283
 #define TARGET_NR_mlock2 284
 #define TARGET_NR_copy_file_range 285
-#ifdef CONFIG_ESESC
-#define TARGET_NR_toggle_roi 286
-#endif
 
 #define TARGET_NR_syscalls (TARGET_NR_copy_file_range + 1)

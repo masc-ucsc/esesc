@@ -51,16 +51,16 @@
 
 class GStats_strcasecmp {
 public:
-  inline bool operator()(const char *s1, const char *s2) const {
-    return strcasecmp(s1, s2) == 0;
+  bool operator()(const std::string &s1, const std::string &s2) const noexcept {
+    return ::strcasecmp(s1.c_str(), s2.c_str()) < 0;
   }
 };
 
 class GStats {
 private:
-  typedef HASH_MAP<const char *, GStats *, HASH<const char *>, GStats_strcasecmp>           Container;
-  typedef HASH_MAP<const char *, GStats *, HASH<const char *>, GStats_strcasecmp>::iterator ContainerIter;
-  static Container *                                                                        store;
+  typedef std::map<std::string, GStats *, GStats_strcasecmp>           Container;
+  typedef Container::iterator ContainerIter;
+  static Container store;
 
 protected:
   char *name;

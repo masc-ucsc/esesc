@@ -11538,24 +11538,6 @@ static abi_long do_syscall1(void *cpu_env, int num, abi_long arg1,
         /* PowerPC specific.  */
         return do_swapcontext(cpu_env, arg1, arg2, arg3);
 #endif
-#ifdef CONFIG_ESESC2
-    case TARGET_NR_start_roi:
-        QEMUReader_start_roi(cpu->fid);
-        fprintf(stderr,"##QEMU syscall: start_roi\n");
-        break;
-
-    case TARGET_NR_end_roi:
-        fprintf(stderr,"##QEMU syscall: end_roi\n");
-        //TODO: see if this is correct way to exit simulation
-        QEMUReader_finish(cpu->fid);
-        if (cpu->fid > 4096 ) {
-          printf("QEMU impossible exit fid %d\n",cpu->fid);
-          get_errno(exit_group(arg1));
-        }
-        ret = 0;
-        pthread_exit(NULL);
-        break;
-#endif
     default:
         qemu_log_mask(LOG_UNIMP, "Unsupported syscall: %d\n", num);
         return -TARGET_ENOSYS;

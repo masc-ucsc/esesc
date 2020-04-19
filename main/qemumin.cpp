@@ -59,7 +59,7 @@ extern "C" uint32_t QEMUReader_setnoStats() {
   return 0;
 }
 
-extern "C" void QEMUReader_start_roi(uint32_t fid) {
+extern "C" void QEMUReader_toggle_roi(uint32_t fid) {
 }
 
 extern "C" uint64_t QEMUReader_queue_load(uint64_t pc, uint64_t addr, uint64_t data, uint16_t fid, uint16_t src1, uint16_t dest) {
