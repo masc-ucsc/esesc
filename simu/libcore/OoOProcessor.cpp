@@ -70,6 +70,8 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
 #ifdef ENABLE_LDBP
     , BTT_SIZE(SescConf->getInt("cpusimu", "btt_size", i))
     , MAX_TRIG_DIST(SescConf->getInt("cpusimu", "max_trig_dist", i))
+    , ldbp_power_mode_cycles("P(%d)_ldbp_power_mode_cycles", i)
+    , ldbp_power_save_cycles("P(%d)_ldbp_power_save_cycles", i)
 #endif
     , RetireDelay(SescConf->getInt("cpusimu", "RetireDelay", i))
     , IFID(i, gm)
@@ -129,16 +131,14 @@ OoOProcessor::OoOProcessor(GMemorySystem *gm, CPU_t i)
 
 #ifdef ENABLE_LDBP
   DL1 = gm->getDL1();
+  power_save_mode_ctr = 0;
+  power_clock         = 0;
+  tmp_power_clock     = 0;
   ldbp_curr_addr      = 0;
   ldbp_delta          = 0;
   inflight_branch     = 0;
   ldbp_brpc           = 0;
   ldbp_ldpc           = 0;
-#if 0
-  num_mem_lat         = 0;
-  last_mem_lat        = 0;
-  diff_mem_lat        = 0;
-#endif
 #endif
   if(SescConf->checkBool("cpusimu", "scooreMemory", gm->getCoreId()))
     scooreMemory = SescConf->getBool("cpusimu", "scooreMemory", gm->getCoreId());
@@ -596,6 +596,38 @@ int OoOProcessor::return_load_table_index(AddrType pc) {
   return -1;
 }
 #endif
+
+void OoOProcessor::power_save_mode_table_reset() {
+  //reset back end tables -> BTT, PLQ, CSB
+  //reset front end tables -> BOT, LOR, LOT, CST
+
+  //reset PLQ tracking to 0
+  for(int i = 0; i < DL1->plq_vec.size(); i++) {
+    DL1->plq_vec[i].tracking = 0;
+  }
+
+  //reset LOT and LOT
+  for(int i = 0; i < DL1->lor_vec.size(); i++) {
+    DL1->lor_vec[i].reset_entry();
+    DL1->lot_vec[i].reset_valid();
+  }
+
+  //reset BTT
+  std::vector<branch_trigger_table> btt;
+  for(int x = 0; x < btt_vec.size(); x++) {
+    btt.push_back(branch_trigger_table());
+  }
+  btt_vec.clear();
+  btt_vec = btt;
+
+  //reset BOT
+  std::vector<MemObj::branch_outcome_table> bot;
+  for(int j = 0; j < DL1->getBotSize(); j++) {
+    bot.push_back(MemObj::branch_outcome_table());
+  }
+  DL1->bot_vec.clear();
+  DL1->bot_vec = bot;
+}
 
 void OoOProcessor::rtt_load_hit(DInst *dinst) {
   //reset entry on hit and update fields
@@ -1090,6 +1122,25 @@ DataType OoOProcessor::extract_load_immediate(AddrType pc) {
 void OoOProcessor::retire()
 /* Try to retire instructions {{{1 */
 {
+
+#ifdef ENABLE_LDBP
+  int64_t gclock = int64_t(clockTicks.getDouble());
+  if(gclock != power_clock) {
+    power_clock = gclock;
+    if(power_save_mode_ctr <= (MAX_POWER_SAVE_MODE_CTR + 1)) {
+      power_save_mode_ctr++;
+    }
+    if(power_save_mode_ctr >= MAX_POWER_SAVE_MODE_CTR) {
+      //reset tables and power off
+      ldbp_power_save_cycles.inc(true);
+      tmp_power_clock++;
+      //MSG("global=%d tmp_power_clock=%d", gclock, tmp_power_clock);
+      if(power_save_mode_ctr == MAX_POWER_SAVE_MODE_CTR) {
+        power_save_mode_table_reset();
+      }
+    }
+  }
+#endif
   // Pass all the ready instructions to the rrob
   while(!ROB.empty()) {
     DInst *dinst = ROB.top();
@@ -1176,6 +1227,10 @@ void OoOProcessor::retire()
       inflight_branch = num_inflight_branches;
       dinst->setInflight(inflight_branch);
 
+      if(dinst->isUseLevel3()) {
+        power_save_mode_ctr = 0;
+        //ldbp_power_mode_cycles.inc(true);
+      }
       rtt_br_hit(dinst);
 
     }

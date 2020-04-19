@@ -54,9 +54,10 @@
 #define DEP_LIST_SIZE 64
 
 //#define BTT_SIZE 512 //16 //512
-#define NUM_LOADS 7 //16 // maximum number of loads trackable by LDBP framework
+#define NUM_LOADS 7 //6 //16 // maximum number of loads trackable by LDBP framework
 #define NUM_OPS 4 //8 //16 // maximum number of operations between LD and BR in code snippet
 #define BTT_MAX_ACCURACY 7
+#define MAX_POWER_SAVE_MODE_CTR 100000
 //#define ENABLE_LDBP
 
 class OoOProcessor : public GOoOProcessor {
@@ -138,6 +139,10 @@ protected:
 #endif
   CodeProfile codeProfile;
   double      codeProfile_trigger;
+#ifdef ENABLE_LDBP
+  GStatsCntr ldbp_power_mode_cycles;
+  GStatsCntr ldbp_power_save_cycles;
+#endif
 
   // BEGIN VIRTUAL FUNCTIONS of GProcessor
   bool       advance_clock(FlowID fid);
@@ -151,6 +156,9 @@ public:
 
 #ifdef ENABLE_LDBP
 
+  int64_t power_save_mode_ctr;
+  int64_t power_clock;
+  int64_t tmp_power_clock;
   const int BTT_SIZE;
   const int MAX_TRIG_DIST;
 
@@ -170,6 +178,7 @@ public:
   void hit_on_load_table(DInst *dinst, bool is_li);
   int return_load_table_index(AddrType pc);
 #endif
+  void power_save_mode_table_reset();
   //RTT
   void rtt_load_hit(DInst *dinst);
   void rtt_alu_hit(DInst *dinst);

@@ -1,5 +1,5 @@
 # SCOORE Constants
-memLatency        = 60 # 110ns chromebook
+memLatency        = 140 # 110ns chromebook
 memLevel         = "BigMem Memory" # No BW model
 #memLevel          = "AdvMem MemBus" # No Pref
 #memLevel          = "MemCtrl MemBus" # No Pref
@@ -12,15 +12,25 @@ l3size = 8*1024*1024
 nlpenable = 0
 iw = 6
 mw = $(iw)/4
-lgt = 512
 doc = 512
-bot = 512
+#ldbp params
+trig_dist = 64
+csdelay = 4 #8 #1
+bot = 8 #512
+lor = 16 #512
+pref = 48 #512
+pref_type = 'void'
+dl1_enable = true
+#imli params
+bpred2 = 'BPredIssueX2'
+imli_nhist = 6 #4
+imli_sc = false
 
 [tradCORE]
 type              = "ooo"
 areaFactor        = 2
 #issueWrongPath    = false not in new simu.conf
-fetchWidth        = 8
+fetchWidth        = 16
 alignedFetch      = false
 fetchPorts        = 1
 instQueueSize     = 32
@@ -32,7 +42,7 @@ renameDelay       = 2
 retireDelay       = 3
 drainOnMiss       = false
 maxBranches       = 1024
-bb4Cycle          = 2 #1
+bb4Cycle          = 2 #3 #1
 bpredDelay        = 1 #
 #bpredDelay2        = 1 #
 #bpredDelay3        = 3 #
@@ -40,17 +50,20 @@ maxIRequests      = 5 # +1 icache hit delay -> 1 outs miss
 interClusterLat   = 0
 clusterScheduler  = "RoundRobin"
 cluster[0]        = 'AUNIT'
-cluster[1]        = 'BUNIT'
-cluster[2]        = 'CUNIT'
-cluster[3]        = 'LSUNIT'
+cluster[1]        = 'AUNIT'
+cluster[2]        = 'AUNIT'
+cluster[3]        = 'AUNIT'
+cluster[4]        = 'CUNIT'
+cluster[5]        = 'LSUNIT'
 bpred             = 'BPredIssueX'
-bpred2            = 'BPredIssueX2'
+bpred2            = $(bpred2)
 bpred3            = 'BPredIssueX3'
-lgt_size          = $(lgt) #LGT table in LDBP
-robSize           = 128
+btt_size          = $(bot) #BTT table in LDBP
+max_trig_dist     = $(trig_dist) #max dist LDBP can trigger
+robSize           = 256+128
 stForwardDelay    = 3  # +1 clk from the instruction latency
-maxLoads          = 32
-maxStores         = 32
+maxLoads          = 96
+maxStores         = 64
 prefetcher        = "PrefetchEngine"
 #LSQBanks          = 2 not in new simu.conf
 DL1              = "DL1_core DL1"
@@ -59,18 +72,22 @@ IL1               = "IL1_core IL1"
 #IL1               = "PerCore_ITLB ITLB"
 MemoryReplay      =  false
 enableICache      = true
-enableDCache      = true
+enableDCache      = $(dl1_enable)
+#enableDCache      = true
 noMemSpec         = false
 StoreSetSize      = 8192
 #LFSTSize          = 512 not in new simu.conf
 instWidth         = 32
 opcodeWidth       = 11
 nArchRegs         = 32
-nTotalRegs        = 128
+nTotalRegs        = 180+160
 scbSize           = 16
 
 [PrefetchEngine]
-type              = 'stride'
+type              = $(pref_type)
+#type              = 'stride'
+#type              = 'void'
+#type              = 'tage'
 bimodalSize       = 1024
 bimodalWidth      = 4
 nhist             = 5
@@ -84,24 +101,15 @@ blockName         = "PF"
 [AUNIT]
 blockName         = "AUNIT"
 nRegs             = 128
-winSize           = 32
-recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 3
+winSize           = 24
+recycleAt         = 'executing'      # Recycle entries at : Execute|Retire
+schedNumPorts     = 4
 schedPortOccp     = 1
 schedDelay        = 0
 iAALULat          = 1
 iAALUUnit         = 'AUNIT_AALU'
 iRALULat          = 1
 iRALUUnit         = 'AUNIT_AALU'
-
-[BUNIT]
-blockName         = "BUNIT"
-nRegs             = 128
-winSize           = 16
-recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 2
-schedPortOccp     = 1
-schedDelay        = 0
 iBALU_LBRANCHLat  = 1
 iBALU_LBRANCHUnit = 'BUNIT_BALU'
 iBALU_LJUMPLat    = 1
@@ -117,12 +125,13 @@ iBALU_RCALLUnit   = 'BUNIT_BALU'
 iBALU_RETLat      = 1
 iBALU_RETUnit     = 'BUNIT_BALU'
 
+
 [CUNIT]
 blockName         = "CUNIT"
-nRegs             = 128
-winSize           = 1*16 
-recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
-schedNumPorts     = 2
+nRegs             = 160
+winSize           = 48
+recycleAt         = 'executing'      # Recycle entries at : Execute|Retire
+schedNumPorts     = 4
 schedPortOccp     = 1
 schedDelay        = 0 # Minimum latency like a intraClusterLat
 iCALU_FPMULTLat   = 2 
@@ -139,8 +148,8 @@ iCALU_DIVUnit     = 'CUNIT_CALU'
 [LSUNIT]
 blockName         = "LSUNIT"
 nRegs             = 128
-winSize           = 2*16
-recycleAt         = 'execute'      # Recycle entries at : Execute|Retire
+winSize           = 48
+recycleAt         = 'executing'      # Recycle entries at : Execute|Retire
 schedNumPorts     = 3  
 schedPortOccp     = 1  
 schedDelay        = 0
@@ -172,7 +181,7 @@ Num               = 1
 Occ               = 1
 
 [LUNIT_LALU]
-Num               = 1
+Num               = 2
 Occ               = 1
 
 [SUNIT_AALU]
@@ -201,10 +210,10 @@ numBanks            = 1
 type             = "imli"
 #type             = "oracle"
 FetchPredict      = false
-bimodalSize      = 4096
+bimodalSize      = 2048 #8192
 bimodalWidth     = 2
-nhist            = 6
-statcorrector    = true
+nhist            = $(imli_nhist) #7
+statcorrector    = $(imli_sc) #false #true
 addrShift         = 0
 BTACDelay         = 1 #3
 mtables           = 10       # Number of tables (M)
@@ -234,6 +243,28 @@ rasSize           = 0 #16
 rasPrefetch       = 0
 numBanks          = 1
 doc_size          = $(doc)
+
+[BPredIssueX_Oracle]
+type             = "oracle"
+FetchPredict      = false
+bimodalSize      = 2048 #8192
+bimodalWidth     = 2
+nhist            = 7
+statcorrector    = false #true
+addrShift         = 0
+BTACDelay         = 1 #3
+mtables           = 10       # Number of tables (M)
+glength           = 200
+tsize             = 2*1024  # Size of each table
+tbits             = 7       # Bits for each table entry
+tcbits            = 11      # Bits for theta updates
+btbSize           = 2048
+btbBsize          = 1
+btbAssoc          = 4
+btbReplPolicy     = 'LRU'
+rasSize           = 0
+rasPrefetch       = 0
+numBanks            = 1
 
 [BPredIssueX2b]
 type              = "TAGE"
@@ -282,6 +313,9 @@ missDelay         = 1
 lowerLevel        = "PrivL2 L2 sharedby 4"
 pfetchBuffSize   = 16
 bot_size          = 0
+lor_size          = 0
+pref_size         = 0
+cs_delay         = 0
 
 [PerCore_DTLB]
 deviceType        = 'tlb'
@@ -300,6 +334,9 @@ lowerTLB_delay    = 12 # 20
 # Power metrics
 numBanks          = 1
 bot_size          = 0
+lor_size          = 0
+pref_size         = 0
+cs_delay         = 0
 
 [PerCore_ITLB]
 deviceType        = 'tlb'
@@ -318,6 +355,9 @@ lowerTLB_delay    = 20
 # Power
 numBanks          = 1
 bot_size          = 0
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 
 [DL1_core]
 deviceType        = 'cache'
@@ -325,7 +365,7 @@ coreCoupledFreq   = true
 inclusive         = true
 directory         = false
 blockName         = "dcache"
-size              = 64*1024
+size              = 32*1024
 assoc             = 8
 prefetchDegree    = 4
 nlprefetch        = $(nlpenable)
@@ -340,15 +380,18 @@ lowerLevel        = "PrivL2 L2 sharedby 4"
 fillBuffSize      = 4
 pfetchBuffSize    = 16
 wbBuffSize        = 16
-numBanks          = 8
-bkNumPorts        = 1
-bkPortOccp        = 1
-maxRequests       = 32
+numBanks          = 1
+bkNumPorts        = 0
+bkPortOccp        = 0
+maxRequests       = 128
 #bankShift         = 4
 coldwarmup        = false
 sendFillPortOccp  = 0
 sendFillNumPorts  = 1
 bot_size          = $(bot) #ldbp bot table size
+lor_size          = $(lor) #ldbp lor table size
+pref_size         = $(pref)
+cs_delay         = $(csdelay)
 
 [PrivL2]
 deviceType        = 'cache'
@@ -357,8 +400,8 @@ inclusive         = true
 directory         = true
 blockName         = "L2"
 numBanks          = 2
-maxRequests       = 48
-size              = 2*1024*1024
+maxRequests       = 128
+size              = 1024*1024
 assoc             = 16
 prefetchDegree    = 16
 nlprefetch        = $(nlpenable)
@@ -366,10 +409,10 @@ nlprefetchDistance= 1
 nlprefetchStride  = $(mw)
 bsize             = 64
 replPolicy        = 'LRU'
-bkNumPorts        = 1
-bkPortOccp        = 2
-hitDelay          = 16
-missDelay         = 1
+bkNumPorts        = 0
+bkPortOccp        = 0
+hitDelay          = 12-4
+missDelay         = 12-4
 #lowerLevel        = "Shared_TLB STLB shared"
 lowerLevel       = "L3Cache L3 shared"
 #lowerLevel        = "$(memLevel)"
@@ -378,6 +421,9 @@ pfetchBuffSize    = 16
 wbBuffSize        = 16
 forceLkg          = 0.0712786/6 #Cacti6.5
 bot_size          = 0 #512
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 
 [L3Cache]
 deviceType        = 'cache'
@@ -402,7 +448,7 @@ replPolicy        = 'LRU'
 numBanks          = 8
 bkNumPorts        = 1
 bkPortOccp        = 1
-hitDelay          = 14
+hitDelay          = 12 # 40-12
 missDelay         = 1
 lowerLevel        = "$(memLevel)"
 fillBuffSize      = 4
@@ -413,6 +459,9 @@ sendFillPortOccp  = 0
 sendFillNumPorts  = 1
 recvFillWidth     = 16 # 4 cycles
 bot_size          = 0 #512
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 
 [Shared_TLB]
 deviceType        = 'tlb'
@@ -426,6 +475,9 @@ bsize             = 4*1024
 replPolicy        = 'LRU'
 lowerLevel        = "voidDevice"
 bot_size          = 0 #512
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 
 [MemCtrl]
 deviceType  = 'memcontroller'
@@ -445,6 +497,9 @@ ColumnAccessLatency  = 52  #Column access of 1 is not supported
 memRequestBufferSize = 32
 lowerLevel           = "voidDevice"
 bot_size          = 0 #512
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 # Power Metrics
 dramPageSize = 1024
 
@@ -460,6 +515,9 @@ isMemoryBus       = false
 dramPageSize      = 8 
 lowerLevel        = "BigMem"
 bot_size          = 0 #512
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 
 [BigMem]
 deviceType        = 'niceCache'
@@ -469,6 +527,9 @@ hitDelay          = $(memLatency)
 lowerLevel        = "voidDevice"
 coldWarmup        = false
 bot_size          = 0 #512
+pref_size         = 0
+cs_delay         = 0
+lor_size          = 0
 
 [voidDevice]
 deviceType        = 'void'
