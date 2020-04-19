@@ -36,8 +36,8 @@ repo.
 
 ### Create Private ESESC repo for first time
 
-If you work outside UCSC, you should clone the pubic esesc repo. First, create
-an empty repository (esesc-private), then run this to close esesc
+If you work outside UCSC, you should clone the public esesc repo. First, create
+an private/public empty repository (esesc-private), then run this to close esesc
 
     # First
     git clone --bare https://github.com/masc-ucsc/esesc
