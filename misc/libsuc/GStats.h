@@ -45,6 +45,7 @@
 #include <list>
 #include <stdarg.h>
 #include <vector>
+#include <string>
 
 #include "callback.h"
 #include "nanassert.h"
