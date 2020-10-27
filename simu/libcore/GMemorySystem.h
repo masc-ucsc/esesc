@@ -40,7 +40,7 @@
 #include <strings.h>
 
 #include <vector>
-
+#include <string>
 #include "estl.h"
 #include "nanassert.h"
 
