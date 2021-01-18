@@ -14,3 +14,4 @@ emul/qemu/roms/seabios/config.mak
 # CLion IDE
 .idea/
 cmake-build-debug/
+cmake-build-release/
