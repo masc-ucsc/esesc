@@ -1,13 +1,13 @@
 ## Thermal Run Output Files 
 
-###Description:
+### Description:
 For this demo you will do a full performance-power-thermal run with Crafty benchmark and check
 the generated thermal-related output files. 
 
-###Assumptions:
+### Assumptions:
 Complete steps from demo 1 and have the config files and executable in run directory.
 
-###Steps:
+### Steps:
 
 1. Modify `esesc.conf` file in the run directory to enable power and thermal. 
     1. Open `esesc.conf`.  
@@ -114,13 +114,13 @@ Complete steps from demo 1 and have the config files and executable in run direc
 You have now finished a complete thermal run and checked the relevant report files.    
 ## Generating a New Floorplan 
 
-###Description:
+### Description:
 In this demo, you will generate a floorplan for a dual core chip. 
 
-###Assumptions:
+### Assumptions:
 Complete steps from demo 1 and have the config files and executable in run directory.
 
-###Steps:
+### Steps:
 
 1. Modify `esesc.conf` file in the run directory to configure multiple CPU cores. 
     1. Open `esesc.conf`.  
@@ -170,14 +170,14 @@ You have now finished generating the new floorplan and can continue running ESES
 
 ## Full Thermal Run with Multicore Floorplan and Thermal Management Policy 
 
-###Description:
+### Description:
 For this demo you will run the multi-threaded benchmark FFT. You will enable and use two different thermal management policies: DVFS and thermal throttling and compare the results. You will also learn to enable and use
 graphics feature for floorplan thermal map.  
 
-###Assumptions:
+### Assumptions:
 Complete steps from demo 1 and have the config files and executable in run directory. Complete demo 6 to setup dual core and generate the corresponding floorplan.  
 
-###Steps:
+### Steps:
 
 1. Complete steps from demo 6.
 

@@ -1,7 +1,7 @@
 
 ## Compile and run a default benchmark
 
-###Assumptions:
+### Assumptions:
 
  * Running ESESC on an x86-64 system that has either Ubuntu 12.04 or Arch Linux
 installed along with all necessary packages for the appropriate OS.
