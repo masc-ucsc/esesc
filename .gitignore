@@ -10,3 +10,6 @@ compile_commands.json
 .ycm_extra_conf.py
 emul/qemu/roms/vgabios/config.mak
 emul/qemu/roms/seabios/config.mak
+
+# CLion IDE
+.idea/
