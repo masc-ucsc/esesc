@@ -1,14 +1,14 @@
 
 ## Enabling the power model and viewing the power numbers.
 
-###Assumptions:
+### Assumptions:
 
 Have ESESC built and complete steps from previous demo.
 
-###Description:
+### Description:
 For this demo you will run the single-threaded benchmark crafty
 
-###Steps:
+### Steps:
 
 1. Modify `esesc.conf` file in the run directory to select the sampler mode.
     1. Open `esesc.conf` in a text editor.  

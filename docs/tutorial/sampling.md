@@ -1,13 +1,13 @@
 ## Single-threaded with Time Based Sampling (TBS):
 
-###Assumptions:
+### Assumptions:
 
 Have ESESC built and complete steps from previous demo.
 
-###Description:
+### Description:
 For this demo you will run the single-threaded benchmark crafty.
 
-###Steps:
+### Steps:
 
 1. Modify `esesc.conf` file in the run directory to select the sampler mode.
     1. Open `esesc.conf` in a text editor.  
@@ -35,13 +35,13 @@ For this demo you will run the single-threaded benchmark crafty.
 
 ## Multi-threaded with Time Based Sampling (TBS):
 
-###Description:
+### Description:
 For this demo you will run the multi-threaded benchmark `blackscholes`
 
-###Assumptions:
+### Assumptions:
 Complete steps from previous demo and have config files and executable in run directory.
 
-###Steps:
+### Steps:
 
 1. Modify `esesc.conf` file in the run directory to configure multiple CPU cores
     1. Open `esesc.conf` in a text editor.  
@@ -93,10 +93,10 @@ Complete steps from previous demo and have config files and executable in run di
 
 ## Adding a new counter for statistics 
 
-###Description:
+### Description:
 This demo shows how to add a new counter to keep statistics.  Many of the most useful counters are already included in ESESC, but it is likely that you will need to add new counters during your research.  For this demo we will add a counter that counts the number of consecutive stores that are retired in an out-of-order processor.
 
-###Steps:
+### Steps:
 
 1. The first thing that needs to be done is to declare the counter in the appropriate class.
     1. Open `~/projs/esesc/simu/libcore/OoOProcessor.h`
