@@ -166,7 +166,7 @@ public:
   void ThermTraceInit_light(const char *input_file);
 
   bool is_ready() const {
-    return input_fd_ >= 0;
+    return input_fd_ != 0;
   }
   void loadValues(ChipEnergyBundle *energyBundle, std::vector<float> *temperatures);
   void loadLkgPtrs(ChipEnergyBundle *eBundle) {

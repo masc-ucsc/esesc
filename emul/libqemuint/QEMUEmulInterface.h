@@ -21,6 +21,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #ifndef QEMUEMULINTERFACE_H
 #define QEMUEMULINTERFACE_H
 
+#include <limits>
 #include <map>
 
 #include "EmulInterface.h"
