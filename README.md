@@ -1,6 +1,8 @@
 ESESC
 =====
 
+WARNING: This repo is deprecated use the new [desesc](https://github.com/masc-ucsc/desesc)
+
 [![Build Status](https://travis-ci.org/masc-ucsc/esesc.png)](https://travis-ci.org/masc-ucsc/esesc)
 
 [![CodeFactor](https://www.codefactor.io/repository/github/masc-ucsc/esesc/badge)](https://www.codefactor.io/repository/github/masc-ucsc/esesc)
@@ -55,4 +57,3 @@ If you publish research using ESESC please cite the paper [ESESC: A Fast Multico
 
 
 [3]:http://masc.soe.ucsc.edu/docs/hpca13.pdf
-
